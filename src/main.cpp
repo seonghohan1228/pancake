@@ -2,20 +2,22 @@
 #include <fstream>
 #include <mpi.h>
 #include <cmath>
-#include <vector>
 
 #include "config.hpp"
+#include "field.hpp"
 #include "logger.hpp"
 #include "mesh.hpp"
+#include "fields.hpp"
 #include "io.hpp"
+#include "communicator.hpp"
 
 #define NEAR(a, b) (std::abs((a) - (b)) < 1e-8)
 
 void print_info() {
-    Logger::print("\npancake", Logger::Color::BOLD_CYAN);
-    Logger::print("Thin film fluid flow solver.\n\n");
+    Logger::print("pancake", Logger::Color::CYAN); // Removed BOLD_CYAN (not in your logger enum)
+    Logger::print("Thin film fluid flow solver.");
+    Logger::print("");
 }
-
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -25,30 +27,42 @@ int main(int argc, char** argv) {
 
     print_info();
 
-    // 1. Configuration
+    // Configuration
     SimulationConfig config;
-    // TODO: Load config from file here if needed
+    // TODO: Load config from file
 
-    // 2. Mesh Initialization
+    // I/O setup
+    IO::prepare_output_directory(config);
+
+    // Mesh initialization
     Logger::print("Initializing Mesh...");
     Mesh mesh(config);
 
-    // 3. I/O Setup (Clean start)
-    IO::prepare_output_directory(config);
+    // Communicator initialization
+    Communicator comm(mesh);
 
-    // 4. State Initialization
-    // TODO: Create a proper 'State' or 'Fields' class if variables increase (u, v, p, T...)
-    std::vector<double> solution_field(mesh.local_cell_count());
+    // Solution fields
+    Fields fields;
+    fields.add("pressure", mesh, 2, GridLocation::CENTER);
+    fields.add("film_thickness", mesh, 2, GridLocation::CENTER);
+    fields.add("velocity_theta", mesh, 2, GridLocation::FACE_THETA); // Staggered
+    fields.add("velocity_z", mesh, 2, GridLocation::FACE_Z);
 
-    // TODO: Apply actual initial conditions here
-    for(auto& val : solution_field) {
-        val = 0.0;
-    }
+    fields["pressure"].fill(101325.0);
+    fields["film_thickness"].fill(1.0);
+    fields["velocity_theta"].fill(0.0);
+    fields["velocity_z"].fill(0.0);
 
-    Logger::print("Initialization complete.");
-    Logger::print("Starting time loop.\n");
+    // Decomposition fields
+    fields.add("processor", mesh);
+    fields["processor"].fill(static_cast<double>(rank));
 
-    // 5. Time Stepping Loop
+    // Apply initial ghost cell exchange
+    comm.update_ghosts(fields);
+
+    Logger::print("Starting time loop.");
+
+    // Time stepping loop
     double t = 0;
     double next_output_time = 0;
     int step_index = 0;
@@ -56,23 +70,19 @@ int main(int argc, char** argv) {
     while (t <= config.end_t || NEAR(t, config.end_t)) {
 
         // --- SOLVER STEP ---
-        // TODO: Implement your Finite Volume / Finite Difference update here.
-        // Example:
-        // calculate_fluxes(...);
-        // update_variables(...);
-        // exchange_ghost_cells(...);
-
-        // Dummy update for visualization testing
-        for(auto& val : solution_field) {
-            val += 0.01 * (mesh.rank + 1);
-        }
+        // TODO: Implement solver step
+        // Update ghosts after every change
+        // comm.update_ghosts(fields);
 
         // --- I/O STEP ---
         if (t >= next_output_time || NEAR(t, next_output_time)) {
             std::string msg = "Writing output t = " + std::to_string(t);
-            Logger::print(msg, Logger::Color::RESET, 1);
+            Logger::print(msg, Logger::Color::GREEN, 1);
 
-            IO::write_timestep(t, step_index, mesh, solution_field, config);
+            // Ensure ghosts are valid before interpolating for IO (optional but good practice)
+            comm.update_ghosts(fields);
+
+            IO::write_timestep(t, step_index, mesh, fields, config);
 
             next_output_time += config.write_interval;
             step_index++;
@@ -81,7 +91,7 @@ int main(int argc, char** argv) {
         t += config.dt;
     }
 
-    // 6. Finalization
+    // Finalization
     if (rank == 0) {
         // Close the PVD file tags
         std::ofstream pvd(config.output_dir + "/results.pvd", std::ios::app);
