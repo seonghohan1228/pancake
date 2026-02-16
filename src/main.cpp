@@ -5,10 +5,17 @@
 #include <vector>
 
 #include "config.hpp"
+#include "logger.hpp"
 #include "mesh.hpp"
 #include "io.hpp"
 
 #define NEAR(a, b) (std::abs((a) - (b)) < 1e-8)
+
+void print_info() {
+    Logger::print("\npancake", Logger::Color::BOLD_CYAN);
+    Logger::print("Thin film fluid flow solver.\n\n");
+}
+
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -16,14 +23,14 @@ int main(int argc, char** argv) {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    if(rank == 0) std::cout << "[pancake] Simulation started.\n";
+    print_info();
 
     // 1. Configuration
     SimulationConfig config;
     // TODO: Load config from file here if needed
 
     // 2. Mesh Initialization
-    if(rank == 0) std::cout << "[pancake] Initializing Mesh...\n";
+    Logger::print("Initializing Mesh...");
     Mesh mesh(config);
 
     // 3. I/O Setup (Clean start)
@@ -38,7 +45,8 @@ int main(int argc, char** argv) {
         val = 0.0;
     }
 
-    if(rank == 0) std::cout << "[pancake] Initialization complete. Starting time loop.\n";
+    Logger::print("Initialization complete.");
+    Logger::print("Starting time loop.\n");
 
     // 5. Time Stepping Loop
     double t = 0;
@@ -61,7 +69,8 @@ int main(int argc, char** argv) {
 
         // --- I/O STEP ---
         if (t >= next_output_time || NEAR(t, next_output_time)) {
-            if(rank == 0) std::cout << "  -> Writing output t=" << t << std::endl;
+            std::string msg = "Writing output t = " + std::to_string(t);
+            Logger::print(msg, Logger::Color::RESET, 1);
 
             IO::write_timestep(t, step_index, mesh, solution_field, config);
 
@@ -77,7 +86,7 @@ int main(int argc, char** argv) {
         // Close the PVD file tags
         std::ofstream pvd(config.output_dir + "/results.pvd", std::ios::app);
         pvd << "  </Collection>\n</VTKFile>\n";
-        std::cout << "[pancake] Simulation finished successfully.\n";
+        Logger::print("\nSimulation finished successfully.\n");
     }
 
     MPI_Finalize();
