@@ -1,90 +1,41 @@
 #pragma once
-#include <vector>
+
+#include <map>
+#include <memory>
 #include <string>
+#include <vector>
+
 #include "mesh.hpp"
 
-enum class GridLocation {
-    CENTER,
-    FACE_THETA,
-    FACE_Z
-};
+enum class GridLocation { CENTER, FACE_THETA, FACE_Z };
 
 class Field {
 public:
-    // --- Metadata ---
     std::string name;
     GridLocation location;
-
-    // --- Dimensions ---
-    int n_theta_phys;
-    int n_z_phys;
-    int ng; // Number of ghost layers
-    int stride_theta;
-
-    // --- Data Storage ---
+    int n_theta_phys, n_z_phys, n_ghost, stride_theta;
     std::vector<double> data;
+    std::vector<double> old_data; // For time derivatives
+    const Mesh& mesh_ref;
 
-    // --- Constructor ---
     Field(std::string name, const Mesh& mesh, int ghost_layers = 2, GridLocation loc = GridLocation::CENTER);
 
-    // --- Accessors ---
+    inline double& operator()(int i, int j) { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }      // Read/write
+    inline double operator()(int i, int j) const { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; } // Read-only
 
-    // Read/Write
-    inline double& operator()(int i, int j) {
-        int idx = (j + ng) * stride_theta + (i + ng);
-        return data[idx];
-    }
-
-    // Read-only
-    inline double operator()(int i, int j) const {
-        int idx = (j + ng) * stride_theta + (i + ng);
-        return data[idx];
-    }
-
-    // --- Utilities ---
     void fill(double value);
-    double* data_ptr() { return data.data(); }
+    void store_old_time() { old_data = data; }
 };
 
-// Operator overloads
-// Field + Field
-inline Field operator+(const Field& lhs, const Field& rhs) {
-    Field result = lhs;
-    result.name = "(" + lhs.name + "+" + rhs.name + ")";
-    for (size_t i = 0; i < lhs.data.size(); ++i) {
-        result.data[i] = lhs.data[i] + rhs.data[i];
-    }
-    return result;
-}
+class Fields {
+private:
+    std::map<std::string, std::unique_ptr<Field>> storage;
+public:
+    Field& add(const std::string& name, const Mesh& mesh, int ghost_layers = 2, GridLocation loc = GridLocation::CENTER);
+    Field& operator[](const std::string& name);
+    const Field& operator[](const std::string& name) const;
 
-// Field - Field
-inline Field operator-(const Field& lhs, const Field& rhs) {
-    Field result = lhs;
-    result.name = "(" + lhs.name + "-" + rhs.name + ")";
-    for (size_t i = 0; i < lhs.data.size(); ++i) {
-        result.data[i] = lhs.data[i] - rhs.data[i];
-    }
-    return result;
-}
-
-// Field * Field (Element-wise)
-inline Field operator*(const Field& lhs, const Field& rhs) {
-    Field result = lhs;
-    result.name = "(" + lhs.name + "*" + rhs.name + ")";
-    for (size_t i = 0; i < lhs.data.size(); ++i) {
-        result.data[i] = lhs.data[i] * rhs.data[i];
-    }
-    return result;
-}
-
-// Field * Scalar
-inline Field operator*(const Field& lhs, double scalar) {
-    Field result = lhs;
-    for (double& val : result.data) val *= scalar;
-    return result;
-}
-
-// Scalar * Field
-inline Field operator*(double scalar, const Field& rhs) {
-    return rhs * scalar;
-}
+    // For iterating
+    auto begin() { return storage.begin(); }
+    auto end() { return storage.end(); }
+};

@@ -1,21 +1,21 @@
 #include "field.hpp"
 
 Field::Field(std::string name, const Mesh& mesh, int ghost_layers, GridLocation loc)
-    : name(name), location(loc), ng(ghost_layers) {
-
+    : name(name), location(loc), n_ghost(ghost_layers), mesh_ref(mesh) {
     n_theta_phys = mesh.n_theta_local;
     n_z_phys = mesh.n_z_local;
-
-    // Calculate total size including ghost layers
-    int n_theta_total = n_theta_phys + 2 * ng;
-    int n_z_total = n_z_phys + 2 * ng;
-
-    stride_theta = n_theta_total;
-
-    // Allocate and initialize to 0.0
-    data.resize(n_theta_total * n_z_total, 0.0);
+    stride_theta = n_theta_phys + 2 * n_ghost;
+    data.resize(stride_theta * (n_z_phys + 2 * n_ghost), 0.0);
+    old_data = data;
 }
 
-void Field::fill(double value) {
-    std::fill(data.begin(), data.end(), value);
+void Field::fill(double value) { std::fill(data.begin(), data.end(), value); }
+
+Field& Fields::add(const std::string& name, const Mesh& mesh, int n_ghost, GridLocation loc) {
+    if(storage.find(name) != storage.end()) throw std::runtime_error("Field exists: " + name);
+    storage[name] = std::make_unique<Field>(name, mesh, n_ghost, loc);
+    return *storage[name];
 }
+
+Field& Fields::operator[](const std::string& name) { return *storage.at(name); }
+const Field& Fields::operator[](const std::string& name) const { return *storage.at(name); }

@@ -1,15 +1,16 @@
 #pragma once
+
 #include <mpi.h>
 #include <vector>
+
+#include "field.hpp"
 #include "mesh.hpp"
-#include "fields.hpp"
 
 class Communicator {
 private:
     const Mesh& mesh;
 
-    // Buffers for packing/unpacking non-contiguous ghost data
-    // Size: n_z_local * ghost_layers
+    // Buffers for packing/unpacking non-contiguous ghost data (size: n_z_local * n_ghost)
     std::vector<double> send_buf_left, recv_buf_left;
     std::vector<double> send_buf_right, recv_buf_right;
 

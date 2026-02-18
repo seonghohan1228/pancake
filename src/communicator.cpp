@@ -1,9 +1,6 @@
 #include "communicator.hpp"
 
-Communicator::Communicator(const Mesh& mesh_ref) : mesh(mesh_ref) {
-    // Max buffer size needed: Z-height * max expected ghost layers (e.g. 2)
-    // We assume 2 layers for safety, but will resize dynamically if needed in update
-}
+Communicator::Communicator(const Mesh& mesh_ref) : mesh(mesh_ref) {}
 
 void Communicator::update_ghosts(Fields& fields) {
     for (auto& [name, field] : fields) {
@@ -12,10 +9,10 @@ void Communicator::update_ghosts(Fields& fields) {
 }
 
 void Communicator::update_ghosts(Field& field) {
-    int ng = field.ng;
-    int nz = field.n_z_phys;
+    int n_ghost = field.n_ghost;
+    int n_z = field.n_z_phys;
     int n_theta = field.n_theta_phys;
-    int buffer_size = nz * ng;
+    int buffer_size = n_z * n_ghost;
 
     // Resize buffers if needed
     if (send_buf_left.size() < buffer_size) {
@@ -25,57 +22,50 @@ void Communicator::update_ghosts(Field& field) {
         recv_buf_right.resize(buffer_size);
     }
 
-    // --- 1. Pack Data ---
-    // Send the "Left Edge" to the Left Neighbor
-    // and the "Right Edge" to the Right Neighbor.
-
+    // Pack data
+    // Send the left edge to the left neighborand the right edge to the right neighbor.
     int idx = 0;
-    for (int j = 0; j < nz; ++j) {
-        // Pack Left Edge (Physical indices 0 to ng-1)
-        for (int k = 0; k < ng; ++k) {
-            send_buf_left[idx + k] = field(k, j);
-        }
-        // Pack Right Edge (Physical indices N-ng to N-1)
-        for (int k = 0; k < ng; ++k) {
-            send_buf_right[idx + k] = field(n_theta - ng + k, j);
-        }
-        idx += ng;
+    for (int j = 0; j < n_z; ++j) {
+        // Pack left edge (physical indices 0 to n_ghost-1)
+        for (int k = 0; k < n_ghost; ++k) send_buf_left[idx + k] = field(k, j);
+        // Pack right edge (physical indices N-n_ghost to N-1)
+        for (int k = 0; k < n_ghost; ++k) send_buf_right[idx + k] = field(n_theta - n_ghost + k, j);
+        idx += n_ghost;
     }
 
-    // --- 2. MPI Exchange ---
+    // MPI exchange
     // Periodic boundaries:
-    // Left neighbor of Rank 0 is Rank Size-1
-    // Right neighbor of Rank Size-1 is Rank 0
+    //   - Left neighbor of Rank 0 is Rank Size-1
+    //   - Right neighbor of Rank Size-1 is Rank 0
     int left_rank = (mesh.rank - 1 + mesh.size) % mesh.size;
     int right_rank = (mesh.rank + 1) % mesh.size;
 
     MPI_Status status;
 
-    // Send Left, Receive from Right (filling Right Ghost)
+    // Send left, receive from right (filling right ghost)
     MPI_Sendrecv(send_buf_left.data(), buffer_size, MPI_DOUBLE, left_rank, 0,
                  recv_buf_right.data(), buffer_size, MPI_DOUBLE, right_rank, 0,
                  MPI_COMM_WORLD, &status);
 
-    // Send Right, Receive from Left (filling Left Ghost)
+    // Send right, receive from left (filling left ghost)
     MPI_Sendrecv(send_buf_right.data(), buffer_size, MPI_DOUBLE, right_rank, 1,
                  recv_buf_left.data(), buffer_size, MPI_DOUBLE, left_rank, 1,
                  MPI_COMM_WORLD, &status);
 
-    // --- 3. Unpack Data ---
+    // Unpack data
     idx = 0;
-    for (int j = 0; j < nz; ++j) {
-        // Unpack into Left Ghost (indices -ng to -1)
-        // Note: recv_buf_left contains data sent by Left Neighbor's Right Edge
-        for (int k = 0; k < ng; ++k) {
-            // field(-ng + k, j)
-            field(-ng + k, j) = recv_buf_left[idx + k];
+    for (int j = 0; j < n_z; ++j) {
+        // Unpack into left ghost (indices -n_ghost to -1)
+        // Note: recv_buf_left contains data sent by left neighbor's right edge
+        for (int k = 0; k < n_ghost; ++k) {
+            // field(-n_ghost + k, j)
+            field(-n_ghost + k, j) = recv_buf_left[idx + k];
         }
 
-        // Unpack into Right Ghost (indices N to N+ng-1)
-        for (int k = 0; k < ng; ++k) {
-            // field(n_theta + k, j)
+        // Unpack into right ghost (indices N to N+n_ghost-1)
+        for (int k = 0; k < n_ghost; ++k) {
             field(n_theta + k, j) = recv_buf_right[idx + k];
         }
-        idx += ng;
+        idx += n_ghost;
     }
 }

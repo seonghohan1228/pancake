@@ -1,104 +1,84 @@
-#include <iostream>
+#include <cmath>
 #include <fstream>
 #include <mpi.h>
-#include <cmath>
 
+#include "communicator.hpp"
 #include "config.hpp"
 #include "field.hpp"
-#include "logger.hpp"
-#include "mesh.hpp"
-#include "fields.hpp"
 #include "io.hpp"
-#include "communicator.hpp"
-
-#define NEAR(a, b) (std::abs((a) - (b)) < 1e-8)
-
-void print_info() {
-    Logger::print("pancake", Logger::Color::CYAN); // Removed BOLD_CYAN (not in your logger enum)
-    Logger::print("Thin film fluid flow solver.");
-    Logger::print("");
-}
+#include "mesh.hpp"
+#include "utils.hpp"
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
-
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    print_info();
-
-    // Configuration
-    SimulationConfig config;
-    // TODO: Load config from file
-
-    // I/O setup
-    IO::prepare_output_directory(config);
-
-    // Mesh initialization
-    Logger::print("Initializing Mesh...");
-    Mesh mesh(config);
-
-    // Communicator initialization
+    SimulationConfig cfg;
+    Mesh mesh(cfg);
     Communicator comm(mesh);
+    IO::prepare_output_directory(cfg, MPI_COMM_WORLD);
 
-    // Solution fields
+    // Initialize fields
     Fields fields;
-    fields.add("pressure", mesh, 2, GridLocation::CENTER);
-    fields.add("film_thickness", mesh, 2, GridLocation::CENTER);
-    fields.add("velocity_theta", mesh, 2, GridLocation::FACE_THETA); // Staggered
-    fields.add("velocity_z", mesh, 2, GridLocation::FACE_Z);
+    fields.add("pressure", mesh).fill(101325.0);
+    fields.add("h", mesh).fill(cfg.c);
+    fields.add("rho", mesh).fill(cfg.rho);
 
-    fields["pressure"].fill(101325.0);
-    fields["film_thickness"].fill(1.0);
-    fields["velocity_theta"].fill(0.0);
-    fields["velocity_z"].fill(0.0);
+    Utils::log("Starting Simulation...");
 
-    // Decomposition fields
-    fields.add("processor", mesh);
-    fields["processor"].fill(static_cast<double>(rank));
-
-    // Apply initial ghost cell exchange
+    // Geometry initialization
+    double psi_rad = cfg.attitude_angle_deg * (M_PI / 180.0);
+    Field& h = fields["h"];
+    for(int j = 0; j < mesh.n_z_local; ++j) {
+        for(int i = 0; i < mesh.n_theta_local; ++i) {
+            double theta_coord = (mesh.offset_theta + i + 0.5) * mesh.get_d_theta();
+            h(i,j) = cfg.c - cfg.e * std::cos(theta_coord - psi_rad);
+        }
+    }
     comm.update_ghosts(fields);
 
-    Logger::print("Starting time loop.");
+    // Initialize old_time to current state
+    fields["pressure"].store_old_time();
 
-    // Time stepping loop
-    double t = 0;
-    double next_output_time = 0;
-    int step_index = 0;
+    double t = 0.0;
+    double output_time = 0;
+    int step = 0;
 
-    while (t <= config.end_t || NEAR(t, config.end_t)) {
+    // Time loop
+    while(t <= cfg.end_t || std::abs(t - cfg.end_t) < 1e-8) {
+        // Geometry & physics update
+        Field& p = fields["pressure"];
 
-        // --- SOLVER STEP ---
-        // TODO: Implement solver step
-        // Update ghosts after every change
-        // comm.update_ghosts(fields);
+        // Update h and sync
+        // TODO: Solve position and update h
+        comm.update_ghosts(fields);
 
-        // --- I/O STEP ---
-        if (t >= next_output_time || NEAR(t, next_output_time)) {
-            std::string msg = "Writing output t = " + std::to_string(t);
-            Logger::print(msg, Logger::Color::GREEN, 1);
+        // Assemble & solve equations
+        // Reynolds equation
+        // d(rho*theta)/dt + div(flux_u * theta) - div(gamma * grad(theta)) = 0
 
-            // Ensure ghosts are valid before interpolating for IO (optional but good practice)
-            comm.update_ghosts(fields);
+        // Solve
 
-            IO::write_timestep(t, step_index, mesh, fields, config);
-
-            next_output_time += config.write_interval;
-            step_index++;
+        // Output
+        if(t >= output_time || std::abs(t - output_time) < 1e-8 || step == 0) {
+             IO::write_timestep(t, step, mesh, fields, cfg);
+             Utils::log("Step " + std::to_string(step) + " t=" + std::to_string(t), Utils::Color::GREEN, 1);
+             output_time += cfg.write_interval;
         }
 
-        t += config.dt;
+        // Advance time
+        p.store_old_time(); // Save current solution for next ddt step
+        t += cfg.dt;
+        step++;
     }
 
     // Finalization
-    if (rank == 0) {
-        // Close the PVD file tags
-        std::ofstream pvd(config.output_dir + "/results.pvd", std::ios::app);
-        pvd << "  </Collection>\n</VTKFile>\n";
-        Logger::print("\nSimulation finished successfully.\n");
+    // Close the PVD file tags
+    if (mesh.rank == 0) { // Consistency with IO
+        std::ofstream pvd(cfg.output_dir + "/results.pvd", std::ios::app);
+        pvd << "  </Collection>\n"
+            << "</VTKFile>\n";
     }
 
+    Utils::log("Simulation finished successfully.");
     MPI_Finalize();
     return 0;
 }
