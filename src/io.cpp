@@ -1,0 +1,154 @@
+#include "io.hpp"
+
+#include <filesystem>
+#include <fstream>
+#include <mpi.h>
+#include <sstream>
+
+namespace fs = std::filesystem;
+
+namespace IO {
+// Interpolate face-based data to cell centers for visualization
+std::vector<double> get_centered_data(const Field& f, const Mesh& mesh) {
+    std::vector<double> result;
+    result.reserve(mesh.n_theta_local * mesh.n_z_local);
+
+    if (f.location == GridLocation::CENTER) {
+        // Copy directly
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            for (int i = 0; i < mesh.n_theta_local; ++i) {
+                result.push_back(f(i, j));
+            }
+        }
+    }
+    else if (f.location == GridLocation::FACE_THETA) {
+        // Interpolate u(i) and u(i+1) -> center(i)
+        // Assumption: u(i) is left face, u(i+1) is right face
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            for (int i = 0; i < mesh.n_theta_local; ++i) {
+                double val = 0.5 * (f(i, j) + f(i + 1, j));
+                result.push_back(val);
+            }
+        }
+    }
+    else {
+        // Interpolate v(j) and v(j+1) -> center(j)
+        // Assumption: v(j) is bottom face, v(j+1) is top face
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            for (int i = 0; i < mesh.n_theta_local; ++i) {
+                result.push_back(f(i, j));
+            }
+        }
+    }
+    return result;
+}
+
+void update_pvd(double time, int step, const SimulationConfig& cfg) {
+    std::ofstream file(cfg.output_dir + "/results.pvd", std::ios::app);
+    file << "    <DataSet timestep=\"" << time << "\" group=\"\" part=\"0\" "
+         << "file=\"" << cfg.filename_prefix << "_" << step << ".pvts\"/>\n";
+}
+
+void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfig& cfg) {
+    std::stringstream ss;
+    ss << cfg.output_dir << "/processor" << mesh.rank << "/" << cfg.filename_prefix << "_" << step << "_" << mesh.rank << ".vts";
+
+    // Headers
+    std::ofstream file(ss.str());
+    file << "<?xml version=\"1.0\"?>\n"
+         << "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+         << "  <StructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\">\n"
+         << "    <Piece Extent=\"" << mesh.offset_theta << " " << mesh.offset_theta+mesh.n_theta_local << " 0 " << mesh.n_z_local << " 0 0\">\n";
+
+    // Points
+    file << "      <Points>\n"
+         << "        <DataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+    for(int j = 0; j<=mesh.n_z_local; ++j) {
+        double z = j * mesh.get_d_z();
+        for(int i = 0; i<=mesh.n_theta_local; ++i) {
+            double theta = (mesh.offset_theta + i) * mesh.get_d_theta();
+            file << (mesh.R * cos(theta)) << " " << (mesh.R * sin(theta)) << " " << z << " ";
+        }
+    }
+    file << "\n"
+         << "        </DataArray>\n"
+         << "      </Points>\n";
+
+    // Cell data
+    file << "      <CellData>\n";
+    for(auto& [name, field_ptr] : fields) {
+        // Interpolate data
+        std::vector<double> centered = get_centered_data(*field_ptr, mesh);
+
+        file << "        <DataArray type=\"Float64\" Name=\"" << name << "\" format=\"ascii\">\n";
+        for (const auto& val : centered) file << val << " ";
+        file << "\n"
+             << "        </DataArray>\n";
+    }
+    file << "      </CellData>\n"
+         << "    </Piece>\n"
+         << "  </StructuredGrid>\n"
+         << "</VTKFile>\n";
+}
+
+void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfig& cfg) {
+    std::stringstream ss;
+    ss << cfg.output_dir << "/" << cfg.filename_prefix << "_" << step << ".pvts";
+
+    std::ofstream file(ss.str());
+    file << "<?xml version=\"1.0\"?>\n"
+         << "<VTKFile type=\"PStructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+         << "  <PStructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\" GhostLevel=\"0\">\n"
+         << "    <PPoints>\n"
+         << "      <PDataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\"/>\n"
+         << "    </PPoints>\n"
+         << "    <PCellData>\n";
+
+    for(auto& [name, field] : fields) {
+        file << "      <PDataArray type=\"Float64\" Name=\"" << name << "\"/>\n";
+    }
+    file << "    </PCellData>\n";
+
+    // Write Piece entries for each rank
+    for (int r = 0; r < total_ranks; ++r) {
+        int n_local = cfg.n_theta_global / total_ranks;
+        int remainder = cfg.n_theta_global % total_ranks;
+        int offset = r * n_local;
+        if (r < remainder) { n_local++; offset += r; } else { offset += remainder; }
+
+        file << "    <Piece Extent=\"" << offset << " " << (offset + n_local) << " 0 " << cfg.n_z_global << " 0 0\" "
+             << "Source=\"processor" << r << "/" << cfg.filename_prefix << "_" << step << "_" << r << ".vts\"/>\n";
+    }
+    file << "  </PStructuredGrid>\n"
+         << "</VTKFile>\n";
+}
+
+void prepare_output_directory(const SimulationConfig& cfg, MPI_Comm comm) {
+    int rank; MPI_Comm_rank(comm, &rank);
+
+    if (rank == 0) {
+        // Directory and file initialization
+        if (fs::exists(cfg.output_dir)) fs::remove_all(cfg.output_dir);
+        fs::create_directory(cfg.output_dir);
+        std::ofstream pvd(cfg.output_dir + "/results.pvd");
+
+        // Headers
+        pvd << "<?xml version=\"1.0\"?>\n"
+            << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+            << "  <Collection>\n";
+    }
+    MPI_Barrier(comm);
+
+    // Subdirectory for each processor
+    fs::create_directory(cfg.output_dir + "/processor" + std::to_string(rank));
+    MPI_Barrier(comm);
+}
+
+void write_timestep(double time, int step, const Mesh& mesh, Fields& fields, const SimulationConfig& cfg) {
+    write_vts(step, mesh, fields, cfg);
+    if (mesh.rank == 0) {
+        write_pvts(step, mesh.size, fields, cfg);
+        update_pvd(time, step, cfg);
+    }
+}
+}

@@ -1,3 +1,13 @@
+# Build
+build/
+
+# Zed
+.zed/
+
+# clangd
+compile_commands.json
+.cache/clangd/
+
 # Prerequisites
 *.d
 
