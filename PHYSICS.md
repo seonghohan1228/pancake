@@ -91,19 +91,27 @@ Face values of $\gamma$ use **harmonic averaging**: $\gamma_e = 2\gamma_i\gamma_
 
 $$a_P\,p_P - a_E\,p_E - a_W\,p_W - a_N\,p_N - a_S\,p_S = \text{source}$$
 
-with $a_P = a_E + a_W + a_N + a_S$ (plus any boundary contributions). This stencil represents **the negative divergence times cell area**:
+with $a_P = a_E + a_W + a_N + a_S$ (plus any boundary contributions).
 
-$$-\text{div}(\gamma\,\nabla p)\cdot A_{cell} = \text{source}$$
+The LHS sums face contributions $a_f(p_P - p_{\text{nbr}})$, which is the *negative* of the outward flux sum from the divergence theorem. The stencil therefore represents:
 
-**Sign convention (critical):** For a PDE $\text{div}(\gamma\,\nabla p) = f$, the source term passed to `FVM::add_source` must be $-f$, not $+f$. For the Reynolds equation with Couette source $S$:
+$$-\,\text{div}(\gamma\,\nabla p)\cdot A_\text{cell} = \text{source}$$
 
-$$\text{div}(\gamma\,\nabla p) = S \implies \texttt{source\_field} = -S$$
+**Sign convention — `source_field` passed to `FVM::add_source` must be $-f$, not $+f$.**
+
+For a PDE of the form $\text{div}(\gamma\,\nabla p) = f$, rearranging gives:
+
+$$-\,\text{div}(\gamma\,\nabla p)\cdot A_\text{cell} = -f\cdot A_\text{cell}$$
+
+so `FVM::add_source` must receive `source_field` $= -f$. Applied to the Reynolds equation with Couette term $S = \tfrac{\omega}{2}\partial_\theta(\rho h)$:
+
+$$\text{div}(\gamma\,\nabla p) = S \quad\Longrightarrow\quad \text{source\_field} = -S$$
 
 ### 5.4 Time Derivative
 
 The `FVM::ddt` operator discretises $\partial\phi/\partial t$ with a first-order backward Euler scheme, adding:
 
-$$a_P \mathrel{+}= \frac{A_{cell}}{\Delta t}, \qquad \text{source} \mathrel{+}= \frac{A_{cell}}{\Delta t}\,\phi^n$$
+$$a_P \leftarrow a_P + \frac{A_\text{cell}}{\Delta t}, \qquad \text{source} \leftarrow \text{source} + \frac{A_\text{cell}}{\Delta t}\,\phi^n$$
 
 ### 5.5 Convection (TVD)
 
