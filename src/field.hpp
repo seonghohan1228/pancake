@@ -22,6 +22,7 @@ public:
 
     inline double& operator()(int i, int j) { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }      // Read/write
     inline double operator()(int i, int j) const { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; } // Read-only
+    inline double old(int i, int j) const { return old_data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }    // Previous timestep
 
     void fill(double value);
     void store_old_time() { old_data = data; }

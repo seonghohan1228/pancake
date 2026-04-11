@@ -1,6 +1,9 @@
 # Build
 build/
 
+# Results
+results/
+
 # Zed
 .zed/
 
