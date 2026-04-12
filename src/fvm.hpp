@@ -22,6 +22,12 @@ namespace FVM {
     /// Adds vol/dt to aP and vol/dt * phi.old(i,j) to source.
     void ddt(LinearSystem& sys, const Field& phi, double dt, const Mesh& mesh);
 
+    /// Weighted time derivative: d(weight * phi)/dt with static weight field.
+    /// Adds weight(i,j)*vol/dt to aP and weight(i,j)*vol/dt * phi.old(i,j) to source.
+    /// Use for transient terms of the form ∂(h·θ)/∂t where h is the weight.
+    void ddt_weighted(LinearSystem& sys, const Field& phi, const Field& weight,
+                      double dt, const Mesh& mesh);
+
     /// Laplacian: div(gamma * grad(phi)).
     /// gamma is cell-centered; face values use harmonic averaging.
     /// Adds to aP, aE, aW, aN, aS.

@@ -32,6 +32,9 @@ target_include_directories(pancake PRIVATE
 # Link MPI and PETSc
 target_link_libraries(pancake PRIVATE MPI::MPI_CXX ${PETSC_LIBRARY})
 
+# Copy config.txt to build directory
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.txt ${CMAKE_CURRENT_BINARY_DIR}/config.txt COPYONLY)
+
 # Tests
 add_subdirectory(tests)
 

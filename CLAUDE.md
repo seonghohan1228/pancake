@@ -55,3 +55,4 @@ The codebase follows the following conventions
 - When installing packages and a significant implementation, always update README.md.
 - After edits, write detailed documentation (append edits and reasons for updates) so past edits can be reviewed later.
 - Write a detailed mechanism of the current algorithm and physical model using detailed explanation and equations in PHYSICS.md
+- To keep track of development plan, refer to PLAN.md and update accordingly. However, do not delete tasks that are done.

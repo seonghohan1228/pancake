@@ -131,7 +131,11 @@ $$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{sour
 
 ---
 
-## 7. Reynolds Solver (`Reynolds::solve`)
+## 7. Reynolds Solvers
+
+Two solvers are available, selected by `cfg.cavitation_model`.
+
+### 7.1 Gumbel Solver (`Reynolds::solve`)
 
 The solver follows a **lagged-coefficient** approach at each time step:
 
@@ -144,7 +148,55 @@ The solver follows a **lagged-coefficient** approach at each time step:
 4. Apply Gumbel cavitation: $p^{n+1} \leftarrow \max(p^{n+1},\, p_{cav})$.
 5. Update $\rho^{n+1} = \rho_0\,\theta_{film}(p^{n+1})$ via EOS.
 
-The transient $\partial(\rho h)/\partial t$ term is omitted for the static-geometry steady-state solve (it is zero for constant $h$ and converged $\rho$).
+The transient $\partial(\rho h)/\partial t$ term is omitted for the static-geometry steady-state solve.
+
+### 7.2 Elrod-Adams Solver — Phase A.1 (`Reynolds::solve_elrod`, full-film)
+
+Uses the **universal variable** $\theta$ (fractional film content) as the primary unknown. This is the foundation for mass-conserving cavitation.
+
+**Derivation of the $\theta$-formulation.** Substituting $\rho = \rho_0\theta$ and $\partial p/\partial x = (\beta/\theta)\,\partial\theta/\partial x$ (for full film, $\theta \ge 1$) into the Reynolds equation:
+
+$$\frac{1}{R^2}\frac{\partial}{\partial\theta}\!\left[\frac{\rho_0\theta h^3}{12\mu}\cdot\frac{\beta}{\theta}\frac{\partial\theta}{\partial\theta}\right] + \frac{\partial}{\partial z}\!\left[\frac{\rho_0\theta h^3}{12\mu}\cdot\frac{\beta}{\theta}\frac{\partial\theta}{\partial z}\right] = \frac{\omega}{2}\frac{\partial(\rho_0\theta h)}{\partial\theta}$$
+
+The $\theta$ cancels in the diffusion coefficient:
+
+$$\underbrace{\text{div}(\Gamma\,\nabla\theta)}_{\text{Poiseuille}} = \underbrace{\frac{\omega}{2}\,\rho_0\frac{\partial(\theta h)}{\partial\theta}}_{\text{Couette}}$$
+
+where the **effective diffusion coefficient** is:
+
+$$\Gamma = \frac{\rho_0\,\beta\,h^3}{12\mu}$$
+
+Note $\Gamma = \beta\,\gamma$; for full-film, $\Gamma$ is independent of $\theta$, making the equation **linear** in $\theta$.
+
+**Couette term as convection.** The RHS is the 1-D divergence of a Couette flux carrying $\theta$:
+
+$$\rho_0\frac{\omega}{2}\frac{\partial(\theta h)}{\partial\theta} = \frac{\partial}{\partial\theta}\!\left[\rho_0\frac{\omega R h}{2}\,\theta\right] = \text{div}_\theta(\mathbf{F}\,\theta)$$
+
+where the face flux at the east face of cell $(i,j)$ is:
+
+$$F_e = \rho_0\,\frac{\omega}{2}\,R\,h_e\,\Delta z$$
+
+with $h_e = \tfrac{1}{2}(h_i + h_{i+1})$. This flux is passed to `FVM::divergence` (upwind scheme). The assembled equation (FVM sign convention):
+
+$$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \underbrace{\text{div}(\mathbf{F}\,\theta)\cdot V}_{\text{divergence}} = 0$$
+
+**Boundary conditions.** Since $\theta(p_{cav}) = 1$ by the EOS, the z-boundary condition $p = p_{cav}$ translates to $\theta = 1$.
+
+**Solve sequence per timestep (Phase A.1):**
+
+1. Compute $\Gamma = \rho_0\beta h^3/(12\mu)$ at physical + theta ghost cells.
+2. Compute Couette face fluxes $F_e = \rho_0\,(\omega/2)\,R\,h_e\,\Delta z$ for $i \in [-1, N_\theta)$ (the $i=-1$ ghost is needed for the west face of the first cell in `FVM::divergence`).
+3. Reset and assemble:
+   - `FVM::laplacian(sys, Gamma, mesh)`
+   - `FVM::divergence(sys, couette_flux, zero_flux_z, theta, UPWIND, mesh)`
+   - Dirichlet z-BC: $\theta = 1$ at $z = 0,\,L$
+4. Solve $A\,\theta^{n+1} = b$.
+5. Clamp $\theta \leftarrow \max(\theta, 1)$ (full-film constraint; relaxed in Phase A.2).
+6. Recover $p = p_{cav} + \beta\ln(\theta)$, update $\rho = \rho_0\,\theta$.
+
+**Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Phase A.1 validation shows peak pressures agree to within $\approx 1.2\%$ (residual comes from centered-difference vs upwind Couette discretisation). Phase A.2 will add the switch function $g(\theta)$ to handle the cavitated region.
+
+**Weighted time derivative.** The new FVM operator `FVM::ddt_weighted(sys, theta, h_field, dt, mesh)` discretises $\partial(\theta h)/\partial t = h\,\partial\theta/\partial t$ for static geometry. It adds $h\,V/\Delta t$ to $a_P$ and $h\,V\,\theta^n/\Delta t$ to `source`. Not yet active in Phase A.1 (steady-state).
 
 ---
 

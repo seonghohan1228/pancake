@@ -71,10 +71,11 @@ mpirun -n 2 ./tests/test_fvm
 
 ## Configuration
 
-All simulation parameters are in `src/config.hpp` (`SimulationConfig`). Key fields:
+Simulation parameters are loaded from `config.txt` at runtime. If the file is missing, hardcoded defaults in `src/config.hpp` are used.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
+| `cavitation_model` | ELROD_ADAMS | GUMBEL or ELROD_ADAMS |
 | `R` | 0.01 m | Shaft radius |
 | `c` | 0.001 m | Radial clearance |
 | `e` | 0.0008 m | Eccentricity |
@@ -88,6 +89,14 @@ All simulation parameters are in `src/config.hpp` (`SimulationConfig`). Key fiel
 | `n_z_global` | 40 | Axial cells |
 | `end_t` | 1.0 s | Simulation end time |
 | `dt` | 0.01 s | Time step |
+
+Example `config.txt`:
+```ini
+R = 0.01
+c = 0.001
+omega = 100.0
+cavitation_model = ELROD_ADAMS
+```
 
 ---
 

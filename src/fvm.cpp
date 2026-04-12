@@ -44,6 +44,20 @@ void ddt(LinearSystem& sys, const Field& phi, double dt, const Mesh& mesh) {
     }
 }
 
+void ddt_weighted(LinearSystem& sys, const Field& phi, const Field& weight,
+                  double dt, const Mesh& mesh)
+{
+    const double base_vol = mesh.R * mesh.get_d_theta() * mesh.get_d_z();
+
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double coeff   = weight(i, j) * base_vol / dt;
+            sys.a_p(i, j)    += coeff;
+            sys.source(i, j) += coeff * phi.old(i, j);
+        }
+    }
+}
+
 void laplacian(LinearSystem& sys, const Field& gamma, const Mesh& mesh) {
     const double d_theta = mesh.get_d_theta();
     const double d_z     = mesh.get_d_z();

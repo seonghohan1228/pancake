@@ -1,0 +1,48 @@
+# Geometry
+R = 0.025
+c = 0.0001
+e = 0.00008
+L = 0.050
+attitude_angle_deg = -90.0
+tilt_slope_x = 0.0
+tilt_slope_y = 0.0
+
+# Grid
+n_theta_global = 300
+n_z_global = 100
+
+# Time
+end_t = 1.0
+dt = 0.01
+write_interval = 0.1
+
+# Physics
+omega = 100.0
+mu = 0.01
+rho = 900.0
+p_cav = 0.0
+bulk_modulus = 1e5
+
+# Axial Boundary Conditions (Outlets)
+# Options: DIRICHLET, NEUMANN, INLET_OUTLET
+bc_z_south_type = INLET_OUTLET
+bc_z_south_val  = 1e5
+bc_z_north_type = INLET_OUTLET
+bc_z_north_val  = 1e5
+
+# Cavitation
+# Options: FULL_SOMMERFELD, GUMBEL, ELROD_ADAMS
+cavitation_model = ELROD_ADAMS
+max_outer_iters = 50
+outer_tol = 1e-6
+theta_min = 1e-6
+
+# Inlets
+# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa)
+# inlet_groove   = theta(deg) width(deg) p_supply(Pa)
+inlet_groove = 90.0 10.0 2e5
+
+# Output
+output_dir = results
+filename_prefix = solution
+log_outer_iters = false

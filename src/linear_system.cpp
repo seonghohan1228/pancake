@@ -118,6 +118,7 @@ void LinearSystem::solve(Field& result, double rtol, int max_iters) {
 
     KSPSetTolerances(ksp, rtol, PETSC_DEFAULT, PETSC_DEFAULT, max_iters);
     KSPSetOperators(ksp, A, A);
+    VecZeroEntries(x);
     KSPSolve(ksp, b, x);
 
     // Copy local solution back to field

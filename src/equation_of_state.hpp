@@ -28,4 +28,16 @@ namespace EOS {
         return (theta >= 1.0) ? beta / theta : 0.0;
     }
 
+    /// Elrod-Adams switch function: 1 in full-film (theta >= 1), 0 in cavitated (theta < 1).
+    /// Multiplied into the diffusion coefficient Γ to disable Poiseuille flow in cavitation.
+    inline double switch_function(double theta) {
+        return (theta >= 1.0) ? 1.0 : 0.0;
+    }
+
+    /// Smooth approximation of the switch function for initialisation or diagnostics.
+    /// eps controls the transition width; approaches the hard switch as eps -> 0.
+    inline double switch_function_smooth(double theta, double eps) {
+        return 0.5 * (1.0 + std::tanh((theta - 1.0) / eps));
+    }
+
 }  // namespace EOS

@@ -36,6 +36,8 @@ public:
     Field& operator[](const std::string& name);
     const Field& operator[](const std::string& name) const;
 
+    bool has(const std::string& name) const { return storage.find(name) != storage.end(); }
+
     // For iterating
     auto begin() { return storage.begin(); }
     auto end() { return storage.end(); }
