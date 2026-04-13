@@ -1,4 +1,3 @@
-#include <fstream>
 #include <petsc.h>
 
 #include "communicator.hpp"

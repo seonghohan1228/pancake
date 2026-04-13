@@ -29,7 +29,7 @@ cmake .. -DPETSC_DIR=/path/to/petsc
 ## Build
 
 ```bash
-git clone https://github.com/yourusername/pancake.git
+git clone https://github.com/seonghohan1228/pancake.git
 cd pancake
 mkdir build && cd build
 cmake ..

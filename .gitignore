@@ -4,6 +4,9 @@ build/
 # Results
 results/
 
+# Legacy
+legacy/
+
 # Zed
 .zed/
 
