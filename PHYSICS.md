@@ -2,233 +2,153 @@
 
 ## 1. Problem Overview
 
-`pancake` solves the **Reynolds equation** for thin-film lubrication in a **journal bearing** — a shaft of radius $R$ rotating at angular velocity $\omega$ inside a slightly larger bore, separated by a thin lubricant film. The geometry is described in cylindrical coordinates $(\theta, z)$ on the bearing surface, where $\theta \in [0, 2\pi)$ is the circumferential angle and $z \in [0, L]$ is the axial coordinate.
+**pancake** simulates the dynamics of a spherical soap bubble film of radius $R$. The film is a thin liquid shell of local thickness $h(\mathbf{x}, t) \ll R$. The governing physics are:
+
+- **Gravitational drainage** — body force drives flow from the top towards the equator.
+- **Marangoni convection** — surface-tension gradients $\nabla_s \sigma(T)$ drive tangential flow.
+- **Evaporation** — diffusion-limited vapour loss thins the film (Sultan model).
+- **Disjoining pressure** — van der Waals repulsion stabilises very thin films and triggers rupture.
+
+The domain is the **upper hemisphere** (above the equatorial rim). The rim is treated as a fixed boundary: no-slip velocity, pinned film thickness $h_{rim}$, pinned temperature $T_{rim}$.
 
 ---
 
-## 2. Film Geometry
+## 2. Coordinate System — Inverse Stereographic Projection
 
-The local film thickness for a statically eccentric shaft:
+The hemisphere is parameterised by the **inverse stereographic projection** from a 2D square domain $[-L_{box}, L_{box}]^2$ (with $L_{box} > R$) onto the hemisphere of radius $R$:
 
-$$h(\theta) = c - e\cos(\theta - \psi)$$
+$$x = \frac{2R^2\,u}{r_{2D}^2 + R^2}, \quad y = \frac{2R^2\,v}{r_{2D}^2 + R^2}, \quad z = R\,\frac{R^2 - r_{2D}^2}{r_{2D}^2 + R^2}$$
 
-where:
-- $c$ = radial clearance (gap at concentric position)
-- $e$ = eccentricity (offset of shaft centre from bore centre)
-- $\psi$ = attitude angle (angular position of minimum gap)
+where $r_{2D}^2 = u^2 + v^2$. The projection is **conformal** with scale factor:
 
-The eccentricity ratio $\varepsilon = e/c \in [0,1)$ controls the bearing load: $\varepsilon = 0$ gives a concentric (uniform) film; $\varepsilon \to 1$ gives metal-to-metal contact.
+$$\lambda(u,v) = \frac{2R^2}{r_{2D}^2 + R^2}$$
 
----
+so that all angles are preserved and $|\partial\mathbf{x}/\partial u| = |\partial\mathbf{x}/\partial v| = \lambda$.
 
-## 3. Reynolds Equation
+Key mapping properties:
+- $(u, v) = (0, 0)$ maps to the **north pole** $(0, 0, R)$.
+- $r_{2D} = R$ maps to the **equator** (rim).
+- $r_{2D} > R$ maps to the southern hemisphere and is **excluded** by the circular mask.
 
-Starting from the Navier-Stokes equations integrated through the film thickness $h$ (lubrication approximation: $h \ll R$, $Re \ll 1$), the **compressible thin-film Reynolds equation** in arc-length coordinates $(s, z)$, with $s = R\theta$, is:
-
-$$\frac{\partial}{\partial s}\left[\frac{\rho h^3}{12\mu}\frac{\partial p}{\partial s}\right] + \frac{\partial}{\partial z}\left[\frac{\rho h^3}{12\mu}\frac{\partial p}{\partial z}\right] = \frac{U}{2}\frac{\partial(\rho h)}{\partial s} + \frac{\partial(\rho h)}{\partial t}$$
-
-where $U = \omega R$ is the shaft surface speed. Substituting $s = R\theta$:
-
-$$\frac{1}{R^2}\frac{\partial}{\partial\theta}\left[\frac{\rho h^3}{12\mu}\frac{\partial p}{\partial\theta}\right] + \frac{\partial}{\partial z}\left[\frac{\rho h^3}{12\mu}\frac{\partial p}{\partial z}\right] = \frac{\omega}{2}\frac{\partial(\rho h)}{\partial\theta} + \frac{\partial(\rho h)}{\partial t}$$
-
-Defining the **diffusion coefficient** $\gamma = \rho h^3 / (12\mu)$, this is:
-
-$$\underbrace{\frac{1}{R^2}\frac{\partial}{\partial\theta}\left[\gamma\frac{\partial p}{\partial\theta}\right] + \frac{\partial}{\partial z}\left[\gamma\frac{\partial p}{\partial z}\right]}_{\text{pressure-driven flow (Poiseuille)}} = \underbrace{\frac{\omega}{2}\frac{\partial(\rho h)}{\partial\theta}}_{\text{Couette source}} + \underbrace{\frac{\partial(\rho h)}{\partial t}}_{\text{transient / compressibility}}$$
-
-The LHS is recognised as the surface divergence $\text{div}(\gamma\,\text{grad}\,p)$ on the cylindrical surface.
-
-**Steady-state incompressible** (standard form): set $\rho = \text{const}$ and $\partial/\partial t = 0$, giving the classical half-Sommerfeld problem.
+The structured 2D grid has $n_u \times n_v$ uniform cells with spacing $\Delta u = \Delta v = 2L_{box}/n_u$. Each cell is projected to 3D for geometry computation and VTK output.
 
 ---
 
-## 4. Barotropic Equation of State and Cavitation
+## 3. Geometry Engine
 
-A **barotropic EOS** links density to pressure and handles sub-ambient (cavitated) regions via a **universal variable** $\theta_{film}$ (fractional film content):
+Per-cell quantities are precomputed in `StereoMesh::compute_geometry()`:
 
-| Region | Condition | Pressure | Density |
-|--------|-----------|----------|---------|
-| Full film | $\theta_{film} \ge 1$ | $p = p_{cav} + \beta\ln\theta_{film}$ | $\rho = \rho_0\,\theta_{film}$ |
-| Cavitated | $\theta_{film} < 1$ | $p = p_{cav}$ | $\rho = \rho_0\,\theta_{film}$ |
+**Cell area** — via cross product of 3D cell diagonals $\mathbf{d}_1 = \mathbf{p}_{NE} - \mathbf{p}_{SW}$, $\mathbf{d}_2 = \mathbf{p}_{NW} - \mathbf{p}_{SE}$:
+$$A_{i,j} = \tfrac{1}{2}|\mathbf{d}_1 \times \mathbf{d}_2|$$
 
-Inverse relations:
+The sum $\sum_{i,j} A_{i,j}$ over active cells converges to the analytic hemisphere area $2\pi R^2$ as resolution increases (error $< 0.14\%$ at $64 \times 64$).
 
-$$\theta_{film}(p) = \begin{cases} \exp\!\left(\dfrac{p - p_{cav}}{\beta}\right) & p > p_{cav} \\ 1 & p \le p_{cav} \end{cases}$$
+**Face chord lengths** — 3D distance between the two endpoints of each cell face:
+$$L_{e} = |\mathbf{p}(u_{i+1/2}, v_{j+1/2}) - \mathbf{p}(u_{i+1/2}, v_{j-1/2})|, \quad L_{n} = |\mathbf{p}(u_{i+1/2}, v_{j+1/2}) - \mathbf{p}(u_{i-1/2}, v_{j+1/2})|$$
 
-where $\beta$ is the bulk modulus. The current solver uses the **Gumbel (half-Sommerfeld) cavitation condition**: after solving for pressure, all cells with $p < p_{cav}$ are clamped to $p_{cav}$. Density is then updated from the EOS.
+**Centre-to-centre distances** — 3D distance between adjacent cell centres:
+$$d_u^{(i,j)} = |\mathbf{c}_{i+1,j} - \mathbf{c}_{i,j}|, \quad d_v^{(i,j)} = |\mathbf{c}_{i,j+1} - \mathbf{c}_{i,j}|$$
 
-The pressure derivative $dp/d\theta_{film}$ (used for effective diffusion in a full $\theta_{film}$-formulation):
+**Outward surface normal** — for a sphere, the outward normal equals the normalised position vector:
+$$\hat{n}_{i,j} = \mathbf{c}_{i,j} / |\mathbf{c}_{i,j}|$$
 
-$$\frac{dp}{d\theta_{film}} = \begin{cases} \beta / \theta_{film} & \theta_{film} \ge 1 \\ 0 & \theta_{film} < 1 \end{cases}$$
+**Surface gravity** — the component of gravity tangent to the surface:
+$$\mathbf{g}_s = \mathbf{g} - (\mathbf{g} \cdot \hat{n})\hat{n}$$
 
----
+Decomposed into $(u, v)$ tangent components by projecting onto the normalised partial derivatives of the stereographic map:
+$$g_u = \mathbf{g}_s \cdot \hat{e}_u, \quad g_v = \mathbf{g}_s \cdot \hat{e}_v, \quad \hat{e}_u = \frac{\partial\mathbf{x}/\partial u}{|\partial\mathbf{x}/\partial u|}$$
 
-## 5. Finite Volume Discretisation
-
-### 5.1 Grid
-
-The domain is a structured $N_\theta \times N_z$ grid of cell-centred control volumes. Each cell $(i, j)$ has:
-- centre at $\theta_i = (i + \tfrac{1}{2})\Delta\theta$, $z_j = (j + \tfrac{1}{2})\Delta z$
-- area $A_{cell} = R\,\Delta\theta\,\Delta z$
-
-### 5.2 FVM Integral Form
-
-Integrating $\text{div}(\gamma\,\text{grad}\,p) = f$ over cell area and applying the divergence theorem on the cylindrical surface:
-
-$$\oint_{\partial\Omega} \gamma\,(\nabla p \cdot \hat{n})\,dl = \int_\Omega f\,dA$$
-
-Face contributions (outward flux positive):
-
-| Face | Coefficient | Expression |
-|------|-------------|------------|
-| East ($+\theta$) | $a_E$ | $\gamma_e\,\Delta z\,/\,(R\,\Delta\theta)$ |
-| West ($-\theta$) | $a_W$ | $\gamma_w\,\Delta z\,/\,(R\,\Delta\theta)$ |
-| North ($+z$) | $a_N$ | $\gamma_n\,R\,\Delta\theta\,/\,\Delta z$ |
-| South ($-z$) | $a_S$ | $\gamma_s\,R\,\Delta\theta\,/\,\Delta z$ |
-
-Face values of $\gamma$ use **harmonic averaging**: $\gamma_e = 2\gamma_i\gamma_{i+1}/(\gamma_i + \gamma_{i+1})$.
-
-### 5.3 Assembled Stencil
-
-$$a_P\,p_P - a_E\,p_E - a_W\,p_W - a_N\,p_N - a_S\,p_S = \text{source}$$
-
-with $a_P = a_E + a_W + a_N + a_S$ (plus any boundary contributions).
-
-The LHS sums face contributions $a_f(p_P - p_{\text{nbr}})$, which is the *negative* of the outward flux sum from the divergence theorem. The stencil therefore represents:
-
-$$-\,\text{div}(\gamma\,\nabla p)\cdot A_\text{cell} = \text{source}$$
-
-**Sign convention — `source_field` passed to `FVM::add_source` must be $-f$, not $+f$.**
-
-For a PDE of the form $\text{div}(\gamma\,\nabla p) = f$, rearranging gives:
-
-$$-\,\text{div}(\gamma\,\nabla p)\cdot A_\text{cell} = -f\cdot A_\text{cell}$$
-
-so `FVM::add_source` must receive `source_field` $= -f$. Applied to the Reynolds equation with Couette term $S = \tfrac{\omega}{2}\partial_\theta(\rho h)$:
-
-$$\text{div}(\gamma\,\nabla p) = S \quad\Longrightarrow\quad \text{source\_field} = -S$$
-
-### 5.4 Time Derivative
-
-The `FVM::ddt` operator discretises $\partial\phi/\partial t$ with a first-order backward Euler scheme, adding:
-
-$$a_P \leftarrow a_P + \frac{A_\text{cell}}{\Delta t}, \qquad \text{source} \leftarrow \text{source} + \frac{A_\text{cell}}{\Delta t}\,\phi^n$$
-
-### 5.5 Convection (TVD)
-
-`FVM::divergence` assembles $\text{div}(F\,\phi)$ for a known face flux field $F$. The upwind (first-order) scheme adds implicit contributions; TVD schemes (van Leer, MINMOD) add an explicit deferred correction using $\phi^{\text{old}}$.
+Expected behaviour: $|\mathbf{g}_s| \to 0$ at the north pole; $|\mathbf{g}_s| \to |\mathbf{g}|$ at the equator.
 
 ---
 
-## 6. Boundary Conditions
+## 4. Circular Domain Mask
 
-### Circumferential ($\theta$)
-**Periodic**: ghost cells are exchanged via MPI `Sendrecv` between adjacent ranks (rank 0 ↔ rank $N_{ranks}-1$ for the wrap-around).
+Cells with $r_{2D} > R$ are **blanked** (inactive). Active cells adjacent to at least one blanked or out-of-domain cell are **rim cells** carrying Dirichlet boundary conditions.
 
-### Axial ($z$)
-**Dirichlet** $p = p_{cav}$ at $z = 0$ and $z = L$ (open bearing ends). Implemented by adding the boundary face flux to the stencil using a half-cell distance:
-
-$$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{source} \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}\,p_{cav}$$
+Ghost cells outside the domain are filled with **zero-gradient** (Neumann) values: the boundary physical cell value is copied into all ghost layers. This is handled by `Communicator::fill_v_ghosts` (v-direction) and the open-boundary logic in `Communicator::update_ghosts` (u-direction).
 
 ---
 
-## 7. Reynolds Solvers
+## 5. Surface FVM Operators (`SurfaceFVM` namespace)
 
-Two solvers are available, selected by `cfg.cavitation_model`.
+All operators act on the 2D stereographic grid, using the precomputed 3D geometry from `StereoMesh`. They accumulate contributions into a `BubbleLinearSystem` (5-point stencil: $a_P, a_E, a_W, a_N, a_S$, source).
 
-### 7.1 Gumbel Solver (`Reynolds::solve`)
+Masked (inactive) cells are skipped entirely. Rim cells are populated normally and then overwritten by `BubbleLinearSystem::apply_mask()`.
 
-The solver follows a **lagged-coefficient** approach at each time step:
+### ddt — transient term
 
-1. Compute $\gamma^n = \rho^n h^3 / (12\mu)$ and $(\rho h)^n$ at physical + theta ghost cells (using already-synced ghost values of $\rho$ and $h$).
-2. Reset and assemble the linear system:
-   - `FVM::laplacian` with $\gamma^n$
-   - Dirichlet z-boundary corrections
-   - Couette source: $-\frac{\omega}{2}\frac{\partial(\rho h)^n}{\partial\theta}$ (centered difference, sign convention above)
-3. Solve $A\,p^{n+1} = b$ via PETSc KSP (BiCGStab + block Jacobi).
-4. Apply Gumbel cavitation: $p^{n+1} \leftarrow \max(p^{n+1},\, p_{cav})$.
-5. Update $\rho^{n+1} = \rho_0\,\theta_{film}(p^{n+1})$ via EOS.
+$$\frac{\partial\phi}{\partial t} \approx \frac{\phi - \phi^n}{\Delta t}$$
 
-The transient $\partial(\rho h)/\partial t$ term is omitted for the static-geometry steady-state solve.
+Integrated over cell area $A_{i,j}$:
 
-### 7.2 Elrod-Adams Solver — Phase A.1 (`Reynolds::solve_elrod`, full-film)
+$$a_P \mathrel{+}= \frac{A_{i,j}}{\Delta t}, \qquad b \mathrel{+}= \frac{A_{i,j}}{\Delta t}\,\phi^n_{i,j}$$
 
-Uses the **universal variable** $\theta$ (fractional film content) as the primary unknown. This is the foundation for mass-conserving cavitation.
+### ddt_weighted — weighted transient
 
-**Derivation of the $\theta$-formulation.** Substituting $\rho = \rho_0\theta$ and $\partial p/\partial x = (\beta/\theta)\,\partial\theta/\partial x$ (for full film, $\theta \ge 1$) into the Reynolds equation:
+Same as `ddt` with an additional cell weight $w_{i,j}$ (used for the energy equation where $w = \rho c_p h$):
 
-$$\frac{1}{R^2}\frac{\partial}{\partial\theta}\!\left[\frac{\rho_0\theta h^3}{12\mu}\cdot\frac{\beta}{\theta}\frac{\partial\theta}{\partial\theta}\right] + \frac{\partial}{\partial z}\!\left[\frac{\rho_0\theta h^3}{12\mu}\cdot\frac{\beta}{\theta}\frac{\partial\theta}{\partial z}\right] = \frac{\omega}{2}\frac{\partial(\rho_0\theta h)}{\partial\theta}$$
+$$a_P \mathrel{+}= \frac{w_{i,j}\,A_{i,j}}{\Delta t}, \qquad b \mathrel{+}= \frac{w_{i,j}\,A_{i,j}}{\Delta t}\,\phi^n_{i,j}$$
 
-The $\theta$ cancels in the diffusion coefficient:
+### laplacian — diffusion
 
-$$\underbrace{\text{div}(\Gamma\,\nabla\theta)}_{\text{Poiseuille}} = \underbrace{\frac{\omega}{2}\,\rho_0\frac{\partial(\theta h)}{\partial\theta}}_{\text{Couette}}$$
+For each face between cells $P$ and $N$ (neighbour):
 
-where the **effective diffusion coefficient** is:
+$$c_f = \gamma_f \cdot \frac{L_{face}}{d_{PN}}$$
 
-$$\Gamma = \frac{\rho_0\,\beta\,h^3}{12\mu}$$
+where $\gamma_f$ is the harmonic mean of $\gamma_P$ and $\gamma_N$, $L_{face}$ is the 3D face chord length, and $d_{PN}$ is the 3D centre-to-centre distance. Accumulated:
 
-Note $\Gamma = \beta\,\gamma$; for full-film, $\Gamma$ is independent of $\theta$, making the equation **linear** in $\theta$.
+$$a_P \mathrel{+}= c_f, \qquad a_{dir} \mathrel{+}= c_f \quad (dir \in \{E, W, N, S\})$$
 
-**Couette term as convection.** The RHS is the 1-D divergence of a Couette flux carrying $\theta$:
+West faces at MPI rank boundaries use `StereoMesh::east_face_len(gu-1, j)` and `d_u_east(gu-1, j)`, which compute geometry analytically for any global cell index without MPI communication.
 
-$$\rho_0\frac{\omega}{2}\frac{\partial(\theta h)}{\partial\theta} = \frac{\partial}{\partial\theta}\!\left[\rho_0\frac{\omega R h}{2}\,\theta\right] = \text{div}_\theta(\mathbf{F}\,\theta)$$
+### divergence — convection
 
-where the face flux at the east face of cell $(i,j)$ is:
+Pre-computed face fluxes $F_e, F_w, F_n, F_s$ (outward positive). Upwind scheme (implicit):
 
-$$F_e = \rho_0\,\frac{\omega}{2}\,R\,h_e\,\Delta z$$
+$$a_P \mathrel{+}= \max(F_e, 0) + \max(-F_w, 0) + \max(F_n, 0) + \max(-F_s, 0)$$
+$$a_E \mathrel{+}= \max(-F_e, 0), \quad a_W \mathrel{+}= \max(F_w, 0), \quad a_N \mathrel{+}= \max(-F_n, 0), \quad a_S \mathrel{+}= \max(F_s, 0)$$
 
-with $h_e = \tfrac{1}{2}(h_i + h_{i+1})$. This flux is passed to `FVM::divergence` (upwind scheme). The assembled equation (FVM sign convention):
+TVD deferred correction (Van Leer / Minmod) adds an explicit high-order correction to the source using $\phi^n$ from the previous timestep.
 
-$$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \underbrace{\text{div}(\mathbf{F}\,\theta)\cdot V}_{\text{divergence}} = 0$$
+### add_source — volumetric source
 
-**Boundary conditions.** Since $\theta(p_{cav}) = 1$ by the EOS, the z-boundary condition $p = p_{cav}$ translates to $\theta = 1$.
+$$b \mathrel{+}= s_{i,j} \cdot A_{i,j}$$
 
-**Solve sequence per timestep (Phase A.1):**
+### gradient — cell-centred gradient
 
-1. Compute $\Gamma = \rho_0\beta h^3/(12\mu)$ at physical + theta ghost cells.
-2. Compute Couette face fluxes $F_e = \rho_0\,(\omega/2)\,R\,h_e\,\Delta z$ for $i \in [-1, N_\theta)$ (the $i=-1$ ghost is needed for the west face of the first cell in `FVM::divergence`).
-3. Reset and assemble:
-   - `FVM::laplacian(sys, Gamma, mesh)`
-   - `FVM::divergence(sys, couette_flux, zero_flux_z, theta, UPWIND, mesh)`
-   - Dirichlet z-BC: $\theta = 1$ at $z = 0,\,L$
-4. Solve $A\,\theta^{n+1} = b$.
-5. Clamp $\theta \leftarrow \max(\theta, 1)$ (full-film constraint; relaxed in Phase A.2).
-6. Recover $p = p_{cav} + \beta\ln(\theta)$, update $\rho = \rho_0\,\theta$.
+Central difference with 3D chord lengths as denominators:
 
-**Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Phase A.1 validation shows peak pressures agree to within $\approx 1.2\%$ (residual comes from centered-difference vs upwind Couette discretisation). Phase A.2 will add the switch function $g(\theta)$ to handle the cavitated region.
-
-**Weighted time derivative.** The new FVM operator `FVM::ddt_weighted(sys, theta, h_field, dt, mesh)` discretises $\partial(\theta h)/\partial t = h\,\partial\theta/\partial t$ for static geometry. It adds $h\,V/\Delta t$ to $a_P$ and $h\,V\,\theta^n/\Delta t$ to `source`. Not yet active in Phase A.1 (steady-state).
+$$(\nabla\phi)_u = \frac{\phi_{i+1,j} - \phi_{i-1,j}}{d_e + d_w}, \qquad (\nabla\phi)_v = \frac{\phi_{i,j+1} - \phi_{i,j-1}}{d_n + d_s}$$
 
 ---
 
-## 8. Linear System
+## 6. Thickness Transport
 
-`LinearSystem` wraps a PETSc `MPIAIJ` matrix. Each physical cell $(i,j)$ maps to global row $(\text{offset}_\theta + i)\cdot N_z + j$. Periodic $\theta$-wrapping is applied in the column indices. The system is solved with:
-- **KSP**: BiCGStab (`KSPBCGS`)
-- **PC**: Block Jacobi (`PCBJACOBI`)
-- **Tolerance**: relative $10^{-8}$, max 1000 iterations
+The film thickness equation (Stokes thin-film limit):
 
----
+$$\frac{\partial h}{\partial t} + \nabla_s \cdot (h\,\mathbf{u}_s) = \dot{J}_{evap}$$
 
-## 9. MPI Parallelism
+### Gravity-driven Stokes velocity
 
-The domain is decomposed in the $\theta$ direction: each MPI rank owns $N_\theta / N_{ranks}$ contiguous $\theta$-columns with the full $z$ extent. Ghost layers (default 2 cells) are exchanged each step via `Communicator::update_ghosts`, which packs/unpacks the non-contiguous ghost strips using `MPI_Sendrecv`.
+In the creeping-flow (low-Re) limit, the depth-averaged surface velocity due to gravity is:
 
----
+$$\mathbf{u}_s = \frac{\rho_l\,h^2}{3\mu}\,\mathbf{g}_s$$
 
-## 10. Notation Summary
+where $\mathbf{g}_s$ is the surface-tangent component of gravity (precomputed in `StereoMesh`).
 
-| Symbol | Description | SI unit |
-|--------|-------------|---------|
-| $R$ | Shaft radius | m |
-| $c$ | Radial clearance | m |
-| $e$ | Eccentricity | m |
-| $L$ | Bearing length | m |
-| $\omega$ | Shaft angular velocity | rad/s |
-| $\mu$ | Dynamic viscosity | Pa·s |
-| $\rho_0$ | Reference density | kg/m³ |
-| $\beta$ | Bulk modulus | Pa |
-| $p_{cav}$ | Cavitation pressure | Pa |
-| $h$ | Local film thickness | m |
-| $p$ | Hydrodynamic pressure | Pa |
-| $\gamma$ | Diffusion coefficient $\rho h^3/(12\mu)$ | m·s |
-| $\theta_{film}$ | Fractional film content (EOS variable) | — |
+### Face flux interpolation
+
+Cell-centred velocities are interpolated to face centres by simple averaging:
+
+$$F_e = \frac{u_u(i,j) + u_u(i+1,j)}{2} \cdot L_{e}^{3D}$$
+
+Ghost layers of $u_u, u_v$ must be updated via `Communicator::update_ghosts` before calling `compute_face_fluxes`.
+
+### FVM assembly
+
+`ThicknessTransport::solve` assembles:
+
+$$\text{ddt}(h) + \text{divergence}(F_u, F_v, h) + \text{add\_source}(J_{evap}) + \text{apply\_mask}(h_{rim}) \to \text{solve}$$
+
+Post-solve, $h$ is clamped to $h \ge h_{min}$ and blanked cells are zeroed.

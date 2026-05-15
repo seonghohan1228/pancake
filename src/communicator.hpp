@@ -4,22 +4,30 @@
 #include <vector>
 
 #include "field.hpp"
-#include "mesh.hpp"
+#include "stereo_mesh.hpp"
 
+/// MPI ghost-cell exchange for the bubble solver on a StereoMesh.
+///
+/// Domain decomposition is 1D in u (same as bearing solver in theta).
+/// u boundaries are OPEN (non-periodic):
+///   - Left ghost of rank 0 receives zero-gradient fill (copied from physical cell 0).
+///   - Right ghost of rank size-1 receives zero-gradient fill from the last cell.
+///   - Interior rank boundaries exchange via MPI_Sendrecv.
+/// v (j) direction is not decomposed; top/bottom ghost cells receive zero-gradient fill.
 class Communicator {
-private:
-    const Mesh& mesh;
+public:
+    Communicator(const StereoMesh& mesh);
 
-    // Buffers for packing/unpacking non-contiguous ghost data (size: n_z_local * n_ghost)
+    /// Exchange ghost cells for all fields in the container.
+    void update_ghosts(Fields& fields);
+
+    /// Exchange ghost cells for a single field.
+    void update_ghosts(Field& field);
+
+private:
+    const StereoMesh& mesh;
     std::vector<double> send_buf_left, recv_buf_left;
     std::vector<double> send_buf_right, recv_buf_right;
 
-public:
-    Communicator(const Mesh& mesh_ref);
-
-    // Update ghost cells for ALL fields in the container
-    void update_ghosts(Fields& fields);
-
-    // Update ghost cells for a SINGLE field
-    void update_ghosts(Field& field);
+    void fill_v_ghosts(Field& field);
 };

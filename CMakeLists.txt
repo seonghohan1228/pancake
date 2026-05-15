@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(pancake)
+project(pancake_bubble)
 
 # Configuration
 set(CMAKE_CXX_STANDARD 20)
@@ -17,23 +17,27 @@ find_library(PETSC_LIBRARY petsc_real HINTS "${PETSC_DIR}/lib" REQUIRED)
 message(STATUS "PETSc include: ${PETSC_INCLUDE_DIR}")
 message(STATUS "PETSc library: ${PETSC_LIBRARY}")
 
-# Sources
-file(GLOB SOURCES "src/*.cpp")
+set(BUBBLE_SOURCES
+    src/bubble_config.cpp         # BubbleConfig: all solver parameters
+    src/stereo_mesh.cpp           # Inverse stereographic mesh + geometry engine
+    src/mask.cpp                  # Circular domain mask + ghost blanking
+    src/communicator.cpp          # MPI ghost exchange: open (non-periodic) boundaries
+    src/bubble_io.cpp             # VTK unstructured (vtu/pvtu/pvd) output
+    src/field.cpp                 # Field/Fields: scalar field with ghost layers
+    src/bubble_linear_system.cpp  # PETSc-backed 5-point sparse linear system
+    src/surface_operators.cpp     # ddt, laplacian, divergence, add_source, gradient
+    src/thickness_transport.cpp   # Gravity velocity, face fluxes, transport solve
+    src/bubble_main.cpp           # Entry point and time loop
+)
 file(GLOB HEADERS "src/*.hpp")
 
-# Targets
-add_executable(pancake ${SOURCES} ${HEADERS})
+add_executable(pancake_bubble ${BUBBLE_SOURCES} ${HEADERS})
 
-# Include src/ directory and PETSc headers
-target_include_directories(pancake PRIVATE
+target_include_directories(pancake_bubble PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${PETSC_INCLUDE_DIR})
 
-# Link MPI and PETSc
-target_link_libraries(pancake PRIVATE MPI::MPI_CXX ${PETSC_LIBRARY})
-
-# Copy config.txt to build directory
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.txt ${CMAKE_CURRENT_BINARY_DIR}/config.txt COPYONLY)
+target_link_libraries(pancake_bubble PRIVATE MPI::MPI_CXX ${PETSC_LIBRARY})
 
 # Tests
 add_subdirectory(tests)
