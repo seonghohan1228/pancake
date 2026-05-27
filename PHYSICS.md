@@ -232,3 +232,33 @@ The domain is decomposed in the $\theta$ direction: each MPI rank owns $N_\theta
 | $p$ | Hydrodynamic pressure | Pa |
 | $\gamma$ | Diffusion coefficient $\rho h^3/(12\mu)$ | m·s |
 | $\theta_{film}$ | Fractional film content (EOS variable) | — |
+
+---
+
+## 11. Macroscopic Properties
+
+After solving the Reynolds equation, the code integrates the local fields to compute the global bearing performance characteristics.
+
+### Load Capacity
+
+The fluid pressure acts on the journal surface. The total force vector $(F_x, F_y, F_z)$ is obtained by integrating the pressure over the bearing surface area $A$:
+
+$$F_x = \int_0^L \int_0^{2\pi} - (p - p_{cav}) \cos\theta \cdot R \, d\theta \, dz$$
+
+$$F_y = \int_0^L \int_0^{2\pi} - (p - p_{cav}) \sin\theta \cdot R \, d\theta \, dz$$
+
+$$F_z = \int_0^L \int_0^{2\pi} (p - p_{cav}) \left(-\frac{\partial h}{\partial z}\right) \cdot R \, d\theta \, dz$$
+
+where the axial pressure force $F_z$ arises if the shaft is tilted ($\partial h / \partial z = -\text{tilt\_slope\_x} \cos\theta - \text{tilt\_slope\_y} \sin\theta$). The gauge pressure $(p - p_{cav})$ is used because a uniform ambient pressure exerts zero net force on a closed body.
+
+### Friction Torque
+
+The friction torque $T$ on the journal arises from the fluid shear stress $\tau$:
+
+$$T = \int_0^L \int_0^{2\pi} \tau \cdot R^2 \, d\theta \, dz$$
+
+The shear stress on the moving journal surface consists of the Couette (velocity-driven) and Poiseuille (pressure-driven) components:
+
+$$\tau = \frac{\mu \omega R}{h} + g(\theta_{film}) \frac{h}{2R} \frac{\partial p}{\partial \theta}$$
+
+where $g(\theta_{film}) = 1$ in the full film and $g = 0$ in the cavitated region. The pressure gradient $\partial p/\partial \theta$ is evaluated using a central difference scheme.

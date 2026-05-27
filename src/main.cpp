@@ -42,6 +42,10 @@ int main(int argc, char** argv) {
         fields.add("inlet_indicator", mesh).fill(0.0);
         fields.add("velocity_theta", mesh, 2, GridLocation::FACE_THETA);
         fields.add("velocity_z",     mesh, 2, GridLocation::FACE_Z);
+        fields.add("load_x", mesh).fill(0.0);
+        fields.add("load_y", mesh).fill(0.0);
+        fields.add("load_z", mesh).fill(0.0);
+        fields.add("friction_torque", mesh).fill(0.0);
 
         Utils::log("Starting Simulation...");
 
@@ -73,10 +77,11 @@ int main(int argc, char** argv) {
             else
                 Reynolds::solve(fields, sys, mesh, cfg);
 
-            // Calculate velocities
+            // Calculate velocities and macroscopic properties
             comm.update_ghosts(fields["pressure"]);
             comm.update_ghosts(fields["theta"]);
             Reynolds::calculate_velocities(fields, mesh, cfg);
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
 
             // Output
             if (t >= output_time || std::abs(t - output_time) < 1e-8 || step == 0) {

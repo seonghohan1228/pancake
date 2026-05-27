@@ -36,4 +36,8 @@ namespace Reynolds {
     /// u_theta is on FACE_THETA, u_z is on FACE_Z.
     void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
+    /// Calculate macroscopic properties: load capacity (Fx, Fy, Fz) and friction torque.
+    /// Fills the respective scalar fields with their global integrated values.
+    void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
+
 }  // namespace Reynolds

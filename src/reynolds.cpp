@@ -373,4 +373,66 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
     }
 }
 
+void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    const Field& p = fields["pressure"];
+    const Field& h = fields["h"];
+    const Field& theta = fields["theta"];
+
+    const int n_theta = mesh.n_theta_local;
+    const int n_z     = mesh.n_z_local;
+    const double d_theta = mesh.get_d_theta();
+    const double d_z     = mesh.get_d_z();
+    const double R       = mesh.R;
+    const double dA      = R * d_theta * d_z;
+    const double mu      = cfg.mu;
+    const double omega   = cfg.omega;
+
+    double local_fx = 0.0;
+    double local_fy = 0.0;
+    double local_fz = 0.0;
+    double local_torque = 0.0;
+
+    for (int i = 0; i < n_theta; ++i) {
+        const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
+        const double cos_t = std::cos(theta_c);
+        const double sin_t = std::sin(theta_c);
+
+        for (int j = 0; j < n_z; ++j) {
+            // Load capacity
+            // Gauge pressure is used because uniform ambient p_cav has zero net force
+            double p_gauge = p(i, j) - cfg.p_cav;
+            
+            local_fx += -p_gauge * cos_t * dA;
+            local_fy += -p_gauge * sin_t * dA;
+            
+            // F_z component due to tilt
+            // dh/dz = -tilt_x * cos(theta) - tilt_y * sin(theta)
+            double dh_dz = -cfg.tilt_slope_x * cos_t - cfg.tilt_slope_y * sin_t;
+            local_fz += p_gauge * (-dh_dz) * dA;
+
+            // Friction torque
+            // tau = mu * omega * R / h + (h / 2R) * (dp / dtheta)
+            // Note: dp/dtheta is calculated with a central difference
+            double dp_dtheta = (p(i + 1, j) - p(i - 1, j)) / (2.0 * d_theta);
+            
+            // Poiseuille part is only active when full film
+            double g_f = (theta(i, j) >= 1.0) ? 1.0 : 0.0;
+            
+            double tau = (mu * omega * R) / h(i, j) + g_f * (h(i, j) / (2.0 * R)) * dp_dtheta;
+            local_torque += tau * R * dA;
+        }
+    }
+
+    // Reduce over all MPI ranks
+    double local_vals[4] = {local_fx, local_fy, local_fz, local_torque};
+    double global_vals[4] = {0.0, 0.0, 0.0, 0.0};
+    MPI_Allreduce(local_vals, global_vals, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    // Fill the scalar fields
+    fields["load_x"].fill(global_vals[0]);
+    fields["load_y"].fill(global_vals[1]);
+    fields["load_z"].fill(global_vals[2]);
+    fields["friction_torque"].fill(global_vals[3]);
+}
+
 }  // namespace Reynolds

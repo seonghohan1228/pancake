@@ -1,6 +1,52 @@
 # Change Log
 
+## 2026-05-26 — Cross-Platform Windows Port Assessment and Documentation
+
+### New files
+
+**`ASSESSMENT.md`**
+- Added a Windows-port readiness assessment with file/line-specific blockers, warnings, dependency findings, and effort estimates.
+- Documented the current PETSc implementation versus the stated Trilinos strategy as the primary dependency blocker.
+
+**`BUILDING.md` / `ARCHITECTURE.md` / `CONTRIBUTING.md`**
+- Added cross-platform build instructions, intended solver/GUI layering, and contribution conventions for Linux and Windows.
+- Made `std::filesystem::path`, non-POSIX core code, explicit integer widths, and GCC/MSVC compatibility part of the contributor contract.
+
+**`docs/WINDOWS_PORT.md`**
+- Added an ordered checklist for the first native Windows build, starting with WSL-side cleanup and ending with Windows validation.
+
+**`.gitattributes`**
+- Added text/binary and line-ending rules for cross-platform development.
+
+### Modified files
+
+**`README.md` / `CLAUDE.md`**
+- Updated build and platform guidance so future contributors and agents see the Linux/Windows dual-build strategy immediately.
+
+**`.gitignore`**
+- Added `build-linux/` and `build-windows/` as dedicated out-of-tree build directories.
+
 ---
+
+## 2026-05-21 — Macroscopic Properties: Load Capacity and Friction Torque
+
+### Modified files
+
+**`src/reynolds.hpp` / `src/reynolds.cpp` — Post-processing calculations**
+- Added `Reynolds::calculate_macroscopic_properties` to calculate the integrated load capacity vector ($F_x, F_y, F_z$) and the scalar friction torque $T$ over the full 2D mesh domain.
+- Computes $F_z$ properly taking into account the surface normal variation caused by shaft tilt.
+- Uses `MPI_Allreduce` to correctly sum the integrated values across all decomposed sub-domains.
+
+**`src/main.cpp` — Global field allocation**
+- Added four new uniform scalar fields (`load_x`, `load_y`, `load_z`, `friction_torque`) to the visualization output.
+- Hooked up `calculate_macroscopic_properties` directly in the solver's main time loop.
+
+**`PHYSICS.md` — Documentation**
+- Appended a new section detailing the mathematical integration of the load capacity from the pressure field and the friction torque from the Couette and Poiseuille shear stress formulas.
+
+---
+
+
 
 ## 2026-04-12 — Phase A.8: Configurable Outlet Boundary Conditions
 
