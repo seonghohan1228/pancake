@@ -61,6 +61,7 @@ static void test_journal_bearing(const Mesh& mesh, Communicator& comm) {
     SimulationConfig cfg;
     cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
     cfg.e = 0.8 * cfg.c;   // eccentricity ratio ε = 0.8
+    cfg.bulk_modulus = 1e5;
     cfg.outer_tol = 1e-8;
 
     Fields fields;
@@ -108,6 +109,23 @@ static void test_journal_bearing(const Mesh& mesh, Communicator& comm) {
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) std::cout << "  complementarity max g·(1−θ)+ = " << max_violation << "\n";
     check(max_violation < 1e-10, "complementarity violated: full-film cell has theta < 1");
+
+    // Theta must remain the full universal variable: compressed full-film
+    // cells exceed one, cavitated cells are below one.
+    double min_theta = 1e30;
+    double max_theta = -1e30;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            min_theta = std::min(min_theta, theta(i, j));
+            max_theta = std::max(max_theta, theta(i, j));
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &min_theta, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &max_theta, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    if (rank == 0)
+        std::cout << "  theta range = [" << min_theta << ", " << max_theta << "]\n";
+    check(min_theta < 1.0 - 1e-4, "theta has no cavitated values below one");
+    check(max_theta > 1.0 + 1e-4, "theta has no compressed full-film values above one");
 
     // Test 2: cavitation location
     // With attitude_angle = -90°, minimum gap at θ_coord = 270° (3π/2).

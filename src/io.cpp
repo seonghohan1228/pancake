@@ -8,6 +8,12 @@
 namespace fs = std::filesystem;
 
 namespace IO {
+namespace {
+std::string output_name_for_field(const std::string& name) {
+    return (name == "theta") ? "film_content" : name;
+}
+}
+
 // Interpolate face-based data to cell centers for visualization
 std::vector<double> get_centered_data(const Field& f, const Mesh& mesh) {
     std::vector<double> result;
@@ -122,8 +128,9 @@ void write_flat_vts(int step, const Mesh& mesh, Fields& fields, const Simulation
     file << "      <CellData>\n";
     for(auto& [name, field_ptr] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
+        std::string output_name = output_name_for_field(name);
+        if (!cfg.output_field_enabled(output_name)) continue;
         std::vector<double> centered = get_centered_data(*field_ptr, mesh);
-        std::string output_name = (name == "theta") ? "film_content" : name;
         file << "        <DataArray type=\"Float64\" Name=\"" << output_name << "\" format=\"ascii\">\n";
         for (const auto& val : centered) file << val << " ";
         file << "\n        </DataArray>\n";
@@ -143,7 +150,7 @@ void write_flat_vts(int step, const Mesh& mesh, Fields& fields, const Simulation
     file << "\n        </DataArray>\n";
 
     // Velocity vectors (In flat mesh, we can export local components as UVW)
-    if (fields.has("velocity_theta") && fields.has("velocity_z")) {
+    if (cfg.output_field_enabled("velocity") && fields.has("velocity_theta") && fields.has("velocity_z")) {
         std::vector<double> u_th = get_centered_data(fields["velocity_theta"], mesh);
         std::vector<double> u_z  = get_centered_data(fields["velocity_z"], mesh);
         file << "        <DataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\" format=\"ascii\">\n";
@@ -171,13 +178,16 @@ void write_flat_pvts(int step, int total_ranks, Fields& fields, const Simulation
 
     for(auto& [name, field] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = (name == "theta") ? "film_content" : name;
+        std::string output_name = output_name_for_field(name);
+        if (!cfg.output_field_enabled(output_name)) continue;
         file << "      <PDataArray type=\"Float64\" Name=\"" << output_name << "\"/>\n";
     }
     file << "      <PDataArray type=\"Float64\" Name=\"theta_rad\"/>\n"
-         << "      <PDataArray type=\"Float64\" Name=\"z_m\"/>\n"
-         << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n"
-         << "    </PCellData>\n";
+         << "      <PDataArray type=\"Float64\" Name=\"z_m\"/>\n";
+    if (cfg.output_field_enabled("velocity")) {
+        file << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n";
+    }
+    file << "    </PCellData>\n";
 
     for (int r = 0; r < total_ranks; ++r) {
         int n_local = cfg.n_theta_global / total_ranks;
@@ -222,11 +232,10 @@ void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfi
     // Write scalar fields (excluding individual velocity components which we'll group)
     for(auto& [name, field_ptr] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
+        std::string output_name = output_name_for_field(name);
+        if (!cfg.output_field_enabled(output_name)) continue;
 
         std::vector<double> centered = get_centered_data(*field_ptr, mesh);
-        
-        // Use 'film_content' for Elrod-Adams 'theta' to avoid coordinate confusion
-        std::string output_name = (name == "theta") ? "film_content" : name;
 
         file << "        <DataArray type=\"Float64\" Name=\"" << output_name << "\" format=\"ascii\">\n";
         for (const auto& val : centered) file << val << " ";
@@ -251,7 +260,7 @@ void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfi
     file << "\n        </DataArray>\n";
 
     // Write Velocity as a Vector field
-    if (fields.has("velocity_theta") && fields.has("velocity_z")) {
+    if (cfg.output_field_enabled("velocity") && fields.has("velocity_theta") && fields.has("velocity_z")) {
         std::vector<double> u_th = get_centered_data(fields["velocity_theta"], mesh);
         std::vector<double> u_z  = get_centered_data(fields["velocity_z"], mesh);
 
@@ -291,7 +300,8 @@ void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfi
 
     for(auto& [name, field] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = (name == "theta") ? "film_content" : name;
+        std::string output_name = output_name_for_field(name);
+        if (!cfg.output_field_enabled(output_name)) continue;
         file << "      <PDataArray type=\"Float64\" Name=\"" << output_name << "\"/>\n";
     }
     // Explicit coordinates
@@ -299,7 +309,9 @@ void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfi
          << "      <PDataArray type=\"Float64\" Name=\"z_m\"/>\n";
 
     // Vector field header
-    file << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n";
+    if (cfg.output_field_enabled("velocity")) {
+        file << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n";
+    }
 
     file << "    </PCellData>\n";
 
@@ -324,45 +336,57 @@ void prepare_output_directory(const SimulationConfig& cfg, MPI_Comm comm) {
         // Directory and file initialization
         if (fs::exists(cfg.output_dir)) fs::remove_all(cfg.output_dir);
         fs::create_directory(cfg.output_dir);
-        fs::create_directory(cfg.output_dir + "/flat");
 
         // 3D PVD
-        std::ofstream pvd(cfg.output_dir + "/results.pvd");
-        pvd << "<?xml version=\"1.0\"?>\n"
-            << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-            << "  <Collection>\n"
-            << "  </Collection>\n"
-            << "</VTKFile>\n";
+        if (cfg.output_write_3d) {
+            std::ofstream pvd(cfg.output_dir + "/results.pvd");
+            pvd << "<?xml version=\"1.0\"?>\n"
+                << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+                << "  <Collection>\n"
+                << "  </Collection>\n"
+                << "</VTKFile>\n";
+        }
 
         // Flat PVD
-        std::ofstream flat_pvd(cfg.output_dir + "/flat/results.pvd");
-        flat_pvd << "<?xml version=\"1.0\"?>\n"
-                 << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-                 << "  <Collection>\n"
-                 << "  </Collection>\n"
-                 << "</VTKFile>\n";
+        if (cfg.output_write_flat) {
+            fs::create_directory(cfg.output_dir + "/flat");
+            std::ofstream flat_pvd(cfg.output_dir + "/flat/results.pvd");
+            flat_pvd << "<?xml version=\"1.0\"?>\n"
+                     << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+                     << "  <Collection>\n"
+                     << "  </Collection>\n"
+                     << "</VTKFile>\n";
+        }
     }
     MPI_Barrier(comm);
 
     // Subdirectory for each processor
-    fs::create_directory(cfg.output_dir + "/processor" + std::to_string(rank));
-    fs::create_directory(cfg.output_dir + "/flat/processor" + std::to_string(rank));
+    if (cfg.output_write_3d) {
+        fs::create_directory(cfg.output_dir + "/processor" + std::to_string(rank));
+    }
+    if (cfg.output_write_flat) {
+        fs::create_directory(cfg.output_dir + "/flat/processor" + std::to_string(rank));
+    }
     MPI_Barrier(comm);
 }
 
 void write_timestep(double time, int step, const Mesh& mesh, Fields& fields, const SimulationConfig& cfg) {
     // 3D output
-    write_vts(step, mesh, fields, cfg);
-    if (mesh.rank == 0) {
-        write_pvts(step, mesh.size, fields, cfg);
-        update_pvd(time, step, cfg);
+    if (cfg.output_write_3d) {
+        write_vts(step, mesh, fields, cfg);
+        if (mesh.rank == 0) {
+            write_pvts(step, mesh.size, fields, cfg);
+            update_pvd(time, step, cfg);
+        }
     }
 
     // Flat output
-    write_flat_vts(step, mesh, fields, cfg);
-    if (mesh.rank == 0) {
-        write_flat_pvts(step, mesh.size, fields, cfg);
-        update_flat_pvd(time, step, cfg);
+    if (cfg.output_write_flat) {
+        write_flat_vts(step, mesh, fields, cfg);
+        if (mesh.rank == 0) {
+            write_flat_pvts(step, mesh.size, fields, cfg);
+            update_flat_pvd(time, step, cfg);
+        }
     }
 }
 }

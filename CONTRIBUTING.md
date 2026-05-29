@@ -22,8 +22,8 @@ Windows builds from the same CMake source tree.
 
 ## Build Discipline
 
-- Use out-of-tree builds: `build-linux/` for Linux/WSL and `build-windows/` for
-  native Windows.
+- Use out-of-tree builds: `build-linux/` for Linux and `build-windows-mingw/`
+  for the current native Windows workflow.
 - Keep dependencies discoverable through CMake targets. Avoid hardcoded
   `/usr`, `/opt`, or local Windows paths in committed CMake files.
 - Guard compiler-specific flags with compiler checks, for example `if(MSVC)`

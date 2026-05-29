@@ -17,6 +17,13 @@ where:
 - $e$ = eccentricity (offset of shaft centre from bore centre)
 - $\psi$ = attitude angle (angular position of minimum gap)
 
+The solver coordinate $\theta$ is measured from the positive x axis. The GUI
+also exposes `load_angle_deg`, a visualization-only reference angle measured
+from the positive y axis. It does not change the Reynolds solve; it rotates the
+preview coordinate so bearing results can be inspected relative to the usual
+load direction. Positive `load_angle_deg` follows increasing solver $\theta$,
+so preview angle zero maps to $\theta = 90^\circ + \text{load_angle_deg}$.
+
 The eccentricity ratio $\varepsilon = e/c \in [0,1)$ controls the bearing load: $\varepsilon = 0$ gives a concentric (uniform) film; $\varepsilon \to 1$ gives metal-to-metal contact.
 
 ---
@@ -55,6 +62,19 @@ Inverse relations:
 $$\theta_{film}(p) = \begin{cases} \exp\!\left(\dfrac{p - p_{cav}}{\beta}\right) & p > p_{cav} \\ 1 & p \le p_{cav} \end{cases}$$
 
 where $\beta$ is the bulk modulus. The current solver uses the **Gumbel (half-Sommerfeld) cavitation condition**: after solving for pressure, all cells with $p < p_{cav}$ are clamped to $p_{cav}$. Density is then updated from the EOS.
+
+The VTK/GUI field named `film_content` writes this Elrod/JFO universal variable
+directly. It is not clamped for visualization: values below one indicate
+cavitated cells, while values above one indicate compressed full-film cells and
+are the same values used to recover pressure through the EOS.
+
+For pressure-valued supply features, the imposed Elrod variable is
+$\theta_{supply} = \exp((p_{supply}-p_{cav})/\beta)$. A pressure of
+$1.5\,\text{MPa}$ with $\beta=10^5\,\text{Pa}$ implies
+$\theta_{supply}\approx 3.27\times 10^6$, which is numerically valid for this
+EOS but not physically representative of oil. A realistic oil bulk modulus is
+typically closer to $10^9\,\text{Pa}$, where the same pressure gives
+$\theta_{supply}\approx 1.0015$.
 
 The pressure derivative $dp/d\theta_{film}$ (used for effective diffusion in a full $\theta_{film}$-formulation):
 
@@ -262,3 +282,27 @@ The shear stress on the moving journal surface consists of the Couette (velocity
 $$\tau = \frac{\mu \omega R}{h} + g(\theta_{film}) \frac{h}{2R} \frac{\partial p}{\partial \theta}$$
 
 where $g(\theta_{film}) = 1$ in the full film and $g = 0$ in the cavitated region. The pressure gradient $\partial p/\partial \theta$ is evaluated using a central difference scheme.
+
+---
+
+## 12. GUI and Output Selection
+
+The Windows GUI is an orchestration layer, not a separate numerical model. It
+writes the same `SimulationConfig` values consumed by the CLI solver, launches
+`pancake.exe`, and reads the solver's ASCII VTK output for preview. Therefore
+the governing equations, discretisation, cavitation model, and macroscopic
+property calculations above are unchanged by using the GUI.
+
+The output-selection parameters only affect persistence:
+
+| Parameter | Effect |
+|-----------|--------|
+| `output_write_3d` | Writes the cylindrical structured-grid VTK/PVD result tree. |
+| `output_write_flat` | Writes the unwrapped flat structured-grid VTK/PVD result tree. |
+| `output_fields` | Selects which cell-data arrays are written. Coordinate helper arrays `theta_rad` and `z_m` are still written with each enabled VTK file. |
+
+Disabling a field does not remove it from the simulation state. For example,
+unchecking `velocity` skips the visualization vector array but the solver still
+computes velocities before load and torque post-processing. Disabling both
+`output_write_3d` and `output_write_flat` runs the numerical model without VTK
+field persistence.

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="270" height="239" viewBox="0 0 270 239">
+  <rect width="270" height="239" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="pressure-gradient" x1="5" y1="117" x2="268" y2="117" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6da7df"/>
+      <stop offset="0.48" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#ff5358"/>
+    </linearGradient>
+  </defs>
+  <path d="M5 36
+           C50 36 83 43 116 63
+           C151 84 175 105 212 113
+           C233 118 250 117 267 117
+           L267 199
+           L5 199
+           Z"
+        fill="url(#pressure-gradient)"
+        stroke="#505050"
+        stroke-width="3"
+        stroke-linejoin="miter"/>
+</svg>

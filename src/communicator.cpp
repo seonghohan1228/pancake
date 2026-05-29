@@ -12,7 +12,8 @@ void Communicator::update_ghosts(Field& field) {
     int n_ghost = field.n_ghost;
     int n_z = field.n_z_phys;
     int n_theta = field.n_theta_phys;
-    int buffer_size = n_z * n_ghost;
+    int buffer_count = n_z * n_ghost;
+    auto buffer_size = static_cast<std::vector<double>::size_type>(buffer_count);
 
     // Resize buffers if needed
     if (send_buf_left.size() < buffer_size) {
@@ -23,7 +24,7 @@ void Communicator::update_ghosts(Field& field) {
     }
 
     // Pack data
-    // Send the left edge to the left neighborand the right edge to the right neighbor.
+    // Send the left edge to the left neighbor and the right edge to the right neighbor.
     int idx = 0;
     for (int j = 0; j < n_z; ++j) {
         // Pack left edge (physical indices 0 to n_ghost-1)
@@ -43,13 +44,13 @@ void Communicator::update_ghosts(Field& field) {
     MPI_Status status;
 
     // Send left, receive from right (filling right ghost)
-    MPI_Sendrecv(send_buf_left.data(), buffer_size, MPI_DOUBLE, left_rank, 0,
-                 recv_buf_right.data(), buffer_size, MPI_DOUBLE, right_rank, 0,
+    MPI_Sendrecv(send_buf_left.data(), buffer_count, MPI_DOUBLE, left_rank, 0,
+                 recv_buf_right.data(), buffer_count, MPI_DOUBLE, right_rank, 0,
                  MPI_COMM_WORLD, &status);
 
     // Send right, receive from left (filling left ghost)
-    MPI_Sendrecv(send_buf_right.data(), buffer_size, MPI_DOUBLE, right_rank, 1,
-                 recv_buf_left.data(), buffer_size, MPI_DOUBLE, left_rank, 1,
+    MPI_Sendrecv(send_buf_right.data(), buffer_count, MPI_DOUBLE, right_rank, 1,
+                 recv_buf_left.data(), buffer_count, MPI_DOUBLE, left_rank, 1,
                  MPI_COMM_WORLD, &status);
 
     // Unpack data

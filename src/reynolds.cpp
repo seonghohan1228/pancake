@@ -11,6 +11,12 @@
 
 namespace Reynolds {
 
+namespace {
+double bounded_film_content(double theta, const SimulationConfig& cfg) {
+    return std::max(theta, cfg.theta_min);
+}
+}
+
 /// Apply internal Dirichlet boundary conditions for oil supply inlets using the penalty method.
 static void apply_inlet_conditions(LinearSystem& sys, const Mesh& mesh, const SimulationConfig& cfg) {
     if (cfg.inlets.empty()) return;
@@ -133,7 +139,7 @@ void solve(Fields& fields, LinearSystem& sys,
             // In Full Sommerfeld, we should ensure density doesn't drop due to negative pressure 
             // if we want to follow classical liquid theory, but we'll follow EOS here.
             rho(i, j) = cfg.rho * theta_p;
-            fields["theta"](i, j) = theta_p;
+            if (fields.has("theta")) fields["theta"](i, j) = theta_p;
         }
 }
 
@@ -213,8 +219,7 @@ void solve_elrod(Fields& fields, LinearSystem& sys,
             if (cfg.bc_z_south_type == BCType::DIRICHLET) {
                 const double cs = Gamma_base(i, 0) * R * d_theta / (0.5 * d_z);
                 sys.a_p(i, 0) += cs;
-                double th_s = EOS::theta_from_pressure(cfg.bc_z_south_val, cfg.p_cav, cfg.bulk_modulus);
-                sys.source(i, 0) += cs * th_s;
+                sys.source(i, 0) += cs * bounded_film_content(cfg.bc_z_south_theta, cfg);
             } else if (cfg.bc_z_south_type == BCType::INLET_OUTLET) {
                 // If inflow (u_z > 0 at south face), use fixed theta
                 // In solve_elrod, u_z at south face (j=0) is roughly proportional to -(p_0 - p_south)/0.5dz
@@ -224,7 +229,7 @@ void solve_elrod(Fields& fields, LinearSystem& sys,
                 if (fields["pressure"](i, 0) < cfg.bc_z_south_val) { // Inflow
                     const double cs = Gamma_base(i, 0) * R * d_theta / (0.5 * d_z);
                     sys.a_p(i, 0) += cs;
-                    sys.source(i, 0) += cs * cfg.bc_z_south_theta;
+                    sys.source(i, 0) += cs * bounded_film_content(cfg.bc_z_south_theta, cfg);
                 }
                 // Else: outflow -> zeroGradient (default in FVM::laplacian)
             }
@@ -233,13 +238,12 @@ void solve_elrod(Fields& fields, LinearSystem& sys,
             if (cfg.bc_z_north_type == BCType::DIRICHLET) {
                 const double cn = Gamma_base(i, n_z - 1) * R * d_theta / (0.5 * d_z);
                 sys.a_p(i, n_z - 1) += cn;
-                double th_n = EOS::theta_from_pressure(cfg.bc_z_north_val, cfg.p_cav, cfg.bulk_modulus);
-                sys.source(i, n_z - 1) += cn * th_n;
+                sys.source(i, n_z - 1) += cn * bounded_film_content(cfg.bc_z_north_theta, cfg);
             } else if (cfg.bc_z_north_type == BCType::INLET_OUTLET) {
                 if (fields["pressure"](i, n_z - 1) < cfg.bc_z_north_val) { // Inflow
                     const double cn = Gamma_base(i, n_z - 1) * R * d_theta / (0.5 * d_z);
                     sys.a_p(i, n_z - 1) += cn;
-                    sys.source(i, n_z - 1) += cn * cfg.bc_z_north_theta;
+                    sys.source(i, n_z - 1) += cn * bounded_film_content(cfg.bc_z_north_theta, cfg);
                 }
                 // Else: outflow -> zeroGradient
             }

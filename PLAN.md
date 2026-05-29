@@ -11,6 +11,29 @@ Film thickness (static eccentric), barotropic EOS ($p = p_{cav} + \beta\ln\theta
 ### Phase 3 — Reynolds Solver (Gumbel)
 Steady-state compressible Reynolds equation with lagged density. Gumbel cavitation (post-solve pressure clamp). BiCGStab + block Jacobi. All tests pass.
 
+### Windows GUI Infrastructure
+Native Win32 GUI target with tabbed parameter controls, output-field selection,
+solver launch/stop, process log capture, and lightweight VTK heatmap preview.
+This phase is intentionally an external orchestrator around `config.txt`,
+`pancake.exe`, and generated VTK files so the numerical core remains shared.
+The active Windows workflow is now MSYS2 MinGW64: one CMake preset builds
+`pancake.exe`, `pancake_gui.exe`, tests, and copied runtime DLLs. The preset
+also injects the MinGW bin directory into PATH for PowerShell builds. The main
+`Workspace` tab uses a left/right layout: result preview and process log on the
+left, and a scrollable one-row-per-parameter inspector on the right. Solver
+backend controls are always visible in the top-right header across all tabs.
+The preview now supports timestep selection, axes, a unit-labeled colorbar,
+literal numeric edit preservation, raw Elrod/JFO `film_content` output, and a
+`load_angle_deg` visualization reference measured from the positive y
+axis. The GUI assembles multi-rank preview fields, groups axial boundary
+controls by south/north side, uses structured inlet controls for groove/circular
+inlet definitions, and provides per-value unit selectors while saving
+solver-native config units. Both Windows executables embed the shared Pancake
+logo icon so the GUI and backend present the same application identity. The
+Elrod axial boundary implementation keeps pressure values and film-content
+theta values separate, with tests guarding that DIRICHLET theta boundaries read
+the `bc_z_*_theta` entries.
+
 ---
 
 ## Phase A — Mass-Conserving Cavitation (Elrod-Adams)

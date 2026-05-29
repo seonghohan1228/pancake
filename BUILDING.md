@@ -1,161 +1,131 @@
 # Building
 
-`pancake` is intended to build from one CMake source tree on Linux and Windows.
-Keep platform builds in separate directories:
+`pancake` builds from one CMake source tree. The current native Windows
+development workflow is MSYS2 MINGW64. Visual Studio is not required for the
+current solver or GUI build.
 
-```text
-build-linux/
-build-windows/
-```
-
-The current checked-in source uses MPI and PETSc. The strategic Windows-port
-target in [ASSESSMENT.md](ASSESSMENT.md) calls out that the repository does not
-yet contain Trilinos code even though Trilinos is the intended long-term solver
-stack.
-
-## Linux
+## Windows: MSYS2 MINGW64
 
 ### Prerequisites
 
-- GCC >= 11 or Clang >= 14
-- CMake >= 3.21
-- Ninja or Make
-- MPI, such as OpenMPI or MPICH
-- PETSc real scalar build
+Install Microsoft MPI Runtime and SDK:
 
-### Dependency Installation
+```text
+https://www.microsoft.com/en-us/download/details.aspx?id=105289
+```
 
-Debian/Ubuntu:
+Install both `msmpisetup.exe` and `msmpisdk.msi`.
+
+Install MSYS2:
+
+```text
+https://www.msys2.org/
+```
+
+Open **MSYS2 MINGW64** and update packages:
+
+```bash
+pacman -Syu
+```
+
+If prompted, close and reopen **MSYS2 MINGW64**, then run:
+
+```bash
+pacman -Syu
+```
+
+Install build dependencies:
+
+```bash
+pacman -S --needed git base-devel mingw-w64-x86_64-toolchain \
+  mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
+  mingw-w64-x86_64-pkgconf mingw-w64-x86_64-msmpi \
+  mingw-w64-x86_64-petsc
+```
+
+### Clone
+
+```bash
+mkdir -p /c/Dev
+cd /c/Dev
+git clone https://github.com/seonghohan1228/pancake.git
+cd /c/Dev/pancake
+```
+
+For an existing checkout:
+
+```bash
+cd /c/Dev/pancake
+```
+
+### Configure And Build
+
+```bash
+cmake --fresh --preset windows-native-mingw
+cmake --build --preset windows-native-mingw-release
+```
+
+The same commands can be run from PowerShell in `C:\Dev\pancake`. The preset
+prepends `C:\msys64\mingw64\bin` to `PATH`, so native compiler helper programs
+and MinGW DLLs are discoverable without launching a separate MSYS2 shell.
+
+Expected configure output:
+
+```text
+PETSc pkg-config module: petsc-dmo
+```
+
+If configure output mentions `petsc-sso`, CMake found the serial PETSc package.
+Run the fresh configure command above again from **MSYS2 MINGW64**.
+
+Build outputs:
+
+```text
+build-windows-mingw/pancake.exe
+build-windows-mingw/pancake_gui.exe
+```
+
+The build copies required runtime DLLs, including `libpetsc-dmo.dll`, beside
+`pancake.exe`, `pancake_gui.exe`, and the test executables so File Explorer
+launches and plain `ctest` work.
+
+### Run
+
+```bash
+cd /c/Dev/pancake/build-windows-mingw
+./pancake.exe -c config.txt
+mpiexec -n 2 ./pancake.exe -c config.txt
+./pancake_gui.exe
+```
+
+### Test
+
+```bash
+cd /c/Dev/pancake
+ctest --test-dir build-windows-mingw --output-on-failure
+```
+
+Known current status: `test_elrod_a1` fails its pressure regression threshold;
+the other native tests pass after the MinGW/PETSc runtime is available.
+
+## Linux
+
+Linux remains supported. Keep it in a separate build directory:
+
+```bash
+cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-linux -j
+./build-linux/pancake -c config.txt
+mpirun -n 2 ./build-linux/pancake -c config.txt
+ctest --test-dir build-linux --output-on-failure
+```
+
+Install typical Debian/Ubuntu dependencies with:
 
 ```bash
 sudo apt update
 sudo apt install build-essential cmake ninja-build openmpi-bin libopenmpi-dev libpetsc-real-dev
 ```
 
-Spack alternative:
-
-```bash
-spack install gcc cmake ninja openmpi petsc
-spack load gcc cmake ninja openmpi petsc
-```
-
-### Configure
-
-```bash
-cmake -S . -B build-linux -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DPETSC_DIR=/usr/lib/petscdir/petsc3.15/x86_64-linux-gnu-real
-```
-
-Adjust `PETSC_DIR` to match your PETSc installation.
-
-### Build
-
-```bash
-cmake --build build-linux -j
-```
-
-### Run
-
-```bash
-./build-linux/pancake -c config.txt
-mpirun -n 2 ./build-linux/pancake -c config.txt
-```
-
-### Tests
-
-CTest registration is not present yet, so run tests directly:
-
-```bash
-./build-linux/tests/test_eos
-mpirun -n 2 ./build-linux/tests/test_linear_system
-mpirun -n 2 ./build-linux/tests/test_fvm
-mpirun -n 2 ./build-linux/tests/test_elrod_a1
-mpirun -n 2 ./build-linux/tests/test_elrod_a2
-mpirun -n 2 ./build-linux/tests/test_inlets
-mpirun -n 2 ./build-linux/tests/test_velocity
-mpirun -n 2 ./build-linux/tests/test_bc
-```
-
-## Windows
-
-Native Windows builds are planned alongside the WSL/Linux build. Use a normal
-Windows filesystem path such as `C:\src\pancake`; avoid building through
-`\\wsl$` paths.
-
-### Prerequisites
-
-- Visual Studio 2022 Community or newer
-- Workload: Desktop development with C++
-- Components: MSVC v143, Windows 11 SDK, CMake tools for Windows
-- Git for Windows
-- vcpkg at `C:\vcpkg`
-- Optional: Windows Terminal
-
-### Dependency Installation
-
-Install vcpkg:
-
-```bat
-git clone https://github.com/microsoft/vcpkg C:\vcpkg
-C:\vcpkg\bootstrap-vcpkg.bat
-C:\vcpkg\vcpkg integrate install
-setx VCPKG_ROOT C:\vcpkg
-```
-
-Install the dependency that vcpkg can provide for the current source:
-
-```bat
-C:\vcpkg\vcpkg install mpi:x64-windows
-```
-
-The current code also requires PETSc, but the audit did not find an official
-vcpkg PETSc port. A first native Windows build is blocked until either:
-
-- PETSc is built from source for MSVC and MS-MPI, then passed to CMake through
-  `PETSC_DIR`, or
-- the planned Trilinos backend is implemented and the CMake files use
-  `find_package(Trilinos)` for the exact packages used by the source.
-
-Do not introduce a Windows-only dependency path; Linux must remain first-class.
-
-### Configure
-
-After the linear algebra dependency blocker is resolved:
-
-```bat
-cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 ^
-  -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-  -DVCPKG_TARGET_TRIPLET=x64-windows ^
-  -DPETSC_DIR=C:\path\to\petsc
-```
-
-If the solver has been migrated to Trilinos by then, replace `PETSC_DIR` with
-the relevant `Trilinos_DIR` or vcpkg/source-build toolchain settings.
-
-### Build
-
-```bat
-cmake --build build-windows --config Debug
-```
-
-### Run
-
-```bat
-build-windows\Debug\pancake.exe -c config.txt
-mpiexec -n 2 build-windows\Debug\pancake.exe -c config.txt
-```
-
-## Future Qt/VTK GUI
-
-The planned GUI should link a cross-platform core solver library instead of
-duplicating solver code in the executable. vcpkg can provide Qt and VTK for the
-GUI phase:
-
-```bat
-C:\vcpkg\vcpkg install qtbase[widgets,opengl]:x64-windows vtk[qt,utf8]:x64-windows
-```
-
-On Linux, use distro, Spack, or vcpkg packages consistently with the selected
-developer environment. Keep GUI code in a separate executable target that links
-the solver library.
+Use `-DPETSC_DIR=/path/to/petsc` if your PETSc installation is not discoverable
+by the default CMake search.

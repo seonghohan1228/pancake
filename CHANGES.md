@@ -1,5 +1,157 @@
 # Change Log
 
+## Unreleased - Windows MSYS2 GUI Workflow
+
+### New files
+
+**`src/gui_win32.cpp`**
+- Added a native Win32 GUI for Windows builds.
+- The GUI loads `config.txt` from the same directory as `pancake_gui.exe`, falls
+  back to hardcoded `SimulationConfig` defaults when the file is missing, saves
+  edits back to that file, and can launch `pancake.exe` from the same directory.
+- Replaced the raw-editor-only prototype with workspace, output, and raw-config
+  views.
+- Added process launch/stop, captured solver logs, output folder/PVD open
+  actions, and a GDI heatmap preview for the latest ASCII VTK scalar field.
+- Reworked the main workspace into a split-pane engineering page:
+  the result preview expands with the window, the process log stays below it,
+  and a draggable horizontal splitter lets users tune the pane sizes.
+- Lifted solver backend controls into the always-visible top-right header so
+  the backend can be run/stopped from any tab.
+- Moved the parameter editor into the right side of the main `Workspace` tab as
+  a scrollable one-row-per-parameter inspector.
+- Streamlined solver launch around the native `pancake.exe` backend built by
+  the MSYS2 MinGW64 workflow.
+- Preserved literal numeric edit text in GUI saves so typed or file-provided
+  values such as `0.0010` stay visible as `0.0010`.
+- Added preview timestep selection with previous/next controls.
+- Added a heatmap colorbar with min/max labels for the current preview field,
+  then expanded it with a field title, clearer number formatting, and plot axes.
+- Fixed multi-rank preview loading by assembling the selected timestep from all
+  matching `processor*` VTS files instead of treating rank 0 as a complete
+  field.
+- Added `load_angle_deg`, a visualization reference angle measured from the
+  positive y axis, and rotated the preview display relative to that reference.
+- Reworked axial boundary controls into South and North groups, and renamed the
+  theta boundary inputs to film content value.
+- Added per-value GUI unit selectors for length, time, angle, tilt, inlet
+  pressure, and omega while still saving solver-native config units.
+- Extended unit selectors across the full parameter inspector, including
+  pressure fields, grid counts, dimensionless controls, and inlet supply
+  pressure.
+- Preserved raw inlet token text in the structured editor so values such as
+  `1.5e6` are not rewritten as `1500000` after saving.
+- Switched the process log to a RichEdit control that renders ANSI color codes
+  instead of showing raw `[32m` / `[0m` fragments, with plain text fallback if
+  RichEdit is unavailable.
+- Normalized raw-config edit text to Windows CRLF newlines so multiline config
+  text displays correctly.
+- Replaced the raw multiline inlet editor with a structured groove/circular
+  selector that comments out the unused inlet form when saving.
+- Fixed the all-grey/low-contrast appearance: added a light modern palette and
+  `WM_CTLCOLORSTATIC` / `WM_CTLCOLOREDIT` / `WM_CTLCOLORLISTBOX` handlers so
+  labels, group boxes, and check boxes share one clean surface and editable
+  fields stay white. Previously these controls fell back to the system 3D-face
+  grey on the window background.
+- Subclassed the tab control's `WM_ERASEBKGND` so its display area is painted
+  with the page colour instead of the default grey slab behind the child
+  controls.
+- Forced every combo box above the interleaved group-box frames after creation,
+  fixing the preview field/step selectors that only painted after a click.
+- Reworked the preview annotations: wider right margin so colorbar min/max
+  values are no longer truncated, the field name as a centred colorbar title,
+  a stats subtitle at the top, and a decluttered axis footer.
+- Moved preview title/stat annotations farther above the contour so min/max and
+  grid metadata do not overlap the plotted field.
+- Restored `film_content` to write and preview the raw Elrod/JFO universal
+  variable instead of clamping it to `[0, 1]`, because pressure recovery depends
+  on the same theta values and compressed full-film cells must remain visible.
+- Added a regression check that the Elrod A.2 journal-bearing case contains
+  both cavitated theta values below one and compressed full-film theta values
+  above one.
+- Centered the preview z-axis title, labeled the z-axis from `0` to `L`, and
+  expanded the colorbar to include units plus min/max-inclusive tick labels.
+- Fixed Elrod axial DIRICHLET boundaries so the solver uses the dimensionless
+  `bc_z_south_theta` / `bc_z_north_theta` film-content values instead of
+  converting the pressure-valued `bc_z_*_val` entries into theta. Added sanity
+  coverage for this separation.
+- Changed the default bulk modulus to `1e9` Pa so a 1.5 MPa supply pressure
+  produces film-content values near 1.0015 rather than millions in the default
+  Windows GUI workflow.
+- Added blue/magenta to the ANSI log colour table so every code the solver
+  emits (`\033[31..36m`, `\033[0m`) is colourised rather than only stripped.
+
+**`src/pancake.ico` / `src/pancake_logo.svg` / `src/resource.h` / `src/pancake.rc`**
+- Added the Pancake logo as a Windows application icon resource. The editable
+  SVG mirrors the supplied blue film-profile logo, while the generated ICO is
+  embedded into both `pancake.exe` and `pancake_gui.exe` for File Explorer,
+  taskbar, and title-bar branding.
+
+**`src/pancake_gui.manifest` / `src/pancake_gui.rc`**
+- Added a `CREATEPROCESS_MANIFEST_RESOURCE_ID` manifest that declares the
+  ComCtl32 v6 dependency. The previous `#pragma comment(linker, ...)` was guarded
+  by `_MSC_VER`, so MinGW builds shipped without it and fell back to the classic
+  (grey, Windows-95 era) common controls. Embedding the manifest via a compiled
+  `.rc` enables modern visual styles under MinGW (and MSVC).
+
+**`CMakePresets.json`**
+- Kept a single Windows preset, `windows-native-mingw`, for building native
+  `pancake.exe`, `pancake_gui.exe`, tests, and runtime DLL deployment from the
+  MSYS2 MinGW64 PETSc/MS-MPI stack.
+
+### Modified files
+
+**`CMakeLists.txt` / `tests/CMakeLists.txt`**
+- Split solver sources into `pancake_core`, kept `pancake` as the CLI target,
+  and added the Windows-only `pancake_gui` target.
+- Embedded the shared `pancake.ico` resource into both Windows executables, so
+  the GUI and console backend present the same application logo.
+- Enabled the `RC` language for the GUI target and added `src/pancake_gui.rc`
+  (with its `INCLUDE_DIRECTORIES` source property) so the ComCtl32 v6 manifest
+  is compiled in by windres/rc and visual styles work on every Windows compiler.
+- Added PETSc discovery through `pkg-config`, including MSYS2 PETSc package
+  names, while preserving the existing `PETSC_DIR` fallback.
+- Restricted native Windows PETSc auto-discovery to MPI-enabled package names
+  so CMake does not select the serial `petsc-sso` variant that collides with
+  MS-MPI headers.
+- Added MinGW runtime deployment for native Windows builds so required DLLs
+  such as `libpetsc-dmo.dll`, `libstdc++-6.dll`, and `libopenblas.dll` are
+  copied beside `pancake.exe`, `pancake_gui.exe`, and test executables.
+- Updated the Windows CMake preset to prepend `C:\msys64\mingw64\bin` to PATH,
+  preventing native compiler helper DLL lookup failures in plain PowerShell.
+
+**`cmake/deploy_mingw_runtime.cmake`**
+- Added a small post-build deployment helper that runs MSYS2 `ldd`, filters
+  dependencies from the MinGW runtime directory, and copies them next to the
+  target executable for File Explorer launches.
+
+**`src/config.hpp` / `src/main.cpp`**
+- Added config serialization for GUI defaults and same-directory config loading
+  for the CLI default path.
+- Added output persistence settings: `output_write_3d`, `output_write_flat`,
+  and `output_fields`.
+- Added `load_angle_deg` as a visualization-only load-reference angle.
+
+**`src/io.cpp`**
+- Honours the new output persistence settings by skipping disabled VTK/PVD
+  products and disabled field arrays.
+
+**`config.txt`**
+- Added the new output persistence keys to the checked-in default config and
+  included the axial inlet/outlet theta selectors emitted by config
+  serialization.
+
+**Markdown documentation**
+- Rewrote the README, BUILDING guide, and Windows-port notes around the current
+  MSYS2 MINGW64 workflow. Visual Studio is documented as unnecessary for the
+  current native solver + GUI path.
+
+**`.gitignore`**
+- Removed stale Visual Studio GUI build-directory entries and kept the active
+  `build-windows-mingw/` workflow ignored.
+
+---
+
 ## 2026-05-26 — Cross-Platform Windows Port Assessment and Documentation
 
 ### New files

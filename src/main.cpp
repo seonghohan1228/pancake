@@ -1,5 +1,7 @@
 #include <petsc.h>
 
+#include <filesystem>
+
 #include "communicator.hpp"
 #include "config.hpp"
 #include "field.hpp"
@@ -10,11 +12,38 @@
 #include "reynolds.hpp"
 #include "utils.hpp"
 
-int main(int argc, char** argv) {
-    PetscInitialize(&argc, &argv, nullptr, nullptr);
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
-    SimulationConfig cfg;
-    std::string config_path = "config.txt";
+namespace {
+namespace fs = std::filesystem;
+
+fs::path executable_directory(const char* argv0) {
+#ifdef _WIN32
+    wchar_t path[MAX_PATH] = {};
+    const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    if (length > 0 && length < MAX_PATH) {
+        return fs::path(path).parent_path();
+    }
+#endif
+
+    if (argv0 != nullptr && argv0[0] != '\0') {
+        fs::path exe_path(argv0);
+        if (exe_path.has_parent_path()) {
+            return fs::absolute(exe_path).parent_path();
+        }
+    }
+    return fs::current_path();
+}
+}
+
+int main(int argc, char** argv) {
+    fs::path config_path = executable_directory(argc > 0 ? argv[0] : nullptr) / "config.txt";
+    int petsc_argc = argc > 0 ? 1 : 0;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-c" || arg == "--config") {
@@ -22,11 +51,18 @@ int main(int argc, char** argv) {
                 config_path = argv[i + 1];
                 i++;
             }
+        } else {
+            argv[petsc_argc++] = argv[i];
         }
     }
+    argc = petsc_argc;
+
+    PetscInitialize(&argc, &argv, nullptr, nullptr);
+
+    SimulationConfig cfg;
 
     cfg.load_from_file(config_path);
-    Utils::log("Loaded configuration from: " + config_path);
+    Utils::log("Loaded configuration from: " + config_path.string());
 
     Mesh mesh(cfg);
     Communicator comm(mesh);

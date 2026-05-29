@@ -18,8 +18,16 @@ Command-line executable
   - owns the time loop
   - writes VTK/PVD output
 
-Future Qt + VTK GUI executable
-  - owns tabs, parameter panes, and result viewers
+Native Windows GUI executable
+  - exposes tabbed parameter controls backed by SimulationConfig
+  - edits config.txt next to pancake_gui.exe
+  - writes output-selection settings for VTK/PVD products and field names
+  - can launch or stop pancake.exe without closing the GUI
+  - streams solver logs and previews ASCII VTK scalar fields by timestep
+  - rotates the preview around a load-reference angle measured from +y
+
+Future Qt + VTK result-viewer GUI executable
+  - owns richer result viewers and field inspection tools
   - links the core solver library
   - embeds VTK widgets for contours and field inspection
 
@@ -27,9 +35,11 @@ External visualization
   - PVD/VTK output remains consumable by ParaView
 ```
 
-The current CMake tree builds one executable directly from `src/*.cpp`. Before
-the GUI is added, split the solver into a `pancake_core` library and keep
-`main.cpp` as a thin CLI executable.
+The CMake tree exposes the solver as `pancake_core`, keeps `src/main.cpp` as a
+thin CLI executable, and builds the Windows-only `pancake_gui` target separately
+from the MSYS2 MinGW64 workflow. The GUI remains an external orchestrator: it
+writes config, launches the solver process, and reads VTK files rather than
+duplicating Reynolds solver logic.
 
 ## Portability Rules
 
@@ -53,6 +63,7 @@ CMake.
 ## File Output
 
 PVD/VTK output is part of the stable interoperability surface. The CLI and
-future GUI may both produce output, but path creation and file naming should
-flow through `std::filesystem::path` so Windows, Linux, and non-ASCII paths are
-handled consistently.
+future result-viewer GUI may both produce output, but path creation and file
+naming should flow through `std::filesystem::path` so Windows, Linux, and
+non-ASCII paths are handled consistently. Runtime configuration defaults to
+`config.txt` beside the executable unless the CLI is given `-c` or `--config`.

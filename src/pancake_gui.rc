@@ -1,0 +1,10 @@
+#include <windows.h>
+#include "resource.h"
+
+IDI_PANCAKE ICON "pancake.ico"
+
+// CREATEPROCESS_MANIFEST_RESOURCE_ID (1) of type RT_MANIFEST (24).
+// Embeds the ComCtl32 v6 dependency so the GUI uses modern visual styles
+// under both MinGW (windres) and MSVC (rc) without relying on the
+// MSVC-only #pragma comment(linker, ...) in gui_win32.cpp.
+1 24 "pancake_gui.manifest"

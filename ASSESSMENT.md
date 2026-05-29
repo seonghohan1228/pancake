@@ -240,17 +240,17 @@ Effort: included in the filesystem warning above.
   were found.
 - Header case mismatches: none found. All project includes match lowercase file
   names present under `src/`.
-- Custom CMake find modules: no `cmake/` directory or custom find modules were
-  found.
+- Custom CMake helpers: the current tree contains `cmake/deploy_mingw_runtime.cmake`
+  to copy MinGW/PETSc runtime DLLs beside native Windows executables.
 
 ## Dependency Audit
 
 ### Current Code Dependencies
 
-| Dependency | Evidence | vcpkg/Windows note |
-|------------|----------|--------------------|
-| MPI | `CMakeLists.txt:10`; `<mpi.h>` in `src/communicator.hpp:3`, `src/mesh.hpp:4`, `src/io.cpp:5`, `src/reynolds.cpp:7`, and tests | vcpkg has an `mpi` meta-port that uses MS-MPI on Windows and OpenMPI off Windows. Install `mpi:x64-windows` for native Windows. |
-| PETSc | `CMakeLists.txt:13` through `CMakeLists.txt:16`; `src/linear_system.hpp:3`; `src/main.cpp:1` | No official vcpkg PETSc port was found during this audit. Current Windows path likely requires building PETSc from source with MSVC/MS-MPI or replacing the current backend with the intended Trilinos backend in a separate code pass. |
+| Dependency | Evidence | Current Windows note |
+|------------|----------|----------------------|
+| MPI | `CMakeLists.txt`; `<mpi.h>` in communicator, mesh, IO, Reynolds, and tests | Use Microsoft MPI plus the MSYS2 `mingw-w64-x86_64-msmpi` package. |
+| PETSc | `CMakeLists.txt`; `src/linear_system.hpp`; `src/main.cpp` | Use the MSYS2 `mingw-w64-x86_64-petsc` package. CMake should select the MPI-enabled `petsc-dmo` pkg-config module, not the serial `petsc-sso` package. |
 
 ### Trilinos Package Usage
 
@@ -268,10 +268,10 @@ zero includes or link entries for:
 - MueLu
 - Teuchos
 
-This means there is no current source-derived `vcpkg install trilinos...`
-command to run. The package list must be regenerated after the code is migrated
-to Trilinos, or the Windows port must proceed with the current PETSc backend and
-its separate source-build plan.
+This means there is no current source-derived Trilinos package command to run.
+The package list must be regenerated after the code is migrated to Trilinos.
+The current native Windows workflow proceeds with the existing PETSc backend
+through MSYS2 MinGW64.
 
 ### Other Libraries
 
