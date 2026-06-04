@@ -47,11 +47,13 @@ endfunction()
 set(PANCAKE_HEADERS
     src/communicator.hpp
     src/config.hpp
+    src/energy.hpp
     src/equation_of_state.hpp
     src/field.hpp
     src/film_thickness.hpp
     src/fvm.hpp
     src/io.hpp
+    src/journal_motion.hpp
     src/linear_system.hpp
     src/mesh.hpp
     src/reynolds.hpp
@@ -118,10 +120,12 @@ if(PANCAKE_BUILD_SOLVER)
 
     set(PANCAKE_CORE_SOURCES
         src/communicator.cpp
+        src/energy.cpp
         src/field.cpp
         src/film_thickness.cpp
         src/fvm.cpp
         src/io.cpp
+        src/journal_motion.cpp
         src/linear_system.cpp
         src/mesh.cpp
         src/reynolds.cpp)
@@ -185,12 +189,17 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
         INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/src
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/pancake.ico;${CMAKE_CURRENT_SOURCE_DIR}/src/pancake_gui.manifest")
     target_compile_definitions(pancake_gui PRIVATE UNICODE _UNICODE NOMINMAX)
-    target_link_libraries(pancake_gui PRIVATE shell32 comctl32 gdi32)
+    target_link_libraries(pancake_gui PRIVATE shell32 comctl32 gdi32 comdlg32 ole32)
+    # Ship the GUI as a single self-contained pancake_gui.exe: it depends only on
+    # Windows system DLLs, so we statically link the C/C++ runtime instead of
+    # deploying MinGW runtime DLLs beside it.
     if(MINGW)
-        target_link_options(pancake_gui PRIVATE -municode)
+        target_link_options(pancake_gui PRIVATE -municode -static)
+    elseif(MSVC)
+        set_property(TARGET pancake_gui PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
     pancake_copy_default_config(pancake_gui)
-    pancake_deploy_mingw_runtime(pancake_gui)
 elseif(PANCAKE_BUILD_GUI)
     message(STATUS "PANCAKE_BUILD_GUI is ON, but the native GUI is Windows-only.")
 endif()

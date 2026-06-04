@@ -3,6 +3,10 @@
 `pancake` is a 2D finite-volume solver for compressible thin-film lubrication
 in a journal bearing. It solves the Reynolds equation on a cylindrical
 `(theta, z)` mesh with MPI parallelism and writes VTK/PVD results for ParaView.
+The solver supports static eccentricity and an optional moving outer-bearing
+model where the shaft remains fixed while pressure and viscous film forces move
+the bearing housing. It also includes an optional first-pass film-averaged
+energy equation for lubricant temperature and viscous heat generation.
 
 The current Windows development workflow uses **MSYS2 MINGW64**. Visual Studio
 is not required to build or run the native solver or GUI in the current code.
@@ -16,9 +20,12 @@ C:\Dev\pancake\build-windows-mingw\pancake.exe
 C:\Dev\pancake\build-windows-mingw\pancake_gui.exe
 ```
 
-The build also copies the required MinGW/PETSc runtime DLLs beside the
-executables, so File Explorer launches work after Microsoft MPI is installed.
-Both Windows executables embed the shared logo from `src/pancake.ico`.
+`pancake_gui.exe` is a single self-contained executable: the C/C++ runtime is
+statically linked and it depends only on Windows system DLLs, so it runs
+standalone. `pancake.exe` (the solver) still needs Microsoft MPI plus its
+PETSc/MinGW runtime DLLs, which the build copies beside it so File Explorer
+launches work after Microsoft MPI is installed. Both executables embed the
+shared logo from `src/pancake.ico`.
 
 ### 1. Install Prerequisites
 
@@ -134,39 +141,63 @@ cd /c/Dev/pancake
 ctest --test-dir build-windows-mingw --output-on-failure
 ```
 
-Current known status: the native build succeeds, the GUI smoke launch succeeds,
-and all tests pass except `test_elrod_a1`, which currently fails a numerical
-regression threshold rather than a build/runtime dependency.
+Current known status: the native build succeeds, the solver and GUI link, and
+all checked-in tests pass.
 
 ## GUI Workflow
 
-`pancake_gui.exe` reads and writes `config.txt` beside the executable. Solver
-backend controls are always visible in the top-right header, so you can edit
-parameters, output selections, or raw config without leaving the main workspace.
-The `Workspace` tab places the result preview and process log on the left and a
-scrollable parameter inspector on the right. Drag the horizontal splitter to
-rebalance result view and log height. Maximizing the window gives the extra
-space to the result preview while preserving the parameter column.
+`pancake_gui.exe` opens on a single workspace built for fast parameter-tweak →
+run → inspect loops. There are no tabs; everything is visible at once:
 
-Use the tabs to choose which result fields to save, run or stop the backend
-solver, inspect colorized process logs, edit raw config, and preview VTK
-results. The preview has field and timestep selectors, previous/next step
-buttons, axes, and a unit-labeled colorbar with min/max-inclusive ticks.
-Multi-rank result previews are assembled from all `processor*` VTS files for
-the selected timestep.
+- **Action bar** (top): the primary `Run` / `Stop` buttons, an MPI `ranks`
+  field, a live run-state chip (`Idle` / `Running NN% · Ns` with a progress bar
+  / `Done` / `Failed`), and the file actions `Open…`, `Save`, `Save As…`,
+  `Reload`, `Reset`, and `Solver…`.
+- **Input rail** (left, resizable): a search box, an `Advanced` toggle, a
+  preset picker, and a unit-system selector, above collapsible parameter
+  sections (Geometry, Operating/Fluid, Energy, Mesh & Time, Motion/Loads,
+  Cavitation, Axial Boundaries, Inlet, Output, and a collapsible Raw config.txt
+  editor).
+  Click a section header to collapse/expand it; type in the search box to
+  filter rows across all sections.
+- **Live summary** (pinned under the rail): derived journal-bearing quantities
+  recomputed as you type — eccentricity ratio `ε = e/c`, `h_min = c(1−ε)`,
+  `h_max`, `c/R`, `L/D`, surface speed `U = ωR`, plus the previewed field's
+  mean/max after a run. A status line reports validation problems.
+- **Results viewport** (center): field and timestep selectors, prev/next/refresh
+  buttons, and the contour preview with axes and a unit-labeled colorbar.
+  Multi-rank previews are assembled from all `processor*` VTS files for the
+  selected timestep. Preview contours are not updated while the solver is
+  running; the current contour stays stable until the run finishes or `Refresh`
+  is clicked. `Open folder` and `Open in ParaView` are here.
+- **Console** (bottom, resizable): the colorized solver process log.
 
-Numeric edit boxes preserve the text you typed. For example, `0.0010` remains
-`0.0010` after saving.
+**Configuration files.** The GUI defaults to `config.txt` beside the executable.
+`Save` writes the current file (creating `config.txt` if none is loaded);
+`Save As…` and `Open…` use the standard Windows file dialogs so you can keep a
+library of named cases anywhere on disk. The loaded file name appears in the
+title bar, with `*` while there are unsaved edits.
+
+**Validation and gating.** Physically impossible or malformed inputs (`e ≥ c`,
+non-positive grid/clearance, `dt`/`write_interval` ordering, empty
+output names) highlight the offending field in red and are listed in the
+summary card; `Run` stays disabled until the inputs are valid. Numeric edit
+boxes preserve the exact text you typed.
+
+**Units.** A global unit-system selector (`SI` ↔ engineering `mm/MPa/rpm`) sets
+sensible defaults; individual fields keep a small override dropdown where more
+than one unit is realistic — lengths (`m`, `mm`, `cm`, `um`), times (`s`,
+`ms`), angles (`deg`, `rad`), tilt (`m/m`, `deg`, `rad`), pressure (`Pa`,
+`kPa`, `MPa`), and rotation speed (`rad/s`, `rpm`). Fixed-unit fields show a
+plain suffix. Config files are still saved in solver-native units.
+
+**Presets.** The preset picker populates the form with a starting point
+(Default bearing, High eccentricity, Misaligned, Circular oil hole) in one
+click.
 
 The Windows application logo is embedded from `src/pancake.ico` in both
 `pancake.exe` and `pancake_gui.exe`. The editable source-style logo is
 `src/pancake_logo.svg`.
-
-The parameter inspector puts one item per row with unit selectors directly
-beside values: lengths (`m`, `cm`, `mm`, `um`), counts (`cells`), times (`s`,
-`ms`), angles (`deg`, `rad`), tilt (`m/m`, `deg`, `rad`), pressure (`Pa`,
-`kPa`, `MPa`), and rotation speed (`rad/s`, `rpm`). Config files are still
-saved in solver-native units.
 
 For `ELROD_ADAMS`, axial `DIRICHLET` and `INLET_OUTLET` inflow boundaries use
 the dimensionless `film content` rows as theta boundary values. The pressure
@@ -174,6 +205,9 @@ rows remain pressure values for pressure solvers and inlet/outlet switching.
 Pressure supply inlets are converted through the EOS as
 `theta = exp((p_supply - p_cav) / bulk_modulus)`, so realistic bulk modulus
 values are important for sane film-content magnitudes.
+The solver initializes the pressure field and flooded Elrod film-content guess
+from the first configured inlet `p_supply`; it falls back to `p_cav` only when
+no inlet is configured.
 
 The inlet editor switches between `GROOVE` and `CIRCULAR`. Saving writes the
 selected inlet as the active config line and keeps the unused inlet form as a
@@ -182,6 +216,38 @@ comment for quick switching later.
 The `film_content` output is the Elrod/JFO universal variable used by the
 solver. Cavitated cells are below `1`, and compressed full-film cells can be
 above `1`; the GUI and VTK output do not clamp those values.
+
+`motion_model = MOVING_BEARING` enables outer-bearing motion with the shaft
+fixed in space. The initial moving-bearing position can be derived from
+`e`/`attitude_angle_deg`, so the moving model starts from the same film
+thickness as the static case. The hydrodynamic result used for motion is written
+as `fluid_force_x`, `fluid_force_y`, and `fluid_force_z`. This is the total
+fluid force applied to the moving bearing surface. Its components are
+`pressure_force_x/y/z` for the pressure-only bearing-surface force and
+`viscous_force_x/y/z` for the shear-only bearing-surface force. Legacy
+`load_x/load_y/load_z` remain pressure-force aliases for older configs. The
+independent applied load is written separately as `external_load_x`,
+`external_load_y`, and `external_load_z`.
+In the GUI, the applied load is entered as an in-plane magnitude/direction plus
+an independent z component; saving converts those controls to
+`external_load_x/y/z`.
+
+The supported time-method names are `EULER_EXPLICIT`, `EULER_IMPLICIT`,
+`CRANK_NICOLSON`, `RK2`, and `RK4`. `CRANK_NICOLSON` is the correct formal name
+for the mixed implicit/explicit trapezoidal method; the config parser also
+accepts aliases such as `SEMI_IMPLICIT`, `IMEX`, and `CRANK_NICHOLSON`.
+
+`solution_mode = STEADY_STATE` runs one pressure/thermal solve at `t=0` and
+skips bearing-motion advancement. This is intended for fast operating-point
+checks. `TRANSIENT` keeps the normal time loop.
+
+`temperature_model = ENERGY_EQUATION` solves the film-averaged thermal balance
+after the Reynolds solve and force post-processing. The solver writes
+`temperature` and `heat_generation` when those fields are enabled in
+`output_fields`. `heat_generation` is viscous dissipation per bearing surface
+area in `W/m^2`; the wall heat-transfer coefficients close the steady thermal
+balance. `ISOTHERMAL` leaves the temperature field fixed but still refreshes
+`heat_generation` for inspection.
 
 `load_angle_deg` is a visualization reference angle measured from the positive
 y axis. The solver still stores cylindrical `theta` from the positive x axis;
@@ -209,13 +275,16 @@ src/
   field.hpp/cpp         Scalar fields with ghost layers
   communicator.hpp/cpp  MPI ghost-cell exchange
   fvm.hpp/cpp           FVM operators
+  energy.hpp/cpp        Film-averaged energy equation and heat generation
+  journal_motion.hpp/cpp Moving-bearing state and time integration
   linear_system.hpp/cpp PETSc sparse system wrapper
   io.hpp/cpp            VTK/PVD writers
   reynolds.hpp/cpp      Reynolds equation assembly and post-processing
-  gui_win32.cpp         Native Windows GUI shell around pancake.exe
+  gui_win32.cpp         Native Windows GUI shell around pancake.exe (single-file, static)
 
 cmake/
-  deploy_mingw_runtime.cmake  Copies required MinGW/PETSc DLLs beside .exe files
+  deploy_mingw_runtime.cmake  Copies required MinGW/PETSc DLLs beside pancake.exe
+                              (the GUI is statically linked and needs none)
 
 tests/
   test_*.cpp            Solver and physics regression tests

@@ -121,6 +121,17 @@ void solve(Fields& fields, LinearSystem& sys,
     }
     FVM::add_source(sys, couette_src, mesh);
 
+    if (cfg.motion_model == MotionModel::MOVING_BEARING && fields.has("dh_dt")) {
+        const Field& dh_dt = fields["dh_dt"];
+        Field squeeze_src("squeeze_src", mesh);
+        for (int i = 0; i < n_theta; ++i) {
+            for (int j = 0; j < n_z; ++j) {
+                squeeze_src(i, j) = -rho(i, j) * dh_dt(i, j);
+            }
+        }
+        FVM::add_source(sys, squeeze_src, mesh);
+    }
+
     apply_inlet_conditions(sys, mesh, cfg);
 
     sys.solve(pressure);
@@ -211,6 +222,27 @@ void solve_elrod(Fields& fields, LinearSystem& sys,
         sys.reset();
         FVM::laplacian(sys, Gamma_g, mesh);
         FVM::divergence(sys, couette_flux, zero_flux_z, theta, ConvectionScheme::UPWIND, mesh);
+
+        if (cfg.motion_model == MotionModel::MOVING_BEARING && fields.has("dh_dt")) {
+            if (cfg.pressure_time_method != TimeSteppingMethod::EULER_EXPLICIT) {
+                Field rho_h_weight("rho_h_weight", mesh);
+                for (int i = 0; i < n_theta; ++i) {
+                    for (int j = 0; j < n_z; ++j) {
+                        rho_h_weight(i, j) = cfg.rho * h(i, j);
+                    }
+                }
+                FVM::ddt_weighted(sys, theta, rho_h_weight, cfg.dt, mesh);
+            }
+
+            const Field& dh_dt = fields["dh_dt"];
+            Field squeeze_src("squeeze_src", mesh);
+            for (int i = 0; i < n_theta; ++i) {
+                for (int j = 0; j < n_z; ++j) {
+                    squeeze_src(i, j) = -cfg.rho * theta.old(i, j) * dh_dt(i, j);
+                }
+            }
+            FVM::add_source(sys, squeeze_src, mesh);
+        }
 
         // Dirichlet z-BC: θ = θ_boundary at z=0 and z=L.
         // Uses Gamma_base (not Gamma_g) to represent the flooded-bearing condition.
@@ -377,7 +409,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
     }
 }
 
-void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
     const Field& p = fields["pressure"];
     const Field& h = fields["h"];
     const Field& theta = fields["theta"];
@@ -387,13 +419,15 @@ void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const Si
     const double d_theta = mesh.get_d_theta();
     const double d_z     = mesh.get_d_z();
     const double R       = mesh.R;
-    const double dA      = R * d_theta * d_z;
     const double mu      = cfg.mu;
     const double omega   = cfg.omega;
 
-    double local_fx = 0.0;
-    double local_fy = 0.0;
-    double local_fz = 0.0;
+    double local_pressure_x = 0.0;
+    double local_pressure_y = 0.0;
+    double local_pressure_z = 0.0;
+    double local_viscous_x = 0.0;
+    double local_viscous_y = 0.0;
+    double local_viscous_z = 0.0;
     double local_torque = 0.0;
 
     for (int i = 0; i < n_theta; ++i) {
@@ -402,41 +436,104 @@ void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const Si
         const double sin_t = std::sin(theta_c);
 
         for (int j = 0; j < n_z; ++j) {
-            // Load capacity
-            // Gauge pressure is used because uniform ambient p_cav has zero net force
-            double p_gauge = p(i, j) - cfg.p_cav;
-            
-            local_fx += -p_gauge * cos_t * dA;
-            local_fy += -p_gauge * sin_t * dA;
-            
-            // F_z component due to tilt
-            // dh/dz = -tilt_x * cos(theta) - tilt_y * sin(theta)
-            double dh_dz = -cfg.tilt_slope_x * cos_t - cfg.tilt_slope_y * sin_t;
-            local_fz += p_gauge * (-dh_dz) * dA;
+            // Gauge pressure is used because uniform ambient p_cav has zero net force.
+            // The force convention is the force applied by the fluid to the moving
+            // bearing surface. The bearing pressure area vector is
+            // ((R+h)e_r - h_theta e_theta - (R+h)h_z e_z) dtheta dz.
+            const double p_gauge = p(i, j) - cfg.p_cav;
+            const double h_val = h(i, j);
+            const double r_surface = R + h_val;
+            const double h_theta = (h(i + 1, j) - h(i - 1, j)) / (2.0 * d_theta);
+            double h_z = 0.0;
+            if (n_z == 1) {
+                h_z = 0.0;
+            } else if (j == 0) {
+                h_z = (h(i, 1) - h(i, 0)) / d_z;
+            } else if (j == n_z - 1) {
+                h_z = (h(i, n_z - 1) - h(i, n_z - 2)) / d_z;
+            } else {
+                h_z = (h(i, j + 1) - h(i, j - 1)) / (2.0 * d_z);
+            }
+            const double area_scale = d_theta * d_z;
+            const double area_x = (r_surface * cos_t + h_theta * sin_t) * area_scale;
+            const double area_y = (r_surface * sin_t - h_theta * cos_t) * area_scale;
+            const double area_z = -r_surface * h_z * area_scale;
 
-            // Friction torque
-            // tau = mu * omega * R / h + (h / 2R) * (dp / dtheta)
-            // Note: dp/dtheta is calculated with a central difference
-            double dp_dtheta = (p(i + 1, j) - p(i - 1, j)) / (2.0 * d_theta);
+            local_pressure_x += p_gauge * area_x;
+            local_pressure_y += p_gauge * area_y;
+            local_pressure_z += p_gauge * area_z;
+
+            const double dA_bearing = r_surface * d_theta * d_z;
+
+            // Shear force on the bearing surface. The Couette contribution drags
+            // the bearing in +e_theta; pressure-gradient shear opposes dp/ds.
+            const double dp_dtheta = (p(i + 1, j) - p(i - 1, j)) / (2.0 * d_theta);
             
             // Poiseuille part is only active when full film
             double g_f = (theta(i, j) >= 1.0) ? 1.0 : 0.0;
             
-            double tau = (mu * omega * R) / h(i, j) + g_f * (h(i, j) / (2.0 * R)) * dp_dtheta;
-            local_torque += tau * R * dA;
+            const double tau_theta_bearing = (mu * omega * R) / h_val
+                - g_f * (h_val / (2.0 * R)) * dp_dtheta;
+
+            double dp_dz = 0.0;
+            if (j == 0) {
+                const double p_s = (cfg.bc_z_south_type == BCType::DIRICHLET) ? cfg.bc_z_south_val : p(i, 0);
+                dp_dz = (p(i, 0) - p_s) / (0.5 * d_z);
+            } else if (j == n_z - 1) {
+                const double p_n = (cfg.bc_z_north_type == BCType::DIRICHLET) ? cfg.bc_z_north_val : p(i, n_z - 1);
+                dp_dz = (p_n - p(i, n_z - 1)) / (0.5 * d_z);
+            } else {
+                dp_dz = (p(i, j + 1) - p(i, j - 1)) / (2.0 * d_z);
+            }
+            const double tau_z_bearing = -g_f * 0.5 * h_val * dp_dz;
+
+            local_viscous_x += tau_theta_bearing * (-sin_t) * dA_bearing;
+            local_viscous_y += tau_theta_bearing * ( cos_t) * dA_bearing;
+            local_viscous_z += tau_z_bearing * dA_bearing;
+
+            const double dA_shaft = R * d_theta * d_z;
+            const double tau_torque = (mu * omega * R) / h_val
+                + g_f * (h_val / (2.0 * R)) * dp_dtheta;
+            local_torque += tau_torque * R * dA_shaft;
         }
     }
 
     // Reduce over all MPI ranks
-    double local_vals[4] = {local_fx, local_fy, local_fz, local_torque};
-    double global_vals[4] = {0.0, 0.0, 0.0, 0.0};
-    MPI_Allreduce(local_vals, global_vals, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    double local_vals[7] = {
+        local_pressure_x, local_pressure_y, local_pressure_z,
+        local_viscous_x, local_viscous_y, local_viscous_z,
+        local_torque};
+    double global_vals[7] = {};
+    MPI_Allreduce(local_vals, global_vals, 7, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    ForceComponents result;
+    result.pressure_x = global_vals[0];
+    result.pressure_y = global_vals[1];
+    result.pressure_z = global_vals[2];
+    result.viscous_x = global_vals[3];
+    result.viscous_y = global_vals[4];
+    result.viscous_z = global_vals[5];
+    result.fluid_x = result.pressure_x + result.viscous_x;
+    result.fluid_y = result.pressure_y + result.viscous_y;
+    result.fluid_z = result.pressure_z + result.viscous_z;
+    result.friction_torque = global_vals[6];
 
     // Fill the scalar fields
-    fields["load_x"].fill(global_vals[0]);
-    fields["load_y"].fill(global_vals[1]);
-    fields["load_z"].fill(global_vals[2]);
-    fields["friction_torque"].fill(global_vals[3]);
+    if (fields.has("pressure_force_x")) fields["pressure_force_x"].fill(result.pressure_x);
+    if (fields.has("pressure_force_y")) fields["pressure_force_y"].fill(result.pressure_y);
+    if (fields.has("pressure_force_z")) fields["pressure_force_z"].fill(result.pressure_z);
+    if (fields.has("load_x")) fields["load_x"].fill(result.pressure_x);
+    if (fields.has("load_y")) fields["load_y"].fill(result.pressure_y);
+    if (fields.has("load_z")) fields["load_z"].fill(result.pressure_z);
+    if (fields.has("viscous_force_x")) fields["viscous_force_x"].fill(result.viscous_x);
+    if (fields.has("viscous_force_y")) fields["viscous_force_y"].fill(result.viscous_y);
+    if (fields.has("viscous_force_z")) fields["viscous_force_z"].fill(result.viscous_z);
+    if (fields.has("fluid_force_x")) fields["fluid_force_x"].fill(result.fluid_x);
+    if (fields.has("fluid_force_y")) fields["fluid_force_y"].fill(result.fluid_y);
+    if (fields.has("fluid_force_z")) fields["fluid_force_z"].fill(result.fluid_z);
+    if (fields.has("friction_torque")) fields["friction_torque"].fill(result.friction_torque);
+
+    return result;
 }
 
 }  // namespace Reynolds

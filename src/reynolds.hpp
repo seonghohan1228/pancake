@@ -23,6 +23,19 @@
 /// must be synced via Communicator before calling.
 namespace Reynolds {
 
+    struct ForceComponents {
+        double pressure_x = 0.0;
+        double pressure_y = 0.0;
+        double pressure_z = 0.0;
+        double viscous_x = 0.0;
+        double viscous_y = 0.0;
+        double viscous_z = 0.0;
+        double fluid_x = 0.0;
+        double fluid_y = 0.0;
+        double fluid_z = 0.0;
+        double friction_torque = 0.0;
+    };
+
     /// Gumbel (pressure-primary) solver. See Phase 3 notes in PHYSICS.md.
     void solve(Fields& fields, LinearSystem& sys,
                const Mesh& mesh, const SimulationConfig& cfg);
@@ -36,8 +49,10 @@ namespace Reynolds {
     /// u_theta is on FACE_THETA, u_z is on FACE_Z.
     void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
-    /// Calculate macroscopic properties: load capacity (Fx, Fy, Fz) and friction torque.
-    /// Fills the respective scalar fields with their global integrated values.
-    void calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
+    /// Calculate integrated bearing-surface forces and shaft friction torque.
+    /// pressure_* is pressure force on the moving bearing, viscous_* is shear
+    /// force on the moving bearing, and fluid_* is their sum. load_* fields are
+    /// kept as legacy aliases for pressure_*.
+    ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
 }  // namespace Reynolds

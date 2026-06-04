@@ -155,6 +155,15 @@ $$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{sour
 
 Two solvers are available, selected by `cfg.cavitation_model`.
 
+Before each solve, the flooded initial guess is set from the first configured
+inlet supply pressure:
+
+$$p^0 = p_{inlet},\qquad
+\theta^0 = \max\!\left[\theta_{film}(p_{inlet}),\,\theta_{min}\right]$$
+
+If no inlet is configured, the fallback is $p^0=p_{cav}$ and the corresponding
+full-film value $\theta^0=1$.
+
 ### 7.1 Gumbel Solver (`Reynolds::solve`)
 
 The solver follows a **lagged-coefficient** approach at each time step:
@@ -259,39 +268,271 @@ The domain is decomposed in the $\theta$ direction: each MPI rank owns $N_\theta
 
 After solving the Reynolds equation, the code integrates the local fields to compute the global bearing performance characteristics.
 
-### Load Capacity
+### Pressure and Viscous Forces
 
-The fluid pressure acts on the journal surface. The total force vector $(F_x, F_y, F_z)$ is obtained by integrating the pressure over the bearing surface area $A$:
+The force convention is now the force applied by the fluid to the moving outer
+bearing surface. The shaft remains fixed. Gauge pressure $(p-p_{cav})$ is used
+because uniform ambient pressure exerts zero net force on a closed body.
 
-$$F_x = \int_0^L \int_0^{2\pi} - (p - p_{cav}) \cos\theta \cdot R \, d\theta \, dz$$
+For bearing-surface radius $r_b = R+h$, the pressure area vector is:
 
-$$F_y = \int_0^L \int_0^{2\pi} - (p - p_{cav}) \sin\theta \cdot R \, d\theta \, dz$$
+$$d\mathbf{A}_b =
+\left(r_b\mathbf{e}_r - \frac{\partial h}{\partial\theta}\mathbf{e}_\theta
+      - r_b\frac{\partial h}{\partial z}\mathbf{e}_z\right)d\theta\,dz$$
 
-$$F_z = \int_0^L \int_0^{2\pi} (p - p_{cav}) \left(-\frac{\partial h}{\partial z}\right) \cdot R \, d\theta \, dz$$
+so the pressure-only bearing force is:
 
-where the axial pressure force $F_z$ arises if the shaft is tilted ($\partial h / \partial z = -\text{tilt\_slope\_x} \cos\theta - \text{tilt\_slope\_y} \sin\theta$). The gauge pressure $(p - p_{cav})$ is used because a uniform ambient pressure exerts zero net force on a closed body.
+$$\mathbf{F}^{p}_{bearing}
+  = \int_0^L \int_0^{2\pi} (p-p_{cav})\,d\mathbf{A}_b$$
+
+The solver writes this as `pressure_force_x`, `pressure_force_y`, and
+`pressure_force_z`. The legacy fields `load_x`, `load_y`, and `load_z` remain as
+aliases for the same pressure-only resultant.
+
+The shear force on the bearing surface uses the bearing-side wall shear:
+
+$$\tau_{\theta,b} = \frac{\mu \omega R}{h}
+  - g(\theta_{film}) \frac{h}{2R}\frac{\partial p}{\partial \theta}$$
+
+$$\tau_{z,b} = -g(\theta_{film})\frac{h}{2}\frac{\partial p}{\partial z}$$
+
+where $g(\theta_{film}) = 1$ in the full film and $g = 0$ in the cavitated
+region. The viscous bearing force is:
+
+$$F_x^\tau = \int_0^L \int_0^{2\pi} -\tau_{\theta,b}\sin\theta \cdot r_b\,d\theta\,dz$$
+
+$$F_y^\tau = \int_0^L \int_0^{2\pi} \tau_{\theta,b}\cos\theta \cdot r_b\,d\theta\,dz$$
+
+$$F_z^\tau = \int_0^L \int_0^{2\pi} \tau_{z,b} \cdot r_b\,d\theta\,dz$$
+
+These are written as `viscous_force_x`, `viscous_force_y`, and
+`viscous_force_z`.
 
 ### Friction Torque
 
-The friction torque $T$ on the journal arises from the fluid shear stress $\tau$:
+The friction torque $T$ on the shaft arises from the circumferential shear:
 
-$$T = \int_0^L \int_0^{2\pi} \tau \cdot R^2 \, d\theta \, dz$$
+$$T = \int_0^L \int_0^{2\pi} \tau_\theta \cdot R^2 \, d\theta \, dz$$
 
-The shear stress on the moving journal surface consists of the Couette (velocity-driven) and Poiseuille (pressure-driven) components:
+### Moving-bearing Fluid Force
 
-$$\tau = \frac{\mu \omega R}{h} + g(\theta_{film}) \frac{h}{2R} \frac{\partial p}{\partial \theta}$$
+For the moving-bearing model, the shaft is fixed and the outer bearing surface
+moves. The fluid force used in the bearing equation of motion is the total
+bearing-surface force:
 
-where $g(\theta_{film}) = 1$ in the full film and $g = 0$ in the cavitated region. The pressure gradient $\partial p/\partial \theta$ is evaluated using a central difference scheme.
+$$\mathbf{F}^{fluid}_{bearing}
+  = \mathbf{F}^{p}_{bearing} + \mathbf{F}^{\tau}_{bearing}$$
+
+The solver writes this moving-bearing resultant as `fluid_force_x`,
+`fluid_force_y`, and `fluid_force_z`. The independent configured applied load is
+written separately as `external_load_x`, `external_load_y`, and
+`external_load_z`.
 
 ---
 
-## 12. GUI and Output Selection
+## 12. Moving Outer-Bearing Motion
+
+The implemented motion model fixes the shaft in space and moves the outer
+bearing surface. Let $(x_b(t), y_b(t), z_b(t))$ be the bearing-center
+displacement in the global frame. The axial displacement $z_b$ is tracked for
+force and motion output, but it does not change the current 2D film geometry.
+
+The moving-bearing film thickness is:
+
+$$h(\theta,z,t) = c + x_b(t)\cos\theta + y_b(t)\sin\theta
+                 - \alpha_x(z-L/2)\cos\theta
+                 - \alpha_y(z-L/2)\sin\theta$$
+
+This sign convention is the opposite of the static shaft-eccentricity
+components. If `bearing_initial_from_attitude = true`, the initial bearing
+position is:
+
+$$x_b(0) = -e\cos\psi,\qquad y_b(0) = -e\sin\psi$$
+
+which exactly reproduces the static gap $h = c - e\cos(\theta-\psi)$. During
+motion, the equivalent attitude angle of the minimum gap is:
+
+$$\psi_b = \operatorname{atan2}(-y_b, -x_b)$$
+
+The moving-gap time derivative is:
+
+$$\frac{\partial h}{\partial t}
+  = \dot{x}_b\cos\theta + \dot{y}_b\sin\theta$$
+
+For the Elrod variable $\theta_{film}$:
+
+$$\frac{\partial(\rho_0\theta_{film}h)}{\partial t}
+  = \rho_0 h\frac{\partial\theta_{film}}{\partial t}
+  + \rho_0\theta_{film}\frac{\partial h}{\partial t}$$
+
+The existing weighted time derivative covers the first term for static
+geometry. Dynamic geometry also needs the explicit or Picard-lagged
+$\theta_{film}\,\partial h/\partial t$ contribution.
+
+The rigid bearing support model is:
+
+$$m_b\ddot{x}_b + c_x\dot{x}_b + k_x x_b =
+  F_x^{fluid} + F_x^{external}$$
+
+$$m_b\ddot{y}_b + c_y\dot{y}_b + k_y y_b =
+  F_y^{fluid} + F_y^{external}$$
+
+$$m_b\ddot{z}_b + c_z\dot{z}_b + k_z z_b =
+  F_z^{fluid} + F_z^{external}$$
+
+The external load is configured directly and remains independent of bearing
+motion. The motion integrator supports `EULER_EXPLICIT`, `EULER_IMPLICIT`,
+`CRANK_NICOLSON`, `RK2`, and `RK4`. `CRANK_NICOLSON` is the formal name for the
+mixed implicit/explicit trapezoidal update; the parser also accepts aliases such
+as `SEMI_IMPLICIT`, `IMEX`, and `CRANK_NICHOLSON`.
+
+---
+
+## 13. Thermal and ETHD Model
+
+The current solver implements the first thermal step: an optional
+film-averaged lubricant energy equation with constant material properties,
+viscous heat generation, and wall heat transfer. Temperature-dependent
+viscosity, elastic deformation, and fully coupled ETHD remain planned follow-on
+models.
+
+### 13.1 Lubricant Energy Equation
+
+A depth-averaged lubricant temperature model is:
+
+$$\rho c_p h\left(\frac{\partial T}{\partial t}
+  + \bar{u}_\theta\frac{1}{R}\frac{\partial T}{\partial\theta}
+  + \bar{u}_z\frac{\partial T}{\partial z}\right)
+  =
+  \frac{1}{R^2}\frac{\partial}{\partial\theta}
+  \left(k h\frac{\partial T}{\partial\theta}\right)
+  + \frac{\partial}{\partial z}
+  \left(k h\frac{\partial T}{\partial z}\right)
+  + \Phi - Q_w$$
+
+where:
+- $T$ is the film-averaged lubricant temperature.
+- $c_p$ is lubricant specific heat.
+- $k$ is lubricant thermal conductivity.
+- $\bar{u}_\theta$ and $\bar{u}_z$ are film-averaged velocities.
+- $\Phi$ is viscous heat generation.
+- $Q_w$ is net heat transfer to journal and bearing walls.
+
+A practical initial dissipation model is:
+
+$$\Phi \approx \frac{\mu U^2}{h}
+       + \frac{h^3}{12\mu}\left[
+         \left(\frac{1}{R}\frac{\partial p}{\partial\theta}\right)^2
+         + \left(\frac{\partial p}{\partial z}\right)^2\right]$$
+
+The first implementation stores $\Phi$ in `heat_generation` as heat generation
+per bearing surface area [W/m^2]. The first term is Couette shear heating. The
+second term is pressure-flow heating from Poiseuille shear and is active only in
+full-film cells. Wall heat loss is represented by:
+
+$$Q_w = h_j(T - T_j) + h_b(T - T_b)$$
+
+where $h_j$ and $h_b$ are heat-transfer coefficients to the journal and bearing
+surfaces.
+
+The finite-volume equation solved for `temperature` is:
+
+$$\frac{\rho c_p h V_s}{\Delta t}T_P^{n+1}
+  + \mathcal{L}(T^{n+1}) + (h_j+h_b)V_s T_P^{n+1}
+  =
+  \frac{\rho c_p h V_s}{\Delta t}T_P^n
+  + \Phi V_s + (h_jT_j+h_bT_b)V_s$$
+
+for transient runs, where $V_s=R\,\Delta\theta\,\Delta z$ is the cell surface
+area used by the thin-film FVM operators and $\mathcal{L}$ includes thermal
+diffusion and upwind advection by film-averaged velocities. With
+`solution_mode = STEADY_STATE`, the transient capacity term is omitted and the
+main solver runs one pressure/thermal step at $t=0$. With
+`temperature_model = ISOTHERMAL`, `temperature` remains fixed at
+`temperature_initial` while `heat_generation` is still refreshed for output.
+
+### 13.2 Temperature-dependent Fluid Properties
+
+Thermal hydrodynamic coupling enters Reynolds through field-valued viscosity
+and density. A configurable first model is:
+
+$$\mu(T,p) = \mu_{ref}
+  \exp[-a_T(T - T_{ref}) + a_p(p - p_{ref})]$$
+
+For a purely thermal viscosity model, set $a_p=0$. The Reynolds diffusion
+coefficient becomes:
+
+$$\gamma(\theta,z) = \frac{\rho(T,p)h^3}{12\mu(T,p)}$$
+
+and the Elrod-Adams diffusion coefficient becomes:
+
+$$\Gamma_g(\theta,z) =
+  \frac{\rho(T,p)\beta h^3}{12\mu(T,p)}g(\theta_{film})$$
+
+The constant-property limit must reduce exactly to the current isothermal
+solver.
+
+### 13.3 Elastic and Thermal Deformation
+
+The effective film thickness for EHD/ETHD is:
+
+$$h_{eff} = h_{kinematic} + \delta_p + \delta_T$$
+
+where $\delta_p$ is pressure-induced elastic deformation and $\delta_T$ is
+thermal expansion. A local-compliance first implementation is:
+
+$$\delta_p(\theta,z) = C_p(\theta,z)[p(\theta,z)-p_{ref}]$$
+
+and:
+
+$$\delta_T(\theta,z) = \alpha_s t_s [T_s(\theta,z)-T_{ref}]$$
+
+where $C_p$ is local structural compliance, $\alpha_s$ is solid thermal
+expansion coefficient, and $t_s$ is an effective solid thickness. This can later
+be replaced by an influence-matrix convolution or an external structural solve
+without changing the Reynolds interface, as long as it returns a deflection
+field on the same mesh.
+
+### 13.4 Coupled ETHD Iteration
+
+The planned ETHD timestep uses a Picard loop:
+
+1. Update moving-bearing state and kinematic film thickness.
+2. Compute elastic and thermal deformation.
+3. Update $h_{eff}$.
+4. Update $\mu(T,p)$ and any density or mixture properties.
+5. Solve Reynolds/Elrod for pressure or film content.
+6. Compute velocities and viscous heat generation.
+7. Solve the energy equation.
+8. Repeat until pressure, temperature, viscosity, and film thickness residuals
+   satisfy the configured coupled tolerance.
+
+Thermal-only, deformation-only, and fully coupled ETHD modes should remain
+separately switchable so each coupling path can be validated in isolation.
+
+---
+
+## 14. GUI and Output Selection
 
 The Windows GUI is an orchestration layer, not a separate numerical model. It
 writes the same `SimulationConfig` values consumed by the CLI solver, launches
 `pancake.exe`, and reads the solver's ASCII VTK output for preview. Therefore
 the governing equations, discretisation, cavitation model, and macroscopic
 property calculations above are unchanged by using the GUI.
+
+The GUI's Motion / Loads section exposes the same moving-bearing controls that
+can be written manually in `config.txt`. The applied load entry is a clean input
+form for the vector $\mathbf{F}^{ext}$: the in-plane magnitude and direction are
+converted to `external_load_x` and `external_load_y`, while the z entry writes
+`external_load_z`. This conversion is purely an input convenience; the bearing
+equation of motion still uses the Cartesian external-load vector defined in
+Section 12.
+
+The GUI's Energy section exposes `temperature_model`, thermal wall
+temperatures, wall heat-transfer coefficients, volumetric heat capacity, and
+thermal conductivity. These controls write the same config keys used by the CLI
+solver. The preview unit labels report `temperature` in K and
+`heat_generation` in W/m^2.
 
 The output-selection parameters only affect persistence:
 

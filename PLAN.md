@@ -34,6 +34,51 @@ Elrod axial boundary implementation keeps pressure values and film-content
 theta values separate, with tests guarding that DIRICHLET theta boundaries read
 the `bc_z_*_theta` entries.
 
+### Windows GUI Redesign (2026-05-29)
+Rebuilt the GUI UI layer around a single tab-less workspace (action/run bar,
+collapsible input rail with a pinned live-summary card, result viewport, console)
+to support fast tweak→run→inspect loops. Replaced group-box frames with painted
+section headers/labels to remove the long-standing z-order/paint glitches. Added
+live derived journal-bearing quantities and inline validation that gates `Run`,
+a run-state chip with a stdout-driven progress bar, hybrid units (global SI ↔
+engineering selector plus targeted per-field overrides), scenario presets, and
+custom-config Open/Save via Windows file dialogs. `pancake_gui.exe` now links
+statically into a single self-contained binary (no runtime DLLs deployed beside
+it). The solver/preview/log/unit backends were preserved; `config.txt` format
+and the solver contract are unchanged.
+
+### Windows GUI Motion/Preview Update (2026-06-04)
+Added structured Motion / Loads controls for moving-bearing selection,
+pressure/motion/temperature time-method selection, external-load
+magnitude/direction/z input, bearing initial state, support
+stiffness/damping, and film-thickness safety settings. The GUI now keeps the
+current contour stable while the solver is running and refreshes results only
+on completion or explicit user refresh. Preview timestep switching now uses a
+cached per-step list of `processor*` VTS files instead of recursively scanning
+the whole results tree for each field/step change.
+
+### Solver Initialization Update (2026-06-04)
+The timestep flooded guess now initializes `pressure` from the first configured
+inlet `p_supply`, not `p_cav`. The Elrod `theta` field is initialized from the
+same pressure through the EOS, with `p_cav` used only as the no-inlet fallback.
+
+### Bearing Force Convention Update (2026-06-04)
+Corrected macroscopic force integration to use one bearing-side convention:
+`pressure_force_*` is the pressure force applied to the moving bearing surface,
+including the bearing surface area vector
+`((R+h)e_r - h_theta e_theta - (R+h)h_z e_z) dtheta dz`; `viscous_force_*` is
+the bearing-side shear force; `fluid_force_*` is their sum. Legacy `load_*`
+fields remain pressure-force aliases.
+
+### Energy Equation Initial Implementation (2026-06-04)
+Added `solution_mode = STEADY_STATE` for one-step operating-point calculations
+and `temperature_model = ENERGY_EQUATION` for a first-pass film-averaged thermal
+solve. The solver now carries `temperature` and `heat_generation` fields,
+computes Couette plus pressure-flow viscous heat generation, applies wall heat
+transfer to the journal and bearing, and exposes the thermal controls in the
+Win32 GUI. Thermoviscous viscosity feedback, deformation, and coupled ETHD
+iterations remain in Phase D.
+
 ---
 
 ## Phase A — Mass-Conserving Cavitation (Elrod-Adams)
@@ -410,6 +455,303 @@ The free gas is transported by a mixture of Couette flow and pressure-driven exp
 
 ---
 
+## Phase C - Moving Bearing Dynamics
+
+**Status: complete** (2026-06-04, moving outer bearing with fixed shaft).
+
+Allow the outer bearing surface to move in response to pressure and viscous
+film forces, independent applied load, support stiffness, and support damping.
+This turns the current static-eccentricity solve into a lagged fluid-structure
+time integration while keeping the shaft fixed in space.
+
+### C.1 - Time-dependent Film Geometry
+
+**Goal:** Replace static eccentricity inputs with bearing-center state variables
+when dynamic motion is enabled.
+
+For bearing-center displacement $(x_b(t), y_b(t))$ measured from the fixed shaft
+center, the nominal film thickness becomes:
+
+$$h(\theta,t) = c + x_b(t)\cos\theta + y_b(t)\sin\theta$$
+
+with optional existing misalignment terms retained as additive axial tilt:
+
+$$h(\theta,z,t) = c + x_b(t)\cos\theta + y_b(t)\sin\theta
+                 - (z-L/2)\alpha_x\cos\theta
+                 - (z-L/2)\alpha_y\sin\theta$$
+
+When `bearing_initial_from_attitude = true`, the initial moving-bearing
+position is $x_b=-e\cos\psi,\ y_b=-e\sin\psi$, so the moving model starts from
+the same gap as the static shaft-eccentricity model. The equivalent attitude
+angle is updated from the bearing state as $\psi=\operatorname{atan2}(-y_b,-x_b)$.
+
+The time derivative needed by the Reynolds equation is:
+
+$$\frac{\partial h}{\partial t} =
+    \dot{x}_b\cos\theta + \dot{y}_b\sin\theta$$
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `config.hpp` | Added `motion_model`, bearing initial state, support stiffness/damping, bearing mass, independent external load, safety limits, and time-method keys. |
+| `journal_motion.hpp/cpp` | Added bearing state, force-balance integrators, attitude conversion, and uniform output field helpers. |
+| `film_thickness.hpp/cpp` | Added moving-bearing film-thickness update and `dh_dt`. |
+| `main.cpp` | Stores bearing state over time; updates `h` and `dh_dt` before each Reynolds solve; advances bearing motion from fluid plus external force. |
+| `io.cpp` | Uses existing field-selection path for bearing position, external load, and result-force scalar fields. |
+| `gui_win32.cpp` | Added clean Motion / Loads controls for the moving-bearing and time-method config keys, plus magnitude/direction input for the independent external load. |
+
+**Validation:**
+- Static limit: zero velocity and fixed journal state must reproduce the
+  current static-eccentricity pressure, load, and torque.
+- Initial attitude: moving-bearing initialization from `e` and
+  `attitude_angle_deg` must exactly reproduce the static film thickness.
+- Safety: runs must stop or reject input before $h_{min} \le 0$.
+
+---
+
+### C.2 - Transient Reynolds Coupling
+
+**Goal:** Activate the transient squeeze-film contribution created by moving
+geometry.
+
+For the Elrod variable, the transient term expands as:
+
+$$\frac{\partial(\rho_0\theta h)}{\partial t}
+  = \rho_0 h\frac{\partial\theta}{\partial t}
+  + \rho_0\theta\frac{\partial h}{\partial t}$$
+
+`FVM::ddt_weighted(sys, theta, rho*h, dt, mesh)` handles the first term for
+non-explicit pressure time methods. The second term is assembled as an explicit
+source using the old or Picard-lagged value of $\theta$:
+
+$$S_h = \rho_0\theta^n\frac{\partial h}{\partial t}$$
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `reynolds.cpp` | Added optional transient assembly for dynamic `h`, including the explicit $\theta\,\partial h/\partial t$ source for Elrod and an explicit squeeze source for Gumbel. |
+| `field.hpp/cpp` | `dh_dt` is stored as a regular scalar field with ghost updates through existing infrastructure. |
+| Tests | Added `test_journal_motion` for dynamic film-thickness sign, attitude recovery, config aliases, and integrators. |
+
+**Validation:**
+- Squeeze-film check: with $\omega = 0$ and prescribed radial approach,
+  pressure must be generated only by $\partial h/\partial t$.
+- Time-step refinement: transient load should converge as `dt` is reduced.
+
+---
+
+### C.3 - Bearing Equation of Motion
+
+**Goal:** Couple pressure and viscous fluid force back to bearing motion.
+
+The first implementation uses a three-degree-of-freedom rigid bearing support:
+
+$$m_b\ddot{x}_b + c_x\dot{x}_b + k_x x_b =
+  F_x^{fluid} + F_x^{external}$$
+
+$$m_b\ddot{y}_b + c_y\dot{y}_b + k_y y_b =
+  F_y^{fluid} + F_y^{external}$$
+
+$$m_b\ddot{z}_b + c_z\dot{z}_b + k_z z_b =
+  F_z^{fluid} + F_z^{external}$$
+
+where $\mathbf{F}^{fluid}$ is the equal-and-opposite force to the integrated
+pressure plus viscous force on the shaft surface. It is saved as
+`fluid_force_x`, `fluid_force_y`, and `fluid_force_z`. The independent applied
+load is saved separately as `external_load_x`, `external_load_y`, and
+`external_load_z`.
+
+**Implementation strategy:**
+1. Use lagged fluid force from the latest Reynolds solve.
+2. Support `EULER_EXPLICIT`, `EULER_IMPLICIT`, `CRANK_NICOLSON`, `RK2`, and
+   `RK4` for motion. `CRANK_NICOLSON` is the formal name for the mixed
+   implicit/explicit trapezoidal method; `SEMI_IMPLICIT` and `IMEX` are accepted
+   aliases in config parsing.
+3. Add a Picard loop around bearing motion and Reynolds solve when lagging is
+   too weak for stiff supports or small clearances.
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `src/journal_motion.hpp/cpp` | New module for bearing state, force balance, and time integration. |
+| `main.cpp` | Added motion/Reynolds coupling sequence. |
+| `config.hpp` | Added motion-model selection: `STATIC`, `MOVING_BEARING`. |
+| Tests | Added static-equivalent geometry, config alias, and constant-load integrator checks. |
+
+**Validation:**
+- Static equilibrium: with large support stiffness, the dynamic solve should
+  converge to the configured static eccentricity.
+- Free response: with hydrodynamic force disabled, the journal ODE must match
+  the analytic damped oscillator.
+- Linearized bearing coefficients: small perturbations about equilibrium should
+  produce repeatable stiffness/damping estimates.
+
+---
+
+## Phase D - Thermal and ETHD Implementation
+
+Add temperature, viscosity variation, heat generation, heat transfer, and elastic
+film-thickness deformation. This phase should be introduced incrementally:
+thermal hydrodynamics (THD) first, then elastic deformation, then fully coupled
+elasto-thermo-hydrodynamics (ETHD).
+
+### D.1 - Energy Equation and Temperature Field
+
+**Goal:** Add a lubricant temperature field and solve a thin-film energy balance.
+
+**Status:** First constant-property implementation is complete. Remaining D.1
+work is validation breadth and optional higher-order transient thermal schemes.
+
+A first-order averaged film model is:
+
+$$\rho c_p h\left(\frac{\partial T}{\partial t}
+  + \bar{u}_\theta\frac{1}{R}\frac{\partial T}{\partial\theta}
+  + \bar{u}_z\frac{\partial T}{\partial z}\right)
+  =
+  \frac{1}{R^2}\frac{\partial}{\partial\theta}
+  \left(k h\frac{\partial T}{\partial\theta}\right)
+  + \frac{\partial}{\partial z}
+  \left(k h\frac{\partial T}{\partial z}\right)
+  + \Phi - Q_w$$
+
+where $\Phi$ is viscous dissipation and $Q_w$ is heat loss to journal and
+bearing walls. A practical initial dissipation model is:
+
+$$\Phi \approx \frac{\mu U^2}{h}
+       + \frac{h^3}{12\mu}\left[
+         \left(\frac{1}{R}\frac{\partial p}{\partial\theta}\right)^2
+         + \left(\frac{\partial p}{\partial z}\right)^2\right]$$
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `src/energy.hpp/cpp` | Added constant-property energy-equation module using existing FVM diffusion/convection operators. |
+| `main.cpp` | Added `temperature` and `heat_generation` fields and calls the energy solve after velocity/force updates. |
+| `config.hpp` | Added `solution_mode`, `temperature_model`, `temperature_initial`, `temperature_reference`, `rho_cp`, `thermal_conductivity`, wall heat-transfer coefficients, and wall temperatures. |
+| `gui_win32.cpp` | Added Energy controls, steady-state solution selection, and preview units for thermal fields. |
+| Tests | Added `test_energy` for config aliases, isothermal heat refresh, and steady Couette wall balance. |
+
+**Validation:**
+- Isothermal limit: disabling energy coupling must reproduce Phase A/B results.
+- Pure diffusion: no velocity and no heat source must match a linear or
+  manufactured temperature solution.
+- Energy balance: generated heat minus wall losses must match the change in
+  integrated thermal energy.
+
+---
+
+### D.2 - Thermoviscous Reynolds Coupling
+
+**Goal:** Feed temperature-dependent viscosity and density back into Reynolds.
+
+Start with a configurable viscosity law:
+
+$$\mu(T,p) = \mu_{ref}
+  \exp[-a_T(T - T_{ref}) + a_p(p - p_{ref})]$$
+
+The Reynolds diffusion coefficient then becomes cell-wise:
+
+$$\gamma = \frac{\rho(T,p)h^3}{12\mu(T,p)}$$
+
+and the Elrod coefficient becomes:
+
+$$\Gamma_g = \frac{\rho\beta h^3}{12\mu(T,p)}g(\theta_{film})$$
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `src/fluid_properties.hpp/cpp` | Extend the planned mixture-property module with viscosity-temperature and optional Barus pressure-viscosity laws. |
+| `reynolds.cpp` | Accept field-valued `rho` and `mu` for both Gumbel and Elrod paths. |
+| `main.cpp` | Add THD Picard loop: update properties, solve Reynolds, solve energy, check convergence. |
+
+**Validation:**
+- Constant-property limit recovers the current solver exactly.
+- Hotter lubricant should reduce viscosity and lower generated pressure for
+  the same geometry and speed.
+
+---
+
+### D.3 - Elastic Film Deformation
+
+**Goal:** Add elastic and thermal deformation to the effective film thickness.
+
+The effective film thickness is:
+
+$$h_{eff} = h_{kinematic} + \delta_p + \delta_T$$
+
+where $\delta_p$ is pressure-induced elastic deflection and $\delta_T$ is
+thermal expansion. The first implementation should support a local linear
+compliance model:
+
+$$\delta_p(\theta,z) = C_p(\theta,z)\,[p(\theta,z)-p_{ref}]$$
+
+and a local thermal expansion model:
+
+$$\delta_T(\theta,z) = \alpha_s\,t_s\,[T_s(\theta,z)-T_{ref}]$$
+
+Later versions can replace this with a convolution influence matrix or an
+external structural solve without changing the Reynolds interface.
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `src/deformation.hpp/cpp` | New module for elastic and thermal deflection fields. |
+| `film_thickness.cpp` | Combine kinematic, elastic, and thermal film-thickness contributions. |
+| `config.hpp` | Add elastic compliance, thermal expansion, solid thickness, and deformation toggles. |
+| Tests | Local-compliance response, thermal expansion response, and zero-compliance regression. |
+
+**Validation:**
+- Zero compliance and zero thermal expansion recover THD results.
+- Positive pressure compliance must increase local film thickness where the
+  configured sign convention says the bearing surface moves away from the
+  journal.
+- Deformation should converge under mesh refinement for smooth pressure fields.
+
+---
+
+### D.4 - Fully Coupled ETHD Loop
+
+**Goal:** Couple Reynolds, energy, fluid properties, and deformation.
+
+Recommended timestep sequence:
+
+```
+1. Update journal state and kinematic film thickness
+2. Initialize Picard iteration from old p, theta, T, mu, h_eff
+3. Compute deformation from pressure and temperature
+4. Update effective film thickness
+5. Update fluid properties from T, p, and gas state
+6. Solve Reynolds / Elrod equation
+7. Compute velocities and viscous heat generation
+8. Solve energy equation
+9. Check coupled residuals for h_eff, p/theta, T, and mu
+10. Repeat 3-9 until converged or max iterations reached
+11. Compute load, torque, diagnostics, and advance time
+```
+
+**Code changes:**
+
+| File | Change |
+|------|--------|
+| `main.cpp` | Add coupled ETHD Picard driver with configurable convergence tolerances. |
+| `config.hpp` | Add `enable_thermal`, `enable_deformation`, `max_ethd_iters`, and `ethd_tol`. |
+| Tests | Decoupled-limit regression and coupled manufactured/sanity cases. |
+
+**Validation:**
+- Decoupled limit: disabling thermal and deformation coupling must recover the
+  current Elrod/Phase B result.
+- THD-only and EHD-only toggles must be independently usable.
+- Coupled residuals should decrease monotonically for moderate load/speed test
+  cases or report a clear non-convergence diagnostic.
+
+---
+
 ## Phase Summary
 
 | Phase | Description | Primary Variable | Key Output |
@@ -422,6 +764,9 @@ The free gas is transported by a mixture of Couette flow and pressure-driven exp
 | B.2 | Dissolved gas transport | $c_d$ | Gas release/resorption |
 | B.3 | Free gas volume fraction | $\alpha_g$ | Bubble evolution |
 | B.4 | Coupled solver | $\theta, c_d, \alpha_g$ | Full two-phase bearing |
+| C.1-C.3 | Moving bearing dynamics | $x_b, y_b, z_b, \dot{x}_b, \dot{y}_b, \dot{z}_b$ | Fluid force, external load, squeeze-film motion |
+| D.1 | Energy equation | $T$ | Temperature and heat-generation fields |
+| D.2-D.4 | Thermal coupling and ETHD solver | $\mu(T,p), h_{eff}$ | Temperature-dependent viscosity, deformation, coupled ETHD response |
 
 ---
 

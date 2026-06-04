@@ -44,6 +44,9 @@ int main(int argc, char** argv) {
         hole.p_supply = 3.0e5;
         cfg.inlets.push_back(hole);
 
+        check(std::abs(cfg.initial_pressure() - groove.p_supply) < 1e-12,
+              "Initial pressure should use the first configured inlet supply pressure");
+
         Mesh mesh(cfg);
         Fields fields;
         fields.add("pressure", mesh).fill(cfg.p_cav);

@@ -29,6 +29,30 @@ void compute_static(Field& h, const Mesh& mesh, const SimulationConfig& cfg) {
     }
 }
 
+void compute_moving_bearing(Field& h, Field& dh_dt, const Mesh& mesh,
+                            const SimulationConfig& cfg,
+                            const JournalMotion::BearingState& state) {
+    const double d_theta = mesh.get_d_theta();
+    const double d_z = mesh.get_d_z();
+
+    for (int j = 0; j < mesh.n_z_local; ++j) {
+        const double z = (j + 0.5) * d_z;
+        const double dz = z - 0.5 * cfg.L;
+
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            const double theta = (mesh.offset_theta + i + 0.5) * d_theta;
+            const double cos_t = std::cos(theta);
+            const double sin_t = std::sin(theta);
+
+            h(i, j) = cfg.c
+                + state.x * cos_t + state.y * sin_t
+                - cfg.tilt_slope_x * dz * cos_t
+                - cfg.tilt_slope_y * dz * sin_t;
+            dh_dt(i, j) = state.vx * cos_t + state.vy * sin_t;
+        }
+    }
+}
+
 void compute_inlet_indicator(Field& indicator, const Mesh& mesh, const SimulationConfig& cfg) {
     indicator.fill(0.0);
     if (cfg.inlets.empty()) return;

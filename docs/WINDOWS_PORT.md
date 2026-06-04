@@ -58,9 +58,12 @@ C:\Dev\pancake\build-windows-mingw\pancake.exe
 C:\Dev\pancake\build-windows-mingw\pancake_gui.exe
 ```
 
-The post-build runtime deploy step copies MinGW/PETSc DLLs beside the
-executables and tests. This includes `libpetsc-dmo.dll`, `libstdc++-6.dll`,
-`libopenblas.dll`, and related dependencies.
+The post-build runtime deploy step copies MinGW/PETSc DLLs beside `pancake.exe`
+and the tests. This includes `libpetsc-dmo.dll`, `libstdc++-6.dll`,
+`libopenblas.dll`, and related dependencies. `pancake_gui.exe` is statically
+linked (`-static` under MinGW, static CRT under MSVC), so it ships as a single
+self-contained executable that needs no runtime DLLs and is not part of the
+deploy step.
 
 ## Run
 
@@ -76,41 +79,50 @@ The GUI expects `pancake.exe` in the same directory as `pancake_gui.exe` or in
 
 ## GUI Layout
 
-The GUI uses a persistent backend header plus one main workspace:
+The GUI is a single tab-less workspace: an action bar on top, a resizable input
+rail on the left with a pinned live-summary card beneath it, a result viewport
+in the center, and a resizable console at the bottom.
 
-- Top-right header: solver executable, MPI ranks, Run, and Stop stay visible
-  on every tab.
-- `Workspace` left side: result preview above the process log. This side
-  receives most extra width/height when the window is maximized.
-- `Workspace` right side: scrollable parameter inspector with one item per row
-  and units beside each value.
-- Horizontal splitter: drag it to resize the result preview and log pane.
-- Timestep selector: choose `Latest` or a specific VTS step, or use previous
-  and next buttons to flip through written result files.
-- Colorbar and axes: show the current field, units, min/max-inclusive ticks,
-  and preview coordinates beside the heatmap.
-- Multi-rank assembly: each preview timestep is assembled from all matching
-  `processor*` VTS files.
-- `load_angle_deg`: visualization reference angle measured from the positive y
-  axis; the preview rotates the circumferential display relative to this load
-  reference.
-- Parameter units: per-value unit selectors affect GUI input while saved config
-  values remain in solver-native units.
-- Axial boundaries: for `ELROD_ADAMS`, the pressure rows are not used as
-  theta boundary values. `DIRICHLET` and `INLET_OUTLET` inflow use the separate
-  dimensionless film-content rows.
-- `film_content`: visualization output is the raw Elrod/JFO universal variable.
-  Cavitated cells are below one, while compressed full-film cells can exceed
-  one and are not clamped in the VTK files or GUI preview.
-- Process log: ANSI color codes from the backend are rendered as color instead
-  of raw escape fragments.
-- Inlet editor: `GROOVE` and `CIRCULAR` modes show only the relevant fields;
-  the unused config form is written as a comment.
+- Action bar: owner-drawn `Run` / `Stop` buttons, MPI `ranks`, a run-state chip
+  (`Idle` / `Running NN% · Ns` with a progress bar / `Done` / `Failed`), and the
+  file actions `Open…`, `Save`, `Save As…`, `Reload`, `Reset`, `Solver…`.
+- Input rail: a search filter, an `Advanced` toggle, a preset picker, and a
+  unit-system selector, above collapsible sections (Geometry, Operating/Fluid,
+  Mesh & Time, Cavitation, Axial Boundaries, Inlet, Output, Raw config.txt).
+  Section headers and field labels are painted by the rail's `WM_PAINT`; only
+  interactive controls are child windows. There are **no `BS_GROUPBOX` frames**
+  around live combos, which removes the z-order/paint fights of the old layout.
+- Live summary card: derived journal-bearing quantities (`ε = e/c`,
+  `h_min = c(1−ε)`, `h_max`, `c/R`, `L/D`, `U = ωR`, previewed field mean/max)
+  recomputed on every edit, plus a validation status line.
+- Validation: malformed or physically impossible inputs (`e ≥ c`, non-positive
+  grid/clearance, time-step ordering, empty output names) paint the field red
+  via `WM_CTLCOLOREDIT` and disable `Run` until resolved.
+- Configuration files: defaults to `config.txt` beside the executable; `Open…`
+  and `Save As…` use `GetOpenFileNameW` / `GetSaveFileNameW` (comdlg32) for
+  arbitrary `.txt` cases. The loaded file name and a dirty `*` marker show in
+  the title bar.
+- Units: a global SI ↔ engineering selector sets defaults; per-field override
+  dropdowns remain only where multiple units are realistic. Saved config values
+  remain in solver-native units.
+- Result viewport: field/timestep selectors, previous/next/refresh, a heatmap
+  with axes and a unit-labeled colorbar (min/max-inclusive ticks). Each preview
+  timestep is assembled from all matching `processor*` VTS files.
+- Progress: the run-state chip and progress bar are driven by parsing
+  `t=<value>` from solver stdout against `end_t`; `finished successfully` marks
+  completion.
+- `load_angle_deg`: visualization reference angle from the positive y axis; the
+  preview rotates the circumferential display relative to this load reference.
+- Axial boundaries: for `ELROD_ADAMS`, `DIRICHLET` / `INLET_OUTLET` inflow use
+  the dimensionless film-content rows rather than the pressure rows.
+- `film_content`: raw Elrod/JFO universal variable; cavitated cells are below
+  one and compressed cells can exceed one, unclamped in VTK and the preview.
+- Process log: ANSI color codes from the backend render as color.
+- Inlet editor: `GROOVE` / `CIRCULAR` modes show only the relevant fields; the
+  unused config form is written as a comment.
 - Visual styles: `src/pancake_gui.rc` embeds a ComCtl32 v6 manifest so the GUI
-  uses modern themed controls under MinGW. A light palette plus `WM_CTLCOLOR*`
-  handlers and a tab-control background subclass keep every surface consistent
-  instead of the default system grey. `enable_language(RC)` is required in the
-  CMake configure step for the GUI target.
+  uses modern themed controls under MinGW; `enable_language(RC)` is required in
+  the CMake configure step for the GUI target.
 - Application logo: `src/pancake.ico` is embedded in both `pancake.exe` and
   `pancake_gui.exe`; `src/pancake_logo.svg` is the editable source-style asset.
 

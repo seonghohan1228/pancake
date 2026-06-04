@@ -2,6 +2,263 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-06-04 - Energy equation and steady-state solution mode
+
+Reason: the next development step is thermal hydrodynamics, and fast case
+checks need a single steady operating-point solve instead of a full transient
+loop.
+
+**`config.txt` / `src/config.hpp` / `src/main.cpp`**
+- Synced the root config with the build-directory operating conditions:
+  `dt = 1e-6`, `write_interval = 1e-5`, RK2 time-method selections,
+  moving-bearing mode, independent external load, and the smaller minimum film
+  thickness limit.
+- Added `solution_mode = TRANSIENT|STEADY_STATE`. `STEADY_STATE` runs one
+  pressure/thermal step at `t=0` and skips motion advancement.
+- Added `temperature_model = ISOTHERMAL|ENERGY_EQUATION`, thermal properties,
+  wall temperatures, wall heat-transfer coefficients, and default output for
+  `temperature` and `heat_generation`.
+- Added `temperature` and `heat_generation` fields to the solver loop and call
+  the energy solve after pressure, velocity, and force updates.
+
+**`src/energy.hpp` / `src/energy.cpp`**
+- Added a constant-property film-averaged energy equation using the existing
+  FVM diffusion, upwind convection, weighted transient, and source assembly.
+- Computes viscous heat generation from Couette shear plus pressure-flow shear
+  and stores it as `heat_generation` in W/m^2.
+- Applies journal and bearing wall heat-transfer sinks/sources for steady and
+  transient thermal solves. `ISOTHERMAL` leaves `temperature` fixed while still
+  refreshing `heat_generation`.
+
+**`src/gui_win32.cpp`**
+- Added a clean Energy section for thermal model, temperature, material, and
+  wall heat-transfer inputs.
+- Added `solution_mode` selection in Mesh & Time and thermal preview units for
+  `temperature` and `heat_generation`.
+
+**`tests/test_energy.cpp` / `tests/CMakeLists.txt`**
+- Added regression coverage for thermal config aliases, isothermal heat refresh,
+  and the steady Couette wall-balance scale.
+
+**`README.md` / `PHYSICS.md` / `PLAN.md`**
+- Documented the energy equation, steady-state mode, GUI thermal controls, and
+  Phase D.1 implementation status.
+
+### 2026-06-04 - Bearing-side force convention and geometry
+
+Reason: the force outputs mixed shaft-side and bearing-side conventions. This
+made `load_*`, `viscous_force_*`, and `fluid_force_*` hard to interpret and
+could give surprising signs/scales when plotting or using them for motion.
+
+**`src/reynolds.cpp` / `src/reynolds.hpp`**
+- Reworked `calculate_macroscopic_properties` so pressure, viscous, and total
+  fluid forces are all forces applied by the fluid to the moving bearing
+  surface.
+- Pressure integration now uses the bearing surface area vector
+  `((R+h)e_r - h_theta e_theta - (R+h)h_z e_z) dtheta dz`, so circumferential
+  and axial film-thickness slopes are represented.
+- Viscous shear now uses bearing-side signs:
+  `tau_theta = mu omega R / h - h/(2R) dp/dtheta` and
+  `tau_z = -h/2 dp/dz` in full-film regions.
+- `fluid_force_*` is now `pressure_force_* + viscous_force_*`, not a negated
+  mixed shaft/bearing quantity.
+
+**`src/config.hpp` / `src/main.cpp` / `src/gui_win32.cpp` / `config.txt`**
+- Added `pressure_force_x`, `pressure_force_y`, and `pressure_force_z` output
+  fields. Legacy `load_x`, `load_y`, and `load_z` remain aliases for the
+  pressure-only resultant but are no longer part of the default output list.
+
+**`tests/test_forces.cpp` / `tests/CMakeLists.txt`**
+- Added regression coverage for pressure force surface geometry, axial viscous
+  shear sign/area, and shaft friction-torque scaling.
+
+**`README.md` / `PHYSICS.md` / `PLAN.md`**
+- Documented the force names and bearing-side convention.
+
+### 2026-06-04 - Inlet-pressure initialization
+
+Reason: the pressure field's flooded initial guess should start from the inlet
+supply pressure, not the cavitation pressure.
+
+**`src/config.hpp`**
+- Added `SimulationConfig::initial_pressure()`, returning the first configured
+  inlet `p_supply` and falling back to `p_cav` only when no inlet exists.
+
+**`src/main.cpp`**
+- Initializes `pressure` from `cfg.initial_pressure()` at field creation and
+  before each timestep solve.
+- Initializes the Elrod `theta` guess from the same pressure through the EOS, so
+  the pressure and film-content fields are consistent.
+
+**`tests/test_inlets.cpp`**
+- Added a regression assertion for the first-inlet initialization rule.
+
+**`README.md` / `PHYSICS.md` / `PLAN.md`**
+- Documented the inlet-pressure flooded guess and the no-inlet fallback.
+
+### 2026-06-04 - GUI load controls and preview refresh behavior
+
+Reason: the moving-bearing keys were available in `config.txt`, but not all of
+them had clean GUI inputs. The preview also refreshed contours during solver
+polling and recursively scanned result folders while switching steps, which made
+interactive use noisy and slow.
+
+**`src/gui_win32.cpp`**
+- Added a Motion / Loads rail section for `motion_model`, pressure/motion/
+  temperature time-method selection, external load magnitude/direction/z,
+  bearing initial state, support stiffness/damping, mass, minimum film
+  thickness, and stop-on-nonpositive-film settings.
+- Converts the GUI external-load magnitude and in-plane direction into
+  `external_load_x` and `external_load_y` on save, while preserving
+  `external_load_z` as an independent component.
+- Stopped refreshing the contour preview during solver timer polling. The
+  current contour remains visible while a run is active and refreshes when the
+  solver exits or when the user clicks Refresh.
+- Replaced per-load recursive VTS discovery with a cached per-step list of all
+  `processor*` files under `flat/` or the curved output root. Field and timestep
+  switching now reuses that list.
+
+**`README.md` / `PHYSICS.md` / `PLAN.md`**
+- Documented the Motion / Loads GUI inputs, load-vector conversion, stable
+  preview behavior during runs, and cached preview file indexing.
+
+### 2026-06-04 - Moving bearing dynamics and force-separated output
+
+Reason: dynamic bearing studies need the film forces to move the bearing
+housing while the shaft remains fixed. The previous roadmap used "journal
+motion" wording, but the requested model is the opposite sign convention:
+bearing-center displacement changes the gap as
+$h = c + x_b\cos\theta + y_b\sin\theta$ and the equivalent attitude angle is
+computed from the minimum-gap direction.
+
+**`src/config.hpp` / `config.txt`**
+- Added `MotionModel` with `STATIC` and `MOVING_BEARING`.
+- Added `TimeSteppingMethod` with `EULER_EXPLICIT`, `EULER_IMPLICIT`,
+  `CRANK_NICOLSON`, `RK2`, and `RK4`. The parser also accepts common aliases:
+  `EXPLICIT`, `IMPLICIT`, `SEMI_IMPLICIT`, `IMEX`, `CRANK_NICHOLSON`,
+  `MIDPOINT`, and `RUNGE_KUTTA_*`.
+- Added moving-bearing state, mass, support stiffness/damping, independent
+  external load, minimum film-thickness safety, and pressure/motion/temperature
+  time-method config keys.
+- Extended default output fields with `viscous_force_*`, `fluid_force_*`,
+  `external_load_*`, and `bearing_*` fields.
+
+**`src/journal_motion.hpp` / `src/journal_motion.cpp`**
+- Added a moving-bearing state module. Initial state can be derived from
+  `e`/`attitude_angle_deg` so `MOVING_BEARING` starts from exactly the same
+  film thickness as the static eccentricity model.
+- Implemented motion updates for explicit Euler, implicit Euler,
+  Crank-Nicolson, RK2, and RK4 under lagged fluid force plus independent
+  external load.
+- Added equivalent eccentricity/attitude helpers and uniform output-field
+  writers for bearing state and external load.
+
+**`src/film_thickness.hpp` / `src/film_thickness.cpp`**
+- Added `compute_moving_bearing`, using the fixed-shaft/moving-bearing sign
+  convention and computing `dh_dt` for squeeze-film coupling.
+
+**`src/reynolds.hpp` / `src/reynolds.cpp`**
+- `calculate_macroscopic_properties` now returns a `ForceComponents` result.
+- Kept legacy `load_x/load_y/load_z` as pressure-only force on the shaft.
+- Added integrated viscous force from circumferential and axial shear.
+- Added `fluid_force_x/y/z` as the equal-and-opposite total force applied to
+  the moving bearing, separate from configured `external_load_x/y/z`.
+- Added moving-gap squeeze-film source terms for Gumbel and Elrod; Elrod uses
+  implicit `rho*h*dtheta/dt` for non-explicit pressure methods and lagged
+  `theta*dh_dt` as an explicit source.
+
+**`src/main.cpp`**
+- Added moving-bearing state to the timestep loop. Each step updates `h` and
+  `dh_dt`, solves Reynolds, computes forces, writes force/state outputs, and
+  advances the bearing state for the next step.
+- Added a minimum film-thickness stop condition to prevent running into
+  nonphysical negative gaps.
+
+**`src/gui_win32.cpp`**
+- Preserves and emits the new time-method and moving-bearing config keys.
+- Added output checkboxes and preview units for the new force and bearing-state
+  fields.
+
+**`tests/test_journal_motion.cpp` / `tests/CMakeLists.txt`**
+- Added regression coverage for moving-bearing sign convention, attitude
+  recovery, config aliases, and constant-load motion integrators.
+
+**`README.md` / `PHYSICS.md` / `PLAN.md`**
+- Documented moving-bearing dynamics, force separation, time-method names,
+  squeeze-film coupling, and the updated Phase C status.
+
+### 2026-05-31 - Added future journal-motion and ETHD roadmap
+
+Reason: previous git history showed the energy equation only in the discarded
+bubble-solver plan, while the journal-bearing roadmap did not include dynamic
+journal motion or ETHD. The current physics documentation also only described
+the static-eccentricity, isothermal Reynolds/Elrod model.
+
+**`PLAN.md`**
+- Added Phase C, Dynamic Journal Motion, covering time-dependent film geometry,
+  squeeze-film transient Reynolds coupling, and a two-degree-of-freedom journal
+  force-balance model.
+- Added Phase D, Thermal and ETHD Implementation, covering the lubricant energy
+  equation, thermoviscous Reynolds coupling, elastic/thermal film-thickness
+  deformation, and the fully coupled ETHD Picard loop.
+- Extended the phase summary table with the new dynamic-motion and ETHD phases.
+
+**`PHYSICS.md`**
+- Added planned dynamic journal-motion equations for $h(\theta,z,t)$,
+  $\partial h/\partial t$, the expanded Elrod transient term, and rigid-journal
+  force balance.
+- Added planned ETHD equations for depth-averaged energy transport, viscous
+  dissipation, wall heat loss, temperature-dependent viscosity, elastic
+  compliance, thermal expansion, and coupled iteration order.
+
+### 2026-05-29 - GUI redesign to a single workspace + single-file binary
+
+Reason: the previous tab-based GUI felt dated and finicky. Live combo boxes were
+wrapped in `BS_GROUPBOX` frames, which forced constant `bring_control_to_front`
+/ z-order hacks (combos sometimes only painted after a click), the workflow was
+split across `Workspace` / `Output` / `Raw Config` tabs, and there was no live
+feedback — bad input was only reported by a `MessageBox` at save time. The goal
+was a layout that lets engineers change parameters and run quickly while
+preventing misunderstanding.
+
+**`src/gui_win32.cpp`** (UI layer rewritten from scratch; solver-process,
+VTS-preview, ANSI-log, and unit-conversion backends preserved):
+- Replaced the tabbed shell with one tab-less workspace: action/run bar on top,
+  a resizable input rail on the left with a pinned live-summary card, a result
+  viewport in the center, and a resizable console at the bottom (two drag
+  splitters).
+- Removed all `BS_GROUPBOX` frames around live controls. Section headers and
+  field labels are now painted in the rail's `WM_PAINT`; only interactive
+  controls are child windows. This eliminates the z-order/paint bugs and the
+  `raise_*` / `bring_control_to_front` workarounds entirely.
+- Input rail: collapsible sections, a search filter, and a Basic/`Advanced`
+  toggle for progressive disclosure.
+- Live summary card recomputes derived journal-bearing quantities on every edit
+  (`ε = e/c`, `h_min = c(1−ε)`, `h_max`, `c/R`, `L/D`, `U = ωR`, previewed-field
+  mean/max).
+- Inline validation: impossible/malformed inputs (`e ≥ c`, non-positive
+  grid/clearance, `dt`/`write_interval`/`end_t` ordering, empty output names)
+  paint the field red and disable `Run` until resolved, replacing the
+  save-time-only `MessageBox`.
+- Run state: owner-drawn `Run`/`Stop`, a state chip with elapsed time, and a
+  progress bar driven by parsing `t=<value>` from solver stdout against `end_t`.
+- Hybrid units: a global SI ↔ engineering (`mm`/`MPa`/`rpm`) selector sets
+  defaults, with per-field override dropdowns kept only where multiple units are
+  realistic; fixed-unit fields use a plain painted suffix (down from ~30 unit
+  combos). Saved config stays in solver-native units.
+- Scenario presets: Default bearing, High eccentricity, Misaligned, Circular
+  oil hole.
+- Custom config files: `config.txt` beside the exe is the default; `Open…` /
+  `Save As…` use the standard Windows file dialogs (`comdlg32`). The loaded file
+  name and a dirty `*` marker appear in the title bar.
+
+**`CMakeLists.txt`**
+- `pancake_gui` now links statically (`-static` under MinGW, static CRT under
+  MSVC) and links `comdlg32` + `ole32`, so it ships as a single self-contained
+  `pancake_gui.exe` with no runtime DLLs beside it. Dropped the
+  `pancake_deploy_mingw_runtime(pancake_gui)` call (the solver still deploys its
+  PETSc/MPI/MinGW DLLs).
+
 ### New files
 
 **`src/gui_win32.cpp`**

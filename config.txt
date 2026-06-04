@@ -14,8 +14,14 @@ n_z_global = 100
 
 # Time
 end_t = 0.1
-dt = 0.01
-write_interval = 0.1
+dt = 0.000001
+write_interval = 0.00001
+# solution_mode options: TRANSIENT, STEADY_STATE
+solution_mode = STEADY_STATE
+# Options: EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICOLSON, RK2, RK4
+pressure_time_method = RK2
+motion_time_method = RK2
+temperature_time_method = RK2
 
 # Physics
 omega = 314.159265359
@@ -23,6 +29,41 @@ mu = 0.1
 rho = 960
 p_cav = 0.0
 bulk_modulus = 1e9
+
+# Energy Equation
+# temperature_model options: ISOTHERMAL, ENERGY_EQUATION
+temperature_model = ENERGY_EQUATION
+temperature_initial = 300
+temperature_reference = 300
+journal_wall_temperature = 300
+bearing_wall_temperature = 300
+rho_cp = 1.92e6
+thermal_conductivity = 0.15
+journal_heat_transfer = 1000
+bearing_heat_transfer = 1000
+
+# Bearing Motion
+# motion_model options: STATIC, MOVING_BEARING
+motion_model = MOVING_BEARING
+bearing_initial_from_attitude = true
+bearing_initial_x = 0
+bearing_initial_y = 0
+bearing_initial_z = 0
+bearing_initial_vx = 0
+bearing_initial_vy = 0
+bearing_initial_vz = 0
+bearing_mass = 1
+bearing_stiffness_x = 0
+bearing_stiffness_y = 0
+bearing_stiffness_z = 0
+bearing_damping_x = 0
+bearing_damping_y = 0
+bearing_damping_z = 0
+external_load_x = 2.44921270764e-13
+external_load_y = 4000
+external_load_z = 0
+min_film_thickness = 1e-09
+stop_on_nonpositive_film = true
 
 # Axial Boundary Conditions (Outlets)
 # Options: DIRICHLET, NEUMANN, INLET_OUTLET
@@ -49,10 +90,17 @@ inlet_groove = 90 10 1.5e6
 
 # Output
 # output_fields accepts comma-separated field names.
-# Options: pressure, film_content, h, rho, inlet_indicator, velocity,
-#          load_x, load_y, load_z, friction_torque
+# Options: pressure, film_content, h, rho, temperature, heat_generation,
+#          inlet_indicator, velocity,
+#          pressure_force_x, pressure_force_y, pressure_force_z,
+#          load_x, load_y, load_z (legacy pressure-force aliases),
+#          viscous_force_x, viscous_force_y, viscous_force_z,
+#          fluid_force_x, fluid_force_y, fluid_force_z,
+#          external_load_x, external_load_y, external_load_z,
+#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,
+#          friction_torque
 output_dir = results
 filename_prefix = solution
 output_write_3d = true
 output_write_flat = true
-output_fields = pressure, film_content, h, rho, inlet_indicator, velocity, load_x, load_y, load_z, friction_torque
+output_fields = pressure, film_content, h, rho, temperature, heat_generation, inlet_indicator, velocity, pressure_force_x, pressure_force_y, pressure_force_z, viscous_force_x, viscous_force_y, viscous_force_z, fluid_force_x, fluid_force_y, fluid_force_z, external_load_x, external_load_y, external_load_z, bearing_x, bearing_y, bearing_z, bearing_attitude_angle, friction_torque
