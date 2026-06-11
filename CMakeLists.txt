@@ -21,6 +21,17 @@ configure_file(
     ${CMAKE_CURRENT_BINARY_DIR}/config.txt
     COPYONLY)
 
+set(PANCAKE_CASE_CONFIGS
+    config_r290_pz68.txt
+    config_r290_pz68_quick.txt)
+
+foreach(PANCAKE_CASE_CONFIG IN LISTS PANCAKE_CASE_CONFIGS)
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/${PANCAKE_CASE_CONFIG}
+        ${CMAKE_CURRENT_BINARY_DIR}/${PANCAKE_CASE_CONFIG}
+        COPYONLY)
+endforeach()
+
 function(pancake_copy_default_config target_name)
     add_custom_command(TARGET ${target_name} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -28,6 +39,17 @@ function(pancake_copy_default_config target_name)
             "$<TARGET_FILE_DIR:${target_name}>/config.txt"
         COMMENT "Copying config.txt next to target executable"
         VERBATIM)
+endfunction()
+
+function(pancake_copy_case_configs target_name)
+    foreach(PANCAKE_CASE_CONFIG IN LISTS PANCAKE_CASE_CONFIGS)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/${PANCAKE_CASE_CONFIG}"
+                "$<TARGET_FILE_DIR:${target_name}>/${PANCAKE_CASE_CONFIG}"
+            COMMENT "Copying ${PANCAKE_CASE_CONFIG} next to target executable"
+            VERBATIM)
+    endforeach()
 endfunction()
 
 function(pancake_deploy_mingw_runtime target_name)
@@ -47,9 +69,11 @@ endfunction()
 set(PANCAKE_HEADERS
     src/communicator.hpp
     src/config.hpp
+    src/diagnostics.hpp
     src/energy.hpp
     src/equation_of_state.hpp
     src/field.hpp
+    src/fluid_properties.hpp
     src/film_thickness.hpp
     src/fvm.hpp
     src/io.hpp
@@ -120,10 +144,13 @@ if(PANCAKE_BUILD_SOLVER)
 
     set(PANCAKE_CORE_SOURCES
         src/communicator.cpp
+        src/diagnostics.cpp
         src/energy.cpp
         src/field.cpp
+        src/fluid_properties.cpp
         src/film_thickness.cpp
         src/fvm.cpp
+        src/gas_transport.cpp
         src/io.cpp
         src/journal_motion.cpp
         src/linear_system.cpp
@@ -163,6 +190,7 @@ if(PANCAKE_BUILD_SOLVER)
             OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/pancake.ico")
     endif()
     pancake_copy_default_config(pancake)
+    pancake_copy_case_configs(pancake)
     pancake_deploy_mingw_runtime(pancake)
 
     if(PANCAKE_BUILD_TESTS)
@@ -174,32 +202,109 @@ else()
 endif()
 
 if(WIN32 AND PANCAKE_BUILD_GUI)
-    # The ComCtl32 v6 dependency (modern visual styles) is embedded through a
-    # manifest resource. MSVC also honours the #pragma in gui_win32.cpp, but
-    # MinGW needs the compiled .rc, so wire it in for every Windows compiler.
     enable_language(RC)
+    include(FetchContent)
+
+    # Dear ImGui (docking branch) + ImPlot, pinned releases fetched at
+    # configure time. No system packages, no DLLs - everything is compiled
+    # into pancake_gui.exe.
+    FetchContent_Declare(imgui
+        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b-docking.zip)
+    FetchContent_Declare(implot
+        URL https://github.com/epezent/implot/archive/refs/tags/v0.17.zip)
+    FetchContent_MakeAvailable(imgui implot)
+
+    add_library(pancake_imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp)
+    target_compile_features(pancake_imgui PUBLIC cxx_std_20)
+    target_include_directories(pancake_imgui PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+        ${implot_SOURCE_DIR})
+    target_compile_definitions(pancake_imgui PUBLIC
+        IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+        IMGUI_DISABLE_DEMO_WINDOWS
+        IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
+        UNICODE _UNICODE NOMINMAX)
+
+    # Embedded assets: fonts are converted to C arrays at build time, so the
+    # exe reads zero asset files from disk at startup.
+    set(PANCAKE_GUI_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    file(MAKE_DIRECTORY ${PANCAKE_GUI_GENERATED_DIR})
+    function(pancake_embed_binary input_file symbol header_name)
+        add_custom_command(
+            OUTPUT ${PANCAKE_GUI_GENERATED_DIR}/${header_name}
+            COMMAND ${CMAKE_COMMAND}
+                -DEMBED_INPUT=${input_file}
+                -DEMBED_OUTPUT=${PANCAKE_GUI_GENERATED_DIR}/${header_name}
+                -DEMBED_SYMBOL=${symbol}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
+            DEPENDS ${input_file} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake
+            COMMENT "Embedding ${header_name}"
+            VERBATIM)
+    endfunction()
+    pancake_embed_binary(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/Roboto-Regular.ttf
+        g_font_roboto_regular embedded_roboto_regular.h)
+    pancake_embed_binary(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/Roboto-Medium.ttf
+        g_font_roboto_medium embedded_roboto_medium.h)
+    pancake_embed_binary(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/JetBrainsMono-Regular.ttf
+        g_font_jetbrains_mono embedded_jetbrains_mono.h)
+
     add_executable(pancake_gui WIN32
-        src/gui_win32.cpp
-        src/pancake_gui.rc
-        src/config.hpp)
+        src/gui/main_gui.cpp
+        src/gui/gui_app.cpp
+        src/gui/panels_setup.cpp
+        src/gui/panels_results.cpp
+        src/gui/solver_runner.cpp
+        src/gui/results.cpp
+        src/gui/schema.cpp
+        src/gui/exports.cpp
+        src/gui/settings.cpp
+        src/gui/theme.cpp
+        src/gui/pancake_gui.rc
+        ${PANCAKE_GUI_GENERATED_DIR}/embedded_roboto_regular.h
+        ${PANCAKE_GUI_GENERATED_DIR}/embedded_roboto_medium.h
+        ${PANCAKE_GUI_GENERATED_DIR}/embedded_jetbrains_mono.h)
     target_compile_features(pancake_gui PRIVATE cxx_std_20)
-    target_include_directories(pancake_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    # windres resolves the manifest path relative to its include dirs.
-    set_source_files_properties(src/pancake_gui.rc PROPERTIES
+    target_include_directories(pancake_gui PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gui
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
+        ${PANCAKE_GUI_GENERATED_DIR})
+    # windres resolves resource paths relative to its include dirs.
+    set_source_files_properties(src/gui/pancake_gui.rc PROPERTIES
         INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/src
-        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/pancake.ico;${CMAKE_CURRENT_SOURCE_DIR}/src/pancake_gui.manifest")
-    target_compile_definitions(pancake_gui PRIVATE UNICODE _UNICODE NOMINMAX)
-    target_link_libraries(pancake_gui PRIVATE shell32 comctl32 gdi32 comdlg32 ole32)
-    # Ship the GUI as a single self-contained pancake_gui.exe: it depends only on
-    # Windows system DLLs, so we statically link the C/C++ runtime instead of
-    # deploying MinGW runtime DLLs beside it.
+        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/pancake.ico;${CMAKE_CURRENT_SOURCE_DIR}/src/gui/pancake_gui.manifest")
+    target_link_libraries(pancake_gui PRIVATE pancake_imgui
+        d3d11 dxgi d3dcompiler dwmapi user32 gdi32 shell32 ole32 comdlg32)
+
+    # Warnings-as-errors for first-party GUI sources only (not third-party).
+    if(MSVC)
+        target_compile_options(pancake_gui PRIVATE /W4 /WX)
+    else()
+        target_compile_options(pancake_gui PRIVATE -Wall -Wextra -Werror)
+    endif()
+
+    # Single statically linked exe: only Windows-shipped DLLs in the import
+    # table (no vcruntime/msvcp, no MinGW runtime DLLs).
     if(MINGW)
         target_link_options(pancake_gui PRIVATE -municode -static)
     elseif(MSVC)
         set_property(TARGET pancake_gui PROPERTY
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        set_property(TARGET pancake_imgui PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+    # Convenience for local runs; the exe itself does not require these files.
     pancake_copy_default_config(pancake_gui)
+    pancake_copy_case_configs(pancake_gui)
 elseif(PANCAKE_BUILD_GUI)
     message(STATUS "PANCAKE_BUILD_GUI is ON, but the native GUI is Windows-only.")
 endif()

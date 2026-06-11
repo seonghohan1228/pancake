@@ -2,6 +2,7 @@
 build/
 build-linux/
 build-windows-mingw/
+build-gui-check/
 
 # Results
 results/
