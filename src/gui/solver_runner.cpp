@@ -251,10 +251,12 @@ void SolverRunner::finish_line(std::string&& line) {
         ++i;
     }
 
-    // Progress: "Step <n> t=<t>" lines, plus the final success marker.
-    if (clean.rfind("Step ", 0) == 0) {
-        progress_.step = std::atoi(clean.c_str() + 5);
-        const size_t t_pos = clean.find("t=");
+    // Progress: "Step <n> t=<t>" lines (indented by the solver logger), plus
+    // the final success marker.
+    const size_t first_char = clean.find_first_not_of(' ');
+    if (first_char != std::string::npos && clean.compare(first_char, 5, "Step ") == 0) {
+        progress_.step = std::atoi(clean.c_str() + first_char + 5);
+        const size_t t_pos = clean.find("t=", first_char);
         if (t_pos != std::string::npos) {
             progress_.sim_t = std::atof(clean.c_str() + t_pos + 2);
         }

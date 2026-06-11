@@ -239,12 +239,13 @@ void GuiApp::draw_heatmap_tab() {
                            ImGui::GetContentRegionAvail().y);
     ImVec2 capture_min(0, 0), capture_max(0, 0);
 
+    // Outer edge of the last cell row (cell centers + half spacing).
+    const double z_max = grid.z_m.empty() ? 1.0 : grid.z_m.back() + grid.z_m.front();
+
     ImPlot::PushColormap(ImPlotColormap_Viridis);
     if (ImPlot::BeginPlot("##fieldmap", plot_size, ImPlotFlags_NoLegend)) {
         ImPlot::SetupAxes("bearing angle [deg]", "axial position z [m]");
-        ImPlot::SetupAxesLimits(0, 360, 0, running_config_.L > 0 ? grid.z_m.back() * 1.02 : 1.0,
-                                ImPlotCond_Once);
-        const double z_max = grid.z_m.empty() ? 1.0 : grid.z_m.back() + grid.z_m.front();
+        ImPlot::SetupAxesLimits(0, 360, 0, z_max, ImPlotCond_Once);
         ImPlot::PlotHeatmap("##values", display.data(), grid.ny, grid.nx, scale_min, scale_max,
                             nullptr, ImPlotPoint(0, 0), ImPlotPoint(360, z_max));
 
@@ -460,6 +461,24 @@ void GuiApp::draw_summary_tab() {
 
     const RunRecord* last_record = history_.empty() ? nullptr : &history_.back();
 
+    // Prefer the solver's own resultant fields for this step; fall back to the
+    // last run record (DETAILED-stdout parse) when the fields are not written.
+    const auto first_cell = [&](const char* name) {
+        const auto* values = grid.field(name);
+        return (values && !values->empty()) ? (*values)[0]
+                                            : std::numeric_limits<double>::quiet_NaN();
+    };
+    double torque = first_cell("friction_torque");
+    if (!std::isfinite(torque) && last_record) torque = last_record->friction_torque;
+    double attitude = first_cell("bearing_attitude_angle");
+    if (!std::isfinite(attitude) && last_record) attitude = last_record->attitude_deg;
+    const double omega = last_record ? last_record->config.omega : config_.omega;
+    const double power =
+        std::isfinite(torque) ? std::abs(torque * omega)
+                              : std::numeric_limits<double>::quiet_NaN();
+    const double force_x = first_cell("F.x");
+    const double force_y = first_cell("F.y");
+
     ImGui::PushFont(fonts.heading);
     ImGui::Text("Key results - step %d (t = %.6g s)", grid.step, grid.time);
     ImGui::PopFont();
@@ -471,10 +490,13 @@ void GuiApp::draw_summary_tab() {
         copyable_value("Minimum film thickness", h_stats.valid ? h_stats.min : NAN, "m");
         copyable_value("Peak pressure", p_stats.valid ? p_stats.max : NAN, "Pa");
         copyable_value("Cavitated area fraction", cavitated_fraction, "-", "%.4f");
+        copyable_value("Attitude angle", attitude, "deg", "%.2f");
+        copyable_value("Friction torque", torque, "N.m");
+        copyable_value("Friction power loss", power, "W");
+        if (std::isfinite(force_x) && std::isfinite(force_y)) {
+            copyable_value("Fluid force magnitude", std::hypot(force_x, force_y), "N");
+        }
         if (last_record) {
-            copyable_value("Attitude angle", last_record->attitude_deg, "deg", "%.2f");
-            copyable_value("Friction torque", last_record->friction_torque, "N.m");
-            copyable_value("Friction power loss", last_record->friction_power, "W");
             copyable_value("Axial boundary mass flux", last_record->boundary_flux, "kg/s");
         }
         if (temperature_stats.valid) {
@@ -485,8 +507,9 @@ void GuiApp::draw_summary_tab() {
         }
         ImGui::EndTable();
     }
-    if (last_record && !std::isfinite(last_record->friction_torque)) {
-        ImGui::TextDisabled("Friction torque/power need Output > Terminal verbosity = Detailed.");
+    if (!std::isfinite(torque)) {
+        ImGui::TextDisabled("Friction torque needs 'friction_torque' in output_fields or "
+                            "Detailed terminal verbosity.");
     }
     ImGui::Separator();
     ImGui::TextDisabled("Full fields: Results > Field map, or open the run in ParaView "

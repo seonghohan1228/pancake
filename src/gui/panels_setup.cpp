@@ -202,6 +202,10 @@ void GuiApp::draw_form_tab() {
         if (ImGui::Selectable("Reset to defaults")) {
             const std::string output_dir = config_.output_dir;
             config_ = SimulationConfig{};
+            // Runnable atmospheric defaults (see default_case in gui_app.cpp).
+            config_.p_cav = 101325.0;
+            config_.bc_z_south_val = 101325.0;
+            config_.bc_z_north_val = 101325.0;
             config_.output_dir = output_dir;
             dirty_ = true;
         }

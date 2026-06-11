@@ -48,9 +48,21 @@ std::string local_time_string() {
     return text;
 }
 
+/// Runnable defaults for a typical journal bearing. The raw SimulationConfig
+/// defaults fail the solver's validation (p_cav and the axial boundary
+/// pressures default to 0; the solver requires absolute pressures > 0).
+SimulationConfig default_case() {
+    SimulationConfig config;
+    config.p_cav = 101325.0;
+    config.bc_z_south_val = 101325.0;
+    config.bc_z_north_val = 101325.0;
+    return config;
+}
+
 }  // namespace
 
 void GuiApp::init() {
+    config_ = default_case();
     settings.load(paths.settings_file);
     if (!settings.last_config.empty()) {
         const fs::path last = winutil::utf8_to_path(settings.last_config);
@@ -64,6 +76,11 @@ void GuiApp::init() {
     sync_raw_from_config();
     std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s",
                   settings.solver_path.c_str());
+
+    // Pick up results from a previous session right away.
+    const fs::path output_dir = resolve_output_dir();
+    std::error_code ec;
+    if (fs::exists(output_dir / "results.pvd", ec)) request_scan(output_dir);
 }
 
 void GuiApp::shutdown() {
@@ -241,6 +258,17 @@ void GuiApp::draw_status_bar() {
     ImGui::TextColored(chip_color, "[%s]", state_text.c_str());
 
     ImGui::SameLine();
+    {
+        std::string solver_source;
+        if (discover_solver(solver_source).empty()) {
+            ImGui::TextColored(theme::kWarn, "solver not found");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                ImGui::SetTooltip("pancake.exe was not found.\nPlace it next to this program or "
+                                  "set the path in Tools > Settings.");
+            }
+            ImGui::SameLine();
+        }
+    }
     if (progress_.state == SolverState::Running || progress_.elapsed_s > 0.0) {
         ImGui::TextDisabled("elapsed %.1f s", progress_.elapsed_s);
         ImGui::SameLine();
@@ -481,23 +509,18 @@ void GuiApp::fill_history_results(RunRecord& record) {
         if (std::isfinite(p_max)) record.p_max = p_max;
     }
 
-    // Attitude angle: from the bearing position when it moved, otherwise the
-    // configured initial value.
-    const auto* bearing_x = grid_->field("xB.x");
-    const auto* bearing_y = grid_->field("xB.y");
-    if (bearing_x && bearing_y && !bearing_x->empty()) {
-        const double ecc_x = -(*bearing_x)[0];
-        const double ecc_y = -(*bearing_y)[0];
-        if (std::abs(ecc_x) > 1e-15 || std::abs(ecc_y) > 1e-15) {
-            const double load_rad = record.config.load_angle_deg * 3.14159265358979 / 180.0;
-            const double load_x = std::cos(load_rad);
-            const double load_y = std::sin(load_rad);
-            const double cross = load_x * ecc_y - load_y * ecc_x;
-            const double dot = load_x * ecc_x + load_y * ecc_y;
-            record.attitude_deg = std::abs(std::atan2(cross, dot)) * 180.0 / 3.14159265358979;
-        }
-    } else {
-        record.attitude_deg = record.config.attitude_angle_deg;
+    // The solver writes these resultants as constant cell fields when enabled.
+    const auto first_cell = [&](const char* name) {
+        const auto* values = grid_->field(name);
+        return (values && !values->empty()) ? (*values)[0]
+                                            : std::numeric_limits<double>::quiet_NaN();
+    };
+    const double attitude = first_cell("bearing_attitude_angle");
+    record.attitude_deg = std::isfinite(attitude) ? attitude : record.config.attitude_angle_deg;
+    const double torque = first_cell("friction_torque");
+    if (std::isfinite(torque)) {
+        record.friction_torque = torque;
+        record.friction_power = std::abs(torque * record.config.omega);
     }
 
     // Mid-plane profiles for overlay comparison.
@@ -522,7 +545,7 @@ void GuiApp::fill_history_results(RunRecord& record) {
 // ---------------------------------------------------------------------------
 
 void GuiApp::new_case() {
-    config_ = SimulationConfig{};
+    config_ = default_case();
     config_path_.clear();
     dirty_ = false;
     sync_raw_from_config();

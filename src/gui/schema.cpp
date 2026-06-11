@@ -1,6 +1,8 @@
 #include "schema.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <set>
 
 const char* group_label(ParamGroup group) {
     switch (group) {
@@ -60,8 +62,9 @@ const std::vector<DoubleSpec>& double_specs() {
         {"rho", "Density", "kg/m^3", "Lubricant density. Mineral oils are about 850-900 kg/m^3.",
          &SC::rho, ParamGroup::Lubricant, false, 0.0, kInf, true},
         {"p_cav", "Cavitation pressure", "Pa",
-         "Absolute pressure at which the film ruptures. 0 for gauge-zero rupture.", &SC::p_cav,
-         ParamGroup::Lubricant, false, -kInf, kInf, false},
+         "Absolute pressure at which the film ruptures. About 101325 Pa for atmospheric "
+         "cavitation; inputs are absolute, not gauge.", &SC::p_cav,
+         ParamGroup::Lubricant, false, 0.0, kInf, true},
         {"bulk_modulus", "Bulk modulus", "Pa",
          "Liquid compressibility for the Elrod-Adams model. Oils are about 1-2 GPa.",
          &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true},
@@ -254,6 +257,31 @@ const std::vector<BoolSpec>& bool_specs() {
 
 namespace {
 
+/// Maps a solver validation message to a config key for field highlighting.
+/// Solver messages start with the key they complain about ("p_cav must be...",
+/// "inlet[0].p_supply must be..."); unknown shapes map to "" (list-only).
+std::string field_for_message(const std::string& message) {
+    static std::vector<std::string> keys = [] {
+        std::vector<std::string> all;
+        for (const auto& spec : double_specs()) all.push_back(spec.key);
+        for (const auto& spec : int_specs()) all.push_back(spec.key);
+        for (const auto& spec : bool_specs()) all.push_back(spec.key);
+        // Longest first so "dissolved_gas_max" wins over a hypothetical prefix.
+        std::sort(all.begin(), all.end(),
+                  [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+        return all;
+    }();
+    if (message.rfind("inlet[", 0) == 0) return "inlets";
+    if (message.rfind("n_theta_global", 0) == 0) return "n_theta_global";
+    for (const std::string& key : keys) {
+        if (message.size() > key.size() && message.compare(0, key.size(), key) == 0 &&
+            message[key.size()] == ' ') {
+            return key;
+        }
+    }
+    return "";
+}
+
 void check_range(const DoubleSpec& spec, const SimulationConfig& config,
                  std::vector<ValidationIssue>& issues) {
     const double value = config.*(spec.member);
@@ -291,75 +319,20 @@ std::vector<ValidationIssue> validate_config(const SimulationConfig& config) {
         }
     }
 
-    // Cross-field physical consistency.
-    if (config.e >= config.c) {
-        issues.push_back({true, "e",
-                          "Eccentricity must be smaller than the radial clearance (e < c), "
-                          "otherwise the surfaces touch."});
-    }
-    if (config.c >= config.R) {
+    // GUI-only ergonomics the solver does not check.
+    if (config.c > 0.0 && config.R > 0.0 && config.c >= config.R) {
         issues.push_back({true, "c", "Radial clearance must be much smaller than the radius."});
     }
-    if (config.solution_mode == SolutionMode::TRANSIENT) {
+    if (config.solution_mode == SolutionMode::TRANSIENT && config.dt > 0.0 &&
+        config.end_t > 0.0) {
         if (config.dt > config.end_t) {
-            issues.push_back({true, "dt", "Time step exceeds the end time."});
+            issues.push_back({false, "dt", "Time step exceeds the end time; only one step runs."});
         }
-        if (config.write_interval < config.dt) {
-            issues.push_back({false, "write_interval",
-                              "Write interval is below the time step; every step will be saved."});
-        }
-        const double steps = config.end_t / config.dt;
-        if (steps > 2e6) {
+        if (config.end_t / config.dt > 2e6) {
             issues.push_back({false, "dt",
-                              "More than 2 million time steps configured; this run will take very long."});
+                              "More than 2 million time steps configured; this run will take "
+                              "very long."});
         }
-    }
-    if (config.cavitation_model == CavitationModel::ELROD_ADAMS) {
-        if (config.bulk_modulus <= 0.0) {
-            issues.push_back({true, "bulk_modulus",
-                              "Elrod-Adams cavitation requires a positive bulk modulus."});
-        }
-    }
-    const auto check_bc = [&](BCType type, double value, const char* key, const char* side) {
-        if (type == BCType::DIRICHLET && value < config.p_cav) {
-            issues.push_back({false, key,
-                              std::string(side) +
-                                  " boundary pressure is below the cavitation pressure; the "
-                                  "boundary will cavitate."});
-        }
-    };
-    check_bc(config.bc_z_south_type, config.bc_z_south_val, "bc_z_south_val", "South");
-    check_bc(config.bc_z_north_type, config.bc_z_north_val, "bc_z_north_val", "North");
-
-    if (config.temperature_model == TemperatureModel::ENERGY_EQUATION) {
-        if (config.rho_cp <= 0.0) {
-            issues.push_back({true, "rho_cp",
-                              "The energy equation requires a positive volumetric heat capacity."});
-        }
-        if (config.thermal_conductivity <= 0.0) {
-            issues.push_back({true, "thermal_conductivity",
-                              "The energy equation requires a positive thermal conductivity."});
-        }
-    }
-    if (config.fluid_property_model != FluidPropertyModel::CONSTANT) {
-        if (config.dissolved_gas_initial > config.dissolved_gas_max) {
-            issues.push_back({true, "dissolved_gas_initial",
-                              "Initial dissolved gas exceeds the configured maximum."});
-        }
-    }
-    if (config.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE) {
-        const bool needs_mu_gas =
-            config.gas_mixture_viscosity_model == GasMixtureViscosityModel::DUKLER_VOID ||
-            config.gas_mixture_viscosity_model == GasMixtureViscosityModel::MCADAMS_QUALITY ||
-            config.gas_mixture_viscosity_model == GasMixtureViscosityModel::LINEAR_QUALITY;
-        if (needs_mu_gas && config.mu_gas <= 0.0) {
-            issues.push_back({true, "mu_gas",
-                              "The selected two-phase viscosity model needs a positive free-gas "
-                              "viscosity."});
-        }
-    }
-    if (config.motion_model == MotionModel::MOVING_BEARING && config.bearing_mass <= 0.0) {
-        issues.push_back({true, "bearing_mass", "The moving bearing needs a positive mass."});
     }
     if (config.output_dir.empty()) {
         issues.push_back({true, "output_dir", "Output directory must not be empty."});
@@ -377,18 +350,33 @@ std::vector<ValidationIssue> validate_config(const SimulationConfig& config) {
     }
     for (size_t i = 0; i < config.inlets.size(); ++i) {
         const InletConfig& inlet = config.inlets[i];
-        const std::string label = "Inlet " + std::to_string(i + 1);
-        if (inlet.size <= 0.0) {
-            issues.push_back({true, "inlets", label + ": size must be positive."});
-        }
-        if (inlet.p_supply < config.p_cav) {
-            issues.push_back({false, "inlets",
-                              label + ": supply pressure is below the cavitation pressure."});
-        }
         if (inlet.type == InletConfig::Type::CIRCULAR &&
             (inlet.z < 0.0 || inlet.z > config.L)) {
-            issues.push_back({true, "inlets", label + ": axial position is outside [0, L]."});
+            issues.push_back({true, "inlets",
+                              "Inlet " + std::to_string(i + 1) +
+                                  ": axial position is outside [0, L]."});
         }
     }
+
+    // The solver's own validation is the source of truth: anything it rejects
+    // must disable Run, with the field highlighted when the message names it.
+    std::set<std::string> flagged_fields;
+    for (const ValidationIssue& issue : issues) {
+        if (issue.is_error && !issue.field.empty()) flagged_fields.insert(issue.field);
+    }
+    std::vector<std::string> solver_errors, solver_warnings;
+    config.validate(solver_errors, solver_warnings);
+    const auto merge = [&](const std::vector<std::string>& messages, bool is_error) {
+        for (const std::string& message : messages) {
+            std::string field = field_for_message(message);
+            if (is_error && !field.empty() && flagged_fields.count(field) > 0) {
+                continue;  // a range check already reported this field
+            }
+            if (is_error && !field.empty()) flagged_fields.insert(field);
+            issues.push_back({is_error, field, message});
+        }
+    };
+    merge(solver_errors, true);
+    merge(solver_warnings, false);
     return issues;
 }
