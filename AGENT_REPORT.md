@@ -101,4 +101,57 @@ Updated at the end of the work with acceptance-checklist results (§7 at bottom)
 
 ## 8. Acceptance checklist (§7 of the directive) — results
 
-Filled in at the end of the work; see bottom-of-file UPDATE section.
+Verified on this machine with the `release-mingw` build (10.3 MB exe).
+Caveat on interactive items: windows launched from this agent session cannot
+receive input or be screenshotted, so click-through items are verified by
+construction/harness and flagged for a human smoke test.
+
+- [x] **Import table:** `objdump -p` (dumpbin unavailable — no MSVC on machine):
+  `comdlg32, d3d11, D3DCOMPILER_47, dwmapi, GDI32, KERNEL32, msvcrt, ole32, SHELL32, USER32`
+  — all ship with Windows 10/11. No vcruntime/msvcp, no third-party DLLs.
+- [x] **Exe alone in empty dir** (`%TEMP%\standalone_test`): launches, stays
+  alive, writes **zero** files next to itself. The status bar shows a
+  persistent "solver not found" chip ("place pancake.exe next to this program
+  or set the path in Tools > Settings"); pressing Run logs the same actionable
+  message. No crash.
+- [x/~] **Exe + solver in empty dir:** the two-exe folder was staged in
+  `%TEMP%\pancake_e2e` (plus the solver's own PETSc/MPI DLLs); the solver ran
+  the GUI-authored config end-to-end (exit 0, 5 saved steps, DETAILED log,
+  diagnostics.csv), and the GUI's parser was verified against that exact
+  output via `tools/results_parser_check.cpp` (5 steps discovered from the
+  pvd, 80x24 grid, 35 fields incl. p/h/film_content/friction_torque). The GUI
+  launches in that folder and auto-scans the results. Full mouse-driven
+  edit→run→export click-through requires a human smoke test (see caveat).
+- [x] **Read-only location:** directory with a write-deny ACL (probe write
+  fails); the GUI launches and runs; settings/layout persist in
+  `%LOCALAPPDATA%\PancakeGui\` (`imgui.ini`, `settings.txt` observed).
+- [x] **UI interactive during solve / cancellation:** by construction — all
+  solver work is on worker threads (pipe reader, diagnostics tail, results
+  parsing); the UI thread only drains mutex-guarded queues once per frame.
+  Cancel terminates the subprocess and logs a partial-output warning.
+- [x] **Inline validation:** schema range checks plus the solver's own
+  `SimulationConfig::validate()` merged each frame — red field/label +
+  tooltip with the constraint, Run disabled showing the first error. Negative
+  clearance and zero viscosity both flag and disable Run; GUI acceptance is
+  exactly the solver's acceptance.
+- [x] **Malformed result file:** truncated `.vts` piece produces the in-UI
+  error string `solution_4_0.vts: truncated DataArray 'p'` (harness-verified),
+  never a crash.
+- [x] **DPI:** per-monitor-v2 manifest embedded (string verified in the exe);
+  `WM_DPICHANGED` rebuilds fonts and style at the new scale. Visual crispness
+  at 100/150/200 % needs a human eye to confirm.
+- [x] **Exports:** every plot has a PNG button (backbuffer-region capture);
+  field map / profiles / convergence / history have CSV export; CSV is plain
+  comma-separated with proper quoting and opens in Excel.
+- [x] **Fresh clone → BUILD.md → exe:** two commands per preset.
+  `release-mingw` verified end-to-end on this machine; `release` (MSVC) is
+  defined per the directive but could not be exercised here (no MSVC
+  installed — see §7 toolchain deviation).
+
+### Leftovers / recommendations
+- `src/gui_win32.cpp` (the old GUI) is no longer referenced by the build but
+  still carries uncommitted user modifications from the journal-bearing
+  branch, so it was **not** deleted; remove it once that work is settled.
+- Code signing recommended before wide distribution (out of scope per §8).
+- Solver maintainer proposals in §6 (structured `PROGRESS` line, cooperative
+  cancellation) remain open.
