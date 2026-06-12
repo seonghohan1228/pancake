@@ -242,6 +242,15 @@ void GuiApp::draw_heatmap_tab() {
     static bool show_cavitation = true;
     ImGui::Checkbox("##cavzone", &show_cavitation);
     ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Inlet zones");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Outline cells inside oil inlets/grooves (inlet_indicator field).");
+    }
+    ImGui::SameLine();
+    static bool show_inlets = true;
+    ImGui::Checkbox("##inletzone", &show_inlets);
+    ImGui::SameLine();
     if (ImGui::SmallButton("CSV")) export_grid_csv();
     ImGui::SameLine();
     bool want_png = ImGui::SmallButton("PNG");
@@ -379,8 +388,44 @@ void GuiApp::draw_heatmap_tab() {
                     ImPlot::PopColormap();
                 }
             } else {
-                ImPlot::Annotation(0.5 * nx, 0.5 * ny, ImVec4(1, 1, 1, 0.6), ImVec2(0, 0), true,
+                ImPlot::Annotation(0.5 * nx, 0.55 * ny, ImVec4(1, 1, 1, 0.6), ImVec2(0, 0), true,
                                    "film_content not in output_fields - cavitation overlay "
+                                   "unavailable");
+            }
+        }
+
+        if (show_inlets) {
+            const auto* inlet_indicator = grid.field("inlet_indicator");
+            if (inlet_indicator) {
+                static std::vector<double> inlet_mask;
+                inlet_mask.assign(inlet_indicator->size(), 0.0);
+                bool any = false;
+                for (int j = 0; j < grid.ny; ++j) {
+                    const size_t source_row = static_cast<size_t>(j) * grid.nx;
+                    const size_t target_row = static_cast<size_t>(grid.ny - 1 - j) * grid.nx;
+                    for (int i = 0; i < grid.nx; ++i) {
+                        const double indicator = (*inlet_indicator)[source_row + i];
+                        if (std::isfinite(indicator) && indicator > 0.5) {
+                            inlet_mask[target_row + i] = 1.0;
+                            any = true;
+                        }
+                    }
+                }
+                if (any) {
+                    static ImPlotColormap inlet_colormap = -1;
+                    if (inlet_colormap == -1) {
+                        const ImU32 colors[2] = {IM_COL32(0, 0, 0, 0),
+                                                 IM_COL32(90, 190, 255, 140)};
+                        inlet_colormap = ImPlot::AddColormap("##inlet_mask", colors, 2, false);
+                    }
+                    ImPlot::PushColormap(inlet_colormap);
+                    ImPlot::PlotHeatmap("##inlets", inlet_mask.data(), grid.ny, grid.nx, 0.0, 1.0,
+                                        nullptr, ImPlotPoint(0, 0), ImPlotPoint(nx, ny));
+                    ImPlot::PopColormap();
+                }
+            } else if (!config_.inlets.empty()) {
+                ImPlot::Annotation(0.5 * nx, 0.45 * ny, ImVec4(1, 1, 1, 0.6), ImVec2(0, 0), true,
+                                   "inlet_indicator not in output_fields - inlet overlay "
                                    "unavailable");
             }
         }
@@ -401,6 +446,11 @@ void GuiApp::draw_heatmap_tab() {
                     if (std::isfinite(content) && content < 0.999) {
                         ImGui::TextColored(theme::kWarn, "cavitated (film content %.3f)", content);
                     }
+                }
+                const auto* inlet_indicator = grid.field("inlet_indicator");
+                if (inlet_indicator &&
+                    (*inlet_indicator)[static_cast<size_t>(j) * grid.nx + i] > 0.5) {
+                    ImGui::TextColored(ImVec4(0.45f, 0.78f, 1.0f, 1.0f), "inlet region");
                 }
                 ImGui::EndTooltip();
             }
