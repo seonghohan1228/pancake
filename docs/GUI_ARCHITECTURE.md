@@ -13,9 +13,9 @@ what constitutes a valid case.
 |---|---|
 | `main_gui.cpp` | Platform layer: window, D3D11 device/swapchain, ImGui/ImPlot lifecycle, per-monitor-v2 DPI (font/style rebuild on `WM_DPICHANGED`), frame loop, backbuffer-region PNG capture |
 | `gui_app.hpp/.cpp` | `GuiApp` - the single application-state object (no globals): lifecycle, dock layout, menu, status bar, run control, config file handling, CSV/PNG export glue |
-| `panels_setup.cpp` | Case Setup window: run bar, schema-generated parameter form, enum/model selectors, inlet editor, raw `config.txt` editor |
-| `panels_results.cpp` | Results (field heatmap + cavitation overlay, profiles, key-results summary), Convergence, Solver Log, Run History windows |
-| `schema.hpp/.cpp` | Data-driven parameter descriptors (label, unit, help, bounds, group, common/advanced) over `SimulationConfig` members; `validate_config()` merges the solver's own `SimulationConfig::validate()` so Run is disabled exactly when the solver would reject the case |
+| `panels_setup.cpp` | Case Setup window: run bar (Run/Cancel + MPI process count), schema-generated parameter form with per-field display-unit selectors, enum/model selectors with per-option hover descriptions, inlet editor, raw `config.txt` editor |
+| `panels_results.cpp` | Results (equal-aspect field heatmap in cell space with cavitation overlay and Fit button, profiles, key-results summary), Convergence and Solver Log windows |
+| `schema.hpp/.cpp` | Data-driven parameter descriptors (label, unit family, help, bounds, group, common/advanced) over `SimulationConfig` members; display-unit families (Pa/kPa/MPa, deg/rad, rad/s-rpm, m/mm/um, s/ms — config stays solver-native); `validate_config()` merges the solver's own `SimulationConfig::validate()` so Run is disabled exactly when the solver would reject the case |
 | `solver_runner.hpp/.cpp` | Subprocess management: `CreateProcessW` with redirected stdout/stderr, a reader thread (ANSI-color parse, progress from step lines), a diagnostics.csv tail thread (residuals), cancellation via `TerminateProcess` |
 | `results.hpp/.cpp` | Async, crash-proof parser for the solver's VTK XML output (`results.pvd` -> `.pvts` -> per-rank `.vts` pieces, assembled into a global cell grid); malformed files become readable error strings |
 | `exports.hpp/.cpp` | CSV writers (column/row oriented), PNG encode (vendored stb_image_write), Win32 open/save dialogs |
