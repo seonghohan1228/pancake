@@ -1,6 +1,6 @@
-// Case Setup panel: run controls, validation summary, schema-generated
+﻿// Case Setup panel: run controls, validation summary, schema-generated
 // parameter form (with units, live validation, common/advanced split),
-// enum/model selectors, inlet editor, and the raw config.txt editor.
+// enum/model selectors with hover descriptions, and the inlet editor.
 
 #include "gui_app.hpp"
 #include "imgui.h"
@@ -13,7 +13,7 @@
 
 namespace {
 
-// InputTextMultiline over std::string (resize callback, as in imgui_stdlib).
+// InputText over std::string (resize callback, as in imgui_stdlib).
 int string_resize_callback(ImGuiInputTextCallbackData* data) {
     if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
         auto* text = static_cast<std::string*>(data->UserData);
@@ -21,12 +21,6 @@ int string_resize_callback(ImGuiInputTextCallbackData* data) {
         data->Buf = text->data();
     }
     return 0;
-}
-
-bool input_text_multiline_string(const char* label, std::string& text, const ImVec2& size) {
-    return ImGui::InputTextMultiline(label, text.data(), text.capacity() + 1, size,
-                                     ImGuiInputTextFlags_CallbackResize | ImGuiInputTextFlags_AllowTabInput,
-                                     string_resize_callback, &text);
 }
 
 bool input_text_string(const char* label, std::string& text) {
@@ -108,7 +102,7 @@ void begin_param_row(const char* label, const char* help, const char* unit, bool
     ImGui::TableSetColumnIndex(0);
     ImGui::AlignTextToFramePadding();
     if (invalid) {
-        ImGui::TextColored(ImVec4(0.93f, 0.36f, 0.36f, 1.0f), "%s", label);
+        ImGui::TextColored(theme::kError, "%s", label);
     } else {
         ImGui::TextUnformatted(label);
     }
@@ -120,7 +114,7 @@ void begin_param_row(const char* label, const char* help, const char* unit, bool
         if (invalid) {
             for (const ValidationIssue& issue : issues) {
                 if (issue.field == key && issue.is_error) {
-                    ImGui::TextColored(ImVec4(0.93f, 0.36f, 0.36f, 1.0f), "%s",
+                    ImGui::TextColored(theme::kError, "%s",
                                        issue.message.c_str());
                 }
             }
@@ -202,18 +196,7 @@ void GuiApp::draw_setup_panel() {
         }
     }
     ImGui::Separator();
-
-    if (ImGui::BeginTabBar("setup_tabs")) {
-        if (ImGui::BeginTabItem("Parameters")) {
-            draw_form_tab();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem(raw_dirty_ ? "Raw config.txt *###rawtab" : "Raw config.txt###rawtab")) {
-            draw_raw_tab();
-            ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
-    }
+    draw_form_tab();
     ImGui::End();
 }
 
@@ -268,11 +251,26 @@ void GuiApp::draw_form_tab() {
     const char* filter = search_buffer_;
     const bool filtering = filter[0] != '\0';
 
+    // Display order = edit frequency: the parameters of a typical tweak-run
+    // loop sit at the top; set-and-forget groups follow, collapsed by default.
     static const ParamGroup kGroupOrder[] = {
-        ParamGroup::Geometry, ParamGroup::Operating, ParamGroup::Lubricant,
-        ParamGroup::MeshTime, ParamGroup::Cavitation, ParamGroup::Boundaries,
-        ParamGroup::Thermal, ParamGroup::FluidProperties, ParamGroup::Motion,
-        ParamGroup::Output, ParamGroup::Numerics,
+        ParamGroup::Operating, ParamGroup::Geometry, ParamGroup::Lubricant,
+        ParamGroup::Cavitation, ParamGroup::TimeStepping, ParamGroup::Mesh,
+        ParamGroup::Boundaries, ParamGroup::Thermal, ParamGroup::Motion,
+        ParamGroup::FluidProperties, ParamGroup::Output, ParamGroup::Numerics,
+    };
+    const auto group_default_open = [](ParamGroup group) {
+        switch (group) {
+            case ParamGroup::Operating:
+            case ParamGroup::Geometry:
+            case ParamGroup::Lubricant:
+            case ParamGroup::Cavitation:
+            case ParamGroup::TimeStepping:
+            case ParamGroup::Mesh:
+                return true;
+            default:
+                return false;
+        }
     };
     // Advanced-only groups are hidden entirely unless toggled or searched.
     const auto group_is_advanced = [](ParamGroup group) {
@@ -302,18 +300,20 @@ void GuiApp::draw_form_tab() {
             }
         }
         // Groups with bespoke widgets always have content when not filtering.
-        const bool has_bespoke = group == ParamGroup::MeshTime || group == ParamGroup::Cavitation ||
-                                 group == ParamGroup::Boundaries || group == ParamGroup::Thermal ||
-                                 group == ParamGroup::FluidProperties ||
-                                 group == ParamGroup::Motion || group == ParamGroup::Output ||
-                                 group == ParamGroup::Numerics;
+        const bool has_bespoke =
+            group == ParamGroup::TimeStepping || group == ParamGroup::Cavitation ||
+            group == ParamGroup::Boundaries || group == ParamGroup::Thermal ||
+            group == ParamGroup::FluidProperties || group == ParamGroup::Motion ||
+            group == ParamGroup::Output || group == ParamGroup::Numerics;
         if (!any_visible && !(has_bespoke && !filtering)) continue;
         if (!filtering && !show_advanced_ && group_is_advanced(group) && !any_visible) continue;
 
+        // While filtering, force every surviving group open so matches show.
+        if (filtering) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         ImGui::PushFont(fonts.heading);
-        const bool open = ImGui::CollapsingHeader(group_label(group),
-                                                  filtering ? ImGuiTreeNodeFlags_DefaultOpen
-                                                            : ImGuiTreeNodeFlags_DefaultOpen);
+        const bool open = ImGui::CollapsingHeader(
+            group_label(group),
+            group_default_open(group) ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None);
         ImGui::PopFont();
         if (!open) continue;
 
@@ -416,7 +416,7 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
         };
 
         switch (group) {
-            case ParamGroup::MeshTime:
+            case ParamGroup::TimeStepping:
                 row("Solution mode", "How the simulation advances in time.");
                 changed |= enum_combo<SolutionMode>(
                     "##solution_mode", config_.solution_mode,
@@ -617,45 +617,43 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                          {TimeSteppingMethod::RK4, "Runge-Kutta 4",
                           "4th order explicit; most accurate per step, 4 force evaluations."}});
 
-                    // Face-interpolation choices. TYPE_DIFFERENCING is the linear
-                    // (central) option: central across full-film faces, upwind in
-                    // cavitated cells (Vijayaraghavan & Keith 1989).
+                    // Film-content face interpolation: Upwind or Linear.
+                    // (TVD limiters and the thermal/gas scheme keys remain
+                    // solver options reachable by editing the config file;
+                    // a value loaded from file is preserved and shown.)
                     constexpr const char* kUpwindDesc =
                         "1st-order accurate, unconditionally bounded and most robust, but "
-                        "numerically diffusive - smears sharp cavitation/temperature fronts. "
-                        "Use as the safe default and for difficult cases.";
-                    constexpr const char* kVanLeerDesc =
-                        "2nd-order TVD with the van Leer limiter: sharper fronts without "
-                        "over/undershoots. Use when front resolution matters and the run is "
-                        "stable with it.";
-                    constexpr const char* kMinmodDesc =
-                        "2nd-order TVD with the minmod limiter: the most cautious limiter - "
-                        "between upwind and van Leer in sharpness, very robust.";
+                        "numerically diffusive - smears sharp cavitation fronts. Use as the "
+                        "safe default and for difficult cases.";
                     constexpr const char* kLinearDesc =
                         "Linear (central) interpolation across full-film faces, upwind "
                         "across/inside cavitated faces (Vijayaraghavan & Keith 1989). "
-                        "2nd-order in the full film and the classic Elrod choice; only "
-                        "meaningful for the film-content equation.";
+                        "2nd-order accurate in the full film - the classic Elrod scheme; "
+                        "use when front/pressure resolution matters.";
+                    constexpr const char* kFromFileDesc =
+                        "A TVD limiter scheme loaded from the config file. Kept as-is until "
+                        "you pick Upwind or Linear.";
                     row("Film-content convection", "Scheme for the Elrod film-content transport.");
-                    changed |= enum_combo<ConvectionScheme>(
-                        "##theta_scheme", config_.theta_convection_scheme,
-                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
-                         {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
-                          kLinearDesc},
-                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
-                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
-                    row("Thermal convection", "Scheme for temperature transport.");
-                    changed |= enum_combo<ConvectionScheme>(
-                        "##thermal_scheme", config_.thermal_convection_scheme,
-                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
-                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
-                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
-                    row("Gas convection", "Scheme for dissolved-gas transport.");
-                    changed |= enum_combo<ConvectionScheme>(
-                        "##gas_scheme", config_.gas_convection_scheme,
-                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
-                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
-                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
+                    const ConvectionScheme theta_scheme = config_.theta_convection_scheme;
+                    if (theta_scheme == ConvectionScheme::TVD_VANLEER ||
+                        theta_scheme == ConvectionScheme::TVD_MINMOD) {
+                        changed |= enum_combo<ConvectionScheme>(
+                            "##theta_scheme", config_.theta_convection_scheme,
+                            {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                             {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
+                              kLinearDesc},
+                             {theta_scheme,
+                              theta_scheme == ConvectionScheme::TVD_VANLEER
+                                  ? "TVD van Leer (from config file)"
+                                  : "TVD minmod (from config file)",
+                              kFromFileDesc}});
+                    } else {
+                        changed |= enum_combo<ConvectionScheme>(
+                            "##theta_scheme", config_.theta_convection_scheme,
+                            {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                             {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
+                              kLinearDesc}});
+                    }
                 }
                 break;
             default: break;
@@ -770,28 +768,4 @@ void GuiApp::draw_inlets_editor() {
         config_.inlets.push_back(inlet);
         dirty_ = true;
     }
-}
-
-void GuiApp::draw_raw_tab() {
-    ImGui::TextDisabled("Direct key = value editing; Apply parses it back into the form.");
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Sync from form")) sync_raw_from_config();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!raw_dirty_);
-    if (ImGui::SmallButton("Apply to form")) {
-        SimulationConfig parsed;
-        parsed.load_from_text(raw_text_);
-        config_ = std::move(parsed);
-        raw_dirty_ = false;
-        dirty_ = true;
-        for (const std::string& warning : config_.parse_warnings) {
-            log_.push_back({"Config warning: " + warning, IM_COL32(230, 190, 80, 255)});
-        }
-    }
-    ImGui::EndDisabled();
-    ImGui::PushFont(fonts.mono);
-    if (input_text_multiline_string("##rawtext", raw_text_, ImVec2(-FLT_MIN, -FLT_MIN))) {
-        raw_dirty_ = true;
-    }
-    ImGui::PopFont();
 }

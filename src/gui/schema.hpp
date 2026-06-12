@@ -10,16 +10,19 @@
 #include <string>
 #include <vector>
 
+// Listed in display order: frequently tweaked parameters first so the common
+// edit -> run loop needs no scrolling.
 enum class ParamGroup {
-    Geometry,
     Operating,
+    Geometry,
     Lubricant,
-    MeshTime,
     Cavitation,
+    TimeStepping,
+    Mesh,
     Boundaries,
     Thermal,
-    FluidProperties,
     Motion,
+    FluidProperties,
     Output,
     Numerics,
 };

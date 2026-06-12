@@ -1,4 +1,4 @@
-#include "schema.hpp"
+﻿#include "schema.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,15 +6,16 @@
 
 const char* group_label(ParamGroup group) {
     switch (group) {
-        case ParamGroup::Geometry: return "Geometry";
         case ParamGroup::Operating: return "Operating conditions";
+        case ParamGroup::Geometry: return "Geometry";
         case ParamGroup::Lubricant: return "Lubricant";
-        case ParamGroup::MeshTime: return "Mesh & time";
         case ParamGroup::Cavitation: return "Cavitation";
+        case ParamGroup::TimeStepping: return "Time stepping";
+        case ParamGroup::Mesh: return "Mesh";
         case ParamGroup::Boundaries: return "Axial boundaries & inlets";
         case ParamGroup::Thermal: return "Thermal model";
-        case ParamGroup::FluidProperties: return "Fluid property models";
         case ParamGroup::Motion: return "Bearing motion";
+        case ParamGroup::FluidProperties: return "Fluid property models";
         case ParamGroup::Output: return "Output";
         case ParamGroup::Numerics: return "Numerics";
     }
@@ -95,14 +96,14 @@ const std::vector<DoubleSpec>& double_specs() {
          "Liquid compressibility for the Elrod-Adams model. Oils are about 1-2 GPa.",
          &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true, kPressure},
 
-        // Mesh & time
+        // Time stepping
         {"end_t", "End time", "s", "Simulated duration (transient mode).", &SC::end_t,
-         ParamGroup::MeshTime, false, 0.0, kInf, true, kTime},
+         ParamGroup::TimeStepping, false, 0.0, kInf, true, kTime},
         {"dt", "Time step", "s", "Time step size. Must not exceed the end time.", &SC::dt,
-         ParamGroup::MeshTime, false, 0.0, kInf, true, kTime},
+         ParamGroup::TimeStepping, false, 0.0, kInf, true, kTime},
         {"write_interval", "Write interval", "s",
-         "Simulated time between saved output steps.", &SC::write_interval, ParamGroup::MeshTime,
-         false, 0.0, kInf, true, kTime},
+         "Simulated time between saved output steps.", &SC::write_interval,
+         ParamGroup::TimeStepping, false, 0.0, kInf, true, kTime},
 
         // Cavitation
         {"outer_tol", "Outer tolerance", "-",
@@ -247,9 +248,9 @@ const std::vector<IntSpec>& int_specs() {
     static const std::vector<IntSpec> specs = {
         {"n_theta_global", "Cells around circumference", "-",
          "Circumferential mesh resolution. 120-360 is typical.", &SC::n_theta_global,
-         ParamGroup::MeshTime, false, 3, 100000},
+         ParamGroup::Mesh, false, 3, 100000},
         {"n_z_global", "Cells along axis", "-", "Axial mesh resolution. 20-100 is typical.",
-         &SC::n_z_global, ParamGroup::MeshTime, false, 1, 100000},
+         &SC::n_z_global, ParamGroup::Mesh, false, 1, 100000},
         {"max_outer_iters", "Max outer iterations", "-",
          "Elrod-Adams cavitation flag-update iteration limit per step.", &SC::max_outer_iters,
          ParamGroup::Cavitation, true, 1, 100000},
@@ -372,7 +373,7 @@ std::vector<ValidationIssue> validate_config(const SimulationConfig& config) {
     }
     if (config.diagnostics_interval <= 0) {
         issues.push_back({false, "diagnostics_interval",
-                          "Diagnostics are disabled; the convergence plot will stay empty."});
+                          "Diagnostics are disabled; the Monitors plots will stay empty."});
     }
     for (size_t i = 0; i < config.inlets.size(); ++i) {
         const InletConfig& inlet = config.inlets[i];

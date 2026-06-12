@@ -300,7 +300,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
         app.draw();
         ImGui::Render();
 
-        constexpr float kClear[4] = {0.08f, 0.085f, 0.095f, 1.0f};
+        constexpr float kClear[4] = {0.91f, 0.92f, 0.94f, 1.0f};
         platform.context->OMSetRenderTargets(1, &platform.render_target, nullptr);
         platform.context->ClearRenderTargetView(platform.render_target, kClear);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

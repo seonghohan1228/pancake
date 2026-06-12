@@ -653,63 +653,171 @@ void GuiApp::draw_summary_tab() {
 }
 
 // ---------------------------------------------------------------------------
-// Convergence window
+// Monitors window: physical quantities converging over the run, each selected
+// series in its own subplot with real engineering units (ranges differ, so
+// stacking beats a shared axis), x linked across all of them.
 // ---------------------------------------------------------------------------
 
 void GuiApp::draw_convergence_panel() {
-    if (!ImGui::Begin("Convergence")) {
+    if (!ImGui::Begin("Monitors")) {
         ImGui::End();
         return;
     }
-    if (diagnostics_.empty()) {
+    const bool have_monitors = !monitors_.empty();
+    const bool have_diagnostics = !diagnostics_.empty();
+    if (!have_monitors && !have_diagnostics) {
+        ImGui::TextDisabled("Physical quantities stream here while a solve runs.");
+        if (config_.output_verbosity != OutputVerbosity::DETAILED) {
+            ImGui::TextColored(theme::kWarn,
+                               "Set Output > Terminal verbosity = Detailed to record film "
+                               "thickness, temperatures, force and torque.");
+        }
         if (config_.diagnostics_interval <= 0) {
             ImGui::TextColored(theme::kWarn,
-                               "diagnostics_interval is 0 - enable it (Numerics, advanced) to "
-                               "get residual traces.");
-        } else {
-            ImGui::TextDisabled("Residuals stream here once a solve is running.");
+                               "diagnostics_interval is 0 - enable it (Numerics, advanced) for "
+                               "cavitated fraction and residuals.");
         }
         ImGui::End();
         return;
     }
 
-    if (ImGui::SmallButton("CSV")) export_convergence_csv();
+    // Series toggles (label left, like everywhere else). Disabled when the
+    // run did not produce that quantity.
+    struct SeriesToggle {
+        const char* label;
+        bool* selected;
+        bool available;
+        const char* tooltip;
+    };
+    static bool show_h_min = true;
+    static bool show_temperature = true;
+    static bool show_force = false;
+    static bool show_torque = false;
+    static bool show_cavitated = true;
+    static bool show_residual = false;
+    const bool have_temperature =
+        have_monitors && std::isfinite(monitors_.back().t_min);
+    const SeriesToggle toggles[] = {
+        {"h_min", &show_h_min, have_monitors,
+         "Minimum film thickness [um]. Needs Detailed verbosity."},
+        {"T min/max", &show_temperature, have_temperature,
+         "Film temperature range [K]. Needs Detailed verbosity (constant 300 K when "
+         "isothermal)."},
+        {"|F|", &show_force, have_monitors,
+         "Resultant fluid force on the bearing [N]. Needs Detailed verbosity."},
+        {"Torque", &show_torque, have_monitors,
+         "Friction torque on the journal [N.m]. Needs Detailed verbosity."},
+        {"Cavitated", &show_cavitated, have_diagnostics,
+         "Cavitated area fraction [%] from diagnostics.csv."},
+        {"Residual", &show_residual, have_diagnostics,
+         "Liquid mass residual (log scale) from diagnostics.csv - the numerical "
+         "convergence check."},
+    };
+    for (const SeriesToggle& toggle : toggles) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(toggle.label);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            ImGui::SetTooltip("%s", toggle.tooltip);
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!toggle.available);
+        ImGui::Checkbox((std::string("##mon_") + toggle.label).c_str(), toggle.selected);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+    }
+    if (ImGui::SmallButton("CSV")) export_monitors_csv();
     ImGui::SameLine();
     const bool want_png = ImGui::SmallButton("PNG");
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu diagnostic rows", diagnostics_.size());
 
-    static std::vector<double> steps, residuals, theta_changes, cavitated;
-    steps.clear(); residuals.clear(); theta_changes.clear(); cavitated.clear();
+    // Build the series in engineering units.
+    static std::vector<double> mon_t, h_min_um, t_min_k, t_max_k, force_n, torque_nm;
+    mon_t.clear(); h_min_um.clear(); t_min_k.clear(); t_max_k.clear();
+    force_n.clear(); torque_nm.clear();
+    for (const MonitorRow& row : monitors_) {
+        mon_t.push_back(row.t);
+        h_min_um.push_back(row.h_min * 1e6);
+        t_min_k.push_back(row.t_min);
+        t_max_k.push_back(row.t_max);
+        force_n.push_back(std::hypot(row.force_x, row.force_y));
+        torque_nm.push_back(row.torque);
+    }
+    static std::vector<double> diag_t, cavitated_pct, residual;
+    diag_t.clear(); cavitated_pct.clear(); residual.clear();
     for (const DiagRow& row : diagnostics_) {
-        steps.push_back(row.step);
-        residuals.push_back(std::max(std::abs(row.liquid_residual), 1e-300));
-        theta_changes.push_back(std::max(row.max_theta_change, 1e-300));
-        cavitated.push_back(row.cavitated_fraction);
+        diag_t.push_back(row.time);
+        cavitated_pct.push_back(row.cavitated_fraction * 100.0);
+        residual.push_back(std::max(std::abs(row.liquid_residual), 1e-300));
     }
 
-    ImVec2 capture_min(0, 0), capture_max(0, 0);
-    if (ImPlot::BeginPlot("##convergence", ImGui::GetContentRegionAvail())) {
-        ImPlot::SetupAxes("step", "residual (log)");
-        ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
-        ImPlot::SetupAxis(ImAxis_Y2, "cavitated fraction [-]",
-                          ImPlotAxisFlags_AuxDefault);
-        ImPlot::SetupAxisLimits(ImAxis_Y2, 0, 1, ImPlotCond_Once);
-        ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
-        ImPlot::PlotLine("liquid mass residual", steps.data(), residuals.data(),
-                         static_cast<int>(steps.size()));
-        ImPlot::PlotLine("max film-content change", steps.data(), theta_changes.data(),
-                         static_cast<int>(steps.size()));
-        ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
-        ImPlot::PlotLine("cavitated fraction", steps.data(), cavitated.data(),
-                         static_cast<int>(steps.size()));
-        capture_min = ImPlot::GetPlotPos();
-        const ImVec2 size = ImPlot::GetPlotSize();
-        capture_max = ImVec2(capture_min.x + size.x, capture_min.y + size.y);
-        ImPlot::EndPlot();
+    struct Subplot {
+        const char* title;
+        const char* y_label;
+        bool log_scale;
+        const std::vector<double>* x;
+        const std::vector<double>* y;
+        const std::vector<double>* y2;  // optional second line (T max)
+        const char* y_name;
+        const char* y2_name;
+    };
+    std::vector<Subplot> subplots;
+    if (show_h_min && have_monitors) {
+        subplots.push_back({"Minimum film thickness", "h_min [um]", false, &mon_t, &h_min_um,
+                            nullptr, "h_min", nullptr});
+    }
+    if (show_temperature && have_temperature) {
+        subplots.push_back({"Film temperature", "T [K]", false, &mon_t, &t_min_k, &t_max_k,
+                            "T min", "T max"});
+    }
+    if (show_force && have_monitors) {
+        subplots.push_back({"Fluid force", "|F| [N]", false, &mon_t, &force_n, nullptr, "|F|",
+                            nullptr});
+    }
+    if (show_torque && have_monitors) {
+        subplots.push_back({"Friction torque", "M [N.m]", false, &mon_t, &torque_nm, nullptr,
+                            "M", nullptr});
+    }
+    if (show_cavitated && have_diagnostics) {
+        subplots.push_back({"Cavitated area", "cavitated [%]", false, &diag_t, &cavitated_pct,
+                            nullptr, "cavitated", nullptr});
+    }
+    if (show_residual && have_diagnostics) {
+        subplots.push_back({"Liquid mass residual", "residual [-] (log)", true, &diag_t,
+                            &residual, nullptr, "residual", nullptr});
+    }
+    if (subplots.empty()) {
+        ImGui::TextDisabled("Select at least one quantity above.");
+        ImGui::End();
+        return;
+    }
+
+    ImVec2 capture_min(FLT_MAX, FLT_MAX), capture_max(-FLT_MAX, -FLT_MAX);
+    if (ImPlot::BeginSubplots("##monitors", static_cast<int>(subplots.size()), 1,
+                              ImGui::GetContentRegionAvail(), ImPlotSubplotFlags_LinkAllX)) {
+        for (const Subplot& subplot : subplots) {
+            if (ImPlot::BeginPlot(subplot.title)) {
+                ImPlot::SetupAxes("time [s]", subplot.y_label);
+                if (subplot.log_scale) {
+                    ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
+                }
+                ImPlot::PlotLine(subplot.y_name, subplot.x->data(), subplot.y->data(),
+                                 static_cast<int>(subplot.x->size()));
+                if (subplot.y2) {
+                    ImPlot::PlotLine(subplot.y2_name, subplot.x->data(), subplot.y2->data(),
+                                     static_cast<int>(subplot.x->size()));
+                }
+                const ImVec2 pos = ImPlot::GetPlotPos();
+                const ImVec2 size = ImPlot::GetPlotSize();
+                capture_min.x = std::min(capture_min.x, pos.x);
+                capture_min.y = std::min(capture_min.y, pos.y);
+                capture_max.x = std::max(capture_max.x, pos.x + size.x);
+                capture_max.y = std::max(capture_max.y, pos.y + size.y);
+                ImPlot::EndPlot();
+            }
+        }
+        ImPlot::EndSubplots();
     }
     if (want_png && capture_max.x > capture_min.x) {
-        request_plot_capture("convergence.png", capture_min.x, capture_min.y, capture_max.x,
+        request_plot_capture("monitors.png", capture_min.x, capture_min.y, capture_max.x,
                              capture_max.y);
     }
     ImGui::End();

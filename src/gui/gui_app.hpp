@@ -67,8 +67,6 @@ private:
     bool dirty_ = false;
     std::vector<ValidationIssue> issues_;
     bool has_errors_ = false;
-    std::string raw_text_;
-    bool raw_dirty_ = false;
     bool show_advanced_ = false;
     char search_buffer_[96] = {};
 
@@ -78,6 +76,7 @@ private:
     std::vector<LogLine> log_;
     bool log_autoscroll_ = true;
     std::vector<DiagRow> diagnostics_;
+    std::vector<MonitorRow> monitors_;  // physical per-step quantities (DETAILED runs)
     SolverState previous_state_ = SolverState::Idle;
     std::filesystem::path active_output_dir_;
     int run_counter_ = 0;
@@ -115,7 +114,6 @@ private:
     void build_default_layout(unsigned dockspace_id);
     void draw_setup_panel();
     void draw_form_tab();
-    void draw_raw_tab();
     void draw_inlets_editor();
     void draw_enum_widgets(ParamGroup group);
     void draw_results_panel();
@@ -138,7 +136,6 @@ private:
     void open_config_dialog();
     void load_config_from(const std::filesystem::path& path);
     bool save_config(bool save_as);
-    void sync_raw_from_config();
 
     // results helpers
     void request_scan(const std::filesystem::path& output_dir);
@@ -155,7 +152,7 @@ private:
     int& unit_choice(const char* key, UnitFamily family);
     void export_grid_csv();
     void export_profiles_csv();
-    void export_convergence_csv();
+    void export_monitors_csv();
     /// Opens a save dialog and schedules a capture of the given screen rect
     /// (the plot just drawn) for the next rendered frame.
     void request_plot_capture(const char* suggested_name, float min_x, float min_y,

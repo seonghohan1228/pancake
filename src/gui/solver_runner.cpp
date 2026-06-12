@@ -1,9 +1,10 @@
-#include "solver_runner.hpp"
+﻿#include "solver_runner.hpp"
 
 #include "imgui.h"
 #include "win_util.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 
@@ -20,14 +21,15 @@ const char* to_string(SolverState state) {
 
 namespace {
 
+// Tones picked for readability on the light theme background.
 unsigned ansi_code_to_color(int code) {
     switch (code) {
-        case 31: case 91: return IM_COL32(235, 100, 100, 255);  // red
-        case 32: case 92: return IM_COL32(120, 200, 120, 255);  // green
-        case 33: case 93: return IM_COL32(230, 190, 80, 255);   // yellow
-        case 34: case 94: return IM_COL32(110, 160, 240, 255);  // blue
-        case 35: case 95: return IM_COL32(200, 120, 220, 255);  // magenta
-        case 36: case 96: return IM_COL32(90, 200, 210, 255);   // cyan
+        case 31: case 91: return IM_COL32(185, 35, 35, 255);   // red
+        case 32: case 92: return IM_COL32(22, 125, 55, 255);   // green
+        case 33: case 93: return IM_COL32(160, 110, 10, 255);  // yellow -> amber
+        case 34: case 94: return IM_COL32(35, 90, 200, 255);   // blue
+        case 35: case 95: return IM_COL32(150, 45, 165, 255);  // magenta
+        case 36: case 96: return IM_COL32(10, 125, 145, 255);  // cyan
         case 0: default: return 0;
     }
 }
@@ -118,7 +120,7 @@ bool SolverRunner::start(const LaunchSpec& spec, std::string& error) {
         progress_.command_line = command;
         partial_line_.clear();
         current_color_ = 0;
-        pending_log_.push_back({"> " + command, IM_COL32(140, 150, 165, 255)});
+        pending_log_.push_back({"> " + command, IM_COL32(105, 112, 125, 255)});
     }
     state_ = SolverState::Running;
 
@@ -157,6 +159,14 @@ void SolverRunner::drain_diagnostics(std::vector<DiagRow>& out) {
     while (!pending_diag_.empty()) {
         out.push_back(pending_diag_.front());
         pending_diag_.pop_front();
+    }
+}
+
+void SolverRunner::drain_monitors(std::vector<MonitorRow>& out) {
+    std::lock_guard lock(mutex_);
+    while (!pending_monitors_.empty()) {
+        out.push_back(pending_monitors_.front());
+        pending_monitors_.pop_front();
     }
 }
 
@@ -206,8 +216,8 @@ void SolverRunner::reader_thread_main() {
         }
         pending_log_.push_back(
             {summary, final_state == SolverState::Finished
-                          ? IM_COL32(120, 200, 120, 255)
-                          : IM_COL32(235, 150, 90, 255)});
+                          ? IM_COL32(22, 125, 55, 255)
+                          : IM_COL32(190, 105, 30, 255)});
     }
     state_ = final_state;
 }
@@ -259,6 +269,37 @@ void SolverRunner::finish_line(std::string&& line) {
         const size_t t_pos = clean.find("t=", first_char);
         if (t_pos != std::string::npos) {
             progress_.sim_t = std::atof(clean.c_str() + t_pos + 2);
+        }
+
+        // DETAILED verbosity adds physical quantities to the step line; feed
+        // them to the live monitors.
+        const auto value_after = [&](const char* token) {
+            const size_t pos = clean.find(token);
+            return pos == std::string::npos
+                       ? std::numeric_limits<double>::quiet_NaN()
+                       : std::atof(clean.c_str() + pos + std::strlen(token));
+        };
+        const double h_min = value_after("h_min=");
+        if (std::isfinite(h_min)) {
+            MonitorRow row;
+            row.step = progress_.step;
+            row.t = progress_.sim_t;
+            row.h_min = h_min;
+            row.torque = value_after("| M=");
+            const size_t temperature_pos = clean.find("T=[");
+            if (temperature_pos != std::string::npos) {
+                char* end = nullptr;
+                row.t_min = std::strtod(clean.c_str() + temperature_pos + 3, &end);
+                if (end && *end == ',') row.t_max = std::strtod(end + 1, nullptr);
+            }
+            const size_t force_pos = clean.find("F=(");
+            if (force_pos != std::string::npos) {
+                char* end = nullptr;
+                row.force_x = std::strtod(clean.c_str() + force_pos + 3, &end);
+                if (end && *end == ',') row.force_y = std::strtod(end + 1, nullptr);
+            }
+            pending_monitors_.push_back(row);
+            if (pending_monitors_.size() > 200000) pending_monitors_.pop_front();
         }
     }
     if (clean.find("finished successfully") != std::string::npos && progress_.end_t > 0.0) {

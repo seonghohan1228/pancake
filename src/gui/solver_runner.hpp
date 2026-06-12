@@ -14,6 +14,7 @@
 #include <chrono>
 #include <deque>
 #include <filesystem>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -27,6 +28,20 @@ const char* to_string(SolverState state);
 struct LogLine {
     std::string text;
     unsigned color = 0;
+};
+
+/// Physical per-step quantities parsed from the solver's DETAILED stdout
+/// lines ("Step N t=.. | h_min=.. | T=[a, b] K | F=(x, y, z) N | M=.. Nm").
+/// Only emitted when output_verbosity = DETAILED.
+struct MonitorRow {
+    int step = 0;
+    double t = 0.0;
+    double h_min = std::numeric_limits<double>::quiet_NaN();   // m
+    double t_min = std::numeric_limits<double>::quiet_NaN();   // K
+    double t_max = std::numeric_limits<double>::quiet_NaN();   // K
+    double force_x = std::numeric_limits<double>::quiet_NaN();  // N
+    double force_y = std::numeric_limits<double>::quiet_NaN();  // N
+    double torque = std::numeric_limits<double>::quiet_NaN();   // N.m
 };
 
 /// One row of the solver's diagnostics.csv.
@@ -84,9 +99,11 @@ public:
 
     SolverProgress snapshot() const;
 
-    /// Moves any new log lines / diagnostic rows into the caller's buffers.
+    /// Moves any new log lines / diagnostic / monitor rows into the caller's
+    /// buffers.
     void drain_log(std::vector<LogLine>& out);
     void drain_diagnostics(std::vector<DiagRow>& out);
+    void drain_monitors(std::vector<MonitorRow>& out);
 
 private:
     void reader_thread_main();
@@ -108,6 +125,7 @@ private:
     mutable std::mutex mutex_;
     std::deque<LogLine> pending_log_;
     std::deque<DiagRow> pending_diag_;
+    std::deque<MonitorRow> pending_monitors_;
     std::string partial_line_;
     unsigned current_color_ = 0;  // sticky ANSI color across chunks
     SolverProgress progress_;

@@ -1,4 +1,4 @@
-// Application shell: lifecycle, dock layout, menu, status bar, run control,
+﻿// Application shell: lifecycle, dock layout, menu, status bar, run control,
 // config file handling, exports. Panel bodies live in panels_setup.cpp and
 // panels_results.cpp.
 
@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -73,7 +74,6 @@ void GuiApp::init() {
         const fs::path sibling = winutil::executable_dir() / "config.txt";
         if (fs::exists(sibling)) load_config_from(sibling);
     }
-    sync_raw_from_config();
     std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s",
                   settings.solver_path.c_str());
 
@@ -212,7 +212,7 @@ void GuiApp::build_default_layout(unsigned dockspace_id) {
 
     ImGui::DockBuilderDockWindow("Case Setup", left);
     ImGui::DockBuilderDockWindow("Results", center);
-    ImGui::DockBuilderDockWindow("Convergence", center);
+    ImGui::DockBuilderDockWindow("Monitors", center);
     ImGui::DockBuilderDockWindow("Solver Log", bottom);
     ImGui::DockBuilderFinish(dockspace_id);
 }
@@ -367,6 +367,7 @@ void GuiApp::process_runner_events() {
     const size_t log_before = log_.size();
     runner_.drain_log(log_);
     runner_.drain_diagnostics(diagnostics_);
+    runner_.drain_monitors(monitors_);
     progress_ = runner_.snapshot();
 
     // Friction torque only appears in DETAILED per-step lines ("| M=<x> Nm").
@@ -405,7 +406,7 @@ void GuiApp::start_run() {
                    "in Tools > Settings.");
         log_.push_back({"Run aborted: pancake.exe not found. Place it next to this program or "
                         "set the path in Tools > Settings.",
-                        IM_COL32(235, 100, 100, 255)});
+                        IM_COL32(185, 35, 35, 255)});
         return;
     }
     if (settings.mpi_ranks > 1) {
@@ -414,7 +415,7 @@ void GuiApp::start_run() {
             set_status("mpiexec.exe not found - install Microsoft MPI or set ranks to 1.");
             log_.push_back({"Run aborted: mpiexec.exe not found (needed for MPI ranks > 1). "
                             "Install the Microsoft MPI runtime or set ranks to 1.",
-                            IM_COL32(235, 100, 100, 255)});
+                            IM_COL32(185, 35, 35, 255)});
             return;
         }
         spec.ranks = settings.mpi_ranks;
@@ -432,6 +433,7 @@ void GuiApp::start_run() {
     fs::remove(spec.diagnostics_csv, ec);
 
     diagnostics_.clear();
+    monitors_.clear();
     last_detailed_torque_ = std::numeric_limits<double>::quiet_NaN();
     running_config_ = config_;
     run_started_at_ = local_time_string();
@@ -439,7 +441,7 @@ void GuiApp::start_run() {
     std::string error;
     if (!runner_.start(spec, error)) {
         set_status("Launch failed: " + error);
-        log_.push_back({"Launch failed: " + error, IM_COL32(235, 100, 100, 255)});
+        log_.push_back({"Launch failed: " + error, IM_COL32(185, 35, 35, 255)});
         return;
     }
     set_status("Solver started.");
@@ -518,7 +520,6 @@ void GuiApp::new_case() {
     config_ = default_case();
     config_path_.clear();
     dirty_ = false;
-    sync_raw_from_config();
     set_status("New case with default parameters.");
 }
 
@@ -533,10 +534,9 @@ void GuiApp::load_config_from(const fs::path& path) {
     config_ = std::move(fresh);
     config_path_ = path;
     dirty_ = false;
-    sync_raw_from_config();
     settings.last_config = winutil::path_to_utf8(path);
     for (const std::string& warning : config_.parse_warnings) {
-        log_.push_back({"Config warning: " + warning, IM_COL32(230, 190, 80, 255)});
+        log_.push_back({"Config warning: " + warning, IM_COL32(160, 110, 10, 255)});
     }
     set_status("Loaded " + winutil::path_to_utf8(path));
 }
@@ -560,10 +560,7 @@ bool GuiApp::save_config(bool save_as) {
     return true;
 }
 
-void GuiApp::sync_raw_from_config() {
-    raw_text_ = config_.to_config_text();
-    raw_dirty_ = false;
-}
+
 
 // ---------------------------------------------------------------------------
 // Results helpers
@@ -729,23 +726,43 @@ void GuiApp::export_profiles_csv() {
     }
 }
 
-void GuiApp::export_convergence_csv() {
-    if (diagnostics_.empty()) return;
+// Union of the physical monitors (DETAILED stdout) and diagnostics.csv rows,
+// merged by step; blank cells where one source has no row for that step.
+void GuiApp::export_monitors_csv() {
+    if (monitors_.empty() && diagnostics_.empty()) return;
     const fs::path target = exports::save_file_dialog(hwnd, L"CSV files (*.csv)\0*.csv\0", L"csv",
-                                                      L"convergence.csv");
+                                                      L"monitors.csv");
     if (target.empty()) return;
-    std::vector<double> steps, times, outer, residuals, cavitated;
-    for (const DiagRow& row : diagnostics_) {
-        steps.push_back(row.step);
-        times.push_back(row.time);
-        outer.push_back(row.outer_iters);
-        residuals.push_back(row.liquid_residual);
-        cavitated.push_back(row.cavitated_fraction);
+
+    std::map<int, std::pair<const MonitorRow*, const DiagRow*>> by_step;
+    for (const MonitorRow& row : monitors_) by_step[row.step].first = &row;
+    for (const DiagRow& row : diagnostics_) by_step[row.step].second = &row;
+
+    std::vector<std::vector<std::string>> rows;
+    char cell[48];
+    const auto fmt = [&](double value) -> std::string {
+        if (!std::isfinite(value)) return "";
+        std::snprintf(cell, sizeof(cell), "%.9g", value);
+        return cell;
+    };
+    for (const auto& [step, sources] : by_step) {
+        const MonitorRow* monitor = sources.first;
+        const DiagRow* diag = sources.second;
+        const double time = monitor ? monitor->t : diag->time;
+        rows.push_back({std::to_string(step), fmt(time),
+                        fmt(monitor ? monitor->h_min : NAN),
+                        fmt(monitor ? monitor->t_min : NAN),
+                        fmt(monitor ? monitor->t_max : NAN),
+                        fmt(monitor ? std::hypot(monitor->force_x, monitor->force_y) : NAN),
+                        fmt(monitor ? monitor->torque : NAN),
+                        fmt(diag ? diag->cavitated_fraction : NAN),
+                        fmt(diag ? diag->liquid_residual : NAN)});
     }
     std::string error;
-    if (exports::write_csv_columns(
-            target, {"step", "time_s", "outer_iters", "liquid_residual", "cavitated_fraction"},
-            {steps, times, outer, residuals, cavitated}, error)) {
+    if (exports::write_csv_rows(target,
+                                {"step", "time_s", "h_min_m", "T_min_K", "T_max_K", "force_N",
+                                 "friction_torque_Nm", "cavitated_fraction", "liquid_residual"},
+                                rows, error)) {
         set_status("Saved " + winutil::path_to_utf8(target));
     } else {
         set_status(error);
