@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-/// One completed (or failed) solve kept for in-session comparison.
+/// Snapshot of the most recent solve, feeding the key-results summary.
 struct RunRecord {
     int id = 0;
     std::string started_at;  // wall clock HH:MM:SS
@@ -34,17 +34,6 @@ struct RunRecord {
     double friction_power = std::numeric_limits<double>::quiet_NaN();   // W
     double cavitated_fraction = std::numeric_limits<double>::quiet_NaN();
     double boundary_flux = std::numeric_limits<double>::quiet_NaN();  // kg/s
-
-    // Mid-plane profiles at the final saved step, for overlay comparison.
-    std::vector<double> profile_theta_deg;
-    std::vector<double> profile_p;   // Pa
-    std::vector<double> profile_h;   // m
-
-    // Convergence trace (diagnostics.csv).
-    std::vector<double> conv_step;
-    std::vector<double> conv_residual;
-
-    bool overlay = false;  // include in profile-plot comparison
 };
 
 class GuiApp {
@@ -107,11 +96,11 @@ private:
     int profile_z_index_ = -1;     // -1 = mid-plane
     bool fill_history_when_loaded_ = false;
 
-    // --- history ---
+    // --- last-run records (for the key-results summary) ---
     std::vector<RunRecord> history_;
-    int viewed_history_id_ = -1;
     SimulationConfig running_config_;  // snapshot taken at launch
     bool setup_panel_focused_ = false;
+    bool heatmap_fit_requested_ = false;
 
     // --- transient UI state ---
     std::string status_message_;
@@ -135,7 +124,6 @@ private:
     void draw_summary_tab();
     void draw_convergence_panel();
     void draw_log_panel();
-    void draw_history_panel();
     void draw_status_bar();
     void draw_modals();
 
@@ -163,7 +151,8 @@ private:
     const char* first_error() const;
     std::filesystem::path discover_solver(std::string& source) const;
     std::filesystem::path resolve_output_dir() const;
-    void export_history_csv();
+    /// Selected display-unit index for a field (persisted in settings).
+    int& unit_choice(const char* key, UnitFamily family);
     void export_grid_csv();
     void export_profiles_csv();
     void export_convergence_csv();

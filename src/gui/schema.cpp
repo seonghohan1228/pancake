@@ -21,27 +21,53 @@ const char* group_label(ParamGroup group) {
     return "?";
 }
 
+const std::vector<UnitOption>& unit_options(UnitFamily family) {
+    static const std::vector<UnitOption> fixed = {{"", 1.0}};
+    static const std::vector<UnitOption> pressure = {
+        {"Pa", 1.0}, {"kPa", 1e-3}, {"MPa", 1e-6}};
+    static const std::vector<UnitOption> angle = {
+        {"deg", 1.0}, {"rad", 3.14159265358979323846 / 180.0}};
+    static const std::vector<UnitOption> angular_speed = {
+        {"rad/s", 1.0}, {"rpm", 60.0 / (2.0 * 3.14159265358979323846)}};
+    static const std::vector<UnitOption> length = {{"m", 1.0}, {"mm", 1e3}, {"um", 1e6}};
+    static const std::vector<UnitOption> time = {{"s", 1.0}, {"ms", 1e3}};
+    switch (family) {
+        case UnitFamily::Pressure: return pressure;
+        case UnitFamily::Angle: return angle;
+        case UnitFamily::AngularSpeed: return angular_speed;
+        case UnitFamily::Length: return length;
+        case UnitFamily::Time: return time;
+        case UnitFamily::Fixed: break;
+    }
+    return fixed;
+}
+
 namespace {
 constexpr double kInf = 1e300;
 using SC = SimulationConfig;
+constexpr UnitFamily kPressure = UnitFamily::Pressure;
+constexpr UnitFamily kAngle = UnitFamily::Angle;
+constexpr UnitFamily kAngularSpeed = UnitFamily::AngularSpeed;
+constexpr UnitFamily kLength = UnitFamily::Length;
+constexpr UnitFamily kTime = UnitFamily::Time;
 }  // namespace
 
 const std::vector<DoubleSpec>& double_specs() {
     static const std::vector<DoubleSpec> specs = {
         // Geometry
         {"R", "Journal radius", "m", "Shaft radius R. Typical 5-100 mm.", &SC::R,
-         ParamGroup::Geometry, false, 0.0, kInf, true},
+         ParamGroup::Geometry, false, 0.0, kInf, true, kLength},
         {"c", "Radial clearance", "m", "Nominal radial clearance c. Typical 0.5-2 per mille of R (e.g. 1e-4 m = 100 um).",
-         &SC::c, ParamGroup::Geometry, false, 0.0, kInf, true},
+         &SC::c, ParamGroup::Geometry, false, 0.0, kInf, true, kLength},
         {"e", "Eccentricity", "m", "Journal-bearing center offset. Must satisfy 0 <= e < c. Ignored as initial condition when the motion model derives it from the attitude angle.",
-         &SC::e, ParamGroup::Geometry, false, 0.0, kInf, false},
+         &SC::e, ParamGroup::Geometry, false, 0.0, kInf, false, kLength},
         {"L", "Bearing length", "m", "Axial length L. L/D ratio typically 0.25-1.", &SC::L,
-         ParamGroup::Geometry, false, 0.0, kInf, true},
+         ParamGroup::Geometry, false, 0.0, kInf, true, kLength},
         {"attitude_angle_deg", "Attitude angle", "deg",
          "Initial angle between load line and line of centers.", &SC::attitude_angle_deg,
-         ParamGroup::Geometry, false, -360.0, 360.0, false},
+         ParamGroup::Geometry, false, -360.0, 360.0, false, kAngle},
         {"load_angle_deg", "Load angle", "deg", "Direction of the external load in the x-y plane.",
-         &SC::load_angle_deg, ParamGroup::Geometry, false, -360.0, 360.0, false},
+         &SC::load_angle_deg, ParamGroup::Geometry, false, -360.0, 360.0, false, kAngle},
         {"tilt_slope_x", "Tilt slope x", "m/m", "Journal misalignment slope along x.",
          &SC::tilt_slope_x, ParamGroup::Geometry, true, -kInf, kInf, false},
         {"tilt_slope_y", "Tilt slope y", "m/m", "Journal misalignment slope along y.",
@@ -50,10 +76,10 @@ const std::vector<DoubleSpec>& double_specs() {
         // Operating conditions
         {"omega", "Rotational speed", "rad/s",
          "Journal angular velocity. 100 rad/s = 955 rpm.", &SC::omega, ParamGroup::Operating,
-         false, -kInf, kInf, false},
+         false, -kInf, kInf, false, kAngularSpeed},
         {"omega_ramp_time", "Speed ramp time", "s",
          "Linear spin-up duration from rest; 0 starts at full speed.", &SC::omega_ramp_time,
-         ParamGroup::Operating, true, 0.0, kInf, false},
+         ParamGroup::Operating, true, 0.0, kInf, false, kTime},
 
         // Lubricant
         {"mu", "Dynamic viscosity", "Pa.s",
@@ -64,19 +90,19 @@ const std::vector<DoubleSpec>& double_specs() {
         {"p_cav", "Cavitation pressure", "Pa",
          "Absolute pressure at which the film ruptures. About 101325 Pa for atmospheric "
          "cavitation; inputs are absolute, not gauge.", &SC::p_cav,
-         ParamGroup::Lubricant, false, 0.0, kInf, true},
+         ParamGroup::Lubricant, false, 0.0, kInf, true, kPressure},
         {"bulk_modulus", "Bulk modulus", "Pa",
          "Liquid compressibility for the Elrod-Adams model. Oils are about 1-2 GPa.",
-         &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true},
+         &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true, kPressure},
 
         // Mesh & time
         {"end_t", "End time", "s", "Simulated duration (transient mode).", &SC::end_t,
-         ParamGroup::MeshTime, false, 0.0, kInf, true},
+         ParamGroup::MeshTime, false, 0.0, kInf, true, kTime},
         {"dt", "Time step", "s", "Time step size. Must not exceed the end time.", &SC::dt,
-         ParamGroup::MeshTime, false, 0.0, kInf, true},
+         ParamGroup::MeshTime, false, 0.0, kInf, true, kTime},
         {"write_interval", "Write interval", "s",
          "Simulated time between saved output steps.", &SC::write_interval, ParamGroup::MeshTime,
-         false, 0.0, kInf, true},
+         false, 0.0, kInf, true, kTime},
 
         // Cavitation
         {"outer_tol", "Outer tolerance", "-",
@@ -89,10 +115,10 @@ const std::vector<DoubleSpec>& double_specs() {
         // Boundaries
         {"bc_z_south_val", "South boundary pressure", "Pa",
          "Pressure value at z = 0 (DIRICHLET / INLET_OUTLET).", &SC::bc_z_south_val,
-         ParamGroup::Boundaries, false, -kInf, kInf, false},
+         ParamGroup::Boundaries, false, -kInf, kInf, false, kPressure},
         {"bc_z_north_val", "North boundary pressure", "Pa",
          "Pressure value at z = L (DIRICHLET / INLET_OUTLET).", &SC::bc_z_north_val,
-         ParamGroup::Boundaries, false, -kInf, kInf, false},
+         ParamGroup::Boundaries, false, -kInf, kInf, false, kPressure},
 
         // Thermal
         {"temperature_initial", "Initial temperature", "K", "Initial film temperature.",
@@ -161,13 +187,13 @@ const std::vector<DoubleSpec>& double_specs() {
          ParamGroup::FluidProperties, true, 0.0, 1.0, true},
         {"gas_pressure_floor", "Gas pressure floor", "Pa",
          "Lower pressure bound for the ideal-gas density.", &SC::gas_pressure_floor,
-         ParamGroup::FluidProperties, true, 0.0, kInf, true},
+         ParamGroup::FluidProperties, true, 0.0, kInf, true, kPressure},
         {"mu_gas", "Free-gas viscosity", "Pa.s",
          "Gas dynamic viscosity, used by the two-phase viscosity models.", &SC::mu_gas,
          ParamGroup::FluidProperties, true, 0.0, kInf, false},
         {"property_reference_pressure", "Reference pressure", "Pa",
          "Reference pressure for the property models.", &SC::property_reference_pressure,
-         ParamGroup::FluidProperties, true, 0.0, kInf, true},
+         ParamGroup::FluidProperties, true, 0.0, kInf, true, kPressure},
         {"property_reference_temperature", "Property reference temperature", "K",
          "Reference temperature for the property models.", &SC::property_reference_temperature,
          ParamGroup::FluidProperties, true, 0.0, kInf, true},
@@ -182,11 +208,11 @@ const std::vector<DoubleSpec>& double_specs() {
         {"bearing_mass", "Bearing mass", "kg", "Moving bearing mass (MOVING_BEARING model).",
          &SC::bearing_mass, ParamGroup::Motion, true, 0.0, kInf, true},
         {"bearing_initial_x", "Initial position x", "m", "Initial bearing offset, x.",
-         &SC::bearing_initial_x, ParamGroup::Motion, true, -kInf, kInf, false},
+         &SC::bearing_initial_x, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
         {"bearing_initial_y", "Initial position y", "m", "Initial bearing offset, y.",
-         &SC::bearing_initial_y, ParamGroup::Motion, true, -kInf, kInf, false},
+         &SC::bearing_initial_y, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
         {"bearing_initial_z", "Initial position z", "m", "Initial bearing offset, z.",
-         &SC::bearing_initial_z, ParamGroup::Motion, true, -kInf, kInf, false},
+         &SC::bearing_initial_z, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
         {"bearing_initial_vx", "Initial velocity x", "m/s", "Initial bearing velocity, x.",
          &SC::bearing_initial_vx, ParamGroup::Motion, true, -kInf, kInf, false},
         {"bearing_initial_vy", "Initial velocity y", "m/s", "Initial bearing velocity, y.",
@@ -207,7 +233,7 @@ const std::vector<DoubleSpec>& double_specs() {
          &SC::bearing_damping_z, ParamGroup::Motion, true, 0.0, kInf, false},
         {"min_film_thickness", "Minimum film thickness", "m",
          "Simulation guard: stop/clamp when the film drops below this.", &SC::min_film_thickness,
-         ParamGroup::Motion, true, 0.0, kInf, true},
+         ParamGroup::Motion, true, 0.0, kInf, true, kLength},
 
         // Numerics
         {"linear_rtol", "Linear solver tolerance", "-",

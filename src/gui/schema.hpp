@@ -26,10 +26,30 @@ enum class ParamGroup {
 
 const char* group_label(ParamGroup group);
 
+/// Display-unit family of a numeric field. The config file always stores the
+/// solver-native value (first option of each family); the form converts for
+/// display only.
+enum class UnitFamily {
+    Fixed,         // single unit, shown as plain text
+    Pressure,      // Pa, kPa, MPa            (stored: Pa)
+    Angle,         // deg, rad                (stored: deg)
+    AngularSpeed,  // rad/s, rpm              (stored: rad/s)
+    Length,        // m, mm, um               (stored: m)
+    Time,          // s, ms                   (stored: s)
+};
+
+struct UnitOption {
+    const char* label;
+    double to_display;  // display = stored * to_display
+};
+
+/// Options for a family; size 1 for Fixed (label unused).
+const std::vector<UnitOption>& unit_options(UnitFamily family);
+
 struct DoubleSpec {
     const char* key;    // config file key (= validation highlight id)
     const char* label;
-    const char* unit;   // display unit, SI; "-" for dimensionless
+    const char* unit;   // solver-native unit, SI; "-" for dimensionless
     const char* help;   // tooltip; constraints and engineering hints
     double SimulationConfig::* member;
     ParamGroup group;
@@ -37,6 +57,7 @@ struct DoubleSpec {
     double min;
     double max;
     bool min_exclusive;  // true: value must be > min, false: >= min
+    UnitFamily family = UnitFamily::Fixed;
 };
 
 struct IntSpec {

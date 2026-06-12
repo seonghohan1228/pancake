@@ -64,27 +64,40 @@ void help_tooltip(const char* help, const char* unit) {
     }
 }
 
-/// Generic enum combo over explicit (value, label) options.
+/// One choice of an enum combo, with a hover description that helps the user
+/// decide (accuracy, robustness, when to use).
 template <typename Enum>
-bool enum_combo(const char* label, Enum& value,
-                std::initializer_list<std::pair<Enum, const char*>> options,
-                const char* help) {
+struct EnumOption {
+    Enum value;
+    const char* label;
+    const char* desc;
+};
+
+template <typename Enum>
+bool enum_combo(const char* id, Enum& value,
+                std::initializer_list<EnumOption<Enum>> options) {
     const char* preview = "?";
-    for (const auto& [option, text] : options) {
-        if (option == value) preview = text;
+    for (const auto& option : options) {
+        if (option.value == value) preview = option.label;
     }
     bool changed = false;
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo(label, preview)) {
-        for (const auto& [option, text] : options) {
-            if (ImGui::Selectable(text, option == value)) {
-                value = option;
+    if (ImGui::BeginCombo(id, preview)) {
+        for (const auto& option : options) {
+            if (ImGui::Selectable(option.label, option.value == value)) {
+                value = option.value;
                 changed = true;
+            }
+            if (option.desc && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                ImGui::BeginTooltip();
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24);
+                ImGui::TextUnformatted(option.desc);
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
             }
         }
         ImGui::EndCombo();
     }
-    help_tooltip(help, nullptr);
     return changed;
 }
 
@@ -152,6 +165,21 @@ void GuiApp::draw_setup_panel() {
     ImGui::PopStyleColor(3);
     ImGui::EndDisabled();
 
+    // MPI ranks live next to Run: more ranks = faster solve.
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("MPI processes");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Number of parallel solver processes. More processes solve faster on\n"
+                          "multi-core machines (needs the Microsoft MPI runtime when > 1).");
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6);
+    ImGui::BeginDisabled(running);
+    if (ImGui::InputInt("##mpi_ranks", &settings.mpi_ranks)) {
+        settings.mpi_ranks = std::clamp(settings.mpi_ranks, 1, 256);
+    }
+    ImGui::EndDisabled();
+
     if (has_errors_) {
         ImGui::TextColored(theme::kError, "Run disabled: %s", first_error());
     } else {
@@ -191,11 +219,17 @@ void GuiApp::draw_setup_panel() {
 
 void GuiApp::draw_form_tab() {
     // Toolbar: search, advanced toggle, presets.
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45f);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.40f);
     ImGui::InputTextWithHint("##search", "Filter parameters...", search_buffer_,
                              sizeof(search_buffer_));
     ImGui::SameLine();
-    ImGui::Checkbox("Advanced", &show_advanced_);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Advanced");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Show expert parameters (numerics, fluid-property models, ...).");
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("##advanced", &show_advanced_);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("##presets", "Presets...")) {
@@ -294,19 +328,45 @@ void GuiApp::draw_form_tab() {
                 }
                 const bool invalid = field_invalid(spec.key);
                 begin_param_row(spec.label, spec.help, spec.unit, invalid, issues_, spec.key);
+
+                const auto& options = unit_options(spec.family);
+                int& choice = unit_choice(spec.key, spec.family);
+                const double factor = options[static_cast<size_t>(choice)].to_display;
+
                 if (invalid) ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::kInvalidBg);
-                const float unit_width = ImGui::CalcTextSize(spec.unit).x + 8.0f;
+                const float unit_width =
+                    options.size() == 1 ? ImGui::CalcTextSize(spec.unit).x + 8.0f
+                                        : ImGui::GetFontSize() * 4.8f;
                 ImGui::SetNextItemWidth(-unit_width);
-                double value = config_.*(spec.member);
-                if (ImGui::InputDouble((std::string("##") + spec.key).c_str(), &value, 0.0, 0.0,
-                                       "%g")) {
-                    config_.*(spec.member) = value;
+                double display_value = config_.*(spec.member) * factor;
+                if (ImGui::InputDouble((std::string("##") + spec.key).c_str(), &display_value,
+                                       0.0, 0.0, "%g")) {
+                    config_.*(spec.member) = display_value / factor;
                     dirty_ = true;
                 }
-                help_tooltip(spec.help, spec.unit);
+                help_tooltip(spec.help, options.size() == 1 ? spec.unit : nullptr);
                 if (invalid) ImGui::PopStyleColor();
                 ImGui::SameLine();
-                ImGui::TextDisabled("%s", spec.unit);
+                if (options.size() == 1) {
+                    ImGui::TextDisabled("%s", spec.unit);
+                } else {
+                    // Display-unit selector; the config file stays solver-native.
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    if (ImGui::BeginCombo((std::string("##unit_") + spec.key).c_str(),
+                                          options[static_cast<size_t>(choice)].label)) {
+                        for (int i = 0; i < static_cast<int>(options.size()); ++i) {
+                            if (ImGui::Selectable(options[static_cast<size_t>(i)].label,
+                                                  i == choice)) {
+                                choice = i;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                        ImGui::SetTooltip("Display unit only - the config file keeps %s.",
+                                          spec.unit);
+                    }
+                }
             }
             for (const auto& spec : int_specs()) {
                 if (spec.group != group || !spec_visible(spec.label, spec.key, spec.advanced)) {
@@ -357,117 +417,182 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
 
         switch (group) {
             case ParamGroup::MeshTime:
-                row("Solution mode", "TRANSIENT marches end_t/dt; STEADY_STATE solves one step.");
-                changed |= enum_combo("##solution_mode", config_.solution_mode,
-                                      {{SolutionMode::TRANSIENT, "Transient"},
-                                       {SolutionMode::STEADY_STATE, "Steady state"}},
-                                      "Solution mode");
+                row("Solution mode", "How the simulation advances in time.");
+                changed |= enum_combo<SolutionMode>(
+                    "##solution_mode", config_.solution_mode,
+                    {{SolutionMode::TRANSIENT, "Transient",
+                      "Marches from 0 to the end time in dt steps. Use for startup, dynamic "
+                      "loads, moving bearings, or to let cavitation settle."},
+                     {SolutionMode::STEADY_STATE, "Steady state",
+                      "Solves a single equilibrium step. Fastest for fixed operating points "
+                      "with a static journal."}});
                 break;
             case ParamGroup::Cavitation:
-                row("Cavitation model",
-                    "ELROD_ADAMS is mass-conserving (JFO); GUMBEL clamps negative pressures; "
-                    "FULL_SOMMERFELD keeps them.");
-                changed |= enum_combo("##cavitation_model", config_.cavitation_model,
-                                      {{CavitationModel::ELROD_ADAMS, "Elrod-Adams (JFO)"},
-                                       {CavitationModel::GUMBEL, "Gumbel (half Sommerfeld)"},
-                                       {CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld"}},
-                                      "Cavitation treatment");
+                row("Cavitation model", "How film rupture is treated.");
+                changed |= enum_combo<CavitationModel>(
+                    "##cavitation_model", config_.cavitation_model,
+                    {{CavitationModel::ELROD_ADAMS, "Elrod-Adams (JFO)",
+                      "Mass-conserving JFO cavitation: tracks the liquid fraction so rupture "
+                      "AND reformation are physical. The recommended model; needed for "
+                      "accurate cavitation extent and oil transport."},
+                     {CavitationModel::GUMBEL, "Gumbel (half Sommerfeld)",
+                      "Clamps negative pressures to the cavitation pressure after the solve. "
+                      "Fast and robust but not mass-conserving - cavitation extent is "
+                      "approximate. OK for quick load-capacity estimates."},
+                     {CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld",
+                      "No cavitation: sub-cavitation (tensile) pressures are kept. Only for "
+                      "verification against analytic full-Sommerfeld solutions."}});
                 break;
             case ParamGroup::Boundaries:
                 row("South boundary type (z = 0)", "Pressure condition at the south face.");
-                changed |= enum_combo("##bc_s", config_.bc_z_south_type,
-                                      {{BCType::DIRICHLET, "Fixed pressure (Dirichlet)"},
-                                       {BCType::NEUMANN, "Zero gradient (Neumann)"},
-                                       {BCType::INLET_OUTLET, "Inlet/outlet"}},
-                                      "South BC");
+                changed |= enum_combo<BCType>(
+                    "##bc_s", config_.bc_z_south_type,
+                    {{BCType::DIRICHLET, "Fixed pressure (Dirichlet)",
+                      "Holds the boundary at the given absolute pressure - a submerged or "
+                      "vented bearing end. The usual choice."},
+                     {BCType::NEUMANN, "Zero gradient (Neumann)",
+                      "No axial pressure gradient - a sealed/symmetry end with no side flow."},
+                     {BCType::INLET_OUTLET, "Inlet/outlet",
+                      "Fixed pressure where flow enters, zero-gradient where it leaves - an "
+                      "open end that should not pull unphysical inflow."}});
                 row("South thermal inflow", "Temperature carried by oil entering at z = 0.");
-                changed |= enum_combo("##bc_s_th", config_.bc_z_south_thermal,
-                                      {{ThermalInflowMode::OPEN, "Open (recirculating oil)"},
-                                       {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)"}},
-                                      "South thermal inflow");
+                changed |= enum_combo<ThermalInflowMode>(
+                    "##bc_s_th", config_.bc_z_south_thermal,
+                    {{ThermalInflowMode::OPEN, "Open (recirculating oil)",
+                      "Entering oil is the same recirculating film oil (zero-gradient "
+                      "temperature). Use for submerged/open ends."},
+                     {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)",
+                      "Entering oil carries a fixed supply temperature. Use when the end is "
+                      "fed from an external reservoir."}});
                 row("North boundary type (z = L)", "Pressure condition at the north face.");
-                changed |= enum_combo("##bc_n", config_.bc_z_north_type,
-                                      {{BCType::DIRICHLET, "Fixed pressure (Dirichlet)"},
-                                       {BCType::NEUMANN, "Zero gradient (Neumann)"},
-                                       {BCType::INLET_OUTLET, "Inlet/outlet"}},
-                                      "North BC");
+                changed |= enum_combo<BCType>(
+                    "##bc_n", config_.bc_z_north_type,
+                    {{BCType::DIRICHLET, "Fixed pressure (Dirichlet)",
+                      "Holds the boundary at the given absolute pressure - a submerged or "
+                      "vented bearing end. The usual choice."},
+                     {BCType::NEUMANN, "Zero gradient (Neumann)",
+                      "No axial pressure gradient - a sealed/symmetry end with no side flow."},
+                     {BCType::INLET_OUTLET, "Inlet/outlet",
+                      "Fixed pressure where flow enters, zero-gradient where it leaves - an "
+                      "open end that should not pull unphysical inflow."}});
                 row("North thermal inflow", "Temperature carried by oil entering at z = L.");
-                changed |= enum_combo("##bc_n_th", config_.bc_z_north_thermal,
-                                      {{ThermalInflowMode::OPEN, "Open (recirculating oil)"},
-                                       {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)"}},
-                                      "North thermal inflow");
+                changed |= enum_combo<ThermalInflowMode>(
+                    "##bc_n_th", config_.bc_z_north_thermal,
+                    {{ThermalInflowMode::OPEN, "Open (recirculating oil)",
+                      "Entering oil is the same recirculating film oil (zero-gradient "
+                      "temperature). Use for submerged/open ends."},
+                     {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)",
+                      "Entering oil carries a fixed supply temperature. Use when the end is "
+                      "fed from an external reservoir."}});
                 break;
             case ParamGroup::Thermal:
-                row("Temperature model",
-                    "ISOTHERMAL keeps properties at the initial temperature; ENERGY_EQUATION "
-                    "transports heat in the film.");
-                changed |= enum_combo("##temperature_model", config_.temperature_model,
-                                      {{TemperatureModel::ISOTHERMAL, "Isothermal"},
-                                       {TemperatureModel::ENERGY_EQUATION, "Energy equation (THD)"}},
-                                      "Thermal model");
+                row("Temperature model", "Whether heat transport in the film is solved.");
+                changed |= enum_combo<TemperatureModel>(
+                    "##temperature_model", config_.temperature_model,
+                    {{TemperatureModel::ISOTHERMAL, "Isothermal",
+                      "Constant film temperature; viscosity stays at its reference value. "
+                      "Fast; fine when thermal rise is small or unknown inputs dominate."},
+                     {TemperatureModel::ENERGY_EQUATION, "Energy equation (THD)",
+                      "Transports viscous heating through the film (film-averaged energy "
+                      "equation). Use when temperature rise matters - high speed, low "
+                      "clearance, viscosity-temperature coupling."}});
                 break;
             case ParamGroup::FluidProperties:
                 if (show_advanced_) {
                     row("Property model", "How density/viscosity react to pressure, temperature "
                                           "and dissolved gas.");
-                    changed |= enum_combo(
+                    changed |= enum_combo<FluidPropertyModel>(
                         "##fluid_property_model", config_.fluid_property_model,
-                        {{FluidPropertyModel::CONSTANT, "Constant"},
-                         {FluidPropertyModel::OIL_DISSOLVED_GAS, "Oil + dissolved gas"},
-                         {FluidPropertyModel::GAS_CAVITATION_MIXTURE, "Gas cavitation mixture"}},
-                        "Fluid property model");
+                        {{FluidPropertyModel::CONSTANT, "Constant",
+                          "Fixed density and viscosity. The default for plain oil bearings."},
+                         {FluidPropertyModel::OIL_DISSOLVED_GAS, "Oil + dissolved gas",
+                          "Liquid properties vary with dissolved-gas concentration (and T, p). "
+                          "Use for refrigerant/oil mixtures while gas stays dissolved."},
+                         {FluidPropertyModel::GAS_CAVITATION_MIXTURE, "Gas cavitation mixture",
+                          "Adds finite-rate gas release/resorption and a free-gas phase in "
+                          "cavitated zones. The full gaseous-cavitation model; needs "
+                          "Elrod-Adams and gas parameters."}});
                     row("Dissolved gas species", "Gas dissolved in the lubricant.");
-                    changed |= enum_combo("##dissolved_gas_species", config_.dissolved_gas_species,
-                                          {{DissolvedGasSpecies::PROPANE, "Propane (R-290)"},
-                                           {DissolvedGasSpecies::AIR, "Air"}},
-                                          "Dissolved gas");
+                    changed |= enum_combo<DissolvedGasSpecies>(
+                        "##dissolved_gas_species", config_.dissolved_gas_species,
+                        {{DissolvedGasSpecies::PROPANE, "Propane (R-290)",
+                          "Refrigerant propane dissolved in oil (compressor bearings)."},
+                         {DissolvedGasSpecies::AIR, "Air",
+                          "Air dissolved in oil (conventional aerated lubricant)."}});
                     row("Solubility model", "Saturation law c_sat(p, T).");
-                    changed |= enum_combo("##oil_gas_solution_model", config_.oil_gas_solution_model,
-                                          {{OilGasSolutionModel::HENRY, "Henry's law"},
-                                           {OilGasSolutionModel::BUNSEN, "Bunsen coefficient"},
-                                           {OilGasSolutionModel::TABLE, "Table"}},
-                                          "Solubility model");
+                    changed |= enum_combo<OilGasSolutionModel>(
+                        "##oil_gas_solution_model", config_.oil_gas_solution_model,
+                        {{OilGasSolutionModel::HENRY, "Henry's law",
+                          "c_sat proportional to pressure (with optional van't Hoff "
+                          "temperature dependence). Good for dilute solutions."},
+                         {OilGasSolutionModel::BUNSEN, "Bunsen coefficient",
+                          "Volume-based solubility coefficient. Use when data is given as "
+                          "Bunsen absorption numbers."},
+                         {OilGasSolutionModel::TABLE, "Table",
+                          "Tabulated c_sat(p) pairs (solubility_table). Use measured data."}});
                     row("Density model", "Liquid-solution density mixing rule.");
-                    changed |= enum_combo("##density_model", config_.density_model,
-                                          {{DensityModel::PURE_OIL, "Pure oil"},
-                                           {DensityModel::MASS_VOLUME_MIXING, "Mass-volume mixing"},
-                                           {DensityModel::TABLE, "Table"}},
-                                          "Density model");
+                    changed |= enum_combo<DensityModel>(
+                        "##density_model", config_.density_model,
+                        {{DensityModel::PURE_OIL, "Pure oil",
+                          "Dissolved gas does not change liquid density."},
+                         {DensityModel::MASS_VOLUME_MIXING, "Mass-volume mixing",
+                          "Ideal mixing of oil and dissolved-gas partial volumes; needs the "
+                          "dissolved-gas liquid density."},
+                         {DensityModel::TABLE, "Table",
+                          "Tabulated rho(c_d) pairs (density_table)."}});
                     row("Viscosity model", "Liquid-solution viscosity mixing rule.");
-                    changed |= enum_combo("##viscosity_model", config_.viscosity_model,
-                                          {{ViscosityModel::PURE_OIL, "Pure oil"},
-                                           {ViscosityModel::LOG_MIXING, "Log mixing"},
-                                           {ViscosityModel::EMPIRICAL_CORRELATION, "Empirical correlation"},
-                                           {ViscosityModel::TABLE, "Table"}},
-                                          "Viscosity model");
+                    changed |= enum_combo<ViscosityModel>(
+                        "##viscosity_model", config_.viscosity_model,
+                        {{ViscosityModel::PURE_OIL, "Pure oil",
+                          "Dissolved gas does not change liquid viscosity."},
+                         {ViscosityModel::LOG_MIXING, "Log mixing",
+                          "mu = mu_oil exp(a_c c_d): exponential thinning with gas content. "
+                          "Common for refrigerant/oil data."},
+                         {ViscosityModel::EMPIRICAL_CORRELATION, "Empirical correlation",
+                          "Log mixing plus Andrade temperature and Barus pressure terms. The "
+                          "most complete option; needs the extra coefficients."},
+                         {ViscosityModel::TABLE, "Table",
+                          "Tabulated mu(c_d) pairs (viscosity_table)."}});
                     row("Two-phase viscosity", "Effective viscosity once free gas appears.");
-                    changed |= enum_combo(
+                    changed |= enum_combo<GasMixtureViscosityModel>(
                         "##gas_mixture_viscosity_model", config_.gas_mixture_viscosity_model,
-                        {{GasMixtureViscosityModel::EINSTEIN_DILUTE, "Einstein (dilute)"},
-                         {GasMixtureViscosityModel::DUKLER_VOID, "Dukler (void fraction)"},
-                         {GasMixtureViscosityModel::MCADAMS_QUALITY, "McAdams (quality)"},
-                         {GasMixtureViscosityModel::KRIEGER_DOUGHERTY, "Krieger-Dougherty"},
-                         {GasMixtureViscosityModel::LINEAR_QUALITY, "Linear quality"}},
-                        "Two-phase viscosity model");
+                        {{GasMixtureViscosityModel::EINSTEIN_DILUTE, "Einstein (dilute)",
+                          "mu_l (1 + 2.5 alpha): dilute-bubble result, valid alpha < ~0.1. "
+                          "Thickens with gas - wrong trend at high void fraction."},
+                         {GasMixtureViscosityModel::DUKLER_VOID, "Dukler (void fraction)",
+                          "Void-fraction-weighted linear blend to the gas viscosity; needs "
+                          "mu_gas. Reasonable across the whole range."},
+                         {GasMixtureViscosityModel::MCADAMS_QUALITY, "McAdams (quality)",
+                          "Homogeneous two-phase standard: harmonic blend by mass quality; "
+                          "needs mu_gas. Strong thinning once gas appears."},
+                         {GasMixtureViscosityModel::KRIEGER_DOUGHERTY, "Krieger-Dougherty",
+                          "Packing-limited suspension law up to alpha_max. Thickens toward "
+                          "the packing limit; no mu_gas needed."},
+                         {GasMixtureViscosityModel::LINEAR_QUALITY, "Linear quality",
+                          "Mass-quality-weighted linear blend (Grando 2006); needs mu_gas."}});
                 }
                 break;
             case ParamGroup::Motion:
-                row("Motion model",
-                    "STATIC keeps the configured eccentricity; MOVING_BEARING integrates the "
-                    "bearing equation of motion under the loads.");
-                changed |= enum_combo("##motion_model", config_.motion_model,
-                                      {{MotionModel::STATIC, "Static"},
-                                       {MotionModel::MOVING_BEARING, "Moving bearing"}},
-                                      "Motion model");
+                row("Motion model", "Whether the bearing can move.");
+                changed |= enum_combo<MotionModel>(
+                    "##motion_model", config_.motion_model,
+                    {{MotionModel::STATIC, "Static",
+                      "Bearing fixed at the configured eccentricity/attitude. Use to evaluate "
+                      "an operating point."},
+                     {MotionModel::MOVING_BEARING, "Moving bearing",
+                      "Integrates the bearing equation of motion under fluid + external "
+                      "loads (mass/stiffness/damping). Use for equilibrium search or "
+                      "dynamics."}});
                 break;
             case ParamGroup::Output: {
-                row("Terminal verbosity",
-                    "DETAILED adds per-step film/force/torque diagnostics to the log (needed for "
-                    "the friction-torque result).");
-                changed |= enum_combo("##output_verbosity", config_.output_verbosity,
-                                      {{OutputVerbosity::SIMPLIFIED, "Simplified"},
-                                       {OutputVerbosity::DETAILED, "Detailed"}},
-                                      "Verbosity");
+                row("Terminal verbosity", "How much the solver prints per step.");
+                changed |= enum_combo<OutputVerbosity>(
+                    "##output_verbosity", config_.output_verbosity,
+                    {{OutputVerbosity::SIMPLIFIED, "Simplified",
+                      "One short line per step. Keeps long runs readable."},
+                     {OutputVerbosity::DETAILED, "Detailed",
+                      "Adds per-step film thickness, temperature range, forces and friction "
+                      "torque to the log."}});
                 row("Output directory", "Where VTK results land; relative paths resolve next to "
                                         "the config file.");
                 if (input_text_string("##output_dir", config_.output_dir)) dirty_ = true;
@@ -478,37 +603,59 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
             case ParamGroup::Numerics:
                 if (show_advanced_) {
                     row("Motion time integrator", "Integrator for the bearing equation of motion.");
-                    changed |= enum_combo("##motion_time_method", config_.motion_time_method,
-                                          {{TimeSteppingMethod::EULER_IMPLICIT, "Implicit Euler"},
-                                           {TimeSteppingMethod::EULER_EXPLICIT, "Explicit Euler"},
-                                           {TimeSteppingMethod::CRANK_NICOLSON, "Crank-Nicolson"},
-                                           {TimeSteppingMethod::RK2, "Runge-Kutta 2"},
-                                           {TimeSteppingMethod::RK4, "Runge-Kutta 4"}},
-                                          "Motion integrator");
-                    const auto scheme_combo = [&](const char* id, ConvectionScheme& scheme,
-                                                  bool with_type_differencing) {
-                        if (with_type_differencing) {
-                            return enum_combo(id, scheme,
-                                              {{ConvectionScheme::UPWIND, "Upwind"},
-                                               {ConvectionScheme::TVD_VANLEER, "TVD van Leer"},
-                                               {ConvectionScheme::TVD_MINMOD, "TVD minmod"},
-                                               {ConvectionScheme::TYPE_DIFFERENCING,
-                                                "Type differencing (V&K 1989)"}},
-                                              "Convection face interpolation");
-                        }
-                        return enum_combo(id, scheme,
-                                          {{ConvectionScheme::UPWIND, "Upwind"},
-                                           {ConvectionScheme::TVD_VANLEER, "TVD van Leer"},
-                                           {ConvectionScheme::TVD_MINMOD, "TVD minmod"}},
-                                          "Convection face interpolation");
-                    };
+                    changed |= enum_combo<TimeSteppingMethod>(
+                        "##motion_time_method", config_.motion_time_method,
+                        {{TimeSteppingMethod::EULER_IMPLICIT, "Implicit Euler",
+                          "1st order, unconditionally stable. The robust default."},
+                         {TimeSteppingMethod::EULER_EXPLICIT, "Explicit Euler",
+                          "1st order, cheapest, but stability-limited - needs small dt."},
+                         {TimeSteppingMethod::CRANK_NICOLSON, "Crank-Nicolson",
+                          "2nd order, semi-implicit. More accurate trajectories; can ring on "
+                          "stiff supports."},
+                         {TimeSteppingMethod::RK2, "Runge-Kutta 2",
+                          "2nd order explicit midpoint; stability-limited."},
+                         {TimeSteppingMethod::RK4, "Runge-Kutta 4",
+                          "4th order explicit; most accurate per step, 4 force evaluations."}});
+
+                    // Face-interpolation choices. TYPE_DIFFERENCING is the linear
+                    // (central) option: central across full-film faces, upwind in
+                    // cavitated cells (Vijayaraghavan & Keith 1989).
+                    constexpr const char* kUpwindDesc =
+                        "1st-order accurate, unconditionally bounded and most robust, but "
+                        "numerically diffusive - smears sharp cavitation/temperature fronts. "
+                        "Use as the safe default and for difficult cases.";
+                    constexpr const char* kVanLeerDesc =
+                        "2nd-order TVD with the van Leer limiter: sharper fronts without "
+                        "over/undershoots. Use when front resolution matters and the run is "
+                        "stable with it.";
+                    constexpr const char* kMinmodDesc =
+                        "2nd-order TVD with the minmod limiter: the most cautious limiter - "
+                        "between upwind and van Leer in sharpness, very robust.";
+                    constexpr const char* kLinearDesc =
+                        "Linear (central) interpolation across full-film faces, upwind "
+                        "across/inside cavitated faces (Vijayaraghavan & Keith 1989). "
+                        "2nd-order in the full film and the classic Elrod choice; only "
+                        "meaningful for the film-content equation.";
                     row("Film-content convection", "Scheme for the Elrod film-content transport.");
-                    changed |= scheme_combo("##theta_scheme", config_.theta_convection_scheme, true);
+                    changed |= enum_combo<ConvectionScheme>(
+                        "##theta_scheme", config_.theta_convection_scheme,
+                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                         {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
+                          kLinearDesc},
+                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
+                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
                     row("Thermal convection", "Scheme for temperature transport.");
-                    changed |= scheme_combo("##thermal_scheme", config_.thermal_convection_scheme,
-                                            false);
+                    changed |= enum_combo<ConvectionScheme>(
+                        "##thermal_scheme", config_.thermal_convection_scheme,
+                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
+                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
                     row("Gas convection", "Scheme for dissolved-gas transport.");
-                    changed |= scheme_combo("##gas_scheme", config_.gas_convection_scheme, false);
+                    changed |= enum_combo<ConvectionScheme>(
+                        "##gas_scheme", config_.gas_convection_scheme,
+                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                         {ConvectionScheme::TVD_VANLEER, "TVD van Leer", kVanLeerDesc},
+                         {ConvectionScheme::TVD_MINMOD, "TVD minmod", kMinmodDesc}});
                 }
                 break;
             default: break;
@@ -530,6 +677,41 @@ void GuiApp::draw_inlets_editor() {
             }
         }
     }
+    // Label-left input with a display-unit selector (shared per choice_key, so
+    // all inlets switch units together).
+    const auto unit_input = [&](const char* label, const char* choice_key, UnitFamily family,
+                                double& stored, const char* fixed_unit) {
+        const float label_column = ImGui::GetFontSize() * 11.0f;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine(label_column);
+        const auto& options = unit_options(family);
+        int& choice = unit_choice(choice_key, family);
+        const double factor = options[static_cast<size_t>(choice)].to_display;
+        double display = stored * factor;
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.5f);
+        if (ImGui::InputDouble((std::string("##v_") + label).c_str(), &display, 0, 0, "%g")) {
+            stored = display / factor;
+            dirty_ = true;
+        }
+        ImGui::SameLine();
+        if (options.size() == 1) {
+            ImGui::TextDisabled("%s", fixed_unit);
+        } else {
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.4f);
+            if (ImGui::BeginCombo((std::string("##u_") + label).c_str(),
+                                  options[static_cast<size_t>(choice)].label)) {
+                for (int option = 0; option < static_cast<int>(options.size()); ++option) {
+                    if (ImGui::Selectable(options[static_cast<size_t>(option)].label,
+                                          option == choice)) {
+                        choice = option;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        }
+    };
+
     int remove_index = -1;
     for (size_t i = 0; i < config_.inlets.size(); ++i) {
         InletConfig& inlet = config_.inlets[i];
@@ -538,35 +720,37 @@ void GuiApp::draw_inlets_editor() {
         std::string title = std::string(is_groove ? "Groove" : "Circular hole") + " inlet " +
                             std::to_string(i + 1);
         if (ImGui::TreeNodeEx(title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Type");
+            ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
             int type_index = is_groove ? 1 : 0;
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-            if (ImGui::Combo("Type", &type_index, "Circular hole\0Axial groove\0")) {
+            if (ImGui::Combo("##type", &type_index, "Circular hole\0Axial groove\0")) {
                 inlet.type = type_index == 1 ? InletConfig::Type::GROOVE
                                              : InletConfig::Type::CIRCULAR;
                 dirty_ = true;
             }
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-            if (ImGui::InputDouble("Position theta [deg]", &inlet.theta, 0, 0, "%g")) dirty_ = true;
+            unit_input("Position theta", "inlet.theta", UnitFamily::Angle, inlet.theta, "deg");
             if (inlet.type == InletConfig::Type::CIRCULAR) {
-                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-                if (ImGui::InputDouble("Position z [m]", &inlet.z, 0, 0, "%g")) dirty_ = true;
-                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-                if (ImGui::InputDouble("Radius [m]", &inlet.size, 0, 0, "%g")) dirty_ = true;
+                unit_input("Position z", "inlet.z", UnitFamily::Length, inlet.z, "m");
+                unit_input("Radius", "inlet.size_r", UnitFamily::Length, inlet.size, "m");
             } else {
-                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-                if (ImGui::InputDouble("Angular width [deg]", &inlet.size, 0, 0, "%g")) dirty_ = true;
+                unit_input("Angular width", "inlet.size_w", UnitFamily::Angle, inlet.size, "deg");
             }
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-            if (ImGui::InputDouble("Supply pressure [Pa]", &inlet.p_supply, 0, 0, "%g")) dirty_ = true;
-            if (ImGui::Checkbox("Feeds fresh oil (fixed supply temperature)",
-                                &inlet.feeds_fresh_oil)) {
-                dirty_ = true;
+            unit_input("Supply pressure", "inlet.p_supply", UnitFamily::Pressure, inlet.p_supply,
+                       "Pa");
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Feeds fresh oil");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                ImGui::SetTooltip("Checked: an actual fed inlet pumping fresh oil in at the "
+                                  "supply temperature.\nUnchecked: an open pocket of the same "
+                                  "recirculating oil (pressure only).");
             }
+            ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
+            if (ImGui::Checkbox("##feeds", &inlet.feeds_fresh_oil)) dirty_ = true;
             if (inlet.feeds_fresh_oil) {
-                ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11);
-                if (ImGui::InputDouble("Supply temperature [K]", &inlet.t_supply, 0, 0, "%g")) {
-                    dirty_ = true;
-                }
+                unit_input("Supply temperature", "inlet.t_supply", UnitFamily::Fixed,
+                           inlet.t_supply, "K");
             }
             if (ImGui::SmallButton("Remove inlet")) remove_index = static_cast<int>(i);
             ImGui::TreePop();

@@ -105,7 +105,6 @@ void GuiApp::draw() {
     draw_results_panel();
     draw_convergence_panel();
     draw_log_panel();
-    draw_history_panel();
     draw_status_bar();
     draw_modals();
 
@@ -156,11 +155,6 @@ void GuiApp::draw_dockspace_and_menu() {
             }
             if (ImGui::MenuItem("Cancel run", nullptr, false, runner_.running())) {
                 runner_.cancel();
-            }
-            ImGui::Separator();
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6);
-            if (ImGui::InputInt("MPI ranks", &settings.mpi_ranks)) {
-                settings.mpi_ranks = std::clamp(settings.mpi_ranks, 1, 256);
             }
             ImGui::EndMenu();
         }
@@ -214,13 +208,11 @@ void GuiApp::build_default_layout(unsigned dockspace_id) {
 
     ImGuiID center = dockspace_id;
     const ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.30f, nullptr, &center);
-    const ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.26f, nullptr, &center);
     const ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.30f, nullptr, &center);
 
     ImGui::DockBuilderDockWindow("Case Setup", left);
     ImGui::DockBuilderDockWindow("Results", center);
     ImGui::DockBuilderDockWindow("Convergence", center);
-    ImGui::DockBuilderDockWindow("Run History", right);
     ImGui::DockBuilderDockWindow("Solver Log", bottom);
     ImGui::DockBuilderFinish(dockspace_id);
 }
@@ -468,12 +460,6 @@ void GuiApp::on_run_finished(SolverState outcome) {
     if (!diagnostics_.empty()) {
         record.cavitated_fraction = diagnostics_.back().cavitated_fraction;
         record.boundary_flux = diagnostics_.back().liquid_boundary_flux;
-        record.conv_step.reserve(diagnostics_.size());
-        record.conv_residual.reserve(diagnostics_.size());
-        for (const DiagRow& row : diagnostics_) {
-            record.conv_step.push_back(row.step);
-            record.conv_residual.push_back(std::abs(row.liquid_residual));
-        }
     }
     history_.push_back(std::move(record));
 
@@ -521,22 +507,6 @@ void GuiApp::fill_history_results(RunRecord& record) {
     if (std::isfinite(torque)) {
         record.friction_torque = torque;
         record.friction_power = std::abs(torque * record.config.omega);
-    }
-
-    // Mid-plane profiles for overlay comparison.
-    if (p && grid_->nx > 0 && grid_->ny > 0) {
-        const int j = grid_->ny / 2;
-        record.profile_theta_deg = grid_->theta_deg;
-        record.profile_p.resize(grid_->nx);
-        for (int i = 0; i < grid_->nx; ++i) {
-            record.profile_p[i] = (*p)[static_cast<size_t>(j) * grid_->nx + i];
-        }
-        if (h) {
-            record.profile_h.resize(grid_->nx);
-            for (int i = 0; i < grid_->nx; ++i) {
-                record.profile_h[i] = (*h)[static_cast<size_t>(j) * grid_->nx + i];
-            }
-        }
     }
 }
 
@@ -698,47 +668,11 @@ std::filesystem::path GuiApp::resolve_output_dir() const {
 // Exports
 // ---------------------------------------------------------------------------
 
-void GuiApp::export_history_csv() {
-    const fs::path target =
-        exports::save_file_dialog(hwnd, L"CSV files (*.csv)\0*.csv\0", L"csv", L"run_history.csv");
-    if (target.empty()) return;
-    std::vector<std::vector<std::string>> rows;
-    for (const RunRecord& record : history_) {
-        char cell[64];
-        std::vector<std::string> row;
-        row.push_back(std::to_string(record.id));
-        row.push_back(record.started_at);
-        row.push_back(to_string(record.outcome));
-        const auto push_double = [&](double value) {
-            std::snprintf(cell, sizeof(cell), "%.9g", value);
-            row.push_back(std::isfinite(value) ? cell : "");
-        };
-        push_double(record.duration_s);
-        push_double(record.config.omega);
-        push_double(record.config.e);
-        push_double(record.config.mu);
-        push_double(std::hypot(record.config.external_load_x, record.config.external_load_y));
-        row.push_back(std::to_string(record.config.n_theta_global) + "x" +
-                      std::to_string(record.config.n_z_global));
-        push_double(record.h_min);
-        push_double(record.p_max);
-        push_double(record.attitude_deg);
-        push_double(record.friction_torque);
-        push_double(record.friction_power);
-        push_double(record.cavitated_fraction);
-        rows.push_back(std::move(row));
-    }
-    std::string error;
-    if (exports::write_csv_rows(target,
-                                {"run", "started", "outcome", "duration_s", "omega_rad_s", "e_m",
-                                 "mu_Pa_s", "load_N", "mesh", "h_min_m", "p_max_Pa",
-                                 "attitude_deg", "friction_torque_Nm", "friction_power_W",
-                                 "cavitated_fraction"},
-                                rows, error)) {
-        set_status("Saved " + winutil::path_to_utf8(target));
-    } else {
-        set_status(error);
-    }
+int& GuiApp::unit_choice(const char* key, UnitFamily family) {
+    int& choice = settings.unit_choices[key];
+    const int count = static_cast<int>(unit_options(family).size());
+    if (choice < 0 || choice >= count) choice = 0;
+    return choice;
 }
 
 void GuiApp::export_grid_csv() {
@@ -786,11 +720,6 @@ void GuiApp::export_profiles_csv() {
         }
         headers.push_back(name);
         columns.push_back(std::move(column));
-    }
-    for (const RunRecord& record : history_) {
-        if (!record.overlay || record.profile_p.empty()) continue;
-        headers.push_back("p_run" + std::to_string(record.id));
-        columns.push_back(record.profile_p);
     }
     std::string error;
     if (exports::write_csv_columns(target, headers, columns, error)) {

@@ -37,6 +37,7 @@ void UserSettings::load(const std::filesystem::path& file) {
         const std::string value = line.substr(eq + 1);
         if (key == "solver_path") solver_path = value;
         else if (key == "last_config") last_config = value;
+        else if (key.rfind("unit.", 0) == 0) unit_choices[key.substr(5)] = std::atoi(value.c_str());
         else if (key == "mpi_ranks") mpi_ranks = std::max(1, std::atoi(value.c_str()));
         else if (key == "window_width") window_width = std::max(640, std::atoi(value.c_str()));
         else if (key == "window_height") window_height = std::max(480, std::atoi(value.c_str()));
@@ -53,4 +54,7 @@ void UserSettings::save(const std::filesystem::path& file) const {
            << "window_width=" << window_width << "\n"
            << "window_height=" << window_height << "\n"
            << "window_maximized=" << (window_maximized ? 1 : 0) << "\n";
+    for (const auto& [key, index] : unit_choices) {
+        output << "unit." << key << "=" << index << "\n";
+    }
 }

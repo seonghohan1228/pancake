@@ -1,4 +1,4 @@
-// Results, Convergence, Solver Log and Run History panels. All plots are
+﻿// Results, Convergence, Solver Log and Run History panels. All plots are
 // ImPlot instruments: pan/zoom, hover readouts, labeled axes with units,
 // CSV and PNG export.
 
@@ -54,10 +54,39 @@ const char* field_unit(const std::string& name) {
     if (name == "heat_generation") return "W/m^3";
     if (name == "dissolved_gas") return "kg/kg";
     if (name == "gas_mass_transfer") return "kg/(s.m^3)";
+    if (name == "friction_torque") return "N.m";
+    if (name == "bearing_attitude_angle") return "deg";
     if (name.rfind("F", 0) == 0) return "N";
     if (name.rfind("xB", 0) == 0) return "m";
     if (name.rfind("U", 0) == 0) return "m/s";
     return "";
+}
+
+/// Short hover description helping the user pick a field to plot.
+const char* field_desc(const std::string& name) {
+    if (name == "p") return "Hydrodynamic film pressure (absolute).";
+    if (name == "h") return "Local film thickness between journal and bearing.";
+    if (name == "film_content")
+        return "Elrod liquid fraction (theta): 1 = full film, < 1 = cavitated.";
+    if (name == "T") return "Film temperature (energy equation).";
+    if (name == "rho") return "Effective mixture density (liquid + free gas).";
+    if (name == "mu") return "Effective mixture dynamic viscosity.";
+    if (name == "rho_liquid_solution") return "Pure-liquid (oil + dissolved gas) density.";
+    if (name == "mu_liquid_solution") return "Pure-liquid (oil + dissolved gas) viscosity.";
+    if (name == "heat_generation") return "Viscous heat generation rate per volume.";
+    if (name == "dissolved_gas") return "Dissolved gas mass fraction in the liquid.";
+    if (name == "alpha_gas") return "Free-gas volume fraction (gaseous cavitation).";
+    if (name == "gas_mass_transfer") return "Gas release (+) / resorption (-) rate.";
+    if (name == "inlet_indicator") return "1 inside an inlet/groove region, 0 elsewhere.";
+    if (name == "friction_torque") return "Total friction torque on the journal (constant field).";
+    if (name == "bearing_attitude_angle") return "Attitude angle resultant (constant field).";
+    if (name.rfind("U.", 0) == 0) return "Mid-film velocity component.";
+    if (name.rfind("Fp.", 0) == 0) return "Pressure force resultant component (constant field).";
+    if (name.rfind("Fv.", 0) == 0) return "Viscous force resultant component (constant field).";
+    if (name.rfind("F.", 0) == 0) return "Total fluid force component (constant field).";
+    if (name.rfind("Fext.", 0) == 0) return "External load component (constant field).";
+    if (name.rfind("xB.", 0) == 0) return "Bearing center position component (constant field).";
+    return nullptr;
 }
 
 void copyable_value(const char* label, double value, const char* unit, const char* fmt = "%.6g") {
@@ -98,6 +127,9 @@ void GuiApp::draw_results_panel() {
     // Toolbar: step selection + refresh.
     if (ImGui::Button("Refresh")) request_scan(resolve_output_dir());
     ImGui::SetItemTooltip("Rescan the output directory for saved steps.");
+    ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Step");
     ImGui::SameLine();
     ImGui::BeginDisabled(steps_.empty());
     const int current_index = selected_step_ < 0 ? static_cast<int>(steps_.size()) - 1
@@ -181,8 +213,11 @@ void GuiApp::draw_heatmap_tab() {
     }
     if (!grid.field(selected_field_)) selected_field_ = field_names.front();
 
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Field");
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
-    if (ImGui::BeginCombo("Field", selected_field_.c_str())) {
+    if (ImGui::BeginCombo("##field", selected_field_.c_str())) {
         for (const std::string& name : field_names) {
             std::string label = name;
             const char* unit = field_unit(name);
@@ -190,13 +225,22 @@ void GuiApp::draw_heatmap_tab() {
             if (ImGui::Selectable(label.c_str(), name == selected_field_)) {
                 selected_field_ = name;
             }
+            const char* desc = field_desc(name);
+            if (desc && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                ImGui::SetTooltip("%s", desc);
+            }
         }
         ImGui::EndCombo();
     }
     ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Cavitation zone");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Hatch cells where the film content is below 1 (ruptured film).");
+    }
+    ImGui::SameLine();
     static bool show_cavitation = true;
-    ImGui::Checkbox("Cavitation zone", &show_cavitation);
-    ImGui::SetItemTooltip("Hatch cells where the film content is below 1 (ruptured film).");
+    ImGui::Checkbox("##cavzone", &show_cavitation);
     ImGui::SameLine();
     if (ImGui::SmallButton("CSV")) export_grid_csv();
     ImGui::SameLine();
@@ -239,15 +283,54 @@ void GuiApp::draw_heatmap_tab() {
                            ImGui::GetContentRegionAvail().y);
     ImVec2 capture_min(0, 0), capture_max(0, 0);
 
-    // Outer edge of the last cell row (cell centers + half spacing).
-    const double z_max = grid.z_m.empty() ? 1.0 : grid.z_m.back() + grid.z_m.front();
+    // The plot is drawn in cell-index space with ImPlotFlags_Equal, so cells
+    // stay square (the grid ratio is shown as-is): the window only zooms the
+    // view, it never stretches the field. Tick labels still read in physical
+    // units. Outer z edge for labels: cell centers + half spacing.
+    const double z_total = grid.z_m.empty() ? 1.0 : grid.z_m.back() + grid.z_m.front();
+    const double nx = grid.nx;
+    const double ny = grid.ny;
+
+    // Physical tick labels at cell-space positions.
+    static std::vector<std::string> tick_text;
+    tick_text.clear();
+    double theta_ticks[9];
+    double z_ticks[5];
+    for (int i = 0; i <= 8; ++i) {
+        theta_ticks[i] = i * 45.0 / 360.0 * nx;
+        tick_text.push_back(std::to_string(i * 45));
+    }
+    for (int i = 0; i <= 4; ++i) {
+        z_ticks[i] = i * 0.25 * ny;
+        char text[24];
+        std::snprintf(text, sizeof(text), "%.3g", i * 0.25 * z_total);
+        tick_text.push_back(text);
+    }
+    const char* theta_labels[9];
+    const char* z_labels[5];
+    for (int i = 0; i < 9; ++i) theta_labels[i] = tick_text[static_cast<size_t>(i)].c_str();
+    for (int i = 0; i < 5; ++i) z_labels[i] = tick_text[static_cast<size_t>(9 + i)].c_str();
+
+    if (heatmap_fit_requested_) {
+        ImPlot::SetNextAxesLimits(0, nx, 0, ny, ImPlotCond_Always);
+        heatmap_fit_requested_ = false;
+    }
 
     ImPlot::PushColormap(ImPlotColormap_Viridis);
-    if (ImPlot::BeginPlot("##fieldmap", plot_size, ImPlotFlags_NoLegend)) {
+    if (ImPlot::BeginPlot("##fieldmap", plot_size, ImPlotFlags_NoLegend | ImPlotFlags_Equal)) {
         ImPlot::SetupAxes("bearing angle [deg]", "axial position z [m]");
-        ImPlot::SetupAxesLimits(0, 360, 0, z_max, ImPlotCond_Once);
+        ImPlot::SetupAxesLimits(0, nx, 0, ny, ImPlotCond_Once);
+        // Keep the view on the domain: pan/zoom stays near the field (small
+        // slack lets the equal-aspect view letterbox), never far out.
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, -0.25 * nx, 1.25 * nx);
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, -0.25 * ny, 1.25 * ny);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 2.0, 1.5 * nx);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_Y1, 2.0, 1.5 * ny);
+        ImPlot::SetupAxisTicks(ImAxis_X1, theta_ticks, 9, theta_labels, false);
+        ImPlot::SetupAxisTicks(ImAxis_Y1, z_ticks, 5, z_labels, false);
+
         ImPlot::PlotHeatmap("##values", display.data(), grid.ny, grid.nx, scale_min, scale_max,
-                            nullptr, ImPlotPoint(0, 0), ImPlotPoint(360, z_max));
+                            nullptr, ImPlotPoint(0, 0), ImPlotPoint(nx, ny));
 
         if (show_cavitation) {
             const auto* film_content = grid.field("film_content");
@@ -275,11 +358,11 @@ void GuiApp::draw_heatmap_tab() {
                     }
                     ImPlot::PushColormap(mask_colormap);
                     ImPlot::PlotHeatmap("##cavitation", mask.data(), grid.ny, grid.nx, 0.0, 1.0,
-                                        nullptr, ImPlotPoint(0, 0), ImPlotPoint(360, z_max));
+                                        nullptr, ImPlotPoint(0, 0), ImPlotPoint(nx, ny));
                     ImPlot::PopColormap();
                 }
             } else {
-                ImPlot::Annotation(180, z_max * 0.5, ImVec4(1, 1, 1, 0.6), ImVec2(0, 0), true,
+                ImPlot::Annotation(0.5 * nx, 0.5 * ny, ImVec4(1, 1, 1, 0.6), ImVec2(0, 0), true,
                                    "film_content not in output_fields - cavitation overlay "
                                    "unavailable");
             }
@@ -288,11 +371,9 @@ void GuiApp::draw_heatmap_tab() {
         // Hover readout: angle, z, cell value.
         if (ImPlot::IsPlotHovered()) {
             const ImPlotPoint mouse = ImPlot::GetPlotMousePos();
-            if (mouse.x >= 0 && mouse.x <= 360 && mouse.y >= 0 && mouse.y <= z_max) {
-                const int i = std::clamp(static_cast<int>(mouse.x / 360.0 * grid.nx), 0,
-                                         grid.nx - 1);
-                const int j = std::clamp(static_cast<int>(mouse.y / z_max * grid.ny), 0,
-                                         grid.ny - 1);
+            if (mouse.x >= 0 && mouse.x < nx && mouse.y >= 0 && mouse.y < ny) {
+                const int i = std::clamp(static_cast<int>(mouse.x), 0, grid.nx - 1);
+                const int j = std::clamp(static_cast<int>(mouse.y), 0, grid.ny - 1);
                 const double value = (*field)[static_cast<size_t>(j) * grid.nx + i];
                 ImGui::BeginTooltip();
                 ImGui::Text("theta = %.1f deg, z = %.4g m", grid.theta_deg[i], grid.z_m[j]);
@@ -317,6 +398,20 @@ void GuiApp::draw_heatmap_tab() {
                           ImVec2(scale_width - ImGui::GetStyle().ItemSpacing.x, plot_size.y));
     ImPlot::PopColormap();
 
+    // "Fit to frame" overlay in the upper-right corner of the plot: brings the
+    // whole domain back into view after zooming in.
+    if (capture_max.x > capture_min.x) {
+        const ImVec2 saved_cursor = ImGui::GetCursorScreenPos();
+        const float button_width = ImGui::CalcTextSize("Fit").x + 14.0f;
+        ImGui::SetCursorScreenPos(
+            ImVec2(capture_max.x - button_width - 6.0f, capture_min.y + 6.0f));
+        if (ImGui::SmallButton("Fit")) heatmap_fit_requested_ = true;
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            ImGui::SetTooltip("Fit the entire domain to the frame.");
+        }
+        ImGui::SetCursorScreenPos(saved_cursor);
+    }
+
     if (want_png && capture_max.x > capture_min.x) {
         // Include the colorbar in the capture.
         const std::string name = selected_field_ + "_step" + std::to_string(grid.step) + ".png";
@@ -340,9 +435,17 @@ void GuiApp::draw_profiles_tab() {
 
     const int mid = grid.ny / 2;
     int j = profile_z_index_ < 0 ? mid : std::clamp(profile_z_index_, 0, grid.ny - 1);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("z slice");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Axial position of the plotted circumferential profiles.");
+    }
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
-    if (ImGui::SliderInt("z slice", &j, 0, grid.ny - 1,
-                         ("z = " + std::to_string(grid.z_m[static_cast<size_t>(j)])).c_str())) {
+    char slice_label[32];
+    std::snprintf(slice_label, sizeof(slice_label), "z = %.4g m",
+                  grid.z_m[static_cast<size_t>(j)]);
+    if (ImGui::SliderInt("##zslice", &j, 0, grid.ny - 1, slice_label)) {
         profile_z_index_ = j;
     }
     ImGui::SameLine();
@@ -351,15 +454,6 @@ void GuiApp::draw_profiles_tab() {
     if (ImGui::SmallButton("CSV")) export_profiles_csv();
     ImGui::SameLine();
     const bool want_png = ImGui::SmallButton("PNG");
-    int overlay_count = 0;
-    for (const RunRecord& record : history_) {
-        if (record.overlay && !record.profile_p.empty()) ++overlay_count;
-    }
-    if (overlay_count > 0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("overlaying %d run%s (mid-plane curves)", overlay_count,
-                            overlay_count == 1 ? "" : "s");
-    }
 
     static std::vector<double> p_row, h_row;
     if (pressure) {
@@ -391,14 +485,7 @@ void GuiApp::draw_profiles_tab() {
             ImPlot::SetupAxes("bearing angle [deg]", "p [Pa]");
             ImPlot::SetupAxisLimits(ImAxis_X1, 0, 360, ImPlotCond_Once);
             if (pressure) {
-                ImPlot::PlotLine("current", grid.theta_deg.data(), p_row.data(), grid.nx);
-            }
-            for (const RunRecord& record : history_) {
-                if (!record.overlay || record.profile_p.empty()) continue;
-                const std::string label = "run " + std::to_string(record.id);
-                ImPlot::PlotLine(label.c_str(), record.profile_theta_deg.data(),
-                                 record.profile_p.data(),
-                                 static_cast<int>(record.profile_p.size()));
+                ImPlot::PlotLine("p", grid.theta_deg.data(), p_row.data(), grid.nx);
             }
             merge_capture();
             ImPlot::EndPlot();
@@ -407,14 +494,7 @@ void GuiApp::draw_profiles_tab() {
             ImPlot::SetupAxes("bearing angle [deg]", "h [m]");
             ImPlot::SetupAxisLimits(ImAxis_X1, 0, 360, ImPlotCond_Once);
             if (thickness) {
-                ImPlot::PlotLine("current", grid.theta_deg.data(), h_row.data(), grid.nx);
-            }
-            for (const RunRecord& record : history_) {
-                if (!record.overlay || record.profile_h.empty()) continue;
-                const std::string label = "run " + std::to_string(record.id);
-                ImPlot::PlotLine(label.c_str(), record.profile_theta_deg.data(),
-                                 record.profile_h.data(),
-                                 static_cast<int>(record.profile_h.size()));
+                ImPlot::PlotLine("h", grid.theta_deg.data(), h_row.data(), grid.nx);
             }
             merge_capture();
             ImPlot::EndPlot();
@@ -599,7 +679,10 @@ void GuiApp::draw_log_panel() {
         ImGui::SetClipboardText(text.c_str());
     }
     ImGui::SameLine();
-    ImGui::Checkbox("Auto-scroll", &log_autoscroll_);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Auto-scroll");
+    ImGui::SameLine();
+    ImGui::Checkbox("##autoscroll", &log_autoscroll_);
     ImGui::SameLine();
     ImGui::TextDisabled("%zu lines", log_.size());
 
@@ -628,119 +711,3 @@ void GuiApp::draw_log_panel() {
     ImGui::End();
 }
 
-// ---------------------------------------------------------------------------
-// Run History window
-// ---------------------------------------------------------------------------
-
-void GuiApp::draw_history_panel() {
-    if (!ImGui::Begin("Run History")) {
-        ImGui::End();
-        return;
-    }
-    if (history_.empty()) {
-        ImGui::TextDisabled("Each solve adds a row here for comparison.\n"
-                            "Tick 'overlay' to compare runs on the Profiles plots.");
-        ImGui::End();
-        return;
-    }
-    if (ImGui::SmallButton("Export CSV")) export_history_csv();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu runs this session", history_.size());
-
-    const ImGuiTableFlags flags = ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
-                                  ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
-    if (ImGui::BeginTable("##history", 11, flags)) {
-        ImGui::TableSetupScrollFreeze(1, 1);
-        ImGui::TableSetupColumn("run", ImGuiTableColumnFlags_DefaultSort);
-        ImGui::TableSetupColumn("outcome");
-        ImGui::TableSetupColumn("duration [s]");
-        ImGui::TableSetupColumn("omega [rad/s]");
-        ImGui::TableSetupColumn("e [m]");
-        ImGui::TableSetupColumn("load [N]");
-        ImGui::TableSetupColumn("mesh");
-        ImGui::TableSetupColumn("h_min [m]");
-        ImGui::TableSetupColumn("p_max [Pa]");
-        ImGui::TableSetupColumn("overlay", ImGuiTableColumnFlags_NoSort);
-        ImGui::TableSetupColumn("actions", ImGuiTableColumnFlags_NoSort);
-        ImGui::TableHeadersRow();
-
-        // Sort a copy of the indices per the table sort specs.
-        std::vector<int> order(history_.size());
-        for (size_t i = 0; i < order.size(); ++i) order[i] = static_cast<int>(i);
-        if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
-            if (sort_specs->SpecsCount > 0) {
-                const ImGuiTableColumnSortSpecs& spec = sort_specs->Specs[0];
-                const auto key = [&](int index) -> double {
-                    const RunRecord& record = history_[static_cast<size_t>(index)];
-                    switch (spec.ColumnIndex) {
-                        case 0: return record.id;
-                        case 1: return static_cast<double>(record.outcome);
-                        case 2: return record.duration_s;
-                        case 3: return record.config.omega;
-                        case 4: return record.config.e;
-                        case 5: return std::hypot(record.config.external_load_x,
-                                                  record.config.external_load_y);
-                        case 6: return record.config.n_theta_global * 1e6 +
-                                       record.config.n_z_global;
-                        case 7: return record.h_min;
-                        case 8: return record.p_max;
-                        default: return record.id;
-                    }
-                };
-                std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
-                    const double ka = key(a), kb = key(b);
-                    return spec.SortDirection == ImGuiSortDirection_Ascending ? ka < kb : ka > kb;
-                });
-            }
-        }
-
-        for (int index : order) {
-            RunRecord& record = history_[static_cast<size_t>(index)];
-            ImGui::PushID(record.id);
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%d  (%s)", record.id, record.started_at.c_str());
-            ImGui::TableSetColumnIndex(1);
-            const ImVec4 color = record.outcome == SolverState::Finished ? theme::kOk
-                                 : record.outcome == SolverState::Cancelled ? theme::kWarn
-                                                                            : theme::kError;
-            ImGui::TextColored(color, "%s", to_string(record.outcome));
-            ImGui::TableSetColumnIndex(2);
-            ImGui::Text("%.1f", record.duration_s);
-            ImGui::TableSetColumnIndex(3);
-            ImGui::Text("%.4g", record.config.omega);
-            ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%.4g", record.config.e);
-            ImGui::TableSetColumnIndex(5);
-            ImGui::Text("%.4g", std::hypot(record.config.external_load_x,
-                                           record.config.external_load_y));
-            ImGui::TableSetColumnIndex(6);
-            ImGui::Text("%dx%d", record.config.n_theta_global, record.config.n_z_global);
-            ImGui::TableSetColumnIndex(7);
-            if (std::isfinite(record.h_min)) ImGui::Text("%.4g", record.h_min);
-            else ImGui::TextDisabled("-");
-            ImGui::TableSetColumnIndex(8);
-            if (std::isfinite(record.p_max)) ImGui::Text("%.4g", record.p_max);
-            else ImGui::TextDisabled("-");
-            ImGui::TableSetColumnIndex(9);
-            ImGui::BeginDisabled(record.profile_p.empty());
-            ImGui::Checkbox("##overlay", &record.overlay);
-            ImGui::EndDisabled();
-            if (record.profile_p.empty()) {
-                ImGui::SetItemTooltip("No stored profile (run produced no readable results).");
-            }
-            ImGui::TableSetColumnIndex(10);
-            if (ImGui::SmallButton("Load inputs")) {
-                config_ = record.config;
-                dirty_ = true;
-                sync_raw_from_config();
-                set_status("Inputs from run " + std::to_string(record.id) +
-                           " loaded into the form.");
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-    }
-    ImGui::End();
-}

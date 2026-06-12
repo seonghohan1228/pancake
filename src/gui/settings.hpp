@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 
 /// Locations for all runtime writes. Everything lives under
@@ -22,6 +23,9 @@ struct UserSettings {
     int window_width = 1480;
     int window_height = 900;
     bool window_maximized = false;
+    // Per-field display-unit choice (index into unit_options), keyed by the
+    // config key. Values are display-only; the config file stays SI.
+    std::map<std::string, int> unit_choices;
 
     void load(const std::filesystem::path& file);
     void save(const std::filesystem::path& file) const;
