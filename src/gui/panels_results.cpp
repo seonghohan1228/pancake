@@ -245,6 +245,11 @@ void GuiApp::draw_heatmap_tab() {
     if (ImGui::SmallButton("CSV")) export_grid_csv();
     ImGui::SameLine();
     bool want_png = ImGui::SmallButton("PNG");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Fit")) heatmap_fit_requested_ = true;
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Fit the entire domain to the frame after zooming in.");
+    }
 
     const auto* field = grid.field(selected_field_);
     if (!field) return;
@@ -278,11 +283,6 @@ void GuiApp::draw_heatmap_tab() {
                         grid.step, grid.time, stats.min, stats.max, stats.mean, unit, grid.nx,
                         grid.ny);
 
-    const float scale_width = ImGui::GetFontSize() * 6.5f;
-    const ImVec2 plot_size(ImGui::GetContentRegionAvail().x - scale_width,
-                           ImGui::GetContentRegionAvail().y);
-    ImVec2 capture_min(0, 0), capture_max(0, 0);
-
     // The plot is drawn in cell-index space with ImPlotFlags_Equal, so cells
     // stay square (the grid ratio is shown as-is): the window only zooms the
     // view, it never stretches the field. Tick labels still read in physical
@@ -290,6 +290,22 @@ void GuiApp::draw_heatmap_tab() {
     const double z_total = grid.z_m.empty() ? 1.0 : grid.z_m.back() + grid.z_m.front();
     const double nx = grid.nx;
     const double ny = grid.ny;
+
+    // Size the plot widget so its inner area matches the domain aspect: the
+    // view is then exactly the contour region - nothing outside it is ever
+    // shown, and there is no letterbox inside the plot. The axis-decoration
+    // size is measured from the previous frame (estimate on the first one).
+    static ImVec2 plot_decoration(ImGui::GetFontSize() * 4.0f, ImGui::GetFontSize() * 3.2f);
+    const float scale_width = ImGui::GetFontSize() * 6.5f;
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float inner_avail_x =
+        std::max(80.0f, avail.x - scale_width - plot_decoration.x);
+    const float inner_avail_y = std::max(80.0f, avail.y - plot_decoration.y);
+    const float cell_px = std::min(inner_avail_x / static_cast<float>(nx),
+                                   inner_avail_y / static_cast<float>(ny));
+    const ImVec2 plot_size(static_cast<float>(nx) * cell_px + plot_decoration.x,
+                           static_cast<float>(ny) * cell_px + plot_decoration.y);
+    ImVec2 capture_min(0, 0), capture_max(0, 0);
 
     // Physical tick labels at cell-space positions.
     static std::vector<std::string> tick_text;
@@ -320,12 +336,13 @@ void GuiApp::draw_heatmap_tab() {
     if (ImPlot::BeginPlot("##fieldmap", plot_size, ImPlotFlags_NoLegend | ImPlotFlags_Equal)) {
         ImPlot::SetupAxes("bearing angle [deg]", "axial position z [m]");
         ImPlot::SetupAxesLimits(0, nx, 0, ny, ImPlotCond_Once);
-        // Keep the view on the domain: pan/zoom stays near the field (small
-        // slack lets the equal-aspect view letterbox), never far out.
-        ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, -0.25 * nx, 1.25 * nx);
-        ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, -0.25 * ny, 1.25 * ny);
-        ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 2.0, 1.5 * nx);
-        ImPlot::SetupAxisZoomConstraints(ImAxis_Y1, 2.0, 1.5 * ny);
+        // The view never leaves the contour region: pan/zoom is clamped to
+        // the domain exactly (the widget aspect already matches it, so the
+        // equal-aspect constraint has nothing to fight).
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, 0.0, nx);
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0.0, ny);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 2.0, nx);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_Y1, 2.0, ny);
         ImPlot::SetupAxisTicks(ImAxis_X1, theta_ticks, 9, theta_labels, false);
         ImPlot::SetupAxisTicks(ImAxis_Y1, z_ticks, 5, z_labels, false);
 
@@ -391,26 +408,15 @@ void GuiApp::draw_heatmap_tab() {
         capture_min = ImPlot::GetPlotPos();
         const ImVec2 size = ImPlot::GetPlotSize();
         capture_max = ImVec2(capture_min.x + size.x, capture_min.y + size.y);
+        // Feed the measured axis-decoration size into next frame's widget
+        // sizing so the inner plot area tracks the domain aspect exactly.
+        plot_decoration = ImVec2(plot_size.x - size.x, plot_size.y - size.y);
         ImPlot::EndPlot();
     }
     ImGui::SameLine();
     ImPlot::ColormapScale(value_label, scale_min, scale_max,
                           ImVec2(scale_width - ImGui::GetStyle().ItemSpacing.x, plot_size.y));
     ImPlot::PopColormap();
-
-    // "Fit to frame" overlay in the upper-right corner of the plot: brings the
-    // whole domain back into view after zooming in.
-    if (capture_max.x > capture_min.x) {
-        const ImVec2 saved_cursor = ImGui::GetCursorScreenPos();
-        const float button_width = ImGui::CalcTextSize("Fit").x + 14.0f;
-        ImGui::SetCursorScreenPos(
-            ImVec2(capture_max.x - button_width - 6.0f, capture_min.y + 6.0f));
-        if (ImGui::SmallButton("Fit")) heatmap_fit_requested_ = true;
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-            ImGui::SetTooltip("Fit the entire domain to the frame.");
-        }
-        ImGui::SetCursorScreenPos(saved_cursor);
-    }
 
     if (want_png && capture_max.x > capture_min.x) {
         // Include the colorbar in the capture.
