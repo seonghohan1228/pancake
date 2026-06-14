@@ -1236,6 +1236,22 @@ struct SimulationConfig {
         return std::max(std::exp((pressure - effective_p_cav()) / beta), theta_min);
     }
 
+    /// Net liquid outflow through one axial Dirichlet/inflow boundary face of a
+    /// boundary cell (positive = leaving the domain), in the Elrod theta-equation
+    /// units. Full-film cells use the barotropic Gamma_base link; under
+    /// consistent_boundary_flux a cavitated cell re-floods at the physical
+    /// Poiseuille rate (an inflow, hence negative outflow). Single source of
+    /// truth shared by solve_elrod's assembly and the diagnostics mass balance.
+    double elrod_boundary_outflow(double gamma_base_value, double theta_cell, double bc_val,
+                                  double R, double d_theta, double d_z) const {
+        const double cs = gamma_base_value * R * d_theta / (0.5 * d_z);
+        if (consistent_boundary_flux && theta_cell < 1.0) {
+            const double p_bc = elrod_boundary_pressure(bc_val);
+            return -std::max(0.0, cs * (p_bc - effective_p_cav()) / std::max(bulk_modulus, 1.0e-30));
+        }
+        return cs * (theta_cell - std::max(elrod_boundary_theta(bc_val), theta_min));
+    }
+
     double omega_at_time(double time) const {
         if (solution_mode == SolutionMode::STEADY_STATE || omega_ramp_time <= 0.0) return omega;
         const double fraction = std::clamp(time / omega_ramp_time, 0.0, 1.0);

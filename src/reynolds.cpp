@@ -53,11 +53,15 @@ VoidParams void_params(const Fields& fields, const SimulationConfig& cfg, int i,
     }
     const double alpha_cap = std::min(std::max(cfg.gas_alpha_max, 0.0), 0.999);
     const double alpha_g = std::clamp(fields["alpha_gas"](i, j), 0.0, alpha_cap);
+    if (alpha_g <= 0.0) return vp;  // gas-free cell -> single-phase, bit-identical to NONE
     vp.theta_full = 1.0 - alpha_g;
     const double theta = std::max(field_value(fields, "theta", 1.0, i, j), cfg.theta_min);
     const double p = std::max(field_value(fields, "pressure", vp.p_void, i, j), cfg.gas_pressure_floor);
-    // Mixture bulk modulus: 1/beta_bar = theta/beta + alpha_g/p (gas isothermal compressibility ~ 1/p).
-    const double inv_beta = theta / cfg.bulk_modulus + alpha_g / p;
+    // Mixture bulk modulus weighted by volume fraction: liquid (1 - alpha_g =
+    // theta_full) at the liquid beta, gas alpha_g at the isothermal value 1/p.
+    // Reduces to beta exactly when alpha_g = 0, so the no-gas limit matches the
+    // single-phase model (the vaporous-limit acceptance gate).
+    const double inv_beta = vp.theta_full / cfg.bulk_modulus + alpha_g / p;
     vp.beta_bar = inv_beta > 0.0 ? 1.0 / inv_beta : cfg.bulk_modulus;
     // Released gas filling the void sets the local plateau pressure (>= the onset threshold).
     const double m_g = std::max(field_value(fields, "free_gas_mass", 0.0, i, j), 0.0);
@@ -424,11 +428,14 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
         // cs*(p_bc - p_cav)/beta (an explicit inflow, no implicit theta link),
         // which the Gamma_base link overstates by ~beta/(p_bc-p_cav).
         auto add_boundary_link = [&](double bc_val, int i, int j) {
-            const double cs = Gamma_base(i, j) * R * d_theta / (0.5 * d_z);
             if (cfg.consistent_boundary_flux && theta(i, j) < 1.0) {
-                const double p_bc = cfg.elrod_boundary_pressure(bc_val);
-                sys.source(i, j) += std::max(0.0, cs * (p_bc - cfg.effective_p_cav()) / cfg.bulk_modulus);
+                // Cavitated: explicit reformation inflow = -outflow (shared formula).
+                sys.source(i, j) -= cfg.elrod_boundary_outflow(Gamma_base(i, j), theta(i, j),
+                                                               bc_val, R, d_theta, d_z);
             } else {
+                // Full-film: implicit barotropic link (effective outflow matches
+                // cfg.elrod_boundary_outflow's full-film branch, used by diagnostics).
+                const double cs = Gamma_base(i, j) * R * d_theta / (0.5 * d_z);
                 sys.a_p(i, j) += cs;
                 sys.source(i, j) += cs * bounded_film_content(cfg.elrod_boundary_theta(bc_val), cfg);
             }

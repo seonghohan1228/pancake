@@ -36,3 +36,4 @@ add_pancake_test(test_property_tables)
 target_compile_definitions(test_property_tables PRIVATE
     PANCAKE_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 add_pancake_test(test_coupling)
+add_pancake_test(test_gas_coupling)

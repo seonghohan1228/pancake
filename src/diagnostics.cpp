@@ -38,10 +38,6 @@ double gamma_base(const Fields& fields, const SimulationConfig& cfg, int i, int 
         h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
 }
 
-double boundary_theta(const SimulationConfig& cfg, double bc_val) {
-    return std::max(cfg.elrod_boundary_theta(bc_val), cfg.theta_min);
-}
-
 // Geometric inlet membership, mirroring Reynolds::apply_inlet_conditions.
 bool inlet_cell(const Mesh& mesh, const SimulationConfig& cfg, int i, int j) {
     if (cfg.inlets.empty()) return false;
@@ -115,15 +111,15 @@ double elrod_inlet_cell_outflow(const Fields& fields, const Mesh& mesh,
         outflow += harmonic_avg(gamma_g(i, j), gamma_g(i, j + 1)) * ns_scale *
             (theta(i, j) - theta(i, j + 1));
     } else if (cfg.bc_z_north_type == BCType::DIRICHLET) {
-        outflow += gamma_base(fields, cfg, i, j) * R * d_theta / (0.5 * d_z) *
-            (theta(i, j) - boundary_theta(cfg, cfg.bc_z_north_val));
+        outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
+                                              cfg.bc_z_north_val, R, d_theta, d_z);
     }
     if (j > 0) {
         outflow += harmonic_avg(gamma_g(i, j - 1), gamma_g(i, j)) * ns_scale *
             (theta(i, j) - theta(i, j - 1));
     } else if (cfg.bc_z_south_type == BCType::DIRICHLET) {
-        outflow += gamma_base(fields, cfg, i, j) * R * d_theta / (0.5 * d_z) *
-            (theta(i, j) - boundary_theta(cfg, cfg.bc_z_south_val));
+        outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
+                                              cfg.bc_z_south_val, R, d_theta, d_z);
     }
 
     // Couette convection (theta direction only).
@@ -163,15 +159,15 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
                 (cfg.bc_z_south_type == BCType::INLET_OUTLET &&
                  pressure(i, 0) < cfg.bc_z_south_val);
             if (south_active) {
-                const double cs = gamma_base(fields, cfg, i, 0) * R * d_theta / (0.5 * d_z);
-                inflow += cs * (boundary_theta(cfg, cfg.bc_z_south_val) - theta(i, 0));
+                inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, 0), theta(i, 0),
+                                                     cfg.bc_z_south_val, R, d_theta, d_z);
             }
             const bool north_active = cfg.bc_z_north_type == BCType::DIRICHLET ||
                 (cfg.bc_z_north_type == BCType::INLET_OUTLET &&
                  pressure(i, n_z - 1) < cfg.bc_z_north_val);
             if (north_active) {
-                const double cn = gamma_base(fields, cfg, i, n_z - 1) * R * d_theta / (0.5 * d_z);
-                inflow += cn * (boundary_theta(cfg, cfg.bc_z_north_val) - theta(i, n_z - 1));
+                inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, n_z - 1), theta(i, n_z - 1),
+                                                     cfg.bc_z_north_val, R, d_theta, d_z);
             }
         } else {
             const Field& h = fields["h"];

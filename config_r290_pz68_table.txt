@@ -98,9 +98,9 @@ cavitation_model = ELROD_ADAMS
 cavitation_threshold = LOCAL_PSAT
 # WP-6: only the liquid fraction shears/carries heat in cavitated cells.
 cavitated_film_model = STRIATED
-# WP-11: cavitated axial-boundary cells re-flood at the physical Poiseuille rate
-# (opt-in; the diagnostics mass balance does not yet share this flux). Default off.
-consistent_boundary_flux = false
+# WP-11: cavitated axial-boundary cells re-flood at the physical Poiseuille rate;
+# the diagnostics mass balance shares the same flux (r_l stays small).
+consistent_boundary_flux = true
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6

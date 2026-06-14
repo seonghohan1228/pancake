@@ -2,6 +2,27 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-06-15 - WP-1 acceptance gates + WP-11 shared boundary flux
+
+Reason: harden the two newest model extensions per the AUDIT_PLAN acceptance
+criteria.
+
+- **WP-1 acceptance tests** (new tests/test_gas_coupling.cpp): 0-D closed-cell
+  release conserves total propane and reaches a steady state; under-saturated
+  resorption; and the vaporous limit (no gas) reproduces the single-phase Elrod
+  solve bit-for-bit. These gates caught and fixed two real bugs in the
+  VOID_COUPLED kernel: the mixture bulk modulus must weight the LIQUID volume
+  fraction (1-alpha_g), not the Elrod theta, so beta_bar -> beta exactly at
+  alpha_g = 0; and a gas-free cell now short-circuits void_params to the exact
+  single-phase parameters (avoiding a 1/(1/beta) round-off that broke the
+  no-gas==single-phase identity).
+- **WP-11 shared flux** (new SimulationConfig::elrod_boundary_outflow): the
+  axial-boundary liquid mass flux is now defined once and used by both
+  solve_elrod's assembly and the diagnostics mass balance. With
+  consistent_boundary_flux on, the cavitated reformation rate is accounted in
+  the balance, so the liquid residual drops from ~1.4e-3 to ~7e-8. Flag off is
+  bit-identical to before. Full suite: 22/22.
+
 ### 2026-06-14 - WP-2/WP-1/WP-6/WP-11: coupling, two-phase pressure, striated zone, boundary flux
 
 Reason: complete the oil-refrigerant cavitation model per PLAN.md Phase E. Every

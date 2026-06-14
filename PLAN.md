@@ -940,13 +940,13 @@ gas volumetrically inert, which is the audit's headline defect. **WP-12 (new,
 | WP-3 | Numerics honesty (type-differencing/TVD, dead time selectors, fixed-bearing transient capacity term) | §C1, §C5 | **DONE** (2026-06-11) |
 | WP-5 | Mixture viscosity with gas-limit asymptote; solubility tables | §A3, §A4 | **DONE** (2026-06-11; measured isotherm table data still pending from user) |
 | WP-2 | Outer Picard coupling; converged steady state; steady+gas guard | §C4 | **DONE** (2026-06-14); `test_coupling`; transient ≡ master, steady iterates to convergence |
-| WP-1 | Couple released gas into film continuity/pressure; onset at p_sat(T,c_d) | §A1, §A2 | **DONE** (2026-06-14, Stage 1) `gas_pressure_coupling=VOID_COUPLED`; θ_full/p_void/β̄; `test_eos`; NONE ≡ master, VOID_COUPLED stable (load shift verified) |
+| WP-1 | Couple released gas into film continuity/pressure; onset at p_sat(T,c_d) | §A1, §A2 | **DONE** (2026-06-14, Stage 1) `gas_pressure_coupling=VOID_COUPLED`; θ_full/p_void/β̄; `test_eos` + `test_gas_coupling` acceptance gates (0-D conservation, resorption, vaporous limit). NONE ≡ master; acceptance tests caught/fixed the β̄ volume-fraction weighting and gas-free bit-exactness |
 | WP-6 | θ-weighted energy capacity/advection and cavitated-zone shear | §A5 | **DONE** (2026-06-14) `cavitated_film_model=STRIATED`; Couette shear/heat-gen θ-weighted in cavitated cells; `test_coupling`; FULL_FILM ≡ master, STRIATED lowers torque |
 | WP-7 | Quantitative validation campaign (Ausas/V&K/Giacopini/Grando/Ferron) | Part V | TODO (grid-convergence harness V7 seeded in `validation/grid_convergence/`) |
 | WP-9 | Starved / mass-flux inlet | §B2 | TODO |
 | WP-8 | Linearized K/C coefficients + whirl margin | §D1 | TODO |
 | WP-10 | Strategic: FBNS/complementarity cavitation kernel | §C2, §C3 | TODO |
-| WP-11 | Axial-boundary flux consistency (shared flux function; cavitated-cell reformation rate; INLET_OUTLET unification) | §B4 | **PARTIAL** (2026-06-14) `consistent_boundary_flux` (default off) gives cavitated boundary cells the physical reformation rate `cs·(p_bc−p_cav)/β`; default ≡ master. REMAINING: share one flux fn across energy/gas/**diagnostics** (the mass balance still uses the old link, so r_l rises when the flag is on) |
+| WP-11 | Axial-boundary flux consistency (shared flux function; cavitated-cell reformation rate; INLET_OUTLET unification) | §B4 | **DONE** (2026-06-15) `consistent_boundary_flux` (default off); cavitated boundary cells re-flood at `cs·(p_bc−p_cav)/β`. The shared `SimulationConfig::elrod_boundary_outflow` is used by both `solve_elrod` and the diagnostics balance, so r_l stays small with the flag on (7e-8 vs 1.4e-3 before). Minor remaining: energy/gas boundary convection could carry the reformation inflow's reservoir state |
 | WP-12 | 2-D property tables from an editable file (P,T grid) + `p_sat`-driven cavitation onset threshold | §A3/§A4 (data), §A1 (onset) | **DONE** (2026-06-14); `test_property_tables`; R290 table smoke run verifies p_sat=1.0 MPa onset |
 
 ### Phase E implementation notes (2026-06-11, WP-4/WP-3/WP-5)
