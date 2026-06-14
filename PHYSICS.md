@@ -133,9 +133,27 @@ The `FVM::ddt` operator discretises $\partial\phi/\partial t$ with a first-order
 
 $$a_P \leftarrow a_P + \frac{A_\text{cell}}{\Delta t}, \qquad \text{source} \leftarrow \text{source} + \frac{A_\text{cell}}{\Delta t}\,\phi^n$$
 
-### 5.5 Convection (TVD)
+### 5.5 Convection Schemes
 
-`FVM::divergence` assembles $\text{div}(F\,\phi)$ for a known face flux field $F$. The upwind (first-order) scheme adds implicit contributions; TVD schemes (van Leer, MINMOD) add an explicit deferred correction using $\phi^{\text{old}}$.
+`FVM::divergence` assembles $\text{div}(F\,\phi)$ for a known face flux field $F$. The upwind (first-order) scheme adds implicit contributions; higher-order schemes add an explicit deferred correction using $\phi^{\text{old}}$ (the previous timestep or, in the Elrod outer loop, the lagged iterate).
+
+The face interpolation is selectable per transported variable
+(`theta_convection_scheme`, `thermal_convection_scheme`,
+`gas_convection_scheme`; default `UPWIND` for backward compatibility):
+
+- `UPWIND` — first-order, unconditionally bounded, false diffusion $\approx |u|\Delta x/2$ (Patankar 1980) concentrated exactly on rupture/reformation/thermal/gas fronts.
+- `TVD_VANLEER`, `TVD_MINMOD` — limited high-order deferred correction
+  $\phi_f = \phi_U + \tfrac12\psi(r)(\phi_D-\phi_U)$ with
+  $r = (\phi_U-\phi_{UU})/(\phi_D-\phi_U)$; sharper fronts, no new extrema.
+- `TYPE_DIFFERENCING` (theta only) — Vijayaraghavan & Keith (1989): central
+  interpolation across faces where both adjacent cells are full-film
+  ($g = 1$), first-order upwind across and inside the cavitated region. This
+  is the canonical Elrod-Adams discretization; full upwind everywhere is a
+  conservative-but-diffusive default.
+
+Validation (`tests/test_schemes.cpp`): step advection is bounded and sharper
+under TVD than upwind; observed refinement orders are $\approx 1.09$ (upwind)
+and $\approx 1.99$ (TVD van Leer) on a smooth profile with $\Delta t \propto \Delta x^2$.
 
 ---
 
@@ -145,9 +163,27 @@ $$a_P \leftarrow a_P + \frac{A_\text{cell}}{\Delta t}, \qquad \text{source} \lef
 **Periodic**: ghost cells are exchanged via MPI `Sendrecv` between adjacent ranks (rank 0 ↔ rank $N_{ranks}-1$ for the wrap-around).
 
 ### Axial ($z$)
-**Dirichlet** $p = p_{cav}$ at $z = 0$ and $z = L$ (open bearing ends). Implemented by adding the boundary face flux to the stencil using a half-cell distance:
+**Dirichlet** $p = p_{bc}$ at $z = 0$ and $z = L$, where $p_{bc}$ is the configured
+absolute boundary pressure `bc_z_*_val`. Implemented by adding the boundary face
+flux to the stencil using a half-cell distance:
 
-$$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{source} \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}\,p_{cav}$$
+$$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{source} \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}\,p_{bc}$$
+
+A truly open (vented) end corresponds to $p_{bc} = p_{cav}$; the shipped
+configurations are **submerged** ends with $p_{bc} > p_{cav}$ (e.g. a flooded
+sump or a pressurized refrigerant housing), which the Elrod path converts to a
+boundary film content $\theta_{bc} = \exp[(p_{bc}-p_{cav})/\beta] > 1$.
+`NEUMANN` selects zero-gradient ends; `INLET_OUTLET` applies the Dirichlet
+value only on inflow.
+
+**Cavity-pressure caveat.** The model holds the cavitated-zone pressure at the
+single constant `p_cav`. Measurements show the cavity pressure of gas-laden
+oils is neither constant nor equal to the vapor pressure — it tracks the gas
+release state and drops with speed (Etsion & Ludwig 1982; Braun & Hendricks
+1984). A constant `p_cav` is therefore a model input to be chosen per case, and
+the WP-1 void coupling (`PLAN.md` Phase E) is the planned mechanistic
+replacement; see §16 for the oil–refrigerant gaseous-cavitation theory and
+`docs/CAVITATION_OIL_REFRIGERANT.md` for the cited basis.
 
 ---
 
@@ -155,29 +191,43 @@ $$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{sour
 
 Two solvers are available, selected by `cfg.cavitation_model`.
 
-Before each solve, the flooded initial guess is set from the first configured
-inlet supply pressure:
+Before the time loop, the pressure field is initialized from the first
+non-Neumann axial outlet pressure, not from a supply groove. For
+`ELROD_ADAMS`, the initialized and boundary film content are derived from that
+pressure and the bulk modulus:
 
-$$p^0 = p_{inlet},\qquad
-\theta^0 = \max\!\left[\theta_{film}(p_{inlet}),\,\theta_{min}\right]$$
+$$p^0 = \max(p_{bc},p_{cav}),\qquad
+\theta^0 =
+\max\!\left[\exp\!\left(\frac{p^0-p_{cav}}{\beta}\right),\theta_{min}\right]$$
 
-If no inlet is configured, the fallback is $p^0=p_{cav}$ and the corresponding
-full-film value $\theta^0=1$.
+Legacy `bc_z_*_theta` config keys are parsed for old files but are not used by
+the solver. This keeps boundary and initial conditions pressure-based:
+changing pressure or bulk modulus changes the corresponding Elrod film content
+through the EOS. Supply inlets are still imposed during the linear solve.
 
 ### 7.1 Gumbel Solver (`Reynolds::solve`)
 
 The solver follows a **lagged-coefficient** approach at each time step:
 
-1. Compute $\gamma^n = \rho^n h^3 / (12\mu)$ and $(\rho h)^n$ at physical + theta ghost cells (using already-synced ghost values of $\rho$ and $h$).
+1. Compute $\gamma^n = \rho^n h^3 / (12\mu)$ at physical + theta ghost cells (using already-synced ghost values of $\rho$ and $h$).
 2. Reset and assemble the linear system:
    - `FVM::laplacian` with $\gamma^n$
    - Dirichlet z-boundary corrections
-   - Couette source: $-\frac{\omega}{2}\frac{\partial(\rho h)^n}{\partial\theta}$ (centered difference, sign convention above)
+   - Couette source: $-\frac{\omega}{2}\frac{\partial(\rho h)^n}{\partial\theta}$,
+     evaluated as a face-flux divergence matched to the Elrod path: the product
+     $\rho h$ is factorized into a central face value of $\rho_0 h$ times the
+     transported content $\theta = \rho/\rho_0$ interpolated with the configured
+     `theta_convection_scheme`. This keeps the Gumbel and Elrod wedge
+     discretizations like-for-like (validated to $\approx 0.01\%$ peak-pressure
+     agreement under `TYPE_DIFFERENCING` in `tests/test_schemes.cpp`).
 3. Solve $A\,p^{n+1} = b$ via PETSc KSP (BiCGStab + block Jacobi).
 4. Apply Gumbel cavitation: $p^{n+1} \leftarrow \max(p^{n+1},\, p_{cav})$.
 5. Update $\rho^{n+1} = \rho_0\,\theta_{film}(p^{n+1})$ via EOS.
 
-The transient $\partial(\rho h)/\partial t$ term is omitted for the static-geometry steady-state solve.
+For transient runs an explicit squeeze source $-\rho\,\partial h/\partial t$ is
+added whenever a `dh_dt` field is present; the term is omitted only for
+`STEADY_STATE` operating-point solves. Gumbel remains a pressure clamp and is
+not mass-conserving (a validation warning says so).
 
 ### 7.2 Elrod-Adams Solver — Phase A.1 (`Reynolds::solve_elrod`, full-film)
 
@@ -223,9 +273,9 @@ $$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \un
 5. Clamp $\theta \leftarrow \max(\theta, 1)$ (full-film constraint; relaxed in Phase A.2).
 6. Recover $p = p_{cav} + \beta\ln(\theta)$, update $\rho = \rho_0\,\theta$.
 
-**Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Phase A.1 validation shows peak pressures agree to within $\approx 1.2\%$ (residual comes from centered-difference vs upwind Couette discretisation). Phase A.2 will add the switch function $g(\theta)$ to handle the cavitated region.
+**Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Historically the two paths differed by $\approx 1.2\%$ because the Gumbel wedge term was centered while the Elrod path was upwind; since the WP-3 alignment both paths use the configured `theta_convection_scheme` and the matched full-film comparison agrees to $\approx 0.01\%$ (`tests/test_schemes.cpp`). The switch function $g(\theta)$ (Phase A.2) handles the cavitated region.
 
-**Weighted time derivative.** The new FVM operator `FVM::ddt_weighted(sys, theta, h_field, dt, mesh)` discretises $\partial(\theta h)/\partial t = h\,\partial\theta/\partial t$ for static geometry. It adds $h\,V/\Delta t$ to $a_P$ and $h\,V\,\theta^n/\Delta t$ to `source`. Not yet active in Phase A.1 (steady-state).
+**Weighted time derivative.** The FVM operator `FVM::ddt_weighted(sys, theta, weight, dt, mesh)` discretises the liquid-content storage $\partial(\rho_0\theta h)/\partial t$ with weight $\rho_0 h$. It adds $\rho_0 h\,V/\Delta t$ to $a_P$ and $\rho_0 h\,V\,\theta^n/\Delta t$ to `source`. This capacity term is assembled for **every** transient solve (`solution_mode = TRANSIENT`), fixed or moving bearing — gating it on bearing motion would make a fixed-bearing transient (e.g. an `omega_ramp_time` startup) quasi-steady in $\theta$ with film-history physics silently absent. The explicit squeeze source $-\rho_0\theta^n\,\partial h/\partial t$ is added whenever a `dh_dt` field is present. `STEADY_STATE` mode omits both, giving the quasi-steady operating-point solve.
 
 ---
 
@@ -241,6 +291,13 @@ $$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \un
 ## 9. MPI Parallelism
 
 The domain is decomposed in the $\theta$ direction: each MPI rank owns $N_\theta / N_{ranks}$ contiguous $\theta$-columns with the full $z$ extent. Ghost layers (default 2 cells) are exchanged each step via `Communicator::update_ghosts`, which packs/unpacks the non-contiguous ghost strips using `MPI_Sendrecv`.
+
+For the Elrod-Adams solver, this exchange is also required inside the nonlinear
+active-set loop. After each outer solve updates physical `theta`, the code
+clamps and snaps near-full-film cells, then exchanges `theta` ghost cells before
+the next iteration recomputes $g(\theta)$ on cross-rank faces. Without that
+inner exchange, MPI partition interfaces can use stale cavitation flags and
+produce rank-aligned pressure or `film_content` contours.
 
 ---
 
@@ -286,8 +343,9 @@ $$\mathbf{F}^{p}_{bearing}
   = \int_0^L \int_0^{2\pi} (p-p_{cav})\,d\mathbf{A}_b$$
 
 The solver writes this as `pressure_force_x`, `pressure_force_y`, and
-`pressure_force_z`. The legacy fields `load_x`, `load_y`, and `load_z` remain as
-aliases for the same pressure-only resultant.
+`pressure_force_z`. Legacy `load_x`, `load_y`, and `load_z` output requests are
+mapped to these pressure-force fields for older configs, but duplicate `load_*`
+runtime fields are no longer allocated.
 
 The shear force on the bearing surface uses the bearing-side wall shear:
 
@@ -381,10 +439,11 @@ $$m_b\ddot{z}_b + c_z\dot{z}_b + k_z z_b =
   F_z^{fluid} + F_z^{external}$$
 
 The external load is configured directly and remains independent of bearing
-motion. The motion integrator supports `EULER_EXPLICIT`, `EULER_IMPLICIT`,
-`CRANK_NICOLSON`, `RK2`, and `RK4`. `CRANK_NICOLSON` is the formal name for the
-mixed implicit/explicit trapezoidal update; the parser also accepts aliases such
-as `SEMI_IMPLICIT`, `IMEX`, and `CRANK_NICHOLSON`.
+motion. The visible implemented choices are `EULER_EXPLICIT`,
+`EULER_IMPLICIT`, and `CRANK_NICOLSON`. `CRANK_NICOLSON` is the formal name for
+the mixed implicit/explicit trapezoidal update; the parser still accepts older
+`RK2`/`RK4` aliases for compatibility, but the GUI and default config no longer
+advertise them as pressure or thermal methods.
 
 ---
 
@@ -435,6 +494,33 @@ $$Q_w = h_j(T - T_j) + h_b(T - T_b)$$
 where $h_j$ and $h_b$ are heat-transfer coefficients to the journal and bearing
 surfaces.
 
+For Elrod-Adams cavitation, pressure-flow heat uses the same active faces as
+the pressure-driven velocity. A face contributes only when both adjacent cells
+are full film:
+
+$$g_f =
+\begin{cases}
+1, & \theta_{film,L}\ge 1 \text{ and } \theta_{film,R}\ge 1\\
+0, & \text{otherwise}
+\end{cases}$$
+
+The cell pressure-gradient magnitude is evaluated as an average of squared
+active face gradients, for example in the circumferential direction:
+
+$$\left|\nabla_s p\right|^2_{\theta,P}
+\approx
+\frac{1}{2}g_e\left(\frac{p_E-p_P}{R\Delta\theta}\right)^2
++\frac{1}{2}g_w\left(\frac{p_P-p_W}{R\Delta\theta}\right)^2$$
+
+with the same form in $z$. Cavitated faces and exterior axial boundary faces
+therefore are not differenced against the boundary pressure. At the physical
+axial ends, the boundary cell uses the adjacent interior active face as a
+one-sided bounded gradient, so a smooth interior pressure field remains smooth
+right up to the output boundary. This is a post-processing regularisation of the
+hard JFO active set: cavitated cells still have $p=p_{cav}$, and the discrete
+pressure plateau at the rupture/reformation boundary is expected for the current
+first-order Elrod-Adams model.
+
 The finite-volume equation solved for `temperature` is:
 
 $$\frac{\rho c_p h V_s}{\Delta t}T_P^{n+1}
@@ -445,22 +531,80 @@ $$\frac{\rho c_p h V_s}{\Delta t}T_P^{n+1}
 
 for transient runs, where $V_s=R\,\Delta\theta\,\Delta z$ is the cell surface
 area used by the thin-film FVM operators and $\mathcal{L}$ includes thermal
-diffusion and upwind advection by film-averaged velocities. With
+diffusion and upwind advection by film-averaged velocities. The advection term
+is assembled in non-conservative form, equivalent to:
+
+$$\nabla_s\cdot(\rho c_p h\bar{\mathbf{u}}T)
+  - T\nabla_s\cdot(\rho c_p h\bar{\mathbf{u}})$$
+
+This is important near supply grooves and pressure boundaries, where the
+Reynolds pressure solve has local mass source/sink behavior. Using the
+conservative form alone adds a spurious $T\nabla_s\cdot(\rho c_p h\bar{\mathbf{u}})$
+term and can generate nonphysical hot/cold boundary cells.
+
+Inlet features come in two flavors. An *open region* (default, e.g. a
+large-clearance pocket of the same recirculating oil) only constrains pressure
+or film content in the Reynolds solve and is thermally transparent to the energy
+equation. An *actual fed inlet* (`inlet_* ... t_supply`) additionally pins those
+cells to a fresh-oil supply temperature `t_supply`.
+
+The axial boundary heat fluxes and pressure-gradient diagnostics use the
+**same effective boundary pressure the flow solver imposed**. Under
+Elrod-Adams, the solver derives boundary film content from `bc_z_*_val`,
+`p_cav`, and `bulk_modulus`, so the effective pressure is
+$p_{bc}=\max(p_{value},p_{cav})$. The Gumbel pressure-Dirichlet path uses
+`bc_z_*_val` directly. This keeps pressure, velocity, force, and thermal
+post-processing on one boundary contract and removes manual film-content
+boundary inputs from the physical setup.
+
+Axial boundaries use upwind thermal convection driven by that consistent
+boundary pressure. Outflow is always zero-gradient (the leaving oil carries its
+cell temperature). The inflow temperature is selected per side by
+`bc_z_*_thermal`: `OPEN` (submerged / same-oil) treats inflow as zero-gradient
+too — the entering oil is the same recirculating film oil, so no external
+temperature is imposed; `RESERVOIR` (fed inlet/outlet) carries
+`temperature_reference` in on inflow. `INLET_OUTLET` axial pressure boundaries
+use the same pressure-gradient treatment for boundary heat-generation
+diagnostics as the thermal boundary flux, so near-boundary viscous heating is
+not silently dropped. With
 `solution_mode = STEADY_STATE`, the transient capacity term is omitted and the
 main solver runs one pressure/thermal step at $t=0$. With
 `temperature_model = ISOTHERMAL`, `temperature` remains fixed at
 `temperature_initial` while `heat_generation` is still refreshed for output.
 
+Transient simulations start from a uniform outlet-compatible pressure field.
+For pressure cavitation models, the initial pressure is the first non-Neumann
+axial outlet pressure. For Elrod-Adams, the outlet boundary is a film-content
+condition, so the initialized pressure is recovered from the EOS:
+
+$$p^0 = p_{cav} + \beta\ln(\theta_{bc}), \qquad \theta^0 =
+\max\left[\exp\left(\frac{p^0-p_{cav}}{\beta}\right),\theta_{min}\right].$$
+
+The first transient solve uses the same transient terms as later solves. To
+avoid an instantaneous jump from a static initialized state to full surface
+speed, the configured shaft speed can be ramped:
+
+$$\omega(t) = \omega_{target}\,
+\min\left(\max\left(\frac{t}{t_{ramp}},0\right),1\right),$$
+
+where `omega_ramp_time = t_ramp`. If `omega_ramp_time <= 0`, transient runs use
+full `omega` immediately. `solution_mode = STEADY_STATE` ignores the ramp and
+uses the target speed for its single operating-point solve.
+
+For moving-bearing Elrod-Adams solves, the transient term
+$\partial(\rho_l\theta h)/\partial t$ is expanded as
+$\rho_l h\,\partial\theta/\partial t + \rho_l\theta\,\partial h/\partial t$.
+The weighted capacity term $\rho_l h\,\partial\theta/\partial t$ is always
+assembled for transient moving-bearing pressure solves, including when
+`pressure_time_method = EULER_EXPLICIT`. Omitting that storage term while
+retaining the lagged squeeze source would not conserve liquid content and can
+create artificial startup cavitation. The explicit part is the lagged
+$\theta^n\,\partial h/\partial t$ source.
+
 ### 13.2 Temperature-dependent Fluid Properties
 
-Thermal hydrodynamic coupling enters Reynolds through field-valued viscosity
-and density. A configurable first model is:
-
-$$\mu(T,p) = \mu_{ref}
-  \exp[-a_T(T - T_{ref}) + a_p(p - p_{ref})]$$
-
-For a purely thermal viscosity model, set $a_p=0$. The Reynolds diffusion
-coefficient becomes:
+Thermal hydrodynamic coupling enters Reynolds through field-valued liquid
+solution density and viscosity. The Reynolds diffusion coefficient becomes:
 
 $$\gamma(\theta,z) = \frac{\rho(T,p)h^3}{12\mu(T,p)}$$
 
@@ -471,6 +615,181 @@ $$\Gamma_g(\theta,z) =
 
 The constant-property limit must reduce exactly to the current isothermal
 solver.
+
+### 13.2.1 Oil plus Dissolved-Gas Property Layer
+
+The implemented fluid-property layer separates the liquid solution from free
+gas cavitation:
+
+- `rho_liquid_solution`, `mu_liquid_solution`, `cp_liquid_solution`, and
+  `k_liquid_solution` describe the liquid oil plus dissolved gas.
+- `theta` remains the Elrod-Adams/JFO liquid-content variable.
+- `alpha_gas` represents released free gas bubbles transported with the film.
+  It is not forcibly clipped to the JFO void fraction, so gas can persist into
+  pressure-recovery/full-film cells and disappear only by finite-rate
+  resorption or transport.
+
+The default `fluid_property_model = CONSTANT` sets:
+
+$$\rho_l = \rho_{oil}, \qquad \mu_l = \mu_{oil}, \qquad c_d = 0$$
+
+and the Reynolds/JFO equations recover the previous pure-oil behavior.
+
+For `OIL_DISSOLVED_GAS` or `GAS_CAVITATION_MIXTURE`, dissolved gas is stored as
+a liquid-solution mass fraction:
+
+$$c_d = \frac{m_{gas,dissolved}}{m_{liquid\ solution}}$$
+
+The equilibrium concentration is selected by `oil_gas_solution_model`:
+
+$$c_{d,eq} =
+\begin{cases}
+H_{ref}\exp\!\left[E_H\left(\frac{1}{T}-\frac{1}{T_{ref}}\right)\right]p,
+  & \text{HENRY}\\
+B \frac{p}{p_{ref}}\frac{T_{ref}}{T}\frac{\rho_{g,ref}}{\rho_{oil}}, & \text{BUNSEN}\\
+\text{linear table}(p), & \text{TABLE}
+\end{cases}$$
+
+with propane/R290 free-gas density evaluated by the ideal-gas relation:
+
+$$\rho_g = \frac{\max(p,p_{floor})}{R_g T}$$
+
+where $R_g = 188.55\ \mathrm{J/(kg\,K)}$ for propane and
+$287.05\ \mathrm{J/(kg\,K)}$ for air.
+
+The liquid-solution density and viscosity are selected independently:
+
+$$\rho_l =
+\begin{cases}
+\rho_{oil}, & \text{PURE\_OIL}\\
+\left(\frac{1-c_d}{\rho_{oil}} + \frac{c_d}{\rho_{dg,liq}}\right)^{-1}, & \text{MASS\_VOLUME\_MIXING}\\
+\text{linear table}(c_d), & \text{TABLE}
+\end{cases}$$
+
+where `dissolved_gas_liquid_density` supplies $\rho_{dg,liq}$. If it is zero,
+the code falls back to ideal-gas density for backward compatibility, but this
+is not recommended for dissolved propane in oil.
+
+For `EMPIRICAL_CORRELATION`, the liquid-solution viscosity is:
+
+$$\mu_l =
+\mu_{oil,ref}
+\exp\!\left[E_\mu\left(\frac{1}{T}-\frac{1}{T_{ref}}\right)\right]
+\exp(a_c c_d)
+\exp\!\left[\alpha_p(p-p_{ref})\right]$$
+
+$$\mu_l =
+\begin{cases}
+\mu_{oil}, & \text{PURE\_OIL}\\
+\mu_{oil}\exp(a_c c_d), & \text{LOG\_MIXING}\\
+\mu_{oil,ref}\exp\!\left[E_\mu\left(\frac{1}{T}-\frac{1}{T_{ref}}\right)\right]
+  \exp(a_c c_d)\exp\!\left[\alpha_p(p-p_{ref})\right],
+  & \text{EMPIRICAL\_CORRELATION}\\
+\text{linear table}(c_d), & \text{TABLE}
+\end{cases}$$
+
+The field written as `mu_liquid_solution` is this liquid-solution viscosity.
+For `GAS_CAVITATION_MIXTURE`, the effective film viscosity written as `mu` is
+selected by `gas_mixture_viscosity_model` (all satisfy $\bar\mu(\alpha_g{=}0)=\mu_l$;
+mass quality $x_g = m_g/(m_g + \rho_l\theta h)$):
+
+$$\bar\mu =
+\begin{cases}
+\mu_l(1 + 2.5\,\alpha_g), & \text{EINSTEIN\_DILUTE}\\
+\alpha_g\,\mu_g + (1-\alpha_g)\,\mu_l, & \text{DUKLER\_VOID}\\
+\left(\dfrac{x_g}{\mu_g} + \dfrac{1-x_g}{\mu_l}\right)^{-1}, & \text{MCADAMS\_QUALITY}\\
+\mu_l\,(1-\alpha_g/\alpha_{g,max})^{-2.5\,\alpha_{g,max}}, & \text{KRIEGER\_DOUGHERTY}\\
+x_g\,\mu_g + (1-x_g)\,\mu_l, & \text{LINEAR\_QUALITY}
+\end{cases}$$
+
+`EINSTEIN_DILUTE` (the backward-compatible default) is a dilute-suspension
+result valid only for $\alpha_g \lesssim 0.1$ and is directionally wrong as
+$\alpha_g \to 1$ (it thickens; gas must thin the film toward $\mu_g$).
+Validation therefore rejects it when `gas_alpha_max > 0.6` (Krieger-Dougherty
+packing bound). `DUKLER_VOID` is the void-weighted linear analogue of the
+Grando, Priest & Prata (2006) density closure; `MCADAMS_QUALITY` is the
+homogeneous two-phase standard; `LINEAR_QUALITY` is the quality-weighted form
+quoted by Grando 2006 ($\bar\mu = \chi\mu_g + (1-\chi)\mu_l$) for exact
+replication of that reference. The quality/void models require the free-gas
+viscosity `mu_gas`. The shipped R290/PZ68 cases select `MCADAMS_QUALITY` with
+`gas_alpha_max = 0.6`.
+
+For dissolved-gas (solution) viscosity beyond the calibration point, the
+validated representation for R290/oil pairs is the Eyring-MTSM activity model
+(measured 303-348 K isotherms); the implemented linear Henry law and
+$\exp(a_c c_d)$ correction are local tangents around the (10 bar, 40 °C)
+calibration point. Measured isotherms should be supplied through the existing
+`solubility_table` / `density_table` / `viscosity_table` keys; the shipped
+R290/PZ68 tables are still pending real data and the configs say so.
+
+The density used by JFO is:
+
+$$\rho = \rho_l \theta$$
+
+so liquid mass conservation remains tied to the Elrod-Adams film-content
+variable.
+
+When `fluid_property_model = GAS_CAVITATION_MIXTURE`, finite-rate
+release/resorption updates the dissolved and free gas diagnostics:
+
+$$\Delta m_g =
+k_{dg}(c_d - c_{d,eq})\,\rho_l h\,\alpha_l\,\Delta t$$
+
+with sign convention `gas_mass_transfer > 0` for release from solution into
+free gas and `gas_mass_transfer < 0` for resorption. The implementation caps
+the reported/resolved free-gas volume fraction by `gas_alpha_max`:
+
+$$0 \le \alpha_g \le \alpha_{g,max}$$
+
+Dissolved-gas transport is a segregated advection-diffusion step on $c_d$ using
+the same liquid film mass flux as the JFO equation. Free gas mass per bearing
+area is transported conservatively with the same film-averaged velocity and no
+slip. Both transport solves are skipped when `dt <= 0` (steady operating-point
+runs) to avoid solving boundaryless steady advection problems.
+
+Pressure supply/inlet cells are treated as reservoir-composition cells for the
+gas model. They impose the configured incoming liquid mixture,
+
+$$c_d = c_{d,initial}, \qquad m_{g,free}=0, \qquad \alpha_g=0,$$
+
+and the diagnostic source is reset to
+
+$$\dot{m}_{dg}=0.$$
+
+This prevents a pressure inlet from deleting free gas silently or reporting
+local release/resorption inside the imposed reservoir region. Axial pressure
+boundaries are open gas-transport boundaries: outflow convects dissolved and
+free gas out of the domain, while inflow carries `dissolved_gas_initial` and
+zero free gas. A non-inlet cell can still show `gas_mass_transfer > 0` at high
+absolute pressure when the local temperature or tabulated/correlation model
+makes the liquid supersaturated, i.e. when $c_d > c_{d,eq}(p,T)$.
+
+The provided `config_r290_pz68.txt` fills the 40 C, 10 bar R290/PZ68 starting
+point explicitly:
+
+| Config key | Value | Meaning |
+|------------|-------|---------|
+| `p_cav` | `3e4 Pa` | Absolute JFO cavitation plateau pressure. This is not a force reference pressure and must not be `0` gauge. See the cavity-pressure caveat in §6 — measured cavity pressures of gas-laden oils are not constant. |
+| `bc_z_south_val`, `bc_z_north_val` | `1e6 Pa` | Absolute boundary pressure: submerged ends at the 10 bar housing pressure. Because $p_{sat}(T_{init}, c_{d,init}) = 1\,\mathrm{MPa}$, boundary oil enters exactly saturated and releases gas on any pressure drop — startup validation logs this ratio. The quick smoke case (`config_r290_pz68_quick.txt`) instead vents at `1e5 Pa` with `p_cav = 1e5 Pa`. |
+| `property_reference_pressure` | `1e6 Pa` | Absolute 10 bar reference point for the Henry and Barus fits. |
+| `dissolved_gas_henry_coeff` | `2.175e-7 1/Pa` | Chart-calibrated $H_{ref}=0.2175/10^6$ for 21.75% propane solubility. |
+| `dissolved_gas_henry_temp_coeff` | `1800 K` | van't Hoff temperature slope; solubility decreases as temperature rises. |
+| `dissolved_gas_liquid_density` | `500 kg/m^3` | Liquid-phase density used for dissolved propane volume mixing. |
+| `solution_viscosity_gas_coeff` | `-11.40` | Log-mixing coefficient calibrated so the solution viscosity is about `6.843 cSt` at 40 C and 10 bar. |
+| `viscosity_temperature_coeff` | `4000 K` | Andrade oil-viscosity temperature slope for ISO VG 68 trend. |
+| `viscosity_pressure_coeff` | `1.5e-8 1/Pa` | Barus pressure-viscosity coefficient. |
+| `gas_mass_transfer_rate` | `500 1/s` | Release/resorption rate; numerical/kinetic model input, not read from the chart. |
+| `dissolved_gas_diffusivity` | `1e-9 m^2/s` | Effective dissolved-gas diffusivity; regularization/model input, not read from the chart. |
+
+The CLI and GUI validate these dependencies before launch. For example, HENRY
+requires `dissolved_gas_henry_coeff > 0`, MASS_VOLUME_MIXING requires
+`dissolved_gas_liquid_density > 0`, empirical/log viscosity requires a non-zero
+`solution_viscosity_gas_coeff`, and `GAS_CAVITATION_MIXTURE` currently requires
+`ELROD_ADAMS` so gas release is coupled to the mass-conserving JFO
+liquid-content solve.
+
+This is a segregated nonlinear JFO/property/gas update, not a PISO method. A
+true PISO label would require a Navier-Stokes pressure-velocity backend.
 
 ### 13.3 Elastic and Thermal Deformation
 
@@ -520,6 +839,16 @@ writes the same `SimulationConfig` values consumed by the CLI solver, launches
 the governing equations, discretisation, cavitation model, and macroscopic
 property calculations above are unchanged by using the GUI.
 
+The live summary reports a nominal circumferential Couette Courant number,
+
+$$Co_\theta = \frac{|\omega|\,\Delta t}{2\,\Delta\theta}, \qquad
+\Delta\theta = \frac{2\pi}{N_\theta}.$$
+
+This is the cell-crossing ratio for the surface-driven Reynolds advection term.
+It is an input-summary diagnostic only; it does not include pressure-driven
+Poiseuille velocities, which are known only after the pressure field has been
+solved.
+
 The GUI's Motion / Loads section exposes the same moving-bearing controls that
 can be written manually in `config.txt`. The applied load entry is a clean input
 form for the vector $\mathbf{F}^{ext}$: the in-plane magnitude and direction are
@@ -531,8 +860,8 @@ Section 12.
 The GUI's Energy section exposes `temperature_model`, thermal wall
 temperatures, wall heat-transfer coefficients, volumetric heat capacity, and
 thermal conductivity. These controls write the same config keys used by the CLI
-solver. The preview unit labels report `temperature` in K and
-`heat_generation` in W/m^2.
+solver. The preview unit labels report `temperature` in K and `heat_generation`
+in W/m^2.
 
 The output-selection parameters only affect persistence:
 
@@ -543,7 +872,163 @@ The output-selection parameters only affect persistence:
 | `output_fields` | Selects which cell-data arrays are written. Coordinate helper arrays `theta_rad` and `z_m` are still written with each enabled VTK file. |
 
 Disabling a field does not remove it from the simulation state. For example,
-unchecking `velocity` skips the visualization vector array but the solver still
-computes velocities before load and torque post-processing. Disabling both
+unchecking `velocity` skips the visualization vector, but the solver still
+computes velocities before force and torque post-processing. When enabled,
+`velocity` is written as the active 3-component VTK cell vector `U`. Curved
+output stores Cartesian components on the cylinder; flat output stores
+`(u_theta,u_z,0)` on the unwrapped plane. Force/load/bearing component fields
+are grouped into vector arrays `Fp`, `Fv`, `F`, `Fext`, and `xB`.
+Legacy `load_x`, `load_y`, and `load_z` output selections write
+`pressure_force_x`, `pressure_force_y`, and `pressure_force_z` respectively.
+Disabling both
 `output_write_3d` and `output_write_flat` runs the numerical model without VTK
 field persistence.
+
+---
+
+## 15. Conservation, Regime, and Convergence Diagnostics
+
+`src/diagnostics.hpp/cpp` computes per-step global mass balances on the
+physical domain ($dA = R\,d\theta\,dz$):
+
+$$M_l = \int_\Omega \rho_l\,\theta\,h\,dA, \qquad
+M_{gas,tot} = \int_\Omega \big(c_d\,\rho_l\,\theta\,h + m_g\big)\,dA$$
+
+The liquid closure residual mirrors the discrete operators the Elrod solve
+actually assembles (units kg/s per cell): the storage term is formed from
+$\theta$ vs $\theta^n$ with the same $\rho_l h$ capacity weight and squeeze
+source, boundary fluxes use the same Dirichlet half-cell formulas built on
+$\Gamma_{base}$, and inlet penalty cells are re-evaluated as physical operator
+residuals (the mass the penalty row injects). The normalized residual
+
+$$r_l = \frac{\Delta t\,\big(S_{storage} - \Phi_{boundary} - S_{inlet}\big) - M_{clamp}}{\max(M_l, \epsilon)}$$
+
+sits at the linear-solver tolerance (`linear_rtol`) in closed and open
+domains — $O(10^{-12})$ with `linear_rtol = 1e-13` per `tests/test_diagnostics.cpp`,
+meeting the PLAN A.2 target. Clamp and snap operations are **not mass-neutral**;
+their per-cell mass deltas are accumulated into the `cavitation_clamp_mass` and
+`gas_clamp_mass` fields by the Reynolds and gas-transport solves and appear as
+explicit terms in the balance. The per-step results (masses, fluxes, inlet
+source, clamp masses, residuals, Elrod outer iterations and flag flips) are
+appended to `<output_dir>/diagnostics.csv` every `diagnostics_interval` steps
+and summarized on the DETAILED log line.
+
+Two deliberate visibility limits remain (they motivate WP-1/WP-2 of the audit
+plan): variable-property runs refresh $\rho_l$ after the segregated solve, so
+$r_l$ then measures the property lag of the sweep; and the dissolved-gas
+transport is solved in material (non-conservative) form, so $r_{gas}$ in
+advecting cases includes that discretization choice. The closed-cell
+release/resorption exchange cancels exactly in $M_{gas,tot}$.
+
+Startup regime guards in `SimulationConfig::validate()`:
+
+- **Laminar validity**: $Re_c = \rho\,\omega R\,c/\mu$ and Taylor number
+  $Ta = Re_c\sqrt{c/R}$; a warning is issued above the Taylor-vortex onset
+  $Ta \approx 41$ (Hamrock; San Andrés), where the laminar Reynolds equation
+  stops being valid.
+- **Saturation context** (gas models): the saturation pressure
+  $p_{sat}(T, c_d) = c_d / H(T)$ (Henry inversion; Bunsen and table models are
+  inverted analogously via `SimulationConfig::saturation_pressure`) is logged
+  together with $p_{cav}/p_{sat}$, and a warning fires when a boundary or inlet
+  feed pressure is at or above $p_{sat}$ — that oil enters saturated and
+  releases gas on any pressure drop. For the shipped R290/PZ68 constants
+  $p_{sat} = 0.2175/2.175\times10^{-7} = 1.0\ \mathrm{MPa}$, exactly the 10 bar
+  feed pressure.
+
+---
+
+## 16. Oil–Refrigerant Gaseous Cavitation (PZ68S + R290)
+
+This section records the *physical model* for cavitation of an oil with a
+dissolved refrigerant (the target case is PAG-class PZ68S oil saturated with
+R290/propane). It is the canonical summary; the full survey, the
+literature-verification ledger, and the cited sources live in
+`docs/CAVITATION_OIL_REFRIGERANT.md`. The implementation status and the
+work-package breakdown are in `PLAN.md` Phase E (WP-12 data backend + onset,
+WP-1 two-phase pressure coupling).
+
+### 16.1 Which species cavitates — the two-threshold rule
+
+A lubricant film has **two** low-pressure release thresholds. As pressure falls
+in the divergent wedge, the species with the **higher release pressure** comes
+out first. For oil + dissolved R290:
+
+- **Dissolved refrigerant outgasses first**, at the solution **bubble-point**
+  $p_{sat}(T, c_d)$ — *gaseous cavitation*. For the shipped R290/PZ68 state
+  $p_{sat}\approx 1.0$ MPa.
+- **Oil vaporization** would require reaching the oil's own vapour pressure
+  (essentially zero for nonvolatile PAG) — *vaporous cavitation*, effectively
+  never reached; kept off by default.
+
+So the operative mechanism across the whole realistic $(p,T)$ map is
+**gaseous/outgassing cavitation governed by $p_{sat}$**, not boiling of the oil.
+A single fixed $p_{cav}$ (the classical JFO threshold) cannot represent this:
+the onset must track $p_{sat}$, which depends on local temperature and dissolved
+fraction. This is exactly the defect in the shipped config, where the Elrod
+threshold is pinned at the oil value $p_{cav}=3.0\times10^4$ Pa while propane
+releases at $\sim$1 MPa.
+
+### 16.2 Phase picture across the PTSV map
+
+The working fluid is **gas dissolved in liquid oil**, becoming a two-phase film
+once the solubility limit is crossed — neither a pure liquid–liquid mixture nor
+a pure gas-in-liquid problem, but a transition keyed on the saturation surface:
+
+| Local state | Phase | Closure |
+|---|---|---|
+| $p > p_{sat}$ (compressed) | single-phase liquid solution (R290 fully dissolved) | mixture $\mu_{sol}(T,p,c_d)$, $\rho_{sol}(T,p,c_d)$; elliptic Reynolds |
+| $p \approx p_{sat}$ | bubble-point onset | $p_{sat}$ from solubility inversion |
+| $p < p_{sat}$ (divergent) | two-phase: desorbed R290 gas + liquid | void fraction $\alpha = 1-\theta$; two-phase $\bar\mu(\alpha)$, $\bar\rho(\alpha)$; cavitated branch |
+
+### 16.3 Generalized JFO complementarity
+
+The classical JFO complementarity holds with $p_{cav}$ promoted to the local
+bubble-point field:
+
+$$p \ge p_{sat}(T,c_d),\qquad \theta \le 1,\qquad (p - p_{sat})\,(1-\theta)=0,$$
+
+i.e. either full film ($p\ge p_{sat}$, $\theta=1$) or cavitated ($p=p_{sat}$,
+$\theta<1$). The effective onset threshold used by the solver is the **larger**
+of the two species' release pressures (general, not R290-specific):
+
+$$p_{cav,\mathrm{eff}} = \max\!\big(p_{cav,\mathrm{oil}},\; p_{sat}(T,c_d)\big).$$
+
+With WP-1 void coupling the cavitated plateau generalizes further to the
+gas-filled value $p_{void}=\max(p_{cav,\mathrm{eff}},\, m_g R_g T/((1-\theta)h))$,
+of which $p_{cav,\mathrm{eff}}$ is the gas-free floor.
+
+### 16.4 Property closures and the supplier PTSV data
+
+The supplier chart (`data/R290_PZ68S/r290_pz68s.csv`) is a $(p,T)$ grid of the
+**saturated** solution's solubility (mass fraction R290) and **kinematic**
+viscosity. It is ingested as the liquid-solution surface:
+
+- **Solubility** $c_{sat}(p,T)$ sets the dissolved fraction *and*, inverted at
+  fixed $T$, the onset threshold $p_{sat}(T,c_d)$.
+- **Viscosity**: tabulated $\nu(p,T)$ → dynamic $\mu=\nu\,\rho_{sol}$ per cell
+  (the chart has no density column; $\rho_{sol}$ comes from the density model).
+- **Density** of the *solution* is mass–volume mixing of oil and dissolved-R290
+  partial volumes; the **two-phase** density $\bar\rho=(1-\alpha)\rho_l+\alpha\rho_g$
+  is carried by the Elrod $\theta$.
+- **Two-phase viscosity** uses a homogeneous quality-based model (McAdams) with a
+  Krieger–Dougherty packing bound; it reduces to $\mu_l$ at zero void.
+
+The dissolved-gas (solution) viscosity below saturation is, as a local-tangent
+fallback to the table, $\mu_l(T,c_d,p)=\mu_{ref}\,e^{E_\mu(1/T-1/T_{ref})}\,
+e^{a_c c_d}\,e^{\alpha_p(p-p_{ref})}$ (Andrade temperature × dissolved-gas
+thinning × Barus pressure), calibrated at (40 °C, 1.0 MPa).
+
+### 16.5 Model provenance and honest validity
+
+This year's model corrects three errors in the earlier (Kunz-vaporous) approach:
+mass-conserving Elrod–Adams JFO replaces non-conservative volume-fraction
+manipulation; the dissolved refrigerant is treated as **liquid** (its partial
+molar volume is liquid-like) rather than as an ideal gas; and mixing moved from
+volume-fraction to **mass-fraction (quality)**, which satisfies both single-phase
+limits and stays physical at high void. Honest gaps (tracked as WP-12 and WP-1):
+the linear Henry solubility is a one-point tangent unverified at high pressure
+(→ the 2-D TABLE backend), the Barus $\alpha_p$ is a mineral-oil default not a
+PZ68 measurement, the release-rate constant is provisional, and the desorbed gas
+is currently **volumetrically inert to pressure** (→ WP-1). The supplier PTSV
+data itself is a chart-digitized estimation (R² ≈ 0.9995 over 0.1–4 MPa,
+−60…160 °C), not first-principles VLE, and carries **no density**.

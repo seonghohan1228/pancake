@@ -1,0 +1,118 @@
+# Fast R290/PZ68 gaseous-cavitation smoke case.
+# Same fluid constants as config_r290_pz68.txt, but with a small mesh and short
+# runtime so you can verify pressure/film_content/dissolved_gas/alpha_gas output.
+
+# Geometry
+R = 0.0215
+c = 4.25e-05
+e = 1.2e-05
+L = 0.04
+attitude_angle_deg = -90.0
+load_angle_deg = 0.0
+
+# Grid
+n_theta_global = 60
+n_z_global = 20
+
+# Time
+end_t = 0.00002
+dt = 0.000005
+write_interval = 0.00001
+solution_mode = TRANSIENT
+motion_time_method = EULER_IMPLICIT
+
+# Numerics
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+gas_convection_scheme = UPWIND
+diagnostics_interval = 1
+
+# Physics: all pressures are absolute Pa.
+omega = 314.159265359
+omega_ramp_time = 0
+mu = 0.0653
+rho = 960
+p_cav = 1.0e5
+bulk_modulus = 1e9
+
+# Energy Equation
+temperature_model = ENERGY_EQUATION
+temperature_initial = 313.15
+temperature_reference = 313.15
+journal_wall_temperature = 313.15
+bearing_wall_temperature = 313.15
+rho_cp = 1.92e6
+thermal_conductivity = 0.15
+journal_heat_transfer = 1000
+bearing_heat_transfer = 1000
+
+# Fluid Properties
+fluid_property_model = GAS_CAVITATION_MIXTURE
+dissolved_gas_species = PROPANE
+oil_gas_solution_model = HENRY
+density_model = MASS_VOLUME_MIXING
+viscosity_model = EMPIRICAL_CORRELATION
+dissolved_gas_initial = 0.2175
+dissolved_gas_max = 0.5
+dissolved_gas_henry_coeff = 2.175e-7
+dissolved_gas_henry_temp_coeff = 1800
+dissolved_gas_bunsen_coeff = 0
+dissolved_gas_liquid_density = 500
+gas_mass_transfer_rate = 500
+dissolved_gas_diffusivity = 1e-9
+solution_density_gas_coeff = 0
+solution_viscosity_gas_coeff = -11.40
+viscosity_temperature_coeff = 4000
+viscosity_pressure_coeff = 1.5e-8
+# McAdams homogeneous two-phase viscosity with the Krieger-Dougherty packing
+# bound; Einstein dilute thickening is invalid at the void fractions this case
+# reaches. mu_gas is saturated propane vapor near 40 C (~8.7e-6 Pa s).
+gas_alpha_max = 0.6
+gas_mixture_viscosity_model = MCADAMS_QUALITY
+mu_gas = 8.7e-6
+gas_pressure_floor = 1e5
+property_reference_pressure = 1e6
+property_reference_temperature = 313.15
+# Henry + exp(a_c c_d) viscosity are local tangents calibrated at (10 bar, 40 C)
+# only. Measured R290/PZ68 isotherm tables are pending; populate the tables
+# below (solubility keyed by Pa, density/viscosity keyed by mass fraction) to
+# extend validity beyond the calibration point.
+solubility_table =
+density_table =
+viscosity_table =
+
+# Bearing Motion
+motion_model = STATIC
+bearing_initial_from_attitude = true
+bearing_mass = 1.64
+external_load_x = 0
+external_load_y = 0
+external_load_z = 0
+min_film_thickness = 1e-09
+stop_on_nonpositive_film = true
+
+# Axial Boundary Conditions
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 1.0e5
+bc_z_south_thermal = OPEN
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 1.0e5
+bc_z_north_thermal = OPEN
+
+# Cavitation
+cavitation_model = ELROD_ADAMS
+max_outer_iters = 50
+outer_tol = 1e-6
+theta_min = 1e-6
+log_outer_iters = false
+
+# Inlets
+inlet_groove = 90 10 1.0e6
+
+# Output
+output_dir = results/r290_pz68_quick
+filename_prefix = solution
+output_verbosity = DETAILED
+output_write_3d = true
+output_write_flat = true
+output_fields = pressure, film_content, h, rho, mu, rho_liquid_solution, mu_liquid_solution, temperature, dissolved_gas, free_gas_mass, alpha_gas, gas_mass_transfer, rho_gas, velocity, fluid_force_x, fluid_force_y, friction_torque

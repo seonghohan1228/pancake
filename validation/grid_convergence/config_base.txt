@@ -1,0 +1,59 @@
+# Grid-convergence base case: steady eccentric journal bearing with
+# Elrod-Adams cavitation. The run scripts override n_theta_global,
+# n_z_global, and output_dir per grid level.
+
+# Geometry
+R = 0.01
+c = 0.0001
+e = 0.00008
+L = 0.02
+attitude_angle_deg = -90.0
+
+# Grid (overridden by the run scripts)
+n_theta_global = 60
+n_z_global = 20
+
+# Time
+dt = 0.01
+write_interval = 1.0
+end_t = 0.01
+solution_mode = STEADY_STATE
+motion_time_method = EULER_IMPLICIT
+
+# Numerics
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+gas_convection_scheme = UPWIND
+linear_rtol = 1e-12
+diagnostics_interval = 1
+
+# Physics
+omega = 100.0
+mu = 0.01
+rho = 900.0
+p_cav = 1.0e5
+bulk_modulus = 1e5
+
+# Axial Boundary Conditions
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 1.0e5
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 1.0e5
+
+# Cavitation
+cavitation_model = ELROD_ADAMS
+max_outer_iters = 100
+outer_tol = 1e-10
+theta_min = 1e-6
+log_outer_iters = false
+
+# Inlets: flooded supply groove so the case is fed, not starved
+inlet_groove = 90 10 2.0e5
+
+# Output
+output_dir = results/grid_convergence
+filename_prefix = solution
+output_verbosity = DETAILED
+output_write_3d = false
+output_write_flat = false
+output_fields = pressure, film_content, h

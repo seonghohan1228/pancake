@@ -1,10 +1,9 @@
 #pragma once
 
+#include "config.hpp"
 #include "field.hpp"
 #include "linear_system.hpp"
 #include "mesh.hpp"
-
-enum class ConvectionScheme { UPWIND, TVD_VANLEER, TVD_MINMOD };
 
 /// Finite-volume operators for the cylindrical (theta x z) mesh.
 /// Each operator adds its contribution to a LinearSystem's stencil coefficients
@@ -37,9 +36,14 @@ namespace FVM {
     /// flux_theta(i,j) = outward volumetric flux through the east face of cell (i,j).
     /// flux_z(i,j)     = outward volumetric flux through the north face of cell (i,j).
     /// TVD schemes use phi.old for deferred correction (requires outer iteration).
+    /// TYPE_DIFFERENCING needs central_mask_theta/central_mask_z, indexed like the
+    /// flux fields (1 = central interpolation on that face, 0 = upwind); it applies
+    /// a deferred central correction on masked faces and reduces to upwind elsewhere.
     void divergence(LinearSystem& sys,
                     const Field& flux_theta, const Field& flux_z, const Field& phi,
-                    ConvectionScheme scheme, const Mesh& mesh);
+                    ConvectionScheme scheme, const Mesh& mesh,
+                    const Field* central_mask_theta = nullptr,
+                    const Field* central_mask_z = nullptr);
 
     /// Explicit source: adds source_field(i,j) * cell_volume to source(i,j).
     void add_source(LinearSystem& sys, const Field& source_field, const Mesh& mesh);

@@ -73,12 +73,13 @@ static void test_config_aliases() {
         "temperature_time_method = crank-nicholson\n");
 
     check(cfg.motion_model == MotionModel::MOVING_BEARING, "motion_model alias parse failed");
-    check(cfg.pressure_time_method == TimeSteppingMethod::CRANK_NICOLSON,
-          "IMEX alias should map to CRANK_NICOLSON");
     check(cfg.motion_time_method == TimeSteppingMethod::CRANK_NICOLSON,
           "semi implicit alias should map to CRANK_NICOLSON");
-    check(cfg.temperature_time_method == TimeSteppingMethod::CRANK_NICOLSON,
-          "crank-nicholson alias should map to CRANK_NICOLSON");
+    // Field solves are backward-Euler; the legacy keys must parse with a warning.
+    check(cfg.parse_warnings.size() == 2,
+          "legacy pressure/temperature_time_method keys should each warn once");
+    check(cfg.parse_warnings[0].find("ignored") != std::string::npos,
+          "legacy time-method warning should say the key is ignored");
 }
 
 static void test_motion_integrators_constant_load() {

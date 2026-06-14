@@ -38,6 +38,8 @@ static void check(bool cond, const char* msg) {
 //         same geometry. Peak pressures must agree to within 1%.
 static void test_regression_vs_gumbel(const Mesh& mesh, Communicator& comm) {
     SimulationConfig cfg;
+    // Steady comparison; transient film-content storage is covered by test_schemes.
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
 
     auto run_one_step = [&](CavitationModel model) {
         Fields fields;
@@ -88,6 +90,7 @@ static void test_regression_vs_gumbel(const Mesh& mesh, Communicator& comm) {
 static void test_uniform_film(const Mesh& mesh, Communicator& comm) {
     SimulationConfig cfg;
     cfg.e = 0.0;  // zero eccentricity → h = c everywhere
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
 
     Fields fields;
     fields.add("pressure", mesh).fill(cfg.p_cav);

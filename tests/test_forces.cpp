@@ -31,9 +31,6 @@ Fields make_force_fields(const Mesh& mesh, const SimulationConfig& cfg) {
     fields.add("pressure_force_x", mesh).fill(0.0);
     fields.add("pressure_force_y", mesh).fill(0.0);
     fields.add("pressure_force_z", mesh).fill(0.0);
-    fields.add("load_x", mesh).fill(0.0);
-    fields.add("load_y", mesh).fill(0.0);
-    fields.add("load_z", mesh).fill(0.0);
     fields.add("viscous_force_x", mesh).fill(0.0);
     fields.add("viscous_force_y", mesh).fill(0.0);
     fields.add("viscous_force_z", mesh).fill(0.0);
@@ -82,8 +79,8 @@ int main(int argc, char** argv) {
               "pressure force y should cancel by symmetry");
         check(std::abs(fields["pressure_force_x"](0, 0) - forces.pressure_x) < 1.0e-8,
               "pressure_force_x field should store pressure force resultant");
-        check(std::abs(fields["load_x"](0, 0) - forces.pressure_x) < 1.0e-8,
-              "legacy load_x field should alias pressure force resultant");
+        check(!fields.has("load_x"),
+              "force diagnostics should not allocate legacy load_x field");
     }
 
     {
@@ -97,6 +94,10 @@ int main(int argc, char** argv) {
         cfg.mu = 0.01;
         cfg.omega = 0.0;
         cfg.p_cav = 0.0;
+        // Prescribed linear pressure field with a pressure-Dirichlet boundary.
+        // GUMBEL and ELROD now both use bc_z_*_val as the pressure input; this
+        // test stays on GUMBEL to keep the force fixture pressure-primary.
+        cfg.cavitation_model = CavitationModel::GUMBEL;
         const double p0 = 1.0e5;
         cfg.bc_z_south_val = p0;
         cfg.bc_z_north_val = 0.0;

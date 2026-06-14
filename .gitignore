@@ -10,6 +10,14 @@ results/
 # Legacy
 legacy/
 
+# Python cache
+__pycache__/
+*.pyc
+
+# Claude (local agent state)
+.claude/settings.local.json
+.claude/*.lock
+
 # Zed
 .zed/
 

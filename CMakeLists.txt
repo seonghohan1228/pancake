@@ -80,6 +80,7 @@ set(PANCAKE_HEADERS
     src/journal_motion.hpp
     src/linear_system.hpp
     src/mesh.hpp
+    src/property_table_io.hpp
     src/reynolds.hpp
     src/utils.hpp)
 
@@ -155,6 +156,7 @@ if(PANCAKE_BUILD_SOLVER)
         src/journal_motion.cpp
         src/linear_system.cpp
         src/mesh.cpp
+        src/property_table_io.cpp
         src/reynolds.cpp)
 
     add_library(pancake_core ${PANCAKE_CORE_SOURCES} ${PANCAKE_HEADERS})

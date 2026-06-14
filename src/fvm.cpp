@@ -111,12 +111,15 @@ void laplacian(LinearSystem& sys, const Field& gamma, const Mesh& mesh) {
 
 void divergence(LinearSystem& sys,
                 const Field& flux_theta, const Field& flux_z, const Field& phi,
-                ConvectionScheme scheme, const Mesh& mesh)
+                ConvectionScheme scheme, const Mesh& mesh,
+                const Field* central_mask_theta, const Field* central_mask_z)
 {
     const int n_theta = mesh.n_theta_local;
     const int n_z     = mesh.n_z_local;
     const bool is_tvd = (scheme == ConvectionScheme::TVD_VANLEER ||
                          scheme == ConvectionScheme::TVD_MINMOD);
+    const bool is_type = (scheme == ConvectionScheme::TYPE_DIFFERENCING &&
+                          central_mask_theta != nullptr);
 
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
@@ -134,6 +137,34 @@ void divergence(LinearSystem& sys,
             sys.a_w(i, j) += std::max( F_w, 0.0);
             if (j + 1 < n_z) sys.a_n(i, j) += std::max(-F_n, 0.0);
             if (j > 0)        sys.a_s(i, j) += std::max( F_s, 0.0);
+
+            if (is_type) {
+                // Type differencing (Vijayaraghavan & Keith 1989): deferred central
+                // correction on full-film faces; cavitated faces stay pure upwind.
+                if ((*central_mask_theta)(i, j) > 0.5) {
+                    const double phi_e_up = (F_e >= 0.0) ? phi.old(i, j) : phi.old(i + 1, j);
+                    const double phi_e_c  = 0.5 * (phi.old(i, j) + phi.old(i + 1, j));
+                    sys.source(i, j) -= F_e * (phi_e_c - phi_e_up);
+                }
+                if ((*central_mask_theta)(i - 1, j) > 0.5) {
+                    const double phi_w_up = (F_w >= 0.0) ? phi.old(i - 1, j) : phi.old(i, j);
+                    const double phi_w_c  = 0.5 * (phi.old(i - 1, j) + phi.old(i, j));
+                    sys.source(i, j) += F_w * (phi_w_c - phi_w_up);
+                }
+                if (central_mask_z != nullptr) {
+                    if (j + 1 < n_z && (*central_mask_z)(i, j) > 0.5) {
+                        const double phi_n_up = (F_n >= 0.0) ? phi.old(i, j) : phi.old(i, j + 1);
+                        const double phi_n_c  = 0.5 * (phi.old(i, j) + phi.old(i, j + 1));
+                        sys.source(i, j) -= F_n * (phi_n_c - phi_n_up);
+                    }
+                    if (j > 0 && (*central_mask_z)(i, j - 1) > 0.5) {
+                        const double phi_s_up = (F_s >= 0.0) ? phi.old(i, j - 1) : phi.old(i, j);
+                        const double phi_s_c  = 0.5 * (phi.old(i, j - 1) + phi.old(i, j));
+                        sys.source(i, j) += F_s * (phi_s_c - phi_s_up);
+                    }
+                }
+                continue;
+            }
 
             if (!is_tvd) continue;
 

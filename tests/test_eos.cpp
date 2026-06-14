@@ -54,6 +54,36 @@ int main() {
     check(EOS::theta_from_pressure(p_cav - 1.0, p_cav, beta) == 1.0,
           "sub-cavitation pressure returns theta=1");
 
+    // --- WP-1 generalized two-phase EOS (theta_full, p_void, beta_bar) ------
+    {
+        const double pv = 1.0e5;   // local void plateau
+        const double bb = 5.0e4;   // mixture bulk modulus
+        const double tf = 0.6;     // full-film ceiling (alpha_g = 0.4)
+
+        // Back-compat: theta_full = 1 reproduces the single-phase overloads exactly.
+        for (double theta : {0.5, 1.0, 1.5, 2.0}) {
+            check(EOS::pressure_from_theta(theta, 1.0, pv, bb) ==
+                  EOS::pressure_from_theta(theta, pv, bb), "4-arg theta_full=1 == 3-arg pressure");
+            check(EOS::switch_function(theta, 1.0) == EOS::switch_function(theta),
+                  "switch theta_full=1 == 1-arg");
+        }
+
+        // The switch and onset move to theta_full, not 1.
+        check(EOS::switch_function(0.7, tf) == 1.0, "full-film above theta_full");
+        check(EOS::switch_function(0.5, tf) == 0.0, "cavitated below theta_full");
+        check(std::abs(EOS::pressure_from_theta(tf, tf, pv, bb) - pv) < tol,
+              "pressure at theta_full == p_void");
+        check(EOS::pressure_from_theta(0.5, tf, pv, bb) == pv, "cavitated plateau == p_void");
+
+        // Pressurized round-trip for theta >= theta_full.
+        for (double theta : {0.6, 0.9, 1.2}) {
+            const double p = EOS::pressure_from_theta(theta, tf, pv, bb);
+            const double t2 = EOS::theta_from_pressure(p, tf, pv, bb);
+            check(std::abs(t2 - theta) < 1e-9, "generalized round-trip theta->p->theta");
+            check(p >= pv, "pressurized p >= p_void");
+        }
+    }
+
     std::cout << "PASS: test_eos\n";
     return 0;
 }

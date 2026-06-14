@@ -1,16 +1,28 @@
 #include "io.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <mpi.h>
 #include <sstream>
+#include <stdexcept>
+#include <string>
+
+#include "output_naming.hpp"
 
 namespace fs = std::filesystem;
 
 namespace IO {
 namespace {
-std::string output_name_for_field(const std::string& name) {
+// Selection key (what config output_fields / output_field_enabled use). theta is
+// selected as film_content for backward compatibility.
+std::string selection_key_for_field(const std::string& name) {
     return (name == "theta") ? "film_content" : name;
+}
+
+bool vector_group_enabled(const SimulationConfig& cfg, const OutputNaming::VectorGroup& g) {
+    return cfg.output_field_enabled(g.x) || cfg.output_field_enabled(g.y) ||
+           cfg.output_field_enabled(g.z);
 }
 }
 
@@ -49,6 +61,55 @@ std::vector<double> get_centered_data(const Field& f, const Mesh& mesh) {
         }
     }
     return result;
+}
+
+void write_vector_data_array(std::ofstream& file, const std::string& name,
+                             const std::vector<double>& x, const std::vector<double>& y,
+                             const std::vector<double>& z) {
+    file << "        <DataArray type=\"Float64\" Name=\"" << name
+         << "\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+    for (size_t idx = 0; idx < x.size(); ++idx) {
+        file << x[idx] << " " << y[idx] << " " << z[idx] << " ";
+    }
+    file << "\n        </DataArray>\n";
+}
+
+// Flat (unwrapped theta-z plane): the natural Cartesian vector is (u_theta, u_z, 0).
+void write_flat_velocity_arrays(std::ofstream& file, const Mesh& mesh, Fields& fields) {
+    std::vector<double> u_theta = get_centered_data(fields["velocity_theta"], mesh);
+    std::vector<double> u_z = get_centered_data(fields["velocity_z"], mesh);
+    std::vector<double> zero(u_theta.size(), 0.0);
+    write_vector_data_array(file, OutputNaming::velocity_name(), u_theta, u_z, zero);
+}
+
+// Curved (real cylinder): Cartesian (vx, vy, vz) from the curvilinear components.
+void write_curved_velocity_arrays(std::ofstream& file, const Mesh& mesh, Fields& fields) {
+    std::vector<double> u_theta = get_centered_data(fields["velocity_theta"], mesh);
+    std::vector<double> u_z = get_centered_data(fields["velocity_z"], mesh);
+    std::vector<double> vx(u_theta.size()), vy(u_theta.size());
+    size_t idx = 0;
+    for (int j = 0; j < mesh.n_z_local; ++j) {
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            const double theta = (mesh.offset_theta + i + 0.5) * mesh.get_d_theta();
+            vx[idx] = -u_theta[idx] * std::sin(theta);
+            vy[idx] =  u_theta[idx] * std::cos(theta);
+            ++idx;
+        }
+    }
+    write_vector_data_array(file, OutputNaming::velocity_name(), vx, vy, u_z);
+}
+
+// Cartesian force / load / bearing resultant vectors (constant fields).
+void write_vector_groups(std::ofstream& file, const Mesh& mesh, Fields& fields,
+                         const SimulationConfig& cfg) {
+    for (const auto& g : OutputNaming::vector_groups()) {
+        if (!vector_group_enabled(cfg, g)) continue;
+        if (!fields.has(g.x) || !fields.has(g.y) || !fields.has(g.z)) continue;
+        write_vector_data_array(file, g.out,
+                                get_centered_data(fields[g.x], mesh),
+                                get_centered_data(fields[g.y], mesh),
+                                get_centered_data(fields[g.z], mesh));
+    }
 }
 
 void update_pvd(double time, int step, const SimulationConfig& cfg) {
@@ -124,18 +185,23 @@ void write_flat_vts(int step, const Mesh& mesh, Fields& fields, const Simulation
     }
     file << "\n        </DataArray>\n      </Points>\n";
 
+    const bool write_velocity = cfg.output_field_enabled("velocity") &&
+        fields.has("velocity_theta") && fields.has("velocity_z");
+
     // Cell data (Same as 3D mesh)
-    file << "      <CellData>\n";
+    file << "      <CellData";
+    if (write_velocity) file << " Vectors=\"" << OutputNaming::velocity_name() << "\"";
+    file << ">\n";
     for(auto& [name, field_ptr] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = output_name_for_field(name);
-        if (!cfg.output_field_enabled(output_name)) continue;
+        if (OutputNaming::is_consumed_component(name)) continue;
+        if (!cfg.output_field_enabled(selection_key_for_field(name))) continue;
         std::vector<double> centered = get_centered_data(*field_ptr, mesh);
-        file << "        <DataArray type=\"Float64\" Name=\"" << output_name << "\" format=\"ascii\">\n";
+        file << "        <DataArray type=\"Float64\" Name=\"" << OutputNaming::scalar(name) << "\" format=\"ascii\">\n";
         for (const auto& val : centered) file << val << " ";
         file << "\n        </DataArray>\n";
     }
-    
+
     // Coordinates
     file << "        <DataArray type=\"Float64\" Name=\"theta_rad\" format=\"ascii\">\n";
     for (int j = 0; j < mesh.n_z_local; ++j)
@@ -149,16 +215,8 @@ void write_flat_vts(int step, const Mesh& mesh, Fields& fields, const Simulation
             file << (j + 0.5) * mesh.get_d_z() << " ";
     file << "\n        </DataArray>\n";
 
-    // Velocity vectors (In flat mesh, we can export local components as UVW)
-    if (cfg.output_field_enabled("velocity") && fields.has("velocity_theta") && fields.has("velocity_z")) {
-        std::vector<double> u_th = get_centered_data(fields["velocity_theta"], mesh);
-        std::vector<double> u_z  = get_centered_data(fields["velocity_z"], mesh);
-        file << "        <DataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\" format=\"ascii\">\n";
-        for (size_t idx = 0; idx < u_th.size(); ++idx) {
-            file << u_th[idx] << " " << u_z[idx] << " 0 ";
-        }
-        file << "\n        </DataArray>\n";
-    }
+    write_vector_groups(file, mesh, fields, cfg);
+    if (write_velocity) write_flat_velocity_arrays(file, mesh, fields);
 
     file << "      </CellData>\n    </Piece>\n  </StructuredGrid>\n</VTKFile>\n";
 }
@@ -168,24 +226,34 @@ void write_flat_pvts(int step, int total_ranks, Fields& fields, const Simulation
     ss << cfg.output_dir << "/flat/" << cfg.filename_prefix << "_" << step << ".pvts";
     std::string path = ss.str();
     std::ofstream file(path);
+    const bool write_velocity = cfg.output_field_enabled("velocity") &&
+        fields.has("velocity_theta") && fields.has("velocity_z");
+
     file << "<?xml version=\"1.0\"?>\n"
          << "<VTKFile type=\"PStructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
          << "  <PStructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\" GhostLevel=\"0\">\n"
          << "    <PPoints>\n"
          << "      <PDataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\"/>\n"
          << "    </PPoints>\n"
-         << "    <PCellData>\n";
+         << "    <PCellData";
+    if (write_velocity) file << " Vectors=\"" << OutputNaming::velocity_name() << "\"";
+    file << ">\n";
 
     for(auto& [name, field] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = output_name_for_field(name);
-        if (!cfg.output_field_enabled(output_name)) continue;
-        file << "      <PDataArray type=\"Float64\" Name=\"" << output_name << "\"/>\n";
+        if (OutputNaming::is_consumed_component(name)) continue;
+        if (!cfg.output_field_enabled(selection_key_for_field(name))) continue;
+        file << "      <PDataArray type=\"Float64\" Name=\"" << OutputNaming::scalar(name) << "\"/>\n";
     }
     file << "      <PDataArray type=\"Float64\" Name=\"theta_rad\"/>\n"
          << "      <PDataArray type=\"Float64\" Name=\"z_m\"/>\n";
-    if (cfg.output_field_enabled("velocity")) {
-        file << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n";
+    for (const auto& g : OutputNaming::vector_groups()) {
+        if (vector_group_enabled(cfg, g) && fields.has(g.x) && fields.has(g.y) && fields.has(g.z))
+            file << "      <PDataArray type=\"Float64\" Name=\"" << g.out << "\" NumberOfComponents=\"3\"/>\n";
+    }
+    if (write_velocity) {
+        file << "      <PDataArray type=\"Float64\" Name=\"" << OutputNaming::velocity_name()
+             << "\" NumberOfComponents=\"3\"/>\n";
     }
     file << "    </PCellData>\n";
 
@@ -226,18 +294,23 @@ void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfi
          << "        </DataArray>\n"
          << "      </Points>\n";
 
+    const bool write_velocity = cfg.output_field_enabled("velocity") &&
+        fields.has("velocity_theta") && fields.has("velocity_z");
+
     // Cell data
-    file << "      <CellData>\n";
-    
-    // Write scalar fields (excluding individual velocity components which we'll group)
+    file << "      <CellData";
+    if (write_velocity) file << " Vectors=\"" << OutputNaming::velocity_name() << "\"";
+    file << ">\n";
+
+    // Write scalar fields (vector components are grouped into Cartesian vectors below)
     for(auto& [name, field_ptr] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = output_name_for_field(name);
-        if (!cfg.output_field_enabled(output_name)) continue;
+        if (OutputNaming::is_consumed_component(name)) continue;
+        if (!cfg.output_field_enabled(selection_key_for_field(name))) continue;
 
         std::vector<double> centered = get_centered_data(*field_ptr, mesh);
 
-        file << "        <DataArray type=\"Float64\" Name=\"" << output_name << "\" format=\"ascii\">\n";
+        file << "        <DataArray type=\"Float64\" Name=\"" << OutputNaming::scalar(name) << "\" format=\"ascii\">\n";
         for (const auto& val : centered) file << val << " ";
         file << "\n        </DataArray>\n";
     }
@@ -259,25 +332,8 @@ void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfi
     }
     file << "\n        </DataArray>\n";
 
-    // Write Velocity as a Vector field
-    if (cfg.output_field_enabled("velocity") && fields.has("velocity_theta") && fields.has("velocity_z")) {
-        std::vector<double> u_th = get_centered_data(fields["velocity_theta"], mesh);
-        std::vector<double> u_z  = get_centered_data(fields["velocity_z"], mesh);
-
-        file << "        <DataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\" format=\"ascii\">\n";
-        int idx = 0;
-        for (int j = 0; j < mesh.n_z_local; ++j) {
-            for (int i = 0; i < mesh.n_theta_local; ++i) {
-                double theta = (mesh.offset_theta + i + 0.5) * mesh.get_d_theta();
-                double vx = -u_th[idx] * sin(theta);
-                double vy =  u_th[idx] * cos(theta);
-                double vz =  u_z[idx];
-                file << vx << " " << vy << " " << vz << " ";
-                idx++;
-            }
-        }
-        file << "\n        </DataArray>\n";
-    }
+    write_vector_groups(file, mesh, fields, cfg);
+    if (write_velocity) write_curved_velocity_arrays(file, mesh, fields);
 
     file << "      </CellData>\n"
          << "    </Piece>\n"
@@ -290,27 +346,37 @@ void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfi
     ss << cfg.output_dir << "/" << cfg.filename_prefix << "_" << step << ".pvts";
 
     std::ofstream file(ss.str());
+    const bool write_velocity = cfg.output_field_enabled("velocity") &&
+        fields.has("velocity_theta") && fields.has("velocity_z");
+
     file << "<?xml version=\"1.0\"?>\n"
          << "<VTKFile type=\"PStructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
          << "  <PStructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\" GhostLevel=\"0\">\n"
          << "    <PPoints>\n"
          << "      <PDataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\"/>\n"
          << "    </PPoints>\n"
-         << "    <PCellData>\n";
+         << "    <PCellData";
+    if (write_velocity) file << " Vectors=\"" << OutputNaming::velocity_name() << "\"";
+    file << ">\n";
 
     for(auto& [name, field] : fields) {
         if (name == "velocity_theta" || name == "velocity_z") continue;
-        std::string output_name = output_name_for_field(name);
-        if (!cfg.output_field_enabled(output_name)) continue;
-        file << "      <PDataArray type=\"Float64\" Name=\"" << output_name << "\"/>\n";
+        if (OutputNaming::is_consumed_component(name)) continue;
+        if (!cfg.output_field_enabled(selection_key_for_field(name))) continue;
+        file << "      <PDataArray type=\"Float64\" Name=\"" << OutputNaming::scalar(name) << "\"/>\n";
     }
     // Explicit coordinates
     file << "      <PDataArray type=\"Float64\" Name=\"theta_rad\"/>\n"
          << "      <PDataArray type=\"Float64\" Name=\"z_m\"/>\n";
 
-    // Vector field header
-    if (cfg.output_field_enabled("velocity")) {
-        file << "      <PDataArray type=\"Float64\" Name=\"velocity\" NumberOfComponents=\"3\"/>\n";
+    // Cartesian vector field headers
+    for (const auto& g : OutputNaming::vector_groups()) {
+        if (vector_group_enabled(cfg, g) && fields.has(g.x) && fields.has(g.y) && fields.has(g.z))
+            file << "      <PDataArray type=\"Float64\" Name=\"" << g.out << "\" NumberOfComponents=\"3\"/>\n";
+    }
+    if (write_velocity) {
+        file << "      <PDataArray type=\"Float64\" Name=\"" << OutputNaming::velocity_name()
+             << "\" NumberOfComponents=\"3\"/>\n";
     }
 
     file << "    </PCellData>\n";
@@ -332,40 +398,88 @@ void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfi
 void prepare_output_directory(const SimulationConfig& cfg, MPI_Comm comm) {
     int rank; MPI_Comm_rank(comm, &rank);
 
+    std::string setup_error;
     if (rank == 0) {
-        // Directory and file initialization
-        if (fs::exists(cfg.output_dir)) fs::remove_all(cfg.output_dir);
-        fs::create_directory(cfg.output_dir);
+        std::error_code ec;
+        const fs::path root(cfg.output_dir);
 
-        // 3D PVD
-        if (cfg.output_write_3d) {
-            std::ofstream pvd(cfg.output_dir + "/results.pvd");
-            pvd << "<?xml version=\"1.0\"?>\n"
-                << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-                << "  <Collection>\n"
-                << "  </Collection>\n"
-                << "</VTKFile>\n";
+        if (fs::exists(root, ec)) {
+            fs::remove_all(root, ec);
+            if (ec) {
+                setup_error = "Cannot clear output_dir '" + root.string() + "': " +
+                    ec.message() + ". Close any viewer using the results, or choose a new output_dir.";
+            }
+        } else if (ec) {
+            setup_error = "Cannot inspect output_dir '" + root.string() + "': " + ec.message();
         }
 
-        // Flat PVD
-        if (cfg.output_write_flat) {
-            fs::create_directory(cfg.output_dir + "/flat");
-            std::ofstream flat_pvd(cfg.output_dir + "/flat/results.pvd");
-            flat_pvd << "<?xml version=\"1.0\"?>\n"
-                     << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-                     << "  <Collection>\n"
-                     << "  </Collection>\n"
-                     << "</VTKFile>\n";
+        if (setup_error.empty()) {
+            fs::create_directories(root, ec);
+            if (ec) setup_error = "Cannot create output_dir '" + root.string() + "': " + ec.message();
         }
+
+        if (setup_error.empty() && cfg.output_write_3d) {
+            std::ofstream pvd(root / "results.pvd");
+            if (!pvd) {
+                setup_error = "Cannot write '" + (root / "results.pvd").string() + "'.";
+            } else {
+                pvd << "<?xml version=\"1.0\"?>\n"
+                    << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+                    << "  <Collection>\n"
+                    << "  </Collection>\n"
+                    << "</VTKFile>\n";
+            }
+        }
+
+        if (setup_error.empty() && cfg.output_write_flat) {
+            const fs::path flat_dir = root / "flat";
+            fs::create_directories(flat_dir, ec);
+            if (ec) {
+                setup_error = "Cannot create output_dir '" + flat_dir.string() + "': " + ec.message();
+            } else {
+                std::ofstream flat_pvd(flat_dir / "results.pvd");
+                if (!flat_pvd) {
+                    setup_error = "Cannot write '" + (flat_dir / "results.pvd").string() + "'.";
+                } else {
+                    flat_pvd << "<?xml version=\"1.0\"?>\n"
+                             << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+                             << "  <Collection>\n"
+                             << "  </Collection>\n"
+                             << "</VTKFile>\n";
+                }
+            }
+        }
+    }
+
+    int root_error_len = static_cast<int>(setup_error.size());
+    MPI_Bcast(&root_error_len, 1, MPI_INT, 0, comm);
+    if (root_error_len > 0) {
+        if (rank != 0) setup_error.assign(static_cast<size_t>(root_error_len), '\0');
+        MPI_Bcast(setup_error.data(), root_error_len, MPI_CHAR, 0, comm);
+        throw std::runtime_error(setup_error);
     }
     MPI_Barrier(comm);
 
     // Subdirectory for each processor
+    std::string rank_error;
+    std::error_code ec;
     if (cfg.output_write_3d) {
-        fs::create_directory(cfg.output_dir + "/processor" + std::to_string(rank));
+        const fs::path dir = fs::path(cfg.output_dir) / ("processor" + std::to_string(rank));
+        fs::create_directories(dir, ec);
+        if (ec) rank_error = "Cannot create output_dir '" + dir.string() + "': " + ec.message();
     }
-    if (cfg.output_write_flat) {
-        fs::create_directory(cfg.output_dir + "/flat/processor" + std::to_string(rank));
+    if (rank_error.empty() && cfg.output_write_flat) {
+        const fs::path dir = fs::path(cfg.output_dir) / "flat" / ("processor" + std::to_string(rank));
+        fs::create_directories(dir, ec);
+        if (ec) rank_error = "Cannot create output_dir '" + dir.string() + "': " + ec.message();
+    }
+
+    const int local_failed = rank_error.empty() ? 0 : 1;
+    int any_failed = 0;
+    MPI_Allreduce(&local_failed, &any_failed, 1, MPI_INT, MPI_MAX, comm);
+    if (any_failed) {
+        if (!rank_error.empty()) throw std::runtime_error(rank_error);
+        throw std::runtime_error("Cannot create one or more processor output directories.");
     }
     MPI_Barrier(comm);
 }

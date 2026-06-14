@@ -17,6 +17,7 @@
 //
 // Run as: mpirun -n <N> ./test_elrod_a2
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -53,6 +54,44 @@ static double global_liquid_content(const Field& theta, const Field& h, const Me
     return global;
 }
 
+static double max_theta_ghost_mismatch(const Field& theta, const Mesh& mesh) {
+    const int ng = theta.n_ghost;
+    const int n_theta = mesh.n_theta_local;
+    const int n_z = mesh.n_z_local;
+    const int count = ng * n_z;
+    std::vector<double> send_left(count), send_right(count), recv_left(count), recv_right(count);
+
+    int idx = 0;
+    for (int j = 0; j < n_z; ++j) {
+        for (int k = 0; k < ng; ++k) send_left[idx + k] = theta(k, j);
+        for (int k = 0; k < ng; ++k) send_right[idx + k] = theta(n_theta - ng + k, j);
+        idx += ng;
+    }
+
+    const int left_rank = (mesh.rank - 1 + mesh.size) % mesh.size;
+    const int right_rank = (mesh.rank + 1) % mesh.size;
+    MPI_Status status;
+    MPI_Sendrecv(send_left.data(), count, MPI_DOUBLE, left_rank, 40,
+                 recv_right.data(), count, MPI_DOUBLE, right_rank, 40,
+                 MPI_COMM_WORLD, &status);
+    MPI_Sendrecv(send_right.data(), count, MPI_DOUBLE, right_rank, 41,
+                 recv_left.data(), count, MPI_DOUBLE, left_rank, 41,
+                 MPI_COMM_WORLD, &status);
+
+    double local_max = 0.0;
+    idx = 0;
+    for (int j = 0; j < n_z; ++j) {
+        for (int k = 0; k < ng; ++k) {
+            local_max = std::max(local_max, std::abs(theta(-ng + k, j) - recv_left[idx + k]));
+            local_max = std::max(local_max, std::abs(theta(n_theta + k, j) - recv_right[idx + k]));
+        }
+        idx += ng;
+    }
+    double global_max = local_max;
+    MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    return global_max;
+}
+
 // Test 1: complementarity — g(θ)·max(1−θ,0) = 0 everywhere.
 // Test 2: cavitation location — θ<1 cells lie in the diverging half.
 // Test 3: mass conservation — liquid content stable after many steps.
@@ -63,6 +102,10 @@ static void test_journal_bearing(const Mesh& mesh, Communicator& comm) {
     cfg.e = 0.8 * cfg.c;   // eccentricity ratio ε = 0.8
     cfg.bulk_modulus = 1e5;
     cfg.outer_tol = 1e-8;
+    cfg.log_outer_iters = false;
+    // This test iterates quasi-steady solves; transient film-content storage is
+    // covered by test_schemes.
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
 
     Fields fields;
     fields.add("pressure", mesh).fill(cfg.p_cav);
@@ -84,6 +127,12 @@ static void test_journal_bearing(const Mesh& mesh, Communicator& comm) {
     for (int step = 0; step < n_steps; ++step) {
         comm.update_ghosts(fields);
         Reynolds::solve_elrod(fields, sys, mesh, cfg);
+        if (step == 0) {
+            const double ghost_mismatch = max_theta_ghost_mismatch(fields["theta"], mesh);
+            int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+            if (rank == 0) std::cout << "  post-solve theta ghost mismatch = " << ghost_mismatch << "\n";
+            check(ghost_mismatch < 1e-14, "Elrod solve left stale theta ghost cells across MPI ranks");
+        }
 
         liquid_prev = liquid_last;
         liquid_last = global_liquid_content(fields["theta"], fields["h"], mesh);

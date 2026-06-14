@@ -77,12 +77,11 @@ static SimulationConfig base_config() {
     return cfg;
 }
 
-static void test_elrod_dirichlet_uses_film_content() {
+static void test_elrod_dirichlet_derives_film_content_from_pressure() {
     SimulationConfig cfg = base_config();
+    cfg.bulk_modulus = 1.0e9;
     cfg.bc_z_south_val = 1.5e6;
     cfg.bc_z_north_val = 1.5e6;
-    cfg.bc_z_south_theta = 1.0;
-    cfg.bc_z_north_theta = 1.0;
 
     Mesh mesh(cfg);
     Communicator comm(mesh);
@@ -92,24 +91,32 @@ static void test_elrod_dirichlet_uses_film_content() {
 
     const Range theta_range = global_range(fields["theta"], mesh);
     const Range pressure_range = global_range(fields["pressure"], mesh);
+    const double expected_theta = cfg.elrod_boundary_theta(cfg.bc_z_south_val);
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) {
-        std::cout << "  theta with pressure=1.5e6, theta_bc=1.0: ["
+        std::cout << "  pressure-derived theta for pressure=1.5e6: expected="
+                  << expected_theta << " range=["
                   << theta_range.min_value << ", " << theta_range.max_value << "]\n";
         std::cout << "  pressure range: [" << pressure_range.min_value
                   << ", " << pressure_range.max_value << "] Pa\n";
     }
 
-    check(std::abs(theta_range.min_value - 1.0) < 1e-8, "south/north theta min should stay at film-content BC");
-    check(std::abs(theta_range.max_value - 1.0) < 1e-8, "pressure BC leaked into Elrod theta Dirichlet");
-    check(std::abs(pressure_range.max_value - cfg.p_cav) < 1e-3, "pressure should recover from theta=1, not bc_z_val");
+    const double theta_tol = 1e-6;
+    const double pressure_tol = cfg.bulk_modulus * 1e-6;
+    check(std::abs(theta_range.min_value - expected_theta) < theta_tol,
+          "south/north theta min should be derived from pressure and bulk modulus");
+    check(std::abs(theta_range.max_value - expected_theta) < theta_tol,
+          "south/north theta max should be derived from pressure and bulk modulus");
+    check(std::abs(pressure_range.max_value - cfg.bc_z_south_val) < pressure_tol,
+          "pressure should recover from pressure-derived theta");
 }
 
-static void test_elrod_dirichlet_can_set_theta_above_one() {
+static void test_legacy_boundary_film_content_is_ignored() {
     SimulationConfig cfg = base_config();
+    cfg.bulk_modulus = 1.0e9;
     cfg.bc_z_south_val = 1.5e6;
     cfg.bc_z_north_val = 1.5e6;
-    cfg.bc_z_south_theta = 1.2;
+    cfg.bc_z_south_theta = 1.2;  // deprecated input: must not drive the solve
     cfg.bc_z_north_theta = 1.2;
 
     Mesh mesh(cfg);
@@ -120,18 +127,24 @@ static void test_elrod_dirichlet_can_set_theta_above_one() {
 
     const Range theta_range = global_range(fields["theta"], mesh);
     const Range pressure_range = global_range(fields["pressure"], mesh);
-    const double expected_pressure = EOS::pressure_from_theta(1.2, cfg.p_cav, cfg.bulk_modulus);
+    const double expected_theta = cfg.elrod_boundary_theta(cfg.bc_z_south_val);
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) {
-        std::cout << "  theta with pressure=1.5e6, theta_bc=1.2: ["
+        std::cout << "  legacy theta ignored: expected pressure-derived theta="
+                  << expected_theta << " range=["
                   << theta_range.min_value << ", " << theta_range.max_value << "]\n";
-        std::cout << "  recovered pressure expected=" << expected_pressure
+        std::cout << "  recovered pressure expected=" << cfg.bc_z_south_val
                   << " actual max=" << pressure_range.max_value << " Pa\n";
     }
 
-    check(std::abs(theta_range.min_value - 1.2) < 1e-8, "theta min should follow film-content BC 1.2");
-    check(std::abs(theta_range.max_value - 1.2) < 1e-8, "theta max should follow film-content BC 1.2");
-    check(std::abs(pressure_range.max_value - expected_pressure) < 1e-2, "recovered pressure should follow theta BC");
+    const double theta_tol = 1e-6;
+    const double pressure_tol = cfg.bulk_modulus * 1e-6;
+    check(std::abs(theta_range.min_value - expected_theta) < theta_tol,
+          "legacy south theta input should not override pressure-derived theta");
+    check(std::abs(theta_range.max_value - expected_theta) < theta_tol,
+          "legacy north theta input should not override pressure-derived theta");
+    check(std::abs(pressure_range.max_value - cfg.bc_z_south_val) < pressure_tol,
+          "recovered pressure should follow bc_z_*_val, not legacy theta BC");
 }
 
 static void test_pressure_supply_with_realistic_bulk_modulus() {
@@ -141,8 +154,6 @@ static void test_pressure_supply_with_realistic_bulk_modulus() {
     cfg.bulk_modulus = 1e9;
     cfg.bc_z_south_val = 1.5e6;
     cfg.bc_z_north_val = 1.5e6;
-    cfg.bc_z_south_theta = 1.0;
-    cfg.bc_z_north_theta = 1.0;
     InletConfig groove;
     groove.type = InletConfig::Type::GROOVE;
     groove.theta = 90.0;
@@ -165,9 +176,52 @@ static void test_pressure_supply_with_realistic_bulk_modulus() {
                   << theta_range.max_value << "]\n";
     }
 
-    check(theta_range.min_value >= 1.0 - 1e-9, "theta should not drop below outlet film content in this no-source case");
+    check(theta_range.min_value >= cfg.elrod_boundary_theta(cfg.bc_z_south_val) - 1e-6,
+          "theta should not drop below pressure-derived outlet film content in this no-source case");
     check(theta_range.max_value > 1.0001, "pressure inlet did not raise theta");
     check(theta_range.max_value < 1.01, "realistic bulk modulus should keep theta near one for 1.5 MPa");
+}
+
+static void test_elrod_initial_pressure_uses_outlet_pressure() {
+    SimulationConfig cfg = base_config();
+    cfg.bulk_modulus = 1.0e9;
+    cfg.p_cav = 2.0e4;
+    cfg.bc_z_south_val = 1.5e6;
+    cfg.bc_z_north_val = 1.0e5;
+    cfg.bc_z_south_theta = 1.0;  // deprecated input should be ignored
+
+    check(std::abs(cfg.initial_pressure() - cfg.bc_z_south_val) < 1.0e-6,
+          "Elrod initial pressure should use outlet pressure, not legacy film-content BC");
+}
+
+static void test_explicit_pressure_keeps_elrod_capacity_term() {
+    SimulationConfig cfg = base_config();
+    cfg.solution_mode = SolutionMode::TRANSIENT;
+    cfg.motion_model = MotionModel::MOVING_BEARING;
+    cfg.dt = 1e-13;
+    cfg.omega = 0.0;
+    cfg.bc_z_south_val = cfg.p_cav;
+    cfg.bc_z_north_val = cfg.p_cav;
+
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields = make_fields(mesh, cfg);
+    fields.add("dh_dt", mesh).fill(0.0);
+    fields["theta"].fill(0.5);
+    fields["pressure"].fill(cfg.p_cav);
+
+    LinearSystem sys(mesh);
+    solve_elrod_once(fields, sys, mesh, comm, cfg);
+
+    const Range theta_range = global_range(fields["theta"], mesh);
+    int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0) {
+        std::cout << "  explicit pressure capacity theta range: ["
+                  << theta_range.min_value << ", " << theta_range.max_value << "]\n";
+    }
+
+    check(theta_range.min_value > 0.45, "transient Elrod capacity should retain old theta lower bound");
+    check(theta_range.max_value < 0.75, "transient solve skipped Elrod capacity term");
 }
 
 int main(int argc, char** argv) {
@@ -175,9 +229,11 @@ int main(int argc, char** argv) {
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) std::cout << "Running test_elrod_bc...\n";
 
-    test_elrod_dirichlet_uses_film_content();
-    test_elrod_dirichlet_can_set_theta_above_one();
+    test_elrod_dirichlet_derives_film_content_from_pressure();
+    test_legacy_boundary_film_content_is_ignored();
     test_pressure_supply_with_realistic_bulk_modulus();
+    test_elrod_initial_pressure_uses_outlet_pressure();
+    test_explicit_pressure_keeps_elrod_capacity_term();
 
     if (rank == 0) std::cout << "PASS: test_elrod_bc\n";
     PetscFinalize();

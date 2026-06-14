@@ -88,13 +88,16 @@ in the center, and a resizable console at the bottom.
   file actions `Open…`, `Save`, `Save As…`, `Reload`, `Reset`, `Solver…`.
 - Input rail: a search filter, an `Advanced` toggle, a preset picker, and a
   unit-system selector, above collapsible sections (Geometry, Operating/Fluid,
-  Mesh & Time, Cavitation, Axial Boundaries, Inlet, Output, Raw config.txt).
+  Energy, Fluid Properties, Mesh & Time, Motion/Loads, Cavitation, Axial
+  Boundaries, Inlet, Output, Raw config.txt).
   Section headers and field labels are painted by the rail's `WM_PAINT`; only
   interactive controls are child windows. There are **no `BS_GROUPBOX` frames**
   around live combos, which removes the z-order/paint fights of the old layout.
 - Live summary card: derived journal-bearing quantities (`ε = e/c`,
   `h_min = c(1−ε)`, `h_max`, `c/R`, `L/D`, `U = ωR`, previewed field mean/max)
-  recomputed on every edit, plus a validation status line.
+  recomputed on every edit, plus the nominal Couette Courant number
+  `Co_theta = |omega| dt / (2 dtheta)`, startup omega ramp status, active
+  fluid-property model, and a validation status line.
 - Validation: malformed or physically impossible inputs (`e ≥ c`, non-positive
   grid/clearance, time-step ordering, empty output names) paint the field red
   via `WM_CTLCOLOREDIT` and disable `Run` until resolved.
