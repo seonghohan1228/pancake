@@ -9,8 +9,11 @@ criteria.
 
 - **WP-1 acceptance tests** (new tests/test_gas_coupling.cpp): 0-D closed-cell
   release conserves total propane and reaches a steady state; under-saturated
-  resorption; and the vaporous limit (no gas) reproduces the single-phase Elrod
-  solve bit-for-bit. These gates caught and fixed two real bugs in the
+  resorption; the vaporous limit (no gas) reproduces the single-phase Elrod
+  solve bit-for-bit; and a coupled pressure-cap gate where VOID_COUPLED relieves
+  a supersaturated low-pressure arc up to the bubble point (679 kPa -> 1.0 MPa)
+  while NONE leaves it depressed with volumetrically-inert gas. These gates
+  caught and fixed two real bugs in the
   VOID_COUPLED kernel: the mixture bulk modulus must weight the LIQUID volume
   fraction (1-alpha_g), not the Elrod theta, so beta_bar -> beta exactly at
   alpha_g = 0; and a gas-free cell now short-circuits void_params to the exact

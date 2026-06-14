@@ -161,6 +161,84 @@ static void test_vaporous_limit(const Mesh& mesh, Communicator& comm) {
     check(max_dp < 1e-6, "vaporous limit: VOID_COUPLED pressure == NONE with no gas");
 }
 
+// Gate 4 (1-D pressure cap): in a cavitating wedge fed with supersaturated oil,
+// the released gas raises the cavitated-zone pressure off the bare oil p_cav
+// toward the bubble point (the p_void plateau), bounded above by p_sat. Compared
+// against NONE (gas inert -> cavitated zone sits at p_cav).
+static void test_pressure_cap(const Mesh& mesh, Communicator& comm) {
+    auto run_coupled = [&](GasPressureCoupling coupling, double& min_p, double& max_alpha) {
+        SimulationConfig cfg = gas_config();
+        cfg.solution_mode = SolutionMode::STEADY_STATE;
+        cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+        cfg.cavitation_threshold = CavitationThreshold::SCALAR_PCAV;  // floor at oil p_cav
+        cfg.gas_pressure_coupling = coupling;
+        cfg.density_model = DensityModel::MASS_VOLUME_MIXING;
+        cfg.dissolved_gas_liquid_density = 500.0;
+        cfg.e = 0.6 * cfg.c;          // strong wedge -> cavitation in the divergent arc
+        cfg.omega = 500.0;
+        cfg.bc_z_south_val = 1.0e6;   // feed saturated at the 1 MPa bubble point
+        cfg.bc_z_north_val = 1.0e6;
+        cfg.dissolved_gas_initial = 0.2175;
+
+        Fields fields;
+        fields.add("pressure", mesh).fill(1.0e6);
+        fields.add("theta", mesh).fill(1.0);
+        fields.add("h", mesh).fill(cfg.c);
+        fields.add("rho", mesh).fill(cfg.rho);
+        fields.add("mu", mesh).fill(cfg.mu);
+        fields.add("temperature", mesh).fill(cfg.temperature_initial);
+        fields.add("rho_liquid_solution", mesh).fill(cfg.rho);
+        fields.add("mu_liquid_solution", mesh).fill(cfg.mu);
+        fields.add("dissolved_gas", mesh).fill(cfg.dissolved_gas_initial);
+        fields.add("free_gas_mass", mesh).fill(0.0);
+        fields.add("alpha_gas", mesh).fill(0.0);
+        fields.add("gas_mass_transfer", mesh).fill(0.0);
+        fields.add("rho_gas", mesh).fill(0.0);
+        fields.add("inlet_indicator", mesh).fill(0.0);
+
+        FilmThickness::compute_static(fields["h"], mesh, cfg);
+        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        comm.update_ghosts(fields);
+
+        LinearSystem sys(mesh);
+        for (int step = 0; step < 60; ++step) {
+            Reynolds::solve_elrod(fields, sys, mesh, cfg);
+            comm.update_ghosts(fields);
+            FluidProperties::update_gas_state(fields, mesh, cfg, 5.0e-5);
+            FluidProperties::update_solution_fields(fields, mesh, cfg);
+            comm.update_ghosts(fields);
+        }
+
+        double lp = 1e30, la = 0.0;
+        for (int i = 0; i < mesh.n_theta_local; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                lp = std::min(lp, fields["pressure"](i, j));
+                la = std::max(la, fields["alpha_gas"](i, j));
+            }
+        MPI_Allreduce(&lp, &min_p, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(&la, &max_alpha, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    };
+
+    double min_p_none = 0, max_a_none = 0, min_p_coupled = 0, max_a_coupled = 0;
+    run_coupled(GasPressureCoupling::NONE, min_p_none, max_a_none);
+    run_coupled(GasPressureCoupling::VOID_COUPLED, min_p_coupled, max_a_coupled);
+
+    int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0)
+        std::cout << "  pressure cap: min_p NONE=" << min_p_none << " VOID=" << min_p_coupled
+                  << " (p_sat=1e6), max_alpha NONE=" << max_a_none << "\n";
+
+    const double p_sat = 1.0e6;
+    // NONE: the released gas is volumetrically inert, so the supersaturated arc
+    // outgasses (alpha>0) yet still sits well below the bubble point (the A2 defect).
+    check(max_a_none > 0.0, "pressure cap: supersaturated arc outgasses (NONE, gas inert)");
+    check(min_p_none < p_sat * 0.95, "pressure cap: NONE leaves supersaturated cells below p_sat");
+    // VOID_COUPLED: the released gas relieves the depression up to the bubble
+    // point, so no supersaturated cell sustains p << p_sat (then it redissolves).
+    check(min_p_coupled >= p_sat * 0.97, "pressure cap: VOID_COUPLED caps the pressure at the bubble point");
+    check(min_p_coupled > min_p_none * 1.2, "pressure cap: coupling raises the depressed pressure toward p_sat");
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
     {
@@ -171,6 +249,7 @@ int main(int argc, char** argv) {
         test_release_conservation(mesh);
         test_resorption(mesh);
         test_vaporous_limit(mesh, comm);
+        test_pressure_cap(mesh, comm);
 
         int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0) std::cout << "PASS: test_gas_coupling\n";
