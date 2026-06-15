@@ -116,7 +116,7 @@ in the center, and a resizable console at the bottom.
   completion.
 - `load_angle_deg`: visualization reference angle from the positive y axis; the
   preview rotates the circumferential display relative to this load reference.
-- Axial boundaries: for `ELROD_ADAMS`, `DIRICHLET` / `INLET_OUTLET` inflow use
+- Axial boundaries: for `JFO`, `DIRICHLET` / `INLET_OUTLET` inflow use
   the dimensionless film-content rows rather than the pressure rows.
 - `film_content`: raw Elrod/JFO universal variable; cavitated cells are below
   one and compressed cells can exceed one, unclamped in VTK and the preview.

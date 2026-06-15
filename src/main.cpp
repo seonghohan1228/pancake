@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
                 comm.update_ghosts(fields);
 
-                if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS)
+                if (cfg.cavitation_model == CavitationModel::JFO)
                     elrod_stats = Reynolds::solve_elrod(fields, sys, mesh, step_cfg);
                 else
                     Reynolds::solve(fields, sys, mesh, step_cfg);
@@ -377,13 +377,13 @@ int main(int argc, char** argv) {
                          << " | F=(" << forces.fluid_x << ", " << forces.fluid_y << ", "
                          << forces.fluid_z << ") N"
                          << " | M=" << forces.friction_torque << " Nm";
-                    if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS) {
+                    if (cfg.cavitation_model == CavitationModel::JFO) {
                         line << " | outer=" << elrod_stats.outer_iters
                              << " flips=" << elrod_stats.flag_flips;
                     }
                     if (diagnostics_now) {
                         line << " | r_l=" << balance.liquid_residual;
-                        if (cfg.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE) {
+                        if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE) {
                             line << " r_gas=" << balance.gas_residual;
                         }
                     }

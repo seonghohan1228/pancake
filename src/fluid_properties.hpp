@@ -30,7 +30,7 @@ double liquid_solution_viscosity(double dissolved_gas,
                                  const SimulationConfig& cfg);
 
 /// Effective film viscosity with free gas present, per the configured
-/// gas_mixture_viscosity_model. mass_quality is m_g / (m_g + rho_l theta h)
+/// mixture_viscosity_model. mass_quality is m_g / (m_g + rho_l theta h)
 /// (used by the quality-based models only). All models return mu_liquid at
 /// alpha_gas = 0.
 double gas_mixture_viscosity(double mu_liquid,

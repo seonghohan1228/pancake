@@ -96,7 +96,7 @@ double run_and_track_liquid_residual(SimulationConfig& cfg, int n_steps,
 
 SimulationConfig base_transient_config() {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.solution_mode = SolutionMode::TRANSIENT;
     cfg.n_theta_global = 48;
     cfg.n_z_global = 12;
@@ -197,10 +197,10 @@ void test_clamp_visibility() {
 
 void test_gas_exchange_closure() {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.solution_mode = SolutionMode::TRANSIENT;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
     cfg.n_theta_global = 8;
     cfg.n_z_global = 2;
     cfg.p_cav = 1.0e5;
@@ -295,12 +295,12 @@ void test_reformation_boundary_reservoir_state() {
     auto run = [](bool reflood, double& boundary_c, double& interior_c,
                   double& gas_boundary_flux) {
         SimulationConfig cfg;
-        cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+        cfg.cavitation_model = CavitationModel::JFO;
         cfg.solution_mode = SolutionMode::TRANSIENT;
-        cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-        cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
-        cfg.density_model = DensityModel::PURE_OIL;
-        cfg.viscosity_model = ViscosityModel::PURE_OIL;
+        cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+        cfg.solubility_model = SolubilityModel::HENRY;
+        cfg.density_model = DensityModel::CONSTANT;
+        cfg.liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
         cfg.n_theta_global = 8;
         cfg.n_z_global = 4;
         cfg.p_cav = 1.0e5;
@@ -415,8 +415,8 @@ void test_regime_and_saturation_guards() {
     r290.p_cav = 1.0e5;
     r290.bc_z_south_val = 1.0e6;
     r290.bc_z_north_val = 1.0e6;
-    r290.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    r290.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+    r290.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    r290.solubility_model = SolubilityModel::HENRY;
     r290.dissolved_gas_initial = 0.2175;
     r290.dissolved_gas_max = 0.5;
     r290.dissolved_gas_henry_coeff = 2.175e-7;
@@ -424,7 +424,7 @@ void test_regime_and_saturation_guards() {
     r290.property_reference_temperature = 313.15;
     r290.gas_mass_transfer_rate = 500.0;
     r290.gas_alpha_max = 0.6;
-    r290.gas_mixture_viscosity_model = GasMixtureViscosityModel::MCADAMS_QUALITY;
+    r290.mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     r290.mu_gas = 8.7e-6;
     r290.validate(errors, warnings);
     check(errors.empty(), "R290 saturation-context case should validate");

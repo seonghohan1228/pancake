@@ -13,16 +13,27 @@
 #include <utility>
 #include <vector>
 
-enum class CavitationModel { GUMBEL, ELROD_ADAMS, FULL_SOMMERFELD };
+// Cavitation / film-rupture model, ordered simplest -> most physical:
+//   FULL_SOMMERFELD - no cavitation; sub-cavity (tensile) pressures are kept.
+//                     A reference baseline for verification / overlay plots only.
+//   GUMBEL          - half-Sommerfeld: solve, then clamp p >= p_cav. Fast and
+//                     robust but not mass-conserving (cavitation extent approximate).
+//   JFO             - mass-conserving Jakobsson-Floberg-Olsson cavitation via the
+//                     Elrod-Adams film-content algorithm. Physical rupture AND
+//                     reformation; the production model.
+enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO };
 enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 /// Thermal treatment of fluid entering through a pressure boundary.
-///   OPEN      - submerged / open region: the entering oil is the same
-///               recirculating film oil, modelled as zero-gradient temperature
-///               (no externally fixed temperature is carried in).
-///   RESERVOIR - actual fed inlet: entering oil carries a fixed reservoir
-///               (supply) temperature.
-enum class ThermalInflowMode { OPEN, RESERVOIR };
+///   ZERO_GRADIENT - submerged / open end: the entering oil is the same
+///                   recirculating film oil, modelled as zero-gradient temperature
+///                   (no externally fixed temperature is carried in).
+///   CONSTANT      - fed supply / reservoir end: entering oil carries a fixed
+///                   (constant) supply temperature temperature_reference.
+enum class ThermalInflowMode { ZERO_GRADIENT, CONSTANT };
 enum class MotionModel { STATIC, MOVING_BEARING };
+// Integrator for the bearing equation of motion only (field solves are
+// backward-Euler), ordered by increasing order/accuracy. EULER_IMPLICIT (stable)
+// and RK4 (accurate) are maintained; the others are kept as references.
 enum class TimeSteppingMethod { EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICOLSON, RK2, RK4 };
 enum class SolutionMode { TRANSIENT, STEADY_STATE };
 // Gas treatment in STEADY_STATE: FROZEN holds the gas state (gas_dt = 0, the
@@ -30,31 +41,51 @@ enum class SolutionMode { TRANSIENT, STEADY_STATE };
 // saturation value each outer iteration (an equilibrium flash).
 enum class SteadyGasModel { FROZEN, EQUILIBRIUM };
 enum class TemperatureModel { ISOTHERMAL, ENERGY_EQUATION };
-enum class FluidPropertyModel { CONSTANT, OIL_DISSOLVED_GAS, GAS_CAVITATION_MIXTURE };
+// Lubricant property fidelity, ordered simplest -> fullest:
+//   CONSTANT     - fixed density and viscosity (plain oil).
+//   SINGLE_PHASE - oil + dissolved gas: liquid mu/rho vary with the dissolved
+//                  fraction (and T, p); gas stays in solution (no free phase).
+//   TWO_PHASE    - adds finite-rate gas release/resorption and a free-gas phase
+//                  in cavitated zones (the full gaseous-cavitation model).
+enum class FluidPropertyModel { CONSTANT, SINGLE_PHASE, TWO_PHASE };
 enum class DissolvedGasSpecies { AIR, PROPANE };
-enum class OilGasSolutionModel { HENRY, BUNSEN, TABLE };
-enum class DensityModel { PURE_OIL, MASS_VOLUME_MIXING, TABLE };
-enum class ViscosityModel { PURE_OIL, LOG_MIXING, EMPIRICAL_CORRELATION, TABLE };
+// Saturation / solubility law c_sat(p,T), simplest -> measured:
+//   HENRY - c_sat = H(T) p (linear; optional van't Hoff T-dependence).
+//   TABLE - measured c_sat(p,T) surface (1-D or 2-D PTSV data).
+enum class SolubilityModel { HENRY, TABLE };
+// Liquid-solution density, simplest -> measured:
+//   CONSTANT - dissolved gas does not change liquid density (rho = rho_oil).
+//   MIXTURE  - mass/volume mixing of oil and the dissolved-gas liquid phase;
+//              uses both phase densities (rho and dissolved_gas_liquid_density).
+//   TABLE    - measured rho(p,T).
+enum class DensityModel { CONSTANT, MIXTURE, TABLE };
+// Liquid-solution viscosity, simplest -> measured:
+//   CONSTANT  - dissolved gas does not change liquid viscosity (mu = mu_oil).
+//   EMPIRICAL - mu_oil*exp[E_mu(1/T-1/T_ref)]*exp[a_c c_d]*exp[alpha_p(p-p_ref)]
+//               (Andrade temperature x dissolved-gas thinning x Barus piezo-viscosity).
+//   TABLE     - measured kinematic nu(p,T), converted to dynamic per cell.
+enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, TABLE };
 // Per-timestep terminal/log verbosity. Both modes print every timestep; DETAILED
 // adds per-step diagnostics (film thickness, temperature range, fluid force, torque).
 enum class OutputVerbosity { SIMPLIFIED, DETAILED };
-// Face interpolation for convective terms.
-//   UPWIND            - first-order upwind (most diffusive, unconditionally bounded)
-//   TVD_VANLEER/TVD_MINMOD - limited high-order deferred correction (sharper fronts)
+// Face interpolation for convective terms, ordered by accuracy / complexity:
+//   UPWIND            - first-order upwind (most diffusive, unconditionally bounded).
+//   LINEAR            - second-order central interpolation (unbounded; can oscillate
+//                       at sharp fronts). A textbook reference scheme.
+//   VANLEER           - van Leer TVD limited high-order (sharp AND bounded).
 //   TYPE_DIFFERENCING - Vijayaraghavan & Keith (1989): central interpolation across
 //                       full-film faces, upwind across/inside cavitated faces.
-//                       Only meaningful for the Elrod film-content equation.
-enum class ConvectionScheme { UPWIND, TVD_VANLEER, TVD_MINMOD, TYPE_DIFFERENCING };
-// Effective film viscosity when free gas is present (all satisfy mu(alpha=0) = mu_l):
-//   EINSTEIN_DILUTE    - mu_l (1 + 2.5 alpha); dilute-suspension result, alpha <~ 0.1,
-//                        directionally wrong as alpha -> 1 (thickens instead of thins).
-//   DUKLER_VOID        - void-fraction-weighted linear: alpha mu_g + (1-alpha) mu_l.
-//   MCADAMS_QUALITY    - homogeneous two-phase standard: 1/mu = x/mu_g + (1-x)/mu_l
-//                        with mass quality x = m_g / (m_g + rho_l theta h).
-//   KRIEGER_DOUGHERTY  - mu_l (1 - alpha/alpha_max)^(-2.5 alpha_max), packing-limited.
-//   LINEAR_QUALITY     - quality-weighted linear: x mu_g + (1-x) mu_l (Grando 2006).
-enum class GasMixtureViscosityModel {
-    EINSTEIN_DILUTE, DUKLER_VOID, MCADAMS_QUALITY, KRIEGER_DOUGHERTY, LINEAR_QUALITY };
+//                       Only meaningful for the Elrod film-content (JFO) equation.
+enum class ConvectionScheme { UPWIND, LINEAR, VANLEER, TYPE_DIFFERENCING };
+// Effective film viscosity once free gas is present (all satisfy mu(alpha=0)=mu_l),
+// ordered legacy -> recommended:
+//   DUKLER  - void-fraction-weighted linear blend: alpha mu_g + (1-alpha) mu_l.
+//             Legacy/deprecated; kept for comparison with prior results.
+//   LINEAR  - mass-quality-weighted linear blend: x mu_g + (1-x) mu_l (Grando 2006);
+//             refrigerant-oil validated.
+//   MCADAMS - homogeneous two-phase standard: 1/mu = x/mu_g + (1-x)/mu_l with mass
+//             quality x = m_g/(m_g + rho_l theta h). Correct asymptotes; the default.
+enum class MixtureViscosityModel { DUKLER, LINEAR, MCADAMS };
 // Cavitation onset/plateau pressure threshold:
 //   SCALAR_PCAV - the configured oil cavitation pressure p_cav everywhere (default;
 //                 reproduces prior behaviour exactly).
@@ -184,40 +215,38 @@ inline const char* to_config_value(OutputVerbosity mode) {
 
 inline const char* to_config_value(ThermalInflowMode mode) {
     switch (mode) {
-        case ThermalInflowMode::OPEN: return "OPEN";
-        case ThermalInflowMode::RESERVOIR: return "RESERVOIR";
+        case ThermalInflowMode::ZERO_GRADIENT: return "ZERO_GRADIENT";
+        case ThermalInflowMode::CONSTANT: return "CONSTANT";
     }
-    return "OPEN";
+    return "ZERO_GRADIENT";
 }
 
 inline const char* to_config_value(CavitationModel model) {
     switch (model) {
-        case CavitationModel::GUMBEL: return "GUMBEL";
-        case CavitationModel::ELROD_ADAMS: return "ELROD_ADAMS";
         case CavitationModel::FULL_SOMMERFELD: return "FULL_SOMMERFELD";
+        case CavitationModel::GUMBEL: return "GUMBEL";
+        case CavitationModel::JFO: return "JFO";
     }
-    return "ELROD_ADAMS";
+    return "JFO";
 }
 
 inline const char* to_config_value(ConvectionScheme scheme) {
     switch (scheme) {
         case ConvectionScheme::UPWIND: return "UPWIND";
-        case ConvectionScheme::TVD_VANLEER: return "TVD_VANLEER";
-        case ConvectionScheme::TVD_MINMOD: return "TVD_MINMOD";
+        case ConvectionScheme::LINEAR: return "LINEAR";
+        case ConvectionScheme::VANLEER: return "VANLEER";
         case ConvectionScheme::TYPE_DIFFERENCING: return "TYPE_DIFFERENCING";
     }
     return "UPWIND";
 }
 
-inline const char* to_config_value(GasMixtureViscosityModel model) {
+inline const char* to_config_value(MixtureViscosityModel model) {
     switch (model) {
-        case GasMixtureViscosityModel::EINSTEIN_DILUTE: return "EINSTEIN_DILUTE";
-        case GasMixtureViscosityModel::DUKLER_VOID: return "DUKLER_VOID";
-        case GasMixtureViscosityModel::MCADAMS_QUALITY: return "MCADAMS_QUALITY";
-        case GasMixtureViscosityModel::KRIEGER_DOUGHERTY: return "KRIEGER_DOUGHERTY";
-        case GasMixtureViscosityModel::LINEAR_QUALITY: return "LINEAR_QUALITY";
+        case MixtureViscosityModel::DUKLER: return "DUKLER";
+        case MixtureViscosityModel::LINEAR: return "LINEAR";
+        case MixtureViscosityModel::MCADAMS: return "MCADAMS";
     }
-    return "EINSTEIN_DILUTE";
+    return "MCADAMS";
 }
 
 inline const char* to_config_value(MotionModel model) {
@@ -258,8 +287,8 @@ inline const char* to_config_value(TemperatureModel model) {
 inline const char* to_config_value(FluidPropertyModel model) {
     switch (model) {
         case FluidPropertyModel::CONSTANT: return "CONSTANT";
-        case FluidPropertyModel::OIL_DISSOLVED_GAS: return "OIL_DISSOLVED_GAS";
-        case FluidPropertyModel::GAS_CAVITATION_MIXTURE: return "GAS_CAVITATION_MIXTURE";
+        case FluidPropertyModel::SINGLE_PHASE: return "SINGLE_PHASE";
+        case FluidPropertyModel::TWO_PHASE: return "TWO_PHASE";
     }
     return "CONSTANT";
 }
@@ -272,40 +301,40 @@ inline const char* to_config_value(DissolvedGasSpecies species) {
     return "PROPANE";
 }
 
-inline const char* to_config_value(OilGasSolutionModel model) {
+inline const char* to_config_value(SolubilityModel model) {
     switch (model) {
-        case OilGasSolutionModel::HENRY: return "HENRY";
-        case OilGasSolutionModel::BUNSEN: return "BUNSEN";
-        case OilGasSolutionModel::TABLE: return "TABLE";
+        case SolubilityModel::HENRY: return "HENRY";
+        case SolubilityModel::TABLE: return "TABLE";
     }
     return "HENRY";
 }
 
 inline const char* to_config_value(DensityModel model) {
     switch (model) {
-        case DensityModel::PURE_OIL: return "PURE_OIL";
-        case DensityModel::MASS_VOLUME_MIXING: return "MASS_VOLUME_MIXING";
+        case DensityModel::CONSTANT: return "CONSTANT";
+        case DensityModel::MIXTURE: return "MIXTURE";
         case DensityModel::TABLE: return "TABLE";
     }
-    return "PURE_OIL";
+    return "CONSTANT";
 }
 
-inline const char* to_config_value(ViscosityModel model) {
+inline const char* to_config_value(LiquidViscosityModel model) {
     switch (model) {
-        case ViscosityModel::PURE_OIL: return "PURE_OIL";
-        case ViscosityModel::LOG_MIXING: return "LOG_MIXING";
-        case ViscosityModel::EMPIRICAL_CORRELATION: return "EMPIRICAL_CORRELATION";
-        case ViscosityModel::TABLE: return "TABLE";
+        case LiquidViscosityModel::CONSTANT: return "CONSTANT";
+        case LiquidViscosityModel::EMPIRICAL: return "EMPIRICAL";
+        case LiquidViscosityModel::TABLE: return "TABLE";
     }
-    return "PURE_OIL";
+    return "CONSTANT";
 }
 
 inline ConvectionScheme convection_scheme_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "TVD_VANLEER" || value == "VANLEER" || value == "VAN_LEER" || value == "TVD") {
-        return ConvectionScheme::TVD_VANLEER;
+    if (value == "LINEAR" || value == "CENTRAL" || value == "CD") return ConvectionScheme::LINEAR;
+    // TVD_MINMOD was removed; the legacy token maps to the surviving van Leer limiter.
+    if (value == "VANLEER" || value == "VAN_LEER" || value == "TVD_VANLEER" || value == "TVD" ||
+        value == "TVD_MINMOD" || value == "MINMOD") {
+        return ConvectionScheme::VANLEER;
     }
-    if (value == "TVD_MINMOD" || value == "MINMOD") return ConvectionScheme::TVD_MINMOD;
     if (value == "TYPE_DIFFERENCING" || value == "TYPE" || value == "HYBRID_TYPE" ||
         value == "VK1989") {
         return ConvectionScheme::TYPE_DIFFERENCING;
@@ -313,20 +342,15 @@ inline ConvectionScheme convection_scheme_from_config(std::string value) {
     return ConvectionScheme::UPWIND;
 }
 
-inline GasMixtureViscosityModel gas_mixture_viscosity_model_from_config(std::string value) {
+inline MixtureViscosityModel mixture_viscosity_model_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "DUKLER_VOID" || value == "DUKLER") return GasMixtureViscosityModel::DUKLER_VOID;
-    if (value == "MCADAMS_QUALITY" || value == "MCADAMS" || value == "MC_ADAMS" ||
-        value == "MC_ADAMS_QUALITY") {
-        return GasMixtureViscosityModel::MCADAMS_QUALITY;
+    if (value == "DUKLER" || value == "DUKLER_VOID") return MixtureViscosityModel::DUKLER;
+    if (value == "LINEAR" || value == "LINEAR_QUALITY" || value == "GRANDO") {
+        return MixtureViscosityModel::LINEAR;
     }
-    if (value == "KRIEGER_DOUGHERTY" || value == "KRIEGER" || value == "KD") {
-        return GasMixtureViscosityModel::KRIEGER_DOUGHERTY;
-    }
-    if (value == "LINEAR_QUALITY" || value == "GRANDO") {
-        return GasMixtureViscosityModel::LINEAR_QUALITY;
-    }
-    return GasMixtureViscosityModel::EINSTEIN_DILUTE;
+    // EINSTEIN_DILUTE and KRIEGER_DOUGHERTY were removed; MCADAMS is the default
+    // and the survivor for any legacy/unknown token.
+    return MixtureViscosityModel::MCADAMS;
 }
 
 inline MotionModel motion_model_from_config(std::string value) {
@@ -376,12 +400,12 @@ inline OutputVerbosity output_verbosity_from_config(std::string value) {
 
 inline ThermalInflowMode thermal_inflow_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "RESERVOIR" || value == "FIXED" || value == "SUPPLY" ||
+    if (value == "CONSTANT" || value == "RESERVOIR" || value == "FIXED" || value == "SUPPLY" ||
         value == "INFLOW_TEMPERATURE" || value == "DIRICHLET") {
-        return ThermalInflowMode::RESERVOIR;
+        return ThermalInflowMode::CONSTANT;
     }
-    // OPEN, SAME_OIL, ZERO_GRADIENT, ADIABATIC, NEUMANN all map to OPEN.
-    return ThermalInflowMode::OPEN;
+    // ZERO_GRADIENT, OPEN, SAME_OIL, ADIABATIC, NEUMANN all map to ZERO_GRADIENT.
+    return ThermalInflowMode::ZERO_GRADIENT;
 }
 
 inline TemperatureModel temperature_model_from_config(std::string value) {
@@ -394,13 +418,13 @@ inline TemperatureModel temperature_model_from_config(std::string value) {
 
 inline FluidPropertyModel fluid_property_model_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "OIL_DISSOLVED_GAS" || value == "DISSOLVED_GAS" ||
+    if (value == "SINGLE_PHASE" || value == "OIL_DISSOLVED_GAS" || value == "DISSOLVED_GAS" ||
         value == "OIL_PROPANE" || value == "PROPANE_OIL") {
-        return FluidPropertyModel::OIL_DISSOLVED_GAS;
+        return FluidPropertyModel::SINGLE_PHASE;
     }
-    if (value == "GAS_CAVITATION_MIXTURE" || value == "CAVITATION_MIXTURE" ||
-        value == "FREE_GAS") {
-        return FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+    if (value == "TWO_PHASE" || value == "GAS_CAVITATION_MIXTURE" ||
+        value == "CAVITATION_MIXTURE" || value == "FREE_GAS") {
+        return FluidPropertyModel::TWO_PHASE;
     }
     return FluidPropertyModel::CONSTANT;
 }
@@ -411,30 +435,32 @@ inline DissolvedGasSpecies dissolved_gas_species_from_config(std::string value) 
     return DissolvedGasSpecies::PROPANE;
 }
 
-inline OilGasSolutionModel oil_gas_solution_model_from_config(std::string value) {
+inline SolubilityModel solubility_model_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "BUNSEN") return OilGasSolutionModel::BUNSEN;
-    if (value == "TABLE" || value == "TABULATED") return OilGasSolutionModel::TABLE;
-    return OilGasSolutionModel::HENRY;
+    if (value == "TABLE" || value == "TABULATED") return SolubilityModel::TABLE;
+    // BUNSEN was removed; it is the same linear-in-p law as Henry, so map to HENRY.
+    return SolubilityModel::HENRY;
 }
 
 inline DensityModel density_model_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "MASS_VOLUME_MIXING" || value == "MASS_VOLUME" || value == "MIXING") {
-        return DensityModel::MASS_VOLUME_MIXING;
+    if (value == "MIXTURE" || value == "MASS_VOLUME_MIXING" || value == "MASS_VOLUME" ||
+        value == "MIXING") {
+        return DensityModel::MIXTURE;
     }
     if (value == "TABLE" || value == "TABULATED") return DensityModel::TABLE;
-    return DensityModel::PURE_OIL;
+    return DensityModel::CONSTANT;  // CONSTANT, PURE_OIL
 }
 
-inline ViscosityModel viscosity_model_from_config(std::string value) {
+inline LiquidViscosityModel liquid_viscosity_model_from_config(std::string value) {
     value = normalise_config_token(value);
-    if (value == "LOG_MIXING" || value == "LOG") return ViscosityModel::LOG_MIXING;
-    if (value == "EMPIRICAL_CORRELATION" || value == "EMPIRICAL" || value == "CORRELATION") {
-        return ViscosityModel::EMPIRICAL_CORRELATION;
+    if (value == "TABLE" || value == "TABULATED") return LiquidViscosityModel::TABLE;
+    // LOG_MIXING was removed (it is EMPIRICAL with the T and p coefficients set to 0).
+    if (value == "EMPIRICAL" || value == "EMPIRICAL_CORRELATION" || value == "CORRELATION" ||
+        value == "LOG_MIXING" || value == "LOG") {
+        return LiquidViscosityModel::EMPIRICAL;
     }
-    if (value == "TABLE" || value == "TABULATED") return ViscosityModel::TABLE;
-    return ViscosityModel::PURE_OIL;
+    return LiquidViscosityModel::CONSTANT;  // CONSTANT, PURE_OIL
 }
 
 struct InletConfig {
@@ -509,14 +535,13 @@ struct SimulationConfig {
     // Liquid oil plus dissolved gas property model. Defaults keep pure-oil behavior.
     FluidPropertyModel fluid_property_model = FluidPropertyModel::CONSTANT;
     DissolvedGasSpecies dissolved_gas_species = DissolvedGasSpecies::PROPANE;
-    OilGasSolutionModel oil_gas_solution_model = OilGasSolutionModel::HENRY;
-    DensityModel density_model = DensityModel::PURE_OIL;
-    ViscosityModel viscosity_model = ViscosityModel::PURE_OIL;
+    SolubilityModel solubility_model = SolubilityModel::HENRY;
+    DensityModel density_model = DensityModel::CONSTANT;
+    LiquidViscosityModel liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
     double dissolved_gas_initial = 0.0;          // Dissolved gas mass fraction [kg gas / kg liquid solution]
     double dissolved_gas_max = 1.0;              // Upper bound for dissolved gas mass fraction
     double dissolved_gas_henry_coeff = 0.0;      // Henry slope H at the reference T [1/Pa]: c_sat = H(T) p
     double dissolved_gas_henry_temp_coeff = 0.0; // van't Hoff slope E_H [K]: H(T)=H_ref exp(E_H(1/T-1/T_ref))
-    double dissolved_gas_bunsen_coeff = 0.0;     // Bunsen-style volume coefficient [-]
     double dissolved_gas_liquid_density = 0.0;   // Dissolved-gas (liquid-phase) density for mixing [kg/m^3]; 0 -> ideal gas
     double gas_mass_transfer_rate = 0.0;         // Finite-rate release/resorption [1/s]
     double dissolved_gas_diffusivity = 0.0;      // Effective Fickian diffusivity of dissolved gas [m^2/s]
@@ -526,7 +551,7 @@ struct SimulationConfig {
     double viscosity_pressure_coeff = 0.0;       // Barus piezo-viscosity alpha_p [1/Pa]: mu *= exp(alpha_p(p-p_ref))
     double gas_alpha_max = 1.0;                  // Maximum resolved free-gas volume fraction
     double gas_pressure_floor = 1.0;             // Ideal-gas pressure floor [Pa]
-    GasMixtureViscosityModel gas_mixture_viscosity_model = GasMixtureViscosityModel::EINSTEIN_DILUTE;
+    MixtureViscosityModel mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     GasPressureCoupling gas_pressure_coupling = GasPressureCoupling::NONE;  // released gas into pressure (WP-1)
     double mu_gas = 0.0;                         // Free-gas dynamic viscosity [Pa s]; required by DUKLER/MCADAMS/LINEAR models
     double property_reference_pressure = 101325.0;
@@ -575,17 +600,17 @@ struct SimulationConfig {
     BCType bc_z_south_type = BCType::DIRICHLET;
     double bc_z_south_val  = 0.0;
     double bc_z_south_theta = 1.0; // Deprecated compatibility input; Elrod derives theta from bc_z_south_val.
-    ThermalInflowMode bc_z_south_thermal = ThermalInflowMode::OPEN; // Energy inflow temperature treatment
+    ThermalInflowMode bc_z_south_thermal = ThermalInflowMode::ZERO_GRADIENT; // Energy inflow temperature treatment
     BCType bc_z_north_type = BCType::DIRICHLET;
     double bc_z_north_val  = 0.0;
     double bc_z_north_theta = 1.0; // Deprecated compatibility input; Elrod derives theta from bc_z_north_val.
-    ThermalInflowMode bc_z_north_thermal = ThermalInflowMode::OPEN; // Energy inflow temperature treatment
+    ThermalInflowMode bc_z_north_thermal = ThermalInflowMode::ZERO_GRADIENT; // Energy inflow temperature treatment
 
     // Inlets
     std::vector<InletConfig> inlets;
 
     // Cavitation
-    CavitationModel cavitation_model = CavitationModel::ELROD_ADAMS;
+    CavitationModel cavitation_model = CavitationModel::JFO;
     CavitationThreshold cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
     CavitatedFilmModel cavitated_film_model = CavitatedFilmModel::FULL_FILM;
     // WP-11: at an axial boundary, a cavitated cell re-floods at the physical
@@ -708,14 +733,18 @@ struct SimulationConfig {
             else if (key == "bearing_heat_transfer") bearing_heat_transfer = std::stod(value);
             else if (key == "fluid_property_model") fluid_property_model = fluid_property_model_from_config(value);
             else if (key == "dissolved_gas_species") dissolved_gas_species = dissolved_gas_species_from_config(value);
-            else if (key == "oil_gas_solution_model") oil_gas_solution_model = oil_gas_solution_model_from_config(value);
+            else if (key == "solubility_model" || key == "oil_gas_solution_model") solubility_model = solubility_model_from_config(value);
             else if (key == "density_model") density_model = density_model_from_config(value);
-            else if (key == "viscosity_model") viscosity_model = viscosity_model_from_config(value);
+            else if (key == "liquid_viscosity_model" || key == "viscosity_model") liquid_viscosity_model = liquid_viscosity_model_from_config(value);
             else if (key == "dissolved_gas_initial") dissolved_gas_initial = std::stod(value);
             else if (key == "dissolved_gas_max") dissolved_gas_max = std::stod(value);
             else if (key == "dissolved_gas_henry_coeff") dissolved_gas_henry_coeff = std::stod(value);
             else if (key == "dissolved_gas_henry_temp_coeff") dissolved_gas_henry_temp_coeff = std::stod(value);
-            else if (key == "dissolved_gas_bunsen_coeff") dissolved_gas_bunsen_coeff = std::stod(value);
+            else if (key == "dissolved_gas_bunsen_coeff") {
+                parse_warnings.push_back(
+                    "dissolved_gas_bunsen_coeff is ignored: the BUNSEN solubility model was "
+                    "removed (use solubility_model = HENRY or TABLE).");
+            }
             else if (key == "dissolved_gas_liquid_density") dissolved_gas_liquid_density = std::stod(value);
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
             else if (key == "dissolved_gas_diffusivity") dissolved_gas_diffusivity = std::stod(value);
@@ -725,7 +754,7 @@ struct SimulationConfig {
             else if (key == "viscosity_pressure_coeff") viscosity_pressure_coeff = std::stod(value);
             else if (key == "gas_alpha_max") gas_alpha_max = std::stod(value);
             else if (key == "gas_pressure_floor") gas_pressure_floor = std::stod(value);
-            else if (key == "gas_mixture_viscosity_model") gas_mixture_viscosity_model = gas_mixture_viscosity_model_from_config(value);
+            else if (key == "mixture_viscosity_model" || key == "gas_mixture_viscosity_model") mixture_viscosity_model = mixture_viscosity_model_from_config(value);
             else if (key == "gas_pressure_coupling") {
                 if (value == "VOID_COUPLED" || value == "VOID") gas_pressure_coupling = GasPressureCoupling::VOID_COUPLED;
                 else if (value == "NONE") gas_pressure_coupling = GasPressureCoupling::NONE;
@@ -783,9 +812,11 @@ struct SimulationConfig {
             else if (key == "bc_z_north_theta") bc_z_north_theta = std::stod(value);
             else if (key == "bc_z_north_thermal") bc_z_north_thermal = thermal_inflow_from_config(value);
             else if (key == "cavitation_model") {
-                if (value == "GUMBEL") cavitation_model = CavitationModel::GUMBEL;
-                else if (value == "ELROD_ADAMS") cavitation_model = CavitationModel::ELROD_ADAMS;
-                else if (value == "FULL_SOMMERFELD") cavitation_model = CavitationModel::FULL_SOMMERFELD;
+                if (value == "FULL_SOMMERFELD" || value == "SOMMERFELD")
+                    cavitation_model = CavitationModel::FULL_SOMMERFELD;
+                else if (value == "GUMBEL") cavitation_model = CavitationModel::GUMBEL;
+                else if (value == "JFO" || value == "ELROD_ADAMS" || value == "ELROD")
+                    cavitation_model = CavitationModel::JFO;
             }
             else if (key == "cavitation_threshold") {
                 if (value == "LOCAL_PSAT" || value == "PSAT")
@@ -970,7 +1001,7 @@ struct SimulationConfig {
         }
 
         const bool variable_properties = fluid_property_model != FluidPropertyModel::CONSTANT;
-        const bool gas_cavitation = fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+        const bool gas_cavitation = fluid_property_model == FluidPropertyModel::TWO_PHASE;
 
         if (variable_properties) {
             if (!finite(dissolved_gas_initial) || !finite(dissolved_gas_max) ||
@@ -984,28 +1015,25 @@ struct SimulationConfig {
             require_positive(property_reference_pressure, "property_reference_pressure");
             require_positive(property_reference_temperature, "property_reference_temperature");
 
-            switch (oil_gas_solution_model) {
-                case OilGasSolutionModel::HENRY:
+            switch (solubility_model) {
+                case SolubilityModel::HENRY:
                     if (!finite(dissolved_gas_henry_coeff) || dissolved_gas_henry_coeff <= 0.0) {
                         error("HENRY solubility requires dissolved_gas_henry_coeff > 0.");
                     }
                     break;
-                case OilGasSolutionModel::BUNSEN:
-                    if (!finite(dissolved_gas_bunsen_coeff) || dissolved_gas_bunsen_coeff <= 0.0) {
-                        error("BUNSEN solubility requires dissolved_gas_bunsen_coeff > 0.");
-                    }
-                    break;
-                case OilGasSolutionModel::TABLE:
+                case SolubilityModel::TABLE:
                     if (solubility_table_2d.empty()) require_table(solubility_table, "solubility_table");
                     break;
             }
 
             switch (density_model) {
-                case DensityModel::PURE_OIL:
+                case DensityModel::CONSTANT:
                     break;
-                case DensityModel::MASS_VOLUME_MIXING:
+                case DensityModel::MIXTURE:
+                    // Both phase densities are explicit inputs: rho (oil liquid) and
+                    // dissolved_gas_liquid_density (the dissolved-gas liquid phase).
                     if (!finite(dissolved_gas_liquid_density) || dissolved_gas_liquid_density <= 0.0) {
-                        error("MASS_VOLUME_MIXING density requires dissolved_gas_liquid_density > 0.");
+                        error("MIXTURE density requires dissolved_gas_liquid_density > 0 (the dissolved-gas liquid-phase density).");
                     }
                     break;
                 case DensityModel::TABLE:
@@ -1013,22 +1041,17 @@ struct SimulationConfig {
                     break;
             }
 
-            switch (viscosity_model) {
-                case ViscosityModel::PURE_OIL:
+            switch (liquid_viscosity_model) {
+                case LiquidViscosityModel::CONSTANT:
                     break;
-                case ViscosityModel::LOG_MIXING:
+                case LiquidViscosityModel::EMPIRICAL:
                     if (!finite(solution_viscosity_gas_coeff) || solution_viscosity_gas_coeff == 0.0) {
-                        error("LOG_MIXING viscosity requires a non-zero solution_viscosity_gas_coeff.");
-                    }
-                    break;
-                case ViscosityModel::EMPIRICAL_CORRELATION:
-                    if (!finite(solution_viscosity_gas_coeff) || solution_viscosity_gas_coeff == 0.0) {
-                        error("EMPIRICAL_CORRELATION viscosity requires a non-zero solution_viscosity_gas_coeff.");
+                        error("EMPIRICAL viscosity requires a non-zero solution_viscosity_gas_coeff.");
                     }
                     require_nonnegative(viscosity_temperature_coeff, "viscosity_temperature_coeff");
                     require_nonnegative(viscosity_pressure_coeff, "viscosity_pressure_coeff");
                     break;
-                case ViscosityModel::TABLE:
+                case LiquidViscosityModel::TABLE:
                     if (viscosity_table_2d.empty()) require_table(viscosity_table, "viscosity_table");
                     break;
             }
@@ -1045,23 +1068,23 @@ struct SimulationConfig {
                 warn(std::string("both an inline 1-D table and ") + file_key +
                      " are set; the 2-D file takes precedence.");
         };
-        warn_table_use(solubility_table_2d, oil_gas_solution_model == OilGasSolutionModel::TABLE,
+        warn_table_use(solubility_table_2d, solubility_model == SolubilityModel::TABLE,
                        solubility_table, "solubility_table_file");
-        warn_table_use(viscosity_table_2d, viscosity_model == ViscosityModel::TABLE,
+        warn_table_use(viscosity_table_2d, liquid_viscosity_model == LiquidViscosityModel::TABLE,
                        viscosity_table, "viscosity_table_file");
         warn_table_use(density_table_2d, density_model == DensityModel::TABLE,
                        density_table, "density_table_file");
 
         if (cavitated_film_model == CavitatedFilmModel::STRIATED &&
-            cavitation_model != CavitationModel::ELROD_ADAMS) {
-            error("cavitated_film_model = STRIATED requires cavitation_model = ELROD_ADAMS "
+            cavitation_model != CavitationModel::JFO) {
+            error("cavitated_film_model = STRIATED requires cavitation_model = JFO "
                   "(it weights the cavitated zone by the JFO film content theta).");
         }
 
         if (gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED) {
-            if (fluid_property_model != FluidPropertyModel::GAS_CAVITATION_MIXTURE) {
+            if (fluid_property_model != FluidPropertyModel::TWO_PHASE) {
                 warn("gas_pressure_coupling = VOID_COUPLED has no effect without "
-                     "fluid_property_model = GAS_CAVITATION_MIXTURE (no free-gas field).");
+                     "fluid_property_model = TWO_PHASE (no free-gas field).");
             }
             if (!finite(mu_gas) || mu_gas <= 0.0) {
                 warn("gas_pressure_coupling = VOID_COUPLED uses the free-gas density; set mu_gas > 0 "
@@ -1070,42 +1093,35 @@ struct SimulationConfig {
         }
 
         if (gas_cavitation) {
-            if (cavitation_model != CavitationModel::ELROD_ADAMS) {
-                error("GAS_CAVITATION_MIXTURE currently requires cavitation_model = ELROD_ADAMS so gas release is coupled to the JFO liquid-content solve.");
+            if (cavitation_model != CavitationModel::JFO) {
+                error("TWO_PHASE currently requires cavitation_model = JFO so gas release is coupled to the JFO liquid-content solve.");
             }
             if (finite(dissolved_gas_initial) && dissolved_gas_initial <= 0.0) {
-                warn("GAS_CAVITATION_MIXTURE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
+                warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
             }
             if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate <= 0.0) {
-                error("GAS_CAVITATION_MIXTURE requires gas_mass_transfer_rate > 0.");
+                error("TWO_PHASE requires gas_mass_transfer_rate > 0.");
             }
             if (solution_mode == SolutionMode::STEADY_STATE &&
                 steady_gas_model == SteadyGasModel::FROZEN && !allow_frozen_gas_steady) {
-                error("GAS_CAVITATION_MIXTURE in STEADY_STATE with steady_gas_model = FROZEN "
+                error("TWO_PHASE in STEADY_STATE with steady_gas_model = FROZEN "
                       "silently freezes the gas model. Set steady_gas_model = EQUILIBRIUM, or "
                       "allow_frozen_gas_steady = true to accept the frozen behaviour.");
             }
             if (!finite(gas_alpha_max) || gas_alpha_max <= 0.0 || gas_alpha_max > 1.0) {
-                error("gas_alpha_max must be in (0, 1] for GAS_CAVITATION_MIXTURE.");
+                error("gas_alpha_max must be in (0, 1] for TWO_PHASE.");
             }
             if (finite(dt) && finite(gas_mass_transfer_rate) && dt * gas_mass_transfer_rate > 1.0) {
                 warn("dt * gas_mass_transfer_rate > 1; release/resorption is stiff for the selected timestep.");
             }
 
-            switch (gas_mixture_viscosity_model) {
-                case GasMixtureViscosityModel::EINSTEIN_DILUTE:
-                    if (finite(gas_alpha_max) && gas_alpha_max > 0.6) {
-                        error("EINSTEIN_DILUTE mixture viscosity is a dilute model and thickens without bound; it requires gas_alpha_max <= 0.6 (Krieger-Dougherty packing bound). Select DUKLER_VOID, MCADAMS_QUALITY, or KRIEGER_DOUGHERTY for higher void fractions.");
-                    }
-                    break;
-                case GasMixtureViscosityModel::DUKLER_VOID:
-                case GasMixtureViscosityModel::MCADAMS_QUALITY:
-                case GasMixtureViscosityModel::LINEAR_QUALITY:
+            switch (mixture_viscosity_model) {
+                case MixtureViscosityModel::DUKLER:
+                case MixtureViscosityModel::LINEAR:
+                case MixtureViscosityModel::MCADAMS:
                     if (!finite(mu_gas) || mu_gas <= 0.0) {
-                        error("The selected gas_mixture_viscosity_model requires mu_gas > 0 (free-gas dynamic viscosity in Pa s).");
+                        error("The selected mixture_viscosity_model requires mu_gas > 0 (free-gas dynamic viscosity in Pa s).");
                     }
-                    break;
-                case GasMixtureViscosityModel::KRIEGER_DOUGHERTY:
                     break;
             }
 
@@ -1143,8 +1159,8 @@ struct SimulationConfig {
     double saturation_pressure(double c_d, double temperature) const {
         if (fluid_property_model == FluidPropertyModel::CONSTANT || c_d <= 0.0) return 0.0;
         const double T = temperature > 0.0 ? temperature : property_reference_temperature;
-        switch (oil_gas_solution_model) {
-            case OilGasSolutionModel::HENRY: {
+        switch (solubility_model) {
+            case SolubilityModel::HENRY: {
                 double henry = dissolved_gas_henry_coeff;
                 if (dissolved_gas_henry_temp_coeff != 0.0 && T > 0.0 &&
                     property_reference_temperature > 0.0) {
@@ -1153,20 +1169,7 @@ struct SimulationConfig {
                 }
                 return henry > 0.0 ? c_d / henry : 0.0;
             }
-            case OilGasSolutionModel::BUNSEN: {
-                // c_eq(p) is linear in p; slope evaluated at the reference point.
-                const double T_ref = property_reference_temperature > 0.0
-                    ? property_reference_temperature : 300.0;
-                const double gas_constant =
-                    dissolved_gas_species == DissolvedGasSpecies::AIR ? 287.05 : 188.55;
-                const double rho_g_ref = property_reference_pressure / (gas_constant * T_ref);
-                const double slope = (rho > 0.0 && property_reference_pressure > 0.0 && T > 0.0)
-                    ? dissolved_gas_bunsen_coeff * (T_ref / T) * rho_g_ref /
-                      (rho * property_reference_pressure)
-                    : 0.0;
-                return slope > 0.0 ? c_d / slope : 0.0;
-            }
-            case OilGasSolutionModel::TABLE: {
+            case SolubilityModel::TABLE: {
                 // Invert c_sat = c_d for the smallest pressure (the bubble point).
                 if (!solubility_table_2d.empty()) {
                     // 2-D surface: build the c_sat(p) curve along the local isotherm, then invert.
@@ -1216,7 +1219,7 @@ struct SimulationConfig {
     }
 
     double initial_pressure() const {
-        if (cavitation_model == CavitationModel::ELROD_ADAMS) {
+        if (cavitation_model == CavitationModel::JFO) {
             if (bc_z_south_type != BCType::NEUMANN) return elrod_boundary_pressure(bc_z_south_val);
             if (bc_z_north_type != BCType::NEUMANN) return elrod_boundary_pressure(bc_z_north_val);
             return effective_p_cav();
@@ -1260,7 +1263,7 @@ struct SimulationConfig {
     /// composition consistently with the Elrod theta-equation.
     bool is_reformation_boundary(double theta_cell) const {
         return consistent_boundary_flux &&
-               cavitation_model == CavitationModel::ELROD_ADAMS && theta_cell < 1.0;
+               cavitation_model == CavitationModel::JFO && theta_cell < 1.0;
     }
 
     /// +z Poiseuille velocity [m/s] of the reformation reflood at one open axial
@@ -1370,7 +1373,7 @@ struct SimulationConfig {
             << "motion_time_method = " << to_config_value(motion_time_method) << "\n\n";
 
         out << "# Numerics\n"
-            << "# Convection scheme options: UPWIND, TVD_VANLEER, TVD_MINMOD;\n"
+            << "# Convection scheme options: UPWIND, LINEAR, VANLEER;\n"
             << "# theta additionally accepts TYPE_DIFFERENCING (central in full film, upwind in cavitation).\n"
             << "theta_convection_scheme = " << to_config_value(theta_convection_scheme) << "\n"
             << "thermal_convection_scheme = " << to_config_value(thermal_convection_scheme) << "\n"
@@ -1400,21 +1403,20 @@ struct SimulationConfig {
             << "bearing_heat_transfer = " << bearing_heat_transfer << "\n\n";
 
         out << "# Fluid Properties\n"
-            << "# fluid_property_model options: CONSTANT, OIL_DISSOLVED_GAS, GAS_CAVITATION_MIXTURE\n"
+            << "# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE\n"
             << "fluid_property_model = " << to_config_value(fluid_property_model) << "\n"
             << "# dissolved_gas_species options: AIR, PROPANE\n"
             << "dissolved_gas_species = " << to_config_value(dissolved_gas_species) << "\n"
-            << "# oil_gas_solution_model options: HENRY, BUNSEN, TABLE\n"
-            << "oil_gas_solution_model = " << to_config_value(oil_gas_solution_model) << "\n"
-            << "# density_model options: PURE_OIL, MASS_VOLUME_MIXING, TABLE\n"
+            << "# solubility_model options: HENRY, TABLE\n"
+            << "solubility_model = " << to_config_value(solubility_model) << "\n"
+            << "# density_model options: CONSTANT, MIXTURE, TABLE\n"
             << "density_model = " << to_config_value(density_model) << "\n"
-            << "# viscosity_model options: PURE_OIL, LOG_MIXING, EMPIRICAL_CORRELATION, TABLE\n"
-            << "viscosity_model = " << to_config_value(viscosity_model) << "\n"
+            << "# liquid_viscosity_model options: CONSTANT, EMPIRICAL, TABLE\n"
+            << "liquid_viscosity_model = " << to_config_value(liquid_viscosity_model) << "\n"
             << "dissolved_gas_initial = " << dissolved_gas_initial << "\n"
             << "dissolved_gas_max = " << dissolved_gas_max << "\n"
             << "dissolved_gas_henry_coeff = " << dissolved_gas_henry_coeff << "\n"
             << "dissolved_gas_henry_temp_coeff = " << dissolved_gas_henry_temp_coeff << "\n"
-            << "dissolved_gas_bunsen_coeff = " << dissolved_gas_bunsen_coeff << "\n"
             << "dissolved_gas_liquid_density = " << dissolved_gas_liquid_density << "\n"
             << "gas_mass_transfer_rate = " << gas_mass_transfer_rate << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
@@ -1424,8 +1426,8 @@ struct SimulationConfig {
             << "viscosity_pressure_coeff = " << viscosity_pressure_coeff << "\n"
             << "gas_alpha_max = " << gas_alpha_max << "\n"
             << "gas_pressure_floor = " << gas_pressure_floor << "\n"
-            << "# gas_mixture_viscosity_model options: EINSTEIN_DILUTE, DUKLER_VOID, MCADAMS_QUALITY, KRIEGER_DOUGHERTY, LINEAR_QUALITY\n"
-            << "gas_mixture_viscosity_model = " << to_config_value(gas_mixture_viscosity_model) << "\n"
+            << "# mixture_viscosity_model options: DUKLER, LINEAR, MCADAMS\n"
+            << "mixture_viscosity_model = " << to_config_value(mixture_viscosity_model) << "\n"
             << "mu_gas = " << mu_gas << "\n"
             << "property_reference_pressure = " << property_reference_pressure << "\n"
             << "property_reference_temperature = " << property_reference_temperature << "\n"
@@ -1459,10 +1461,10 @@ struct SimulationConfig {
 
         out << "# Axial Boundary Conditions (Outlets)\n"
             << "# Options: DIRICHLET, NEUMANN, INLET_OUTLET\n"
-            << "# For ELROD_ADAMS, boundary film content is derived from bc_z_*_val,\n"
+            << "# For JFO, boundary film content is derived from bc_z_*_val,\n"
             << "# p_cav, and bulk_modulus; legacy bc_z_*_theta inputs are ignored.\n"
-            << "# bc_z_*_thermal options: OPEN (submerged/same-oil, zero-gradient inflow),\n"
-            << "#   RESERVOIR (fed inlet, carries temperature_reference on inflow)\n"
+            << "# bc_z_*_thermal options: ZERO_GRADIENT (submerged/same-oil inflow),\n"
+            << "#   CONSTANT (fed inlet, carries temperature_reference on inflow)\n"
             << "bc_z_south_type = " << to_config_value(bc_z_south_type) << "\n"
             << "bc_z_south_val = " << bc_z_south_val << "\n"
             << "bc_z_south_thermal = " << to_config_value(bc_z_south_thermal) << "\n"
@@ -1471,7 +1473,7 @@ struct SimulationConfig {
             << "bc_z_north_thermal = " << to_config_value(bc_z_north_thermal) << "\n\n";
 
         out << "# Cavitation\n"
-            << "# Options: FULL_SOMMERFELD, GUMBEL, ELROD_ADAMS\n"
+            << "# Options: FULL_SOMMERFELD, GUMBEL, JFO\n"
             << "cavitation_model = " << to_config_value(cavitation_model) << "\n"
             << "# cavitation_threshold: SCALAR_PCAV (oil p_cav) or LOCAL_PSAT (max of p_cav\n"
             << "# and the dissolved-species bubble point, so the first-released species governs onset)\n"

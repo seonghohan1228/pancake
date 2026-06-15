@@ -142,9 +142,10 @@ The face interpolation is selectable per transported variable
 `gas_convection_scheme`; default `UPWIND` for backward compatibility):
 
 - `UPWIND` — first-order, unconditionally bounded, false diffusion $\approx |u|\Delta x/2$ (Patankar 1980) concentrated exactly on rupture/reformation/thermal/gas fronts.
-- `TVD_VANLEER`, `TVD_MINMOD` — limited high-order deferred correction
+- `LINEAR` — second-order central interpolation $\phi_f = \tfrac12(\phi_U+\phi_D)$; sharpest in smooth regions but **unbounded** (can overshoot at fronts). A textbook reference scheme.
+- `VANLEER` — van Leer TVD limited high-order deferred correction
   $\phi_f = \phi_U + \tfrac12\psi(r)(\phi_D-\phi_U)$ with
-  $r = (\phi_U-\phi_{UU})/(\phi_D-\phi_U)$; sharper fronts, no new extrema.
+  $r = (\phi_U-\phi_{UU})/(\phi_D-\phi_U)$; sharper fronts, no new extrema (bounded).
 - `TYPE_DIFFERENCING` (theta only) — Vijayaraghavan & Keith (1989): central
   interpolation across faces where both adjacent cells are full-film
   ($g = 1$), first-order upwind across and inside the cavitated region. This
@@ -212,7 +213,7 @@ Two solvers are available, selected by `cfg.cavitation_model`.
 
 Before the time loop, the pressure field is initialized from the first
 non-Neumann axial outlet pressure, not from a supply groove. For
-`ELROD_ADAMS`, the initialized and boundary film content are derived from that
+`JFO`, the initialized and boundary film content are derived from that
 pressure and the bulk modulus:
 
 $$p^0 = \max(p_{bc},p_{cav}),\qquad
@@ -654,12 +655,12 @@ $$\rho_l = \rho_{oil}, \qquad \mu_l = \mu_{oil}, \qquad c_d = 0$$
 
 and the Reynolds/JFO equations recover the previous pure-oil behavior.
 
-For `OIL_DISSOLVED_GAS` or `GAS_CAVITATION_MIXTURE`, dissolved gas is stored as
+For `SINGLE_PHASE` or `TWO_PHASE`, dissolved gas is stored as
 a liquid-solution mass fraction:
 
 $$c_d = \frac{m_{gas,dissolved}}{m_{liquid\ solution}}$$
 
-The equilibrium concentration is selected by `oil_gas_solution_model`:
+The equilibrium concentration is selected by `solubility_model`:
 
 $$c_{d,eq} =
 \begin{cases}
@@ -689,7 +690,7 @@ where `dissolved_gas_liquid_density` supplies $\rho_{dg,liq}$. If it is zero,
 the code falls back to ideal-gas density for backward compatibility, but this
 is not recommended for dissolved propane in oil.
 
-For `EMPIRICAL_CORRELATION`, the liquid-solution viscosity is:
+For `EMPIRICAL`, the liquid-solution viscosity is:
 
 $$\mu_l =
 \mu_{oil,ref}
@@ -708,30 +709,26 @@ $$\mu_l =
 \end{cases}$$
 
 The field written as `mu_liquid_solution` is this liquid-solution viscosity.
-For `GAS_CAVITATION_MIXTURE`, the effective film viscosity written as `mu` is
-selected by `gas_mixture_viscosity_model` (all satisfy $\bar\mu(\alpha_g{=}0)=\mu_l$;
-mass quality $x_g = m_g/(m_g + \rho_l\theta h)$):
+For `TWO_PHASE`, the effective film viscosity written as `mu` is selected by
+`mixture_viscosity_model` (all satisfy $\bar\mu(\alpha_g{=}0)=\mu_l$; mass quality
+$x_g = m_g/(m_g + \rho_l\theta h)$):
 
 $$\bar\mu =
 \begin{cases}
-\mu_l(1 + 2.5\,\alpha_g), & \text{EINSTEIN\_DILUTE}\\
-\alpha_g\,\mu_g + (1-\alpha_g)\,\mu_l, & \text{DUKLER\_VOID}\\
-\left(\dfrac{x_g}{\mu_g} + \dfrac{1-x_g}{\mu_l}\right)^{-1}, & \text{MCADAMS\_QUALITY}\\
-\mu_l\,(1-\alpha_g/\alpha_{g,max})^{-2.5\,\alpha_{g,max}}, & \text{KRIEGER\_DOUGHERTY}\\
-x_g\,\mu_g + (1-x_g)\,\mu_l, & \text{LINEAR\_QUALITY}
+\alpha_g\,\mu_g + (1-\alpha_g)\,\mu_l, & \text{DUKLER}\\
+x_g\,\mu_g + (1-x_g)\,\mu_l, & \text{LINEAR}\\
+\left(\dfrac{x_g}{\mu_g} + \dfrac{1-x_g}{\mu_l}\right)^{-1}, & \text{MCADAMS}
 \end{cases}$$
 
-`EINSTEIN_DILUTE` (the backward-compatible default) is a dilute-suspension
-result valid only for $\alpha_g \lesssim 0.1$ and is directionally wrong as
-$\alpha_g \to 1$ (it thickens; gas must thin the film toward $\mu_g$).
-Validation therefore rejects it when `gas_alpha_max > 0.6` (Krieger-Dougherty
-packing bound). `DUKLER_VOID` is the void-weighted linear analogue of the
-Grando, Priest & Prata (2006) density closure; `MCADAMS_QUALITY` is the
-homogeneous two-phase standard; `LINEAR_QUALITY` is the quality-weighted form
-quoted by Grando 2006 ($\bar\mu = \chi\mu_g + (1-\chi)\mu_l$) for exact
-replication of that reference. The quality/void models require the free-gas
-viscosity `mu_gas`. The shipped R290/PZ68 cases select `MCADAMS_QUALITY` with
-`gas_alpha_max = 0.6`.
+`MCADAMS` (the default) is the homogeneous two-phase standard, with correct limits
+at both $x_g\to 0$ and $x_g\to 1$. `LINEAR` is the quality-weighted form quoted by
+Grando, Priest & Prata (2006) ($\bar\mu = \chi\mu_g + (1-\chi)\mu_l$),
+refrigerant-oil validated. `DUKLER` is the legacy void-weighted linear blend, kept
+for comparison with prior results. All three require the free-gas viscosity
+`mu_gas`. The shipped R290/PZ68 cases select `MCADAMS` with `gas_alpha_max = 0.6`.
+(The earlier `EINSTEIN_DILUTE` — a dilute-suspension result that thickens with gas,
+directionally wrong as $\alpha_g\to 1$ — and the `KRIEGER_DOUGHERTY` packing law
+were removed.)
 
 For dissolved-gas (solution) viscosity beyond the calibration point, the
 validated representation for R290/oil pairs is the Eyring-MTSM activity model
@@ -748,7 +745,7 @@ $$\rho = \rho_l \theta$$
 so liquid mass conservation remains tied to the Elrod-Adams film-content
 variable.
 
-When `fluid_property_model = GAS_CAVITATION_MIXTURE`, finite-rate
+When `fluid_property_model = TWO_PHASE`, finite-rate
 release/resorption updates the dissolved and free gas diagnostics:
 
 $$\Delta m_g =
@@ -801,10 +798,10 @@ point explicitly:
 | `dissolved_gas_diffusivity` | `1e-9 m^2/s` | Effective dissolved-gas diffusivity; regularization/model input, not read from the chart. |
 
 The CLI and GUI validate these dependencies before launch. For example, HENRY
-requires `dissolved_gas_henry_coeff > 0`, MASS_VOLUME_MIXING requires
+requires `dissolved_gas_henry_coeff > 0`, MIXTURE requires
 `dissolved_gas_liquid_density > 0`, empirical/log viscosity requires a non-zero
-`solution_viscosity_gas_coeff`, and `GAS_CAVITATION_MIXTURE` currently requires
-`ELROD_ADAMS` so gas release is coupled to the mass-conserving JFO
+`solution_viscosity_gas_coeff`, and `TWO_PHASE` currently requires
+`JFO` so gas release is coupled to the mass-conserving JFO
 liquid-content solve.
 
 This is a segregated nonlinear JFO/property/gas update, not a PISO method. A
@@ -1051,3 +1048,92 @@ PZ68 measurement, the release-rate constant is provisional, and the desorbed gas
 is currently **volumetrically inert to pressure** (→ WP-1). The supplier PTSV
 data itself is a chart-digitized estimation (R² ≈ 0.9995 over 0.1–4 MPa,
 −60…160 °C), not first-principles VLE, and carries **no density**.
+
+## 17. Configurable Model Options (quick reference)
+
+Each model selector below is a config key. Values are listed **simplest → most
+physical / accurate**; the first-listed or **bold** value is the default. The GUI
+hover text mirrors these; this section is the canonical explanation.
+
+### 17.1 Cavitation / film rupture — `cavitation_model`
+
+| Value | Treatment | Use |
+|---|---|---|
+| `FULL_SOMMERFELD` | No cavitation; sub-cavity (tensile) $p$ kept. Antisymmetric Sommerfeld solution. | **Reference baseline** for overlay plots only (not a real operating point). |
+| `GUMBEL` | Half-Sommerfeld: solve, then clamp $p\!\ge\!p_{cav}$. Non-conservative. | Fast, robust load-capacity estimates. |
+| **`JFO`** | Mass-conserving Jakobsson–Floberg–Olsson via Elrod–Adams film content $\theta$ (§4, §7.2): $p=p_{cav}+\beta\ln\theta$ for $\theta\!\ge\!1$, $\theta<1$ cavitated. | The production model (physical rupture **and** reformation). |
+
+### 17.2 Lubricant property fidelity — `fluid_property_model`
+
+| Value | What varies | Free gas? |
+|---|---|---|
+| **`CONSTANT`** | Fixed $\mu,\rho$. | no |
+| `SINGLE_PHASE` | Liquid $\mu(c_d,T,p)$, $\rho(c_d)$ vary; gas stays in solution. | no (cavity is the classic massless JFO void) |
+| `TWO_PHASE` | Adds finite-rate gas release/resorption and a free-gas phase in cavitated zones (§16). | yes — needs `JFO` + gas params |
+
+Note: film rupture (the cavitation model) operates in **every** tier; the tier only
+decides whether the released phase is *tracked*. The dominant oil–refrigerant
+mechanism (gaseous outgassing at $p_{sat}$) needs `TWO_PHASE` + `gas_pressure_coupling`.
+
+### 17.3 Solubility — `solubility_model`
+
+| Value | Law |
+|---|---|
+| **`HENRY`** | $c_{sat}=H(T)\,p$, $H(T)=H_{ref}e^{E_H(1/T-1/T_{ref})}$ (van 't Hoff). |
+| `TABLE` | Measured $c_{sat}(p,T)$ surface (1-D or 2-D PTSV data); bubble point by first-crossing inversion (§16.4). |
+
+### 17.4 Liquid-solution density — `density_model`
+
+| Value | $\rho_\ell$ |
+|---|---|
+| **`CONSTANT`** | $\rho_{oil}$ (dissolved gas does not change density). |
+| `MIXTURE` | Mass/volume mixing of two **explicit** phase densities: oil `rho` and `dissolved_gas_liquid_density`. $1/\rho_\ell=(1-c_d)/\rho_{oil}+c_d/\rho_{g,\ell}$. |
+| `TABLE` | Measured $\rho(p,T)$. |
+
+### 17.5 Liquid-solution viscosity — `liquid_viscosity_model`
+
+| Value | $\mu_\ell$ |
+|---|---|
+| **`CONSTANT`** | $\mu_{oil}$. |
+| `EMPIRICAL` | $\mu_{oil}\,e^{E_\mu(1/T-1/T_{ref})}\,e^{a_c c_d}\,e^{\alpha_p(p-p_{ref})}$ (Andrade × dissolved-gas thinning × Barus). Set $E_\mu=\alpha_p=0$ for pure gas-thinning (the old log-mixing law). |
+| `TABLE` | Measured kinematic $\nu(p,T)$, converted to dynamic per cell with $\rho_\ell$. |
+
+### 17.6 Mixture (free-gas) viscosity — `mixture_viscosity_model`
+
+All satisfy $\mu(\alpha\!=\!0)=\mu_\ell$; mass quality $x=m_g/(m_g+\rho_\ell\theta h)$.
+
+| Value | $\mu_{mix}$ | Note |
+|---|---|---|
+| `DUKLER` | $\alpha\,\mu_g+(1-\alpha)\mu_\ell$ | Void-weighted linear. **Legacy/deprecated** (kept for comparison). |
+| `LINEAR` | $x\,\mu_g+(1-x)\mu_\ell$ | Grando 2006; refrigerant-oil validated. |
+| **`MCADAMS`** | $1/\mu=x/\mu_g+(1-x)/\mu_\ell$ | Homogeneous standard; correct asymptotes. Default. |
+
+(The earlier `EINSTEIN_DILUTE` — which thickens with gas, wrong as $\alpha\!\to\!1$ — and
+`KRIEGER_DOUGHERTY` suspension law were removed.)
+
+### 17.7 Convection scheme — `theta_/thermal_/gas_convection_scheme`
+
+| Value | Face interpolation | Property |
+|---|---|---|
+| **`UPWIND`** | 1st-order upwind. | Bounded, diffusive (smears fronts). |
+| `LINEAR` | 2nd-order central. | Sharp but **unbounded** (oscillates at fronts) — reference/smooth-field use. |
+| `VANLEER` | van Leer TVD limited. | 2nd-order **and** bounded — recommended for cavitation fronts. |
+| `TYPE_DIFFERENCING` | Central on full-film faces, upwind on cavitated faces (Vijayaraghavan & Keith 1989). | JFO film-content ($\theta$) only. |
+
+### 17.8 Bearing motion integrator — `motion_time_method`
+
+Applies only to the rigid-body equation of motion (field solves are backward-Euler).
+`EULER_EXPLICIT`, **`EULER_IMPLICIT`** (default, stable), `CRANK_NICOLSON`, `RK2`,
+`RK4` (accurate orbits). The three middle/explicit options are kept as references.
+
+### 17.9 Axial thermal inflow — `bc_z_*_thermal`
+
+| Value | Incoming oil temperature | Situation |
+|---|---|---|
+| **`ZERO_GRADIENT`** | $\partial T/\partial z=0$ (local film temperature). | Submerged / open end of the same recirculating oil. |
+| `CONSTANT` | Fixed `temperature_reference`. | Fed supply / reservoir end at a controlled temperature. |
+
+Feature gates (default-off ≡ historical behavior): `cavitation_threshold`
+(`SCALAR_PCAV`/`LOCAL_PSAT`, §16.1), `gas_pressure_coupling` (`NONE`/`VOID_COUPLED`,
+§16.3/WP-1), `cavitated_film_model` (`FULL_FILM`/`STRIATED`), `steady_gas_model`
+(`FROZEN`/`EQUILIBRIUM`), `consistent_boundary_flux` (§6).

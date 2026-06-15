@@ -26,7 +26,7 @@
 ///    reflects the property lag of the segregated sweep;
 ///  - the dissolved-gas transport is solved in material (non-conservative)
 ///    form, so r_gas in advecting cases includes that discretization choice;
-///  - inlet sources are evaluated for the ELROD_ADAMS path only (GUMBEL is not
+///  - inlet sources are evaluated for the JFO path only (GUMBEL is not
 ///    mass-conserving by construction, which the residual then shows).
 namespace Diagnostics {
 

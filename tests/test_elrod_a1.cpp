@@ -54,7 +54,7 @@ static void test_regression_vs_gumbel(const Mesh& mesh, Communicator& comm) {
         LinearSystem sys(mesh);
         cfg.cavitation_model = model;
 
-        if (model == CavitationModel::ELROD_ADAMS) {
+        if (model == CavitationModel::JFO) {
             cfg.max_outer_iters = 1;  // Phase A.1: test full-film (g=1) formulation only
             Reynolds::solve_elrod(fields, sys, mesh, cfg);
         }
@@ -72,7 +72,7 @@ static void test_regression_vs_gumbel(const Mesh& mesh, Communicator& comm) {
     };
 
     double p_gumbel = run_one_step(CavitationModel::GUMBEL);
-    double p_elrod  = run_one_step(CavitationModel::ELROD_ADAMS);
+    double p_elrod  = run_one_step(CavitationModel::JFO);
 
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0)
@@ -101,7 +101,7 @@ static void test_uniform_film(const Mesh& mesh, Communicator& comm) {
     FilmThickness::compute_static(fields["h"], mesh, cfg);
     comm.update_ghosts(fields);
 
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     LinearSystem sys(mesh);
     Reynolds::solve_elrod(fields, sys, mesh, cfg);
 

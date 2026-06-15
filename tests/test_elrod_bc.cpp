@@ -62,7 +62,7 @@ static void solve_elrod_once(Fields& fields, LinearSystem& sys, const Mesh& mesh
 
 static SimulationConfig base_config() {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.n_theta_global = 32;
     cfg.n_z_global = 12;
     cfg.e = 0.0;

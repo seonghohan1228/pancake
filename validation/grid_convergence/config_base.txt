@@ -41,7 +41,7 @@ bc_z_north_type = DIRICHLET
 bc_z_north_val = 1.0e5
 
 # Cavitation
-cavitation_model = ELROD_ADAMS
+cavitation_model = JFO
 max_outer_iters = 100
 outer_tol = 1e-10
 theta_min = 1e-6

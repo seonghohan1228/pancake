@@ -153,7 +153,7 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
 
     double inflow = 0.0;
     for (int i = 0; i < n_theta; ++i) {
-        if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS) {
+        if (cfg.cavitation_model == CavitationModel::JFO) {
             const Field& theta = fields["theta"];
             const bool south_active = cfg.bc_z_south_type == BCType::DIRICHLET ||
                 (cfg.bc_z_south_type == BCType::INLET_OUTLET &&
@@ -194,7 +194,7 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
 // composition with zero free gas; outflow convects local values out).
 double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
                            const SimulationConfig& cfg) {
-    if (cfg.fluid_property_model != FluidPropertyModel::GAS_CAVITATION_MIXTURE) return 0.0;
+    if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return 0.0;
     if (!fields.has("dissolved_gas")) return 0.0;
 
     const Field& pressure = fields["pressure"];
@@ -281,7 +281,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
     const Field& theta = fields["theta"];
     const bool transient = cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0;
     const bool gas_active =
-        cfg.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE &&
+        cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
         fields.has("dissolved_gas") && fields.has("free_gas_mass");
 
     // Storage terms mirror the assembled capacity (current rho_l h times the
@@ -320,7 +320,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             balance.clamp_mass_liquid += field_value(fields, "cavitation_clamp_mass", 0.0, i, j);
             balance.clamp_mass_gas += field_value(fields, "gas_clamp_mass", 0.0, i, j);
 
-            if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS &&
+            if (cfg.cavitation_model == CavitationModel::JFO &&
                 inlet_cell(mesh, cfg, i, j)) {
                 balance.inlet_mass_source +=
                     elrod_inlet_cell_outflow(fields, mesh, cfg, dt, i, j);

@@ -43,7 +43,7 @@ double south_boundary_velocity(const Field& p, const Field& h, const Field& thet
         return cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
                                                  0.5 * mesh.get_d_z(), true);
     }
-    const double p_bc = cfg.cavitation_model == CavitationModel::ELROD_ADAMS
+    const double p_bc = cfg.cavitation_model == CavitationModel::JFO
         ? cfg.elrod_boundary_pressure(cfg.bc_z_south_val)
         : cfg.bc_z_south_val;
     const double dp_dz = (p(i, 0) - p_bc) / (0.5 * mesh.get_d_z());
@@ -61,7 +61,7 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
         return cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
                                                  0.5 * mesh.get_d_z(), false);
     }
-    const double p_bc = cfg.cavitation_model == CavitationModel::ELROD_ADAMS
+    const double p_bc = cfg.cavitation_model == CavitationModel::JFO
         ? cfg.elrod_boundary_pressure(cfg.bc_z_north_val)
         : cfg.bc_z_north_val;
     const double dp_dz = (p_bc - p(i, j)) / (0.5 * mesh.get_d_z());
@@ -201,7 +201,7 @@ void apply_supply_cell_gas_composition(Fields& fields, const Mesh& mesh,
 
 void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
            const SimulationConfig& cfg, double dt) {
-    if (cfg.fluid_property_model != FluidPropertyModel::GAS_CAVITATION_MIXTURE) return;
+    if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return;
     if (!fields.has("dissolved_gas")) return;
     if (dt <= 0.0) return;
 

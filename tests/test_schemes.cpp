@@ -138,7 +138,7 @@ void test_tvd_boundedness_and_sharpness() {
     const AdvectionResult upwind =
         advect_profile(n_cells, 0.5, 20, ConvectionScheme::UPWIND, step_profile);
     const AdvectionResult tvd =
-        advect_profile(n_cells, 0.5, 20, ConvectionScheme::TVD_VANLEER, step_profile);
+        advect_profile(n_cells, 0.5, 20, ConvectionScheme::VANLEER, step_profile);
 
     int rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -170,9 +170,9 @@ void test_order_of_accuracy() {
     const AdvectionResult up_fine =
         advect_profile(120, 0.1, 300, ConvectionScheme::UPWIND, smooth_fine);
     const AdvectionResult tvd_coarse =
-        advect_profile(60, 0.2, 75, ConvectionScheme::TVD_VANLEER, smooth_coarse);
+        advect_profile(60, 0.2, 75, ConvectionScheme::VANLEER, smooth_coarse);
     const AdvectionResult tvd_fine =
-        advect_profile(120, 0.1, 300, ConvectionScheme::TVD_VANLEER, smooth_fine);
+        advect_profile(120, 0.1, 300, ConvectionScheme::VANLEER, smooth_fine);
 
     const double upwind_order = std::log2(up_coarse.l1_error / up_fine.l1_error);
     const double tvd_order = std::log2(tvd_coarse.l1_error / tvd_fine.l1_error);
@@ -223,7 +223,7 @@ void test_gumbel_elrod_match_type_differencing() {
         comm.update_ghosts(fields);
 
         LinearSystem sys(mesh);
-        if (model == CavitationModel::ELROD_ADAMS) {
+        if (model == CavitationModel::JFO) {
             Reynolds::solve_elrod(fields, sys, mesh, run_cfg);
             comm.update_ghosts(fields);
         } else {
@@ -247,7 +247,7 @@ void test_gumbel_elrod_match_type_differencing() {
     };
 
     const double p_gumbel = run_path(CavitationModel::GUMBEL);
-    const double p_elrod = run_path(CavitationModel::ELROD_ADAMS);
+    const double p_elrod = run_path(CavitationModel::JFO);
     const double rel_err = std::abs(p_gumbel - p_elrod) / (std::abs(p_gumbel) + 1e-30);
 
     int rank = 0;
@@ -264,7 +264,7 @@ void test_gumbel_elrod_match_type_differencing() {
 
 void test_capacity_term_finite_relaxation() {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.solution_mode = SolutionMode::TRANSIENT;
     cfg.motion_model = MotionModel::STATIC;
     cfg.n_theta_global = 36;
@@ -375,9 +375,9 @@ double max_theta_ghost_mismatch(const Field& theta, const Mesh& mesh) {
 
 void test_tvd_mpi_ghost_consistency() {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.solution_mode = SolutionMode::TRANSIENT;
-    cfg.theta_convection_scheme = ConvectionScheme::TVD_VANLEER;
+    cfg.theta_convection_scheme = ConvectionScheme::VANLEER;
     cfg.e = 0.8 * cfg.c;
     cfg.bulk_modulus = 1e5;
     cfg.dt = 1e-3;
@@ -426,10 +426,10 @@ void test_config_backcompat_and_guards() {
         "gas_convection_scheme = upwind\n");
     check(cfg.parse_warnings.size() == 1,
           "legacy pressure_time_method must parse with exactly one warning");
-    check(cfg.theta_convection_scheme == ConvectionScheme::TVD_VANLEER,
+    check(cfg.theta_convection_scheme == ConvectionScheme::VANLEER,
           "theta_convection_scheme alias tvd-vanleer should parse");
-    check(cfg.thermal_convection_scheme == ConvectionScheme::TVD_MINMOD,
-          "thermal_convection_scheme alias minmod should parse");
+    check(cfg.thermal_convection_scheme == ConvectionScheme::VANLEER,
+          "thermal_convection_scheme alias minmod now maps to van Leer (minmod removed)");
     check(cfg.gas_convection_scheme == ConvectionScheme::UPWIND,
           "gas_convection_scheme upwind should parse");
 

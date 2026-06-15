@@ -20,7 +20,7 @@
 namespace GasTransport {
 
     /// Advect-diffuse gas over one step. No-op unless the fluid model is
-    /// GAS_CAVITATION_MIXTURE. Reads `pressure`, `h`, `theta`, `rho`, `mu`; updates
+    /// TWO_PHASE. Reads `pressure`, `h`, `theta`, `rho`, `mu`; updates
     /// `dissolved_gas` and optional `free_gas_mass` in place.
     void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                const SimulationConfig& cfg, double dt);

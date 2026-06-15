@@ -48,11 +48,11 @@ journal_heat_transfer = 1000
 bearing_heat_transfer = 1000
 
 # Fluid Properties: 2-D measured PTSV table for solubility and viscosity.
-fluid_property_model = GAS_CAVITATION_MIXTURE
+fluid_property_model = TWO_PHASE
 dissolved_gas_species = PROPANE
-oil_gas_solution_model = TABLE
-density_model = MASS_VOLUME_MIXING
-viscosity_model = TABLE
+solubility_model = TABLE
+density_model = MIXTURE
+liquid_viscosity_model = TABLE
 dissolved_gas_initial = 0.2175
 dissolved_gas_max = 1.0
 # Henry constants retained as a fallback / cross-check; unused under TABLE.
@@ -62,7 +62,7 @@ dissolved_gas_liquid_density = 500
 gas_mass_transfer_rate = 500
 dissolved_gas_diffusivity = 1e-9
 gas_alpha_max = 0.6
-gas_mixture_viscosity_model = MCADAMS_QUALITY
+mixture_viscosity_model = MCADAMS
 # WP-1: couple released gas into the pressure problem (void ceiling, local
 # plateau, mixture compressibility). NONE = volumetrically-inert (default).
 gas_pressure_coupling = VOID_COUPLED
@@ -88,13 +88,13 @@ stop_on_nonpositive_film = true
 # Axial Boundary Conditions
 bc_z_south_type = DIRICHLET
 bc_z_south_val = 1.0e5
-bc_z_south_thermal = OPEN
+bc_z_south_thermal = ZERO_GRADIENT
 bc_z_north_type = DIRICHLET
 bc_z_north_val = 1.0e5
-bc_z_north_thermal = OPEN
+bc_z_north_thermal = ZERO_GRADIENT
 
 # Cavitation: onset at the higher of oil p_cav and the dissolved-R290 bubble point.
-cavitation_model = ELROD_ADAMS
+cavitation_model = JFO
 cavitation_threshold = LOCAL_PSAT
 # WP-6: only the liquid fraction shears/carries heat in cavitated cells.
 cavitated_film_model = STRIATED

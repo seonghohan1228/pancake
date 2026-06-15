@@ -431,17 +431,18 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                 row("Cavitation model", "How film rupture is treated.");
                 changed |= enum_combo<CavitationModel>(
                     "##cavitation_model", config_.cavitation_model,
-                    {{CavitationModel::ELROD_ADAMS, "Elrod-Adams (JFO)",
-                      "Mass-conserving JFO cavitation: tracks the liquid fraction so rupture "
-                      "AND reformation are physical. The recommended model; needed for "
-                      "accurate cavitation extent and oil transport."},
+                    {{CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld (reference)",
+                      "No cavitation: sub-cavity (tensile) pressures are kept. The simplest "
+                      "model - a reference baseline for verification / overlay plots, not for "
+                      "real operating points."},
                      {CavitationModel::GUMBEL, "Gumbel (half Sommerfeld)",
-                      "Clamps negative pressures to the cavitation pressure after the solve. "
-                      "Fast and robust but not mass-conserving - cavitation extent is "
-                      "approximate. OK for quick load-capacity estimates."},
-                     {CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld",
-                      "No cavitation: sub-cavitation (tensile) pressures are kept. Only for "
-                      "verification against analytic full-Sommerfeld solutions."}});
+                      "Clamps sub-cavity pressures to p_cav after the solve. Fast and robust "
+                      "but not mass-conserving - cavitation extent is approximate. OK for "
+                      "quick load-capacity estimates."},
+                     {CavitationModel::JFO, "JFO (Elrod-Adams)",
+                      "Mass-conserving Jakobsson-Floberg-Olsson cavitation via the Elrod-Adams "
+                      "film-content algorithm: rupture AND reformation are physical. The "
+                      "recommended production model for accurate extent and oil transport."}});
                 break;
             case ParamGroup::Boundaries:
                 row("South boundary type (z = 0)", "Pressure condition at the south face.");
@@ -458,10 +459,10 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                 row("South thermal inflow", "Temperature carried by oil entering at z = 0.");
                 changed |= enum_combo<ThermalInflowMode>(
                     "##bc_s_th", config_.bc_z_south_thermal,
-                    {{ThermalInflowMode::OPEN, "Open (recirculating oil)",
+                    {{ThermalInflowMode::ZERO_GRADIENT, "Zero gradient (recirculating oil)",
                       "Entering oil is the same recirculating film oil (zero-gradient "
                       "temperature). Use for submerged/open ends."},
-                     {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)",
+                     {ThermalInflowMode::CONSTANT, "Constant (fixed supply T)",
                       "Entering oil carries a fixed supply temperature. Use when the end is "
                       "fed from an external reservoir."}});
                 row("North boundary type (z = L)", "Pressure condition at the north face.");
@@ -478,10 +479,10 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                 row("North thermal inflow", "Temperature carried by oil entering at z = L.");
                 changed |= enum_combo<ThermalInflowMode>(
                     "##bc_n_th", config_.bc_z_north_thermal,
-                    {{ThermalInflowMode::OPEN, "Open (recirculating oil)",
+                    {{ThermalInflowMode::ZERO_GRADIENT, "Zero gradient (recirculating oil)",
                       "Entering oil is the same recirculating film oil (zero-gradient "
                       "temperature). Use for submerged/open ends."},
-                     {ThermalInflowMode::RESERVOIR, "Reservoir (fixed T)",
+                     {ThermalInflowMode::CONSTANT, "Constant (fixed supply T)",
                       "Entering oil carries a fixed supply temperature. Use when the end is "
                       "fed from an external reservoir."}});
                 break;
@@ -505,13 +506,14 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                         "##fluid_property_model", config_.fluid_property_model,
                         {{FluidPropertyModel::CONSTANT, "Constant",
                           "Fixed density and viscosity. The default for plain oil bearings."},
-                         {FluidPropertyModel::OIL_DISSOLVED_GAS, "Oil + dissolved gas",
-                          "Liquid properties vary with dissolved-gas concentration (and T, p). "
-                          "Use for refrigerant/oil mixtures while gas stays dissolved."},
-                         {FluidPropertyModel::GAS_CAVITATION_MIXTURE, "Gas cavitation mixture",
+                         {FluidPropertyModel::SINGLE_PHASE, "Single phase (oil + dissolved gas)",
+                          "Liquid density/viscosity vary with the dissolved-gas fraction (and "
+                          "T, p), but gas stays in solution - no free phase. Use for "
+                          "refrigerant/oil mixtures below the bubble point."},
+                         {FluidPropertyModel::TWO_PHASE, "Two phase (free gas)",
                           "Adds finite-rate gas release/resorption and a free-gas phase in "
-                          "cavitated zones. The full gaseous-cavitation model; needs "
-                          "Elrod-Adams and gas parameters."}});
+                          "cavitated zones. The full gaseous-cavitation model; needs JFO "
+                          "cavitation and gas parameters."}});
                     row("Dissolved gas species", "Gas dissolved in the lubricant.");
                     changed |= enum_combo<DissolvedGasSpecies>(
                         "##dissolved_gas_species", config_.dissolved_gas_species,
@@ -520,56 +522,50 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                          {DissolvedGasSpecies::AIR, "Air",
                           "Air dissolved in oil (conventional aerated lubricant)."}});
                     row("Solubility model", "Saturation law c_sat(p, T).");
-                    changed |= enum_combo<OilGasSolutionModel>(
-                        "##oil_gas_solution_model", config_.oil_gas_solution_model,
-                        {{OilGasSolutionModel::HENRY, "Henry's law",
-                          "c_sat proportional to pressure (with optional van't Hoff "
-                          "temperature dependence). Good for dilute solutions."},
-                         {OilGasSolutionModel::BUNSEN, "Bunsen coefficient",
-                          "Volume-based solubility coefficient. Use when data is given as "
-                          "Bunsen absorption numbers."},
-                         {OilGasSolutionModel::TABLE, "Table",
-                          "Tabulated c_sat(p) pairs (solubility_table). Use measured data."}});
-                    row("Density model", "Liquid-solution density mixing rule.");
+                    changed |= enum_combo<SolubilityModel>(
+                        "##solubility_model", config_.solubility_model,
+                        {{SolubilityModel::HENRY, "Henry's law",
+                          "c_sat = H(T) p, linear in pressure with optional van't Hoff "
+                          "temperature dependence. Good for dilute solutions."},
+                         {SolubilityModel::TABLE, "Table",
+                          "Measured c_sat(p,T) surface (1-D or 2-D PTSV data). Use supplier "
+                          "data for the real saturation curve."}});
+                    row("Density model", "Liquid-solution density law.");
                     changed |= enum_combo<DensityModel>(
                         "##density_model", config_.density_model,
-                        {{DensityModel::PURE_OIL, "Pure oil",
-                          "Dissolved gas does not change liquid density."},
-                         {DensityModel::MASS_VOLUME_MIXING, "Mass-volume mixing",
-                          "Ideal mixing of oil and dissolved-gas partial volumes; needs the "
-                          "dissolved-gas liquid density."},
+                        {{DensityModel::CONSTANT, "Constant",
+                          "Dissolved gas does not change liquid density (rho = rho_oil)."},
+                         {DensityModel::MIXTURE, "Mixture",
+                          "Mass/volume mixing of the two phase densities: oil (rho) and the "
+                          "dissolved-gas liquid phase (dissolved_gas_liquid_density), both "
+                          "explicit inputs."},
                          {DensityModel::TABLE, "Table",
-                          "Tabulated rho(c_d) pairs (density_table)."}});
-                    row("Viscosity model", "Liquid-solution viscosity mixing rule.");
-                    changed |= enum_combo<ViscosityModel>(
-                        "##viscosity_model", config_.viscosity_model,
-                        {{ViscosityModel::PURE_OIL, "Pure oil",
-                          "Dissolved gas does not change liquid viscosity."},
-                         {ViscosityModel::LOG_MIXING, "Log mixing",
-                          "mu = mu_oil exp(a_c c_d): exponential thinning with gas content. "
-                          "Common for refrigerant/oil data."},
-                         {ViscosityModel::EMPIRICAL_CORRELATION, "Empirical correlation",
-                          "Log mixing plus Andrade temperature and Barus pressure terms. The "
-                          "most complete option; needs the extra coefficients."},
-                         {ViscosityModel::TABLE, "Table",
-                          "Tabulated mu(c_d) pairs (viscosity_table)."}});
-                    row("Two-phase viscosity", "Effective viscosity once free gas appears.");
-                    changed |= enum_combo<GasMixtureViscosityModel>(
-                        "##gas_mixture_viscosity_model", config_.gas_mixture_viscosity_model,
-                        {{GasMixtureViscosityModel::EINSTEIN_DILUTE, "Einstein (dilute)",
-                          "mu_l (1 + 2.5 alpha): dilute-bubble result, valid alpha < ~0.1. "
-                          "Thickens with gas - wrong trend at high void fraction."},
-                         {GasMixtureViscosityModel::DUKLER_VOID, "Dukler (void fraction)",
-                          "Void-fraction-weighted linear blend to the gas viscosity; needs "
-                          "mu_gas. Reasonable across the whole range."},
-                         {GasMixtureViscosityModel::MCADAMS_QUALITY, "McAdams (quality)",
-                          "Homogeneous two-phase standard: harmonic blend by mass quality; "
-                          "needs mu_gas. Strong thinning once gas appears."},
-                         {GasMixtureViscosityModel::KRIEGER_DOUGHERTY, "Krieger-Dougherty",
-                          "Packing-limited suspension law up to alpha_max. Thickens toward "
-                          "the packing limit; no mu_gas needed."},
-                         {GasMixtureViscosityModel::LINEAR_QUALITY, "Linear quality",
-                          "Mass-quality-weighted linear blend (Grando 2006); needs mu_gas."}});
+                          "Measured rho(p,T) surface."}});
+                    row("Liquid viscosity model", "Liquid-solution viscosity law.");
+                    changed |= enum_combo<LiquidViscosityModel>(
+                        "##liquid_viscosity_model", config_.liquid_viscosity_model,
+                        {{LiquidViscosityModel::CONSTANT, "Constant",
+                          "Dissolved gas does not change liquid viscosity (mu = mu_oil)."},
+                         {LiquidViscosityModel::EMPIRICAL, "Empirical",
+                          "mu_oil * Andrade(T) * exp(a_c c_d) * Barus(p): exponential thinning "
+                          "with dissolved gas plus temperature and pressure terms. Set the T/p "
+                          "coefficients to 0 for pure gas-thinning (log mixing)."},
+                         {LiquidViscosityModel::TABLE, "Table",
+                          "Measured kinematic nu(p,T), converted to dynamic per cell."}});
+                    row("Mixture viscosity", "Effective viscosity once free gas appears.");
+                    changed |= enum_combo<MixtureViscosityModel>(
+                        "##mixture_viscosity_model", config_.mixture_viscosity_model,
+                        {{MixtureViscosityModel::DUKLER, "Dukler (legacy)",
+                          "Void-fraction-weighted linear blend alpha*mu_g + (1-alpha)*mu_l; "
+                          "needs mu_gas. Legacy/deprecated - kept for comparison with prior "
+                          "results."},
+                         {MixtureViscosityModel::LINEAR, "Linear (Grando)",
+                          "Mass-quality-weighted linear blend x*mu_g + (1-x)*mu_l (Grando "
+                          "2006); needs mu_gas. Refrigerant-oil validated."},
+                         {MixtureViscosityModel::MCADAMS, "McAdams",
+                          "Homogeneous two-phase standard: reciprocal blend by mass quality "
+                          "1/mu = x/mu_g + (1-x)/mu_l; needs mu_gas. Correct asymptotes; the "
+                          "default."}});
                 }
                 break;
             case ParamGroup::Motion:
@@ -605,55 +601,44 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                     row("Motion time integrator", "Integrator for the bearing equation of motion.");
                     changed |= enum_combo<TimeSteppingMethod>(
                         "##motion_time_method", config_.motion_time_method,
-                        {{TimeSteppingMethod::EULER_IMPLICIT, "Implicit Euler",
+                        {{TimeSteppingMethod::EULER_EXPLICIT, "Explicit Euler (reference)",
+                          "1st order, cheapest, but stability-limited - needs small dt. "
+                          "Reference/comparison only."},
+                         {TimeSteppingMethod::EULER_IMPLICIT, "Implicit Euler",
                           "1st order, unconditionally stable. The robust default."},
-                         {TimeSteppingMethod::EULER_EXPLICIT, "Explicit Euler",
-                          "1st order, cheapest, but stability-limited - needs small dt."},
-                         {TimeSteppingMethod::CRANK_NICOLSON, "Crank-Nicolson",
-                          "2nd order, semi-implicit. More accurate trajectories; can ring on "
-                          "stiff supports."},
-                         {TimeSteppingMethod::RK2, "Runge-Kutta 2",
-                          "2nd order explicit midpoint; stability-limited."},
+                         {TimeSteppingMethod::CRANK_NICOLSON, "Crank-Nicolson (reference)",
+                          "2nd order, semi-implicit. More accurate trajectories but can ring "
+                          "on stiff supports. Reference/comparison only."},
+                         {TimeSteppingMethod::RK2, "Runge-Kutta 2 (reference)",
+                          "2nd order explicit midpoint; stability-limited. Reference only."},
                          {TimeSteppingMethod::RK4, "Runge-Kutta 4",
-                          "4th order explicit; most accurate per step, 4 force evaluations."}});
+                          "4th order explicit; most accurate per step (4 force evaluations). "
+                          "Use for accurate whirl/orbit trajectories."}});
 
                     // Film-content face interpolation: Upwind or Linear.
                     // (TVD limiters and the thermal/gas scheme keys remain
                     // solver options reachable by editing the config file;
                     // a value loaded from file is preserved and shown.)
                     constexpr const char* kUpwindDesc =
-                        "1st-order accurate, unconditionally bounded and most robust, but "
-                        "numerically diffusive - smears sharp cavitation fronts. Use as the "
-                        "safe default and for difficult cases.";
+                        "1st-order, unconditionally bounded and most robust, but numerically "
+                        "diffusive - smears sharp cavitation fronts. The safe default.";
                     constexpr const char* kLinearDesc =
-                        "Linear (central) interpolation across full-film faces, upwind "
-                        "across/inside cavitated faces (Vijayaraghavan & Keith 1989). "
-                        "2nd-order accurate in the full film - the classic Elrod scheme; "
-                        "use when front/pressure resolution matters.";
-                    constexpr const char* kFromFileDesc =
-                        "A TVD limiter scheme loaded from the config file. Kept as-is until "
-                        "you pick Upwind or Linear.";
-                    row("Film-content convection", "Scheme for the Elrod film-content transport.");
-                    const ConvectionScheme theta_scheme = config_.theta_convection_scheme;
-                    if (theta_scheme == ConvectionScheme::TVD_VANLEER ||
-                        theta_scheme == ConvectionScheme::TVD_MINMOD) {
-                        changed |= enum_combo<ConvectionScheme>(
-                            "##theta_scheme", config_.theta_convection_scheme,
-                            {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
-                             {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
-                              kLinearDesc},
-                             {theta_scheme,
-                              theta_scheme == ConvectionScheme::TVD_VANLEER
-                                  ? "TVD van Leer (from config file)"
-                                  : "TVD minmod (from config file)",
-                              kFromFileDesc}});
-                    } else {
-                        changed |= enum_combo<ConvectionScheme>(
-                            "##theta_scheme", config_.theta_convection_scheme,
-                            {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
-                             {ConvectionScheme::TYPE_DIFFERENCING, "Linear (type differencing)",
-                              kLinearDesc}});
-                    }
+                        "2nd-order central interpolation. Sharpest in smooth regions but "
+                        "UNBOUNDED - can oscillate at the rupture front. A textbook reference "
+                        "scheme; use for comparison or smooth fields.";
+                    constexpr const char* kVanLeerDesc =
+                        "2nd-order van Leer TVD limiter: sharp AND bounded (no oscillations). "
+                        "The recommended high-accuracy scheme for cavitation fronts.";
+                    constexpr const char* kTypeDesc =
+                        "Vijayaraghavan & Keith (1989): central across full-film faces, upwind "
+                        "across cavitated faces. The classic Elrod scheme; JFO film-content only.";
+                    row("Film-content convection", "Scheme for the JFO film-content transport.");
+                    changed |= enum_combo<ConvectionScheme>(
+                        "##theta_scheme", config_.theta_convection_scheme,
+                        {{ConvectionScheme::UPWIND, "Upwind", kUpwindDesc},
+                         {ConvectionScheme::LINEAR, "Linear (central)", kLinearDesc},
+                         {ConvectionScheme::VANLEER, "TVD van Leer", kVanLeerDesc},
+                         {ConvectionScheme::TYPE_DIFFERENCING, "Type differencing", kTypeDesc}});
                 }
                 break;
             default: break;

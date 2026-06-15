@@ -24,7 +24,7 @@ bool uses_pressure_boundary(BCType type) {
 // its boundary film content from the configured pressure and bulk modulus, with
 // pressure clamped at p_cav, so thermal fluxes use the same effective pressure.
 double solved_boundary_pressure(const SimulationConfig& cfg, double bc_val) {
-    if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS) {
+    if (cfg.cavitation_model == CavitationModel::JFO) {
         return cfg.elrod_boundary_pressure(bc_val);
     }
     return bc_val;
@@ -200,8 +200,8 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
     //   so the open boundary face contributes no net source — no spurious heating
     //   or cooling. flux_south is the +z-flux at the south face (>0 means inflow at
     //   the south end); flux_north is the +z-flux at the north face (>0 means outflow).
-    const bool south_reservoir = cfg.bc_z_south_thermal == ThermalInflowMode::RESERVOIR;
-    const bool north_reservoir = cfg.bc_z_north_thermal == ThermalInflowMode::RESERVOIR;
+    const bool south_reservoir = cfg.bc_z_south_thermal == ThermalInflowMode::CONSTANT;
+    const bool north_reservoir = cfg.bc_z_north_thermal == ThermalInflowMode::CONSTANT;
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         const double flux_south = south_boundary_flux(p, h, theta, fields, mesh, cfg, i);

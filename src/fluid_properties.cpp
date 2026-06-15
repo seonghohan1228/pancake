@@ -72,8 +72,8 @@ double equilibrium_dissolved_gas(double pressure, double temperature, const Simu
 
     const double p_abs = std::max(pressure, 0.0);
     double dissolved = 0.0;
-    switch (cfg.oil_gas_solution_model) {
-        case OilGasSolutionModel::HENRY: {
+    switch (cfg.solubility_model) {
+        case SolubilityModel::HENRY: {
             // c_sat = H(T) p. van't Hoff temperature dependence: solubility falls with T.
             double henry = cfg.dissolved_gas_henry_coeff;
             if (cfg.dissolved_gas_henry_temp_coeff != 0.0) {
@@ -84,15 +84,7 @@ double equilibrium_dissolved_gas(double pressure, double temperature, const Simu
             dissolved = henry * p_abs;
             break;
         }
-        case OilGasSolutionModel::BUNSEN: {
-            const double p_ref = std::max(cfg.property_reference_pressure, cfg.gas_pressure_floor);
-            const double T_ref = bounded_temperature(cfg.property_reference_temperature, cfg);
-            const double rho_g_ref = gas_density(p_ref, T_ref, cfg);
-            dissolved = cfg.dissolved_gas_bunsen_coeff * (p_abs / p_ref) *
-                (T_ref / bounded_temperature(temperature, cfg)) * rho_g_ref / std::max(cfg.rho, kMinPositive);
-            break;
-        }
-        case OilGasSolutionModel::TABLE:
+        case SolubilityModel::TABLE:
             dissolved = cfg.solubility_table_2d.empty()
                 ? interpolate_property_table(cfg.solubility_table, p_abs, 0.0)
                 : cfg.solubility_table_2d.interpolate(p_abs, bounded_temperature(temperature, cfg), 0.0);
@@ -105,17 +97,17 @@ double liquid_solution_density(double dissolved_gas,
                                double pressure,
                                double temperature,
                                const SimulationConfig& cfg) {
-    if (!property_model_enabled(cfg) || cfg.density_model == DensityModel::PURE_OIL) {
+    if (!property_model_enabled(cfg) || cfg.density_model == DensityModel::CONSTANT) {
         return std::max(cfg.rho, kMinPositive);
     }
 
     const double c_g = clamp_mass_fraction(dissolved_gas, cfg);
     double rho_solution = cfg.rho;
     switch (cfg.density_model) {
-        case DensityModel::PURE_OIL:
+        case DensityModel::CONSTANT:
             rho_solution = cfg.rho;
             break;
-        case DensityModel::MASS_VOLUME_MIXING: {
+        case DensityModel::MIXTURE: {
             // Dissolved gas occupies ~its liquid-phase molar volume, not the gas phase.
             // Use the configured liquid-phase density when given; else fall back to ideal gas.
             const double dg_rho = cfg.dissolved_gas_liquid_density > 0.0
@@ -142,20 +134,17 @@ double liquid_solution_viscosity(double dissolved_gas,
                                  double pressure,
                                  double temperature,
                                  const SimulationConfig& cfg) {
-    if (!property_model_enabled(cfg) || cfg.viscosity_model == ViscosityModel::PURE_OIL) {
+    if (!property_model_enabled(cfg) || cfg.liquid_viscosity_model == LiquidViscosityModel::CONSTANT) {
         return std::max(cfg.mu, kMinPositive);
     }
 
     const double c_g = clamp_mass_fraction(dissolved_gas, cfg);
     double mu_solution = cfg.mu;
-    switch (cfg.viscosity_model) {
-        case ViscosityModel::PURE_OIL:
+    switch (cfg.liquid_viscosity_model) {
+        case LiquidViscosityModel::CONSTANT:
             mu_solution = cfg.mu;
             break;
-        case ViscosityModel::LOG_MIXING:
-            mu_solution = cfg.mu * std::exp(cfg.solution_viscosity_gas_coeff * c_g);
-            break;
-        case ViscosityModel::EMPIRICAL_CORRELATION: {
+        case LiquidViscosityModel::EMPIRICAL: {
             // mu_l(T, p, c_d) = mu_oil * exp[E_mu (1/T - 1/T_ref)]   (Andrade temperature)
             //                          * exp[a_c c_d]                (dissolved-gas thinning)
             //                          * exp[alpha_p (p - p_ref)].   (Barus piezo-viscosity)
@@ -168,7 +157,7 @@ double liquid_solution_viscosity(double dissolved_gas,
                 * std::exp(cfg.viscosity_pressure_coeff * (pressure - p_ref));
             break;
         }
-        case ViscosityModel::TABLE:
+        case LiquidViscosityModel::TABLE:
             mu_solution = interpolate_property_table(cfg.viscosity_table, c_g, cfg.mu);
             break;
     }
@@ -185,20 +174,13 @@ double gas_mixture_viscosity(double mu_liquid,
     const double quality = std::clamp(mass_quality, 0.0, 1.0);
     const double mu_g = std::max(cfg.mu_gas, kMinPositive);
 
-    switch (cfg.gas_mixture_viscosity_model) {
-        case GasMixtureViscosityModel::EINSTEIN_DILUTE:
-            return mu_l * (1.0 + 2.5 * alpha);
-        case GasMixtureViscosityModel::DUKLER_VOID:
+    switch (cfg.mixture_viscosity_model) {
+        case MixtureViscosityModel::DUKLER:  // legacy: void-fraction-weighted linear blend
             return alpha * mu_g + (1.0 - alpha) * mu_l;
-        case GasMixtureViscosityModel::MCADAMS_QUALITY:
-            return 1.0 / (quality / mu_g + (1.0 - quality) / mu_l);
-        case GasMixtureViscosityModel::KRIEGER_DOUGHERTY: {
-            // Cap the packing argument to keep the divergence finite at alpha_max.
-            const double packing = std::min(alpha / alpha_max, 0.99);
-            return mu_l * std::pow(1.0 - packing, -2.5 * alpha_max);
-        }
-        case GasMixtureViscosityModel::LINEAR_QUALITY:
+        case MixtureViscosityModel::LINEAR:  // mass-quality-weighted linear (Grando 2006)
             return quality * mu_g + (1.0 - quality) * mu_l;
+        case MixtureViscosityModel::MCADAMS:  // homogeneous reciprocal blend (default)
+            return 1.0 / (quality / mu_g + (1.0 - quality) / mu_l);
     }
     return mu_l;
 }
@@ -228,7 +210,7 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
             double mu_liquid = liquid_solution_viscosity(dissolved, pressure, temperature, cfg);
             // 2-D table viscosity is the KINEMATIC nu(p,T) [m^2/s]; convert per cell to
             // dynamic mu = nu * rho_solution (the supplier chart carries no density column).
-            if (cfg.viscosity_model == ViscosityModel::TABLE && !cfg.viscosity_table_2d.empty()) {
+            if (cfg.liquid_viscosity_model == LiquidViscosityModel::TABLE && !cfg.viscosity_table_2d.empty()) {
                 const double nu = cfg.viscosity_table_2d.interpolate(
                     pressure, bounded_temperature(temperature, cfg),
                     cfg.mu / std::max(rho_liquid, kMinPositive));
@@ -242,7 +224,7 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
             // thickening, void/quality-weighted thinning toward mu_gas, or
             // Krieger-Dougherty packing).
             double mu_mixture = mu_liquid;
-            if (cfg.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE &&
+            if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
                 fields.has("alpha_gas")) {
                 const double alpha_g = fields["alpha_gas"](i, j);
                 double quality = 0.0;
@@ -268,7 +250,7 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
 }
 
 void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg, double dt) {
-    const bool active = cfg.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE &&
+    const bool active = cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
         dt > 0.0 && cfg.gas_mass_transfer_rate > 0.0;
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
@@ -315,7 +297,7 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
                     free_mass -= mass_resorb;
                     source = -mass_resorb / (h * dt);
                 }
-            } else if (cfg.fluid_property_model != FluidPropertyModel::GAS_CAVITATION_MIXTURE) {
+            } else if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) {
                 free_mass = 0.0;
             }
 
@@ -334,7 +316,7 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
 }
 
 void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
-    if (cfg.fluid_property_model != FluidPropertyModel::GAS_CAVITATION_MIXTURE) return;
+    if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return;
     const double alpha_max = std::clamp(cfg.gas_alpha_max, 0.0, 1.0);
     const double c_feed = clamp_mass_fraction(cfg.dissolved_gas_initial, cfg);
 

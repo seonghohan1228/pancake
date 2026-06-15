@@ -269,8 +269,8 @@ static void test_axial_inflow_temperature_is_bounded() {
     cfg.bc_z_north_val = 0.0;
     // ELROD derives its boundary film content from bc_z_*_val and bulk modulus;
     // request a fed reservoir so inflow carries temperature_reference.
-    cfg.bc_z_south_thermal = ThermalInflowMode::RESERVOIR;
-    cfg.bc_z_north_thermal = ThermalInflowMode::RESERVOIR;
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
     cfg.inlets.clear();
 
     Mesh mesh(cfg);
@@ -329,8 +329,8 @@ static void test_north_axial_inflow_temperature_is_bounded() {
     cfg.bc_z_south_val = 0.0;
     cfg.bc_z_north_type = BCType::DIRICHLET;
     cfg.bc_z_north_val = 2.0e5;
-    cfg.bc_z_south_thermal = ThermalInflowMode::RESERVOIR;
-    cfg.bc_z_north_thermal = ThermalInflowMode::RESERVOIR;
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
     cfg.inlets.clear();
 
     Mesh mesh(cfg);
@@ -390,8 +390,8 @@ static void test_outflow_boundaries_do_not_impose_reference_temperature() {
     // Request fed reservoirs so this exercises the RESERVOIR path; the interior
     // pressure stays above the boundary pressure, so both ends are outflow and
     // must NOT pull in temperature_reference.
-    cfg.bc_z_south_thermal = ThermalInflowMode::RESERVOIR;
-    cfg.bc_z_north_thermal = ThermalInflowMode::RESERVOIR;
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
     cfg.inlets.clear();
 
     Mesh mesh(cfg);
@@ -533,7 +533,7 @@ static void test_elrod_axial_boundary_uses_pressure_value() {
     SimulationConfig cfg;
     cfg.n_theta_global = 12;
     cfg.n_z_global = 12;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
     cfg.solution_mode = SolutionMode::STEADY_STATE;
     cfg.omega = 0.0;
@@ -549,8 +549,8 @@ static void test_elrod_axial_boundary_uses_pressure_value() {
     cfg.bc_z_north_val = 1.5e6;
     cfg.bc_z_south_theta = 1.0;          // deprecated: must not override bc_z_south_val
     cfg.bc_z_north_theta = 1.0;
-    cfg.bc_z_south_thermal = ThermalInflowMode::RESERVOIR;
-    cfg.bc_z_north_thermal = ThermalInflowMode::RESERVOIR;
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
     cfg.inlets.clear();
 
     Mesh mesh(cfg);

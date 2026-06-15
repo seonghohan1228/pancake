@@ -210,7 +210,7 @@ The Windows application logo is embedded from `src/pancake.ico` in both
 `pancake.exe` and `pancake_gui.exe`. The editable source-style logo is
 `src/pancake_logo.svg`.
 
-For `ELROD_ADAMS`, axial `DIRICHLET` and `INLET_OUTLET` inflow boundaries are
+For `JFO`, axial `DIRICHLET` and `INLET_OUTLET` inflow boundaries are
 configured by pressure. The solver derives the boundary film content internally
 from `bc_z_*_val`, `p_cav`, and `bulk_modulus`:
 `theta = exp((max(p_bc, p_cav) - p_cav) / bulk_modulus)`. Legacy
@@ -257,9 +257,9 @@ with a one-line "ignored" warning.
 
 Convection face interpolation is selectable per transported variable with
 `theta_convection_scheme`, `thermal_convection_scheme`, and
-`gas_convection_scheme` (`UPWIND` default; `TVD_VANLEER`, `TVD_MINMOD`; theta
-additionally accepts `TYPE_DIFFERENCING` — central across full-film faces,
-upwind in cavitation, per Vijayaraghavan & Keith 1989). The Gumbel wedge term
+`gas_convection_scheme` (`UPWIND` default; `LINEAR` — 2nd-order central, unbounded;
+`VANLEER` — 2nd-order TVD, bounded; theta additionally accepts `TYPE_DIFFERENCING`
+— central across full-film faces, upwind in cavitation, per Vijayaraghavan & Keith 1989). The Gumbel wedge term
 uses the same scheme, so the two Reynolds paths discretize like-for-like.
 `linear_rtol` controls the inner Krylov tolerance. `diagnostics_interval` sets
 the cadence of the per-step global mass-balance / convergence CSV written to
@@ -275,7 +275,7 @@ checks. `TRANSIENT` now starts from the initialized outlet-pressure fields and
 uses transient terms from the first solve. Set `omega_ramp_time > 0` to ramp
 rotation linearly from zero to the configured `omega` over that physical time;
 `omega_ramp_time = 0` applies full speed immediately.
-For every transient `ELROD_ADAMS` run — fixed or moving bearing — the
+For every transient `JFO` run — fixed or moving bearing — the
 `rho*h*dtheta/dt` film-content capacity term is assembled in the theta solve;
 the lagged `theta*dh_dt` squeeze source is added when geometry moves. Dropping
 the capacity term is non-conservative, makes fixed-bearing transients
@@ -285,7 +285,7 @@ quasi-steady in `theta`, and can create artificial cavitation after startup.
 after the Reynolds solve and force post-processing. The solver writes
 `temperature` and `heat_generation` when those fields are enabled in
 `output_fields`. `heat_generation` is viscous dissipation per bearing surface
-area in `W/m^2`. In `ELROD_ADAMS`, the pressure-flow part of this heat source is
+area in `W/m^2`. In `JFO`, the pressure-flow part of this heat source is
 computed only from active full-film faces; cavitated cells and inactive
 cavitation-front faces do not add Poiseuille heat. Large values at the
 full-film side of a cavitation boundary are pressure-gradient dissipation, not
@@ -299,31 +299,30 @@ leaves the temperature field fixed but still refreshes `heat_generation` for
 inspection.
 
 `fluid_property_model = CONSTANT` keeps the previous pure-oil behavior. The
-new opt-in `OIL_DISSOLVED_GAS` and `GAS_CAVITATION_MIXTURE` modes add a
-liquid oil plus dissolved gas property layer before the JFO cavitation solve.
-For propane/R290, the configurable `oil_gas_solution_model`, `density_model`,
-and `viscosity_model` keys can use Henry/Bunsen-style correlations or
-`x:value` tables. All pressure inputs are absolute Pa; use `p_cav = 1e5` for an
+new opt-in `SINGLE_PHASE` (oil + dissolved gas, single-phase) and `TWO_PHASE`
+(adds a free-gas phase) modes add a liquid oil plus dissolved gas property layer
+before the JFO cavitation solve. For propane/R290, the configurable
+`solubility_model`, `density_model`, and `liquid_viscosity_model` keys use a
+Henry's-law correlation or measured tables. All pressure inputs are absolute Pa; use `p_cav = 1e5` for an
 atmospheric cavitation plateau, not `0` gauge. `config_r290_pz68.txt` is the
 calibrated PZ68/R290 starting case for 40 C and 10 bar, and
 `config_r290_pz68_quick.txt` is the same physics on a small smoke-test mesh.
 Both use 10 bar supply/reference saturation with a 1 bar absolute sump/outlet
 so the quick case actually releases gas in cavitated cells. They set Henry
 solubility, dissolved-propane liquid-density mixing,
-Andrade/Barus/log-mixing viscosity coefficients, finite-rate gas transfer, and
+Andrade/Barus viscosity coefficients, finite-rate gas transfer, and
 diffusivity explicitly. The solver validates required gas constants before a
 run and rejects under-specified custom gas models.
 The effective film viscosity with free gas present is selected by
-`gas_mixture_viscosity_model`: `EINSTEIN_DILUTE` (back-compat default, valid
-only for small void fractions and rejected when `gas_alpha_max > 0.6`),
-`DUKLER_VOID`, `MCADAMS_QUALITY` (shipped R290 default), `KRIEGER_DOUGHERTY`,
-or `LINEAR_QUALITY`; the void/quality-weighted models thin toward the
-configured `mu_gas`. The Henry tangent and `exp(a_c c_d)` viscosity correction
+`mixture_viscosity_model`: **`MCADAMS`** (default; homogeneous reciprocal blend by
+mass quality, correct asymptotes), `LINEAR` (mass-quality linear blend, Grando
+2006, refrigerant-oil validated), or `DUKLER` (legacy void-weighted linear blend,
+kept for comparison). All thin toward the configured `mu_gas`. The Henry tangent and `exp(a_c c_d)` viscosity correction
 are calibrated at (10 bar, 40 C) only. For the full operating map, measured PTSV
 data loads from a runtime-editable CSV via `solubility_table_file` /
 `viscosity_table_file` (a `P_MPa,T_C,solubility_pct,viscosity_mm2s` grid;
-`data/R290_PZ68S/r290_pz68s.csv` ships one) with `oil_gas_solution_model = TABLE`
-and `viscosity_model = TABLE`. The grid resolution is whatever the file holds (no
+`data/R290_PZ68S/r290_pz68s.csv` ships one) with `solubility_model = TABLE`
+and `liquid_viscosity_model = TABLE`. The grid resolution is whatever the file holds (no
 recompile); the kinematic table viscosity is converted to dynamic per cell with
 the solution density, and the saturation surface is inverted to the local
 bubble point. The solver writes

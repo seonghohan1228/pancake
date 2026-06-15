@@ -22,7 +22,7 @@ solution_mode = TRANSIENT
 motion_time_method = EULER_IMPLICIT
 
 # Numerics
-# Convection scheme options: UPWIND, TVD_VANLEER, TVD_MINMOD;
+# Convection scheme options: UPWIND, LINEAR, VANLEER;
 # theta additionally accepts TYPE_DIFFERENCING (central in full film, upwind in cavitation).
 theta_convection_scheme = UPWIND
 thermal_convection_scheme = UPWIND
@@ -53,16 +53,16 @@ journal_heat_transfer = 1000
 bearing_heat_transfer = 1000
 
 # Fluid Properties
-# fluid_property_model options: CONSTANT, OIL_DISSOLVED_GAS, GAS_CAVITATION_MIXTURE
+# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE
 fluid_property_model = CONSTANT
 # dissolved_gas_species options: AIR, PROPANE
 dissolved_gas_species = PROPANE
-# oil_gas_solution_model options: HENRY, BUNSEN, TABLE
-oil_gas_solution_model = HENRY
-# density_model options: PURE_OIL, MASS_VOLUME_MIXING, TABLE
-density_model = PURE_OIL
-# viscosity_model options: PURE_OIL, LOG_MIXING, EMPIRICAL_CORRELATION, TABLE
-viscosity_model = PURE_OIL
+# solubility_model options: HENRY, TABLE
+solubility_model = HENRY
+# density_model options: CONSTANT, MIXTURE, TABLE
+density_model = CONSTANT
+# liquid_viscosity_model options: CONSTANT, EMPIRICAL, TABLE
+liquid_viscosity_model = CONSTANT
 dissolved_gas_initial = 0
 dissolved_gas_max = 1
 dissolved_gas_henry_coeff = 0
@@ -77,8 +77,8 @@ viscosity_temperature_coeff = 0
 viscosity_pressure_coeff = 0
 gas_alpha_max = 1
 gas_pressure_floor = 1.0e5
-# gas_mixture_viscosity_model options: EINSTEIN_DILUTE, DUKLER_VOID, MCADAMS_QUALITY, KRIEGER_DOUGHERTY, LINEAR_QUALITY
-gas_mixture_viscosity_model = EINSTEIN_DILUTE
+# mixture_viscosity_model options: DUKLER, LINEAR, MCADAMS
+mixture_viscosity_model = MCADAMS
 mu_gas = 0
 property_reference_pressure = 101325
 property_reference_temperature = 300
@@ -112,19 +112,19 @@ stop_on_nonpositive_film = true
 
 # Axial Boundary Conditions (Outlets)
 # Options: DIRICHLET, NEUMANN, INLET_OUTLET
-# ELROD_ADAMS derives boundary film content from bc_z_*_val, p_cav, and bulk_modulus.
-# bc_z_*_thermal: OPEN (submerged/same-oil, zero-gradient inflow),
-#   RESERVOIR (fed inlet, carries temperature_reference on inflow)
+# JFO derives boundary film content from bc_z_*_val, p_cav, and bulk_modulus.
+# bc_z_*_thermal: ZERO_GRADIENT (submerged/same-oil inflow),
+#   CONSTANT (fed inlet, carries temperature_reference on inflow)
 bc_z_south_type = DIRICHLET
 bc_z_south_val = 1.5e6
-bc_z_south_thermal = OPEN
+bc_z_south_thermal = ZERO_GRADIENT
 bc_z_north_type = DIRICHLET
 bc_z_north_val = 1.5e6
-bc_z_north_thermal = OPEN
+bc_z_north_thermal = ZERO_GRADIENT
 
 # Cavitation
-# Options: FULL_SOMMERFELD, GUMBEL, ELROD_ADAMS
-cavitation_model = ELROD_ADAMS
+# Options: FULL_SOMMERFELD, GUMBEL, JFO
+cavitation_model = JFO
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6

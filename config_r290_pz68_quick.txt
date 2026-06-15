@@ -47,11 +47,11 @@ journal_heat_transfer = 1000
 bearing_heat_transfer = 1000
 
 # Fluid Properties
-fluid_property_model = GAS_CAVITATION_MIXTURE
+fluid_property_model = TWO_PHASE
 dissolved_gas_species = PROPANE
-oil_gas_solution_model = HENRY
-density_model = MASS_VOLUME_MIXING
-viscosity_model = EMPIRICAL_CORRELATION
+solubility_model = HENRY
+density_model = MIXTURE
+liquid_viscosity_model = EMPIRICAL
 dissolved_gas_initial = 0.2175
 dissolved_gas_max = 0.5
 dissolved_gas_henry_coeff = 2.175e-7
@@ -64,11 +64,10 @@ solution_density_gas_coeff = 0
 solution_viscosity_gas_coeff = -11.40
 viscosity_temperature_coeff = 4000
 viscosity_pressure_coeff = 1.5e-8
-# McAdams homogeneous two-phase viscosity with the Krieger-Dougherty packing
-# bound; Einstein dilute thickening is invalid at the void fractions this case
-# reaches. mu_gas is saturated propane vapor near 40 C (~8.7e-6 Pa s).
+# McAdams homogeneous two-phase viscosity (correct thinning across the void range).
+# mu_gas is saturated propane vapor near 40 C (~8.7e-6 Pa s).
 gas_alpha_max = 0.6
-gas_mixture_viscosity_model = MCADAMS_QUALITY
+mixture_viscosity_model = MCADAMS
 mu_gas = 8.7e-6
 gas_pressure_floor = 1e5
 property_reference_pressure = 1e6
@@ -94,13 +93,13 @@ stop_on_nonpositive_film = true
 # Axial Boundary Conditions
 bc_z_south_type = DIRICHLET
 bc_z_south_val = 1.0e5
-bc_z_south_thermal = OPEN
+bc_z_south_thermal = ZERO_GRADIENT
 bc_z_north_type = DIRICHLET
 bc_z_north_val = 1.0e5
-bc_z_north_thermal = OPEN
+bc_z_north_thermal = ZERO_GRADIENT
 
 # Cavitation
-cavitation_model = ELROD_ADAMS
+cavitation_model = JFO
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6

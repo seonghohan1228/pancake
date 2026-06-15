@@ -77,7 +77,7 @@ VoidParams void_params(const Fields& fields, const SimulationConfig& cfg, int i,
 // film-content boundary from the configured pressure and bulk modulus, clamped
 // at p_cav. Velocity and force post-processing must match the solve.
 double solved_boundary_pressure(const SimulationConfig& cfg, double bc_val) {
-    if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS) {
+    if (cfg.cavitation_model == CavitationModel::JFO) {
         return cfg.elrod_boundary_pressure(bc_val);
     }
     return bc_val;
@@ -85,10 +85,6 @@ double solved_boundary_pressure(const SimulationConfig& cfg, double bc_val) {
 
 double van_leer_limiter(double r) {
     return (r + std::abs(r)) / (1.0 + std::abs(r));
-}
-
-double minmod_limiter(double r) {
-    return std::max(0.0, std::min(1.0, r));
 }
 
 // Explicit face interpolation of phi for the Gumbel Couette flux, matched to the
@@ -100,14 +96,13 @@ double couette_face_value(double phi_uu, double phi_u, double phi_d,
     switch (scheme) {
         case ConvectionScheme::UPWIND:
             return phi_u;
-        case ConvectionScheme::TVD_VANLEER:
-        case ConvectionScheme::TVD_MINMOD: {
+        case ConvectionScheme::LINEAR:
+            return 0.5 * (phi_u + phi_d);  // central everywhere (2nd-order, unbounded)
+        case ConvectionScheme::VANLEER: {
             const double denom = phi_u - phi_uu;
             const double num = phi_d - phi_u;
             const double r = (std::abs(denom) > 1e-14) ? num / denom : 0.0;
-            const double psi = (scheme == ConvectionScheme::TVD_VANLEER)
-                ? van_leer_limiter(r) : minmod_limiter(r);
-            return phi_u + 0.5 * psi * (phi_u - phi_uu);
+            return phi_u + 0.5 * van_leer_limiter(r) * (phi_u - phi_uu);
         }
         case ConvectionScheme::TYPE_DIFFERENCING:
             return central_face ? 0.5 * (phi_u + phi_d) : phi_u;
@@ -150,7 +145,7 @@ static void apply_inlet_conditions(LinearSystem& sys, const Mesh& mesh, const Si
 
                 if (inside) {
                     double val_sup = inlet.p_supply;
-                    if (cfg.cavitation_model == CavitationModel::ELROD_ADAMS) {
+                    if (cfg.cavitation_model == CavitationModel::JFO) {
                         val_sup = EOS::theta_from_pressure(inlet.p_supply, cfg.effective_p_cav(), cfg.bulk_modulus);
                     }
                     

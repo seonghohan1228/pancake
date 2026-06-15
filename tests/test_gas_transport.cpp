@@ -37,7 +37,7 @@ static SimulationConfig mixture_config() {
     cfg.p_cav = 1.0e5;
     cfg.bc_z_south_val = 1.0e5;
     cfg.bc_z_north_val = 1.0e5;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
     cfg.solution_mode = SolutionMode::TRANSIENT;
     cfg.dt = 1.0e-4;
     cfg.dissolved_gas_initial = 0.12;

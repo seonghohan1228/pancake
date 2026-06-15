@@ -14,16 +14,8 @@ double van_leer(double r) {
     return (r + std::abs(r)) / (1.0 + std::abs(r));
 }
 
-double minmod(double r) {
-    return std::max(0.0, std::min(1.0, r));
-}
-
 double limiter(double r, ConvectionScheme scheme) {
-    switch (scheme) {
-        case ConvectionScheme::TVD_VANLEER: return van_leer(r);
-        case ConvectionScheme::TVD_MINMOD:  return minmod(r);
-        default: return 0.0;
-    }
+    return scheme == ConvectionScheme::VANLEER ? van_leer(r) : 0.0;
 }
 
 }  // namespace
@@ -116,8 +108,8 @@ void divergence(LinearSystem& sys,
 {
     const int n_theta = mesh.n_theta_local;
     const int n_z     = mesh.n_z_local;
-    const bool is_tvd = (scheme == ConvectionScheme::TVD_VANLEER ||
-                         scheme == ConvectionScheme::TVD_MINMOD);
+    const bool is_tvd = (scheme == ConvectionScheme::VANLEER);
+    const bool is_linear = (scheme == ConvectionScheme::LINEAR);
     const bool is_type = (scheme == ConvectionScheme::TYPE_DIFFERENCING &&
                           central_mask_theta != nullptr);
 
@@ -138,30 +130,38 @@ void divergence(LinearSystem& sys,
             if (j + 1 < n_z) sys.a_n(i, j) += std::max(-F_n, 0.0);
             if (j > 0)        sys.a_s(i, j) += std::max( F_s, 0.0);
 
-            if (is_type) {
-                // Type differencing (Vijayaraghavan & Keith 1989): deferred central
-                // correction on full-film faces; cavitated faces stay pure upwind.
-                if ((*central_mask_theta)(i, j) > 0.5) {
+            if (is_type || is_linear) {
+                // Deferred central correction. LINEAR applies pure central (2nd-order,
+                // unbounded) on every face; TYPE_DIFFERENCING (Vijayaraghavan & Keith
+                // 1989) applies it only on full-film faces, leaving cavitated faces
+                // pure upwind.
+                auto theta_central = [&](int ii) {
+                    return is_linear ||
+                           (central_mask_theta != nullptr && (*central_mask_theta)(ii, j) > 0.5);
+                };
+                auto z_central = [&](int jj) {
+                    return is_linear ||
+                           (central_mask_z != nullptr && (*central_mask_z)(i, jj) > 0.5);
+                };
+                if (theta_central(i)) {
                     const double phi_e_up = (F_e >= 0.0) ? phi.old(i, j) : phi.old(i + 1, j);
                     const double phi_e_c  = 0.5 * (phi.old(i, j) + phi.old(i + 1, j));
                     sys.source(i, j) -= F_e * (phi_e_c - phi_e_up);
                 }
-                if ((*central_mask_theta)(i - 1, j) > 0.5) {
+                if (theta_central(i - 1)) {
                     const double phi_w_up = (F_w >= 0.0) ? phi.old(i - 1, j) : phi.old(i, j);
                     const double phi_w_c  = 0.5 * (phi.old(i - 1, j) + phi.old(i, j));
                     sys.source(i, j) += F_w * (phi_w_c - phi_w_up);
                 }
-                if (central_mask_z != nullptr) {
-                    if (j + 1 < n_z && (*central_mask_z)(i, j) > 0.5) {
-                        const double phi_n_up = (F_n >= 0.0) ? phi.old(i, j) : phi.old(i, j + 1);
-                        const double phi_n_c  = 0.5 * (phi.old(i, j) + phi.old(i, j + 1));
-                        sys.source(i, j) -= F_n * (phi_n_c - phi_n_up);
-                    }
-                    if (j > 0 && (*central_mask_z)(i, j - 1) > 0.5) {
-                        const double phi_s_up = (F_s >= 0.0) ? phi.old(i, j - 1) : phi.old(i, j);
-                        const double phi_s_c  = 0.5 * (phi.old(i, j - 1) + phi.old(i, j));
-                        sys.source(i, j) += F_s * (phi_s_c - phi_s_up);
-                    }
+                if (j + 1 < n_z && z_central(j)) {
+                    const double phi_n_up = (F_n >= 0.0) ? phi.old(i, j) : phi.old(i, j + 1);
+                    const double phi_n_c  = 0.5 * (phi.old(i, j) + phi.old(i, j + 1));
+                    sys.source(i, j) -= F_n * (phi_n_c - phi_n_up);
+                }
+                if (j > 0 && z_central(j - 1)) {
+                    const double phi_s_up = (F_s >= 0.0) ? phi.old(i, j - 1) : phi.old(i, j);
+                    const double phi_s_c  = 0.5 * (phi.old(i, j - 1) + phi.old(i, j));
+                    sys.source(i, j) += F_s * (phi_s_c - phi_s_up);
                 }
                 continue;
             }

@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
     // --- 2-D tables consumed by the property layer (config integration) ------
     {
         SimulationConfig cfg;
-        cfg.fluid_property_model = FluidPropertyModel::OIL_DISSOLVED_GAS;
-        cfg.oil_gas_solution_model = OilGasSolutionModel::TABLE;
+        cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+        cfg.solubility_model = SolubilityModel::TABLE;
         cfg.dissolved_gas_max = 1.0;
         cfg.property_reference_temperature = 300.0;
         cfg.solubility_table_2d.p = {1.0e5, 2.0e5, 3.0e5};
@@ -107,8 +107,8 @@ int main(int argc, char** argv) {
     {
         SimulationConfig cfg;
         cfg.p_cav = 3.0e4;  // oil cavitation pressure
-        cfg.fluid_property_model = FluidPropertyModel::OIL_DISSOLVED_GAS;
-        cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+        cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+        cfg.solubility_model = SolubilityModel::HENRY;
         cfg.dissolved_gas_henry_coeff = 2.175e-7;
         cfg.dissolved_gas_initial = 0.2175;
         cfg.dissolved_gas_max = 0.5;

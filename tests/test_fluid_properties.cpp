@@ -55,11 +55,11 @@ SimulationConfig make_valid_r290_validation_config() {
     cfg.p_cav = 1.0e5;
     cfg.bc_z_south_val = 1.0e6;
     cfg.bc_z_north_val = 1.0e6;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
     cfg.dissolved_gas_species = DissolvedGasSpecies::PROPANE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
-    cfg.density_model = DensityModel::MASS_VOLUME_MIXING;
-    cfg.viscosity_model = ViscosityModel::EMPIRICAL_CORRELATION;
+    cfg.solubility_model = SolubilityModel::HENRY;
+    cfg.density_model = DensityModel::MIXTURE;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::EMPIRICAL;
     cfg.dissolved_gas_initial = 0.2175;
     cfg.dissolved_gas_max = 0.5;
     cfg.dissolved_gas_henry_coeff = 2.175e-7;
@@ -72,7 +72,7 @@ SimulationConfig make_valid_r290_validation_config() {
     cfg.viscosity_pressure_coeff = 1.5e-8;
     cfg.gas_pressure_floor = 1.0e5;
     cfg.gas_alpha_max = 0.6;
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::MCADAMS_QUALITY;
+    cfg.mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     cfg.mu_gas = 8.7e-6;
     cfg.property_reference_pressure = 1.0e6;
     cfg.property_reference_temperature = 313.15;
@@ -100,7 +100,7 @@ void test_gas_config_validation() {
     SimulationConfig non_jfo = cfg;
     non_jfo.cavitation_model = CavitationModel::GUMBEL;
     non_jfo.validate(errors, warnings);
-    check(contains_text(errors, "ELROD_ADAMS"), "gas cavitation should require Elrod-Adams/JFO");
+    check(contains_text(errors, "JFO"), "gas cavitation should require JFO (Elrod-Adams)");
     check(contains_text(warnings, "GUMBEL"), "Gumbel should be visibly warned as non-mass-conserving");
 
     SimulationConfig no_initial_gas = cfg;
@@ -121,15 +121,15 @@ void test_config_parsing_and_tables() {
         "viscosity_model = empirical\n"
         "solubility_table = 100000:0.01, 200000:0.02\n");
 
-    check(cfg.fluid_property_model == FluidPropertyModel::GAS_CAVITATION_MIXTURE,
+    check(cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE,
           "fluid_property_model alias should parse");
     check(cfg.dissolved_gas_species == DissolvedGasSpecies::PROPANE,
           "R290 alias should parse as propane");
-    check(cfg.oil_gas_solution_model == OilGasSolutionModel::TABLE,
-          "table solution model should parse");
-    check(cfg.density_model == DensityModel::MASS_VOLUME_MIXING,
+    check(cfg.solubility_model == SolubilityModel::TABLE,
+          "table solubility model should parse");
+    check(cfg.density_model == DensityModel::MIXTURE,
           "density model alias should parse");
-    check(cfg.viscosity_model == ViscosityModel::EMPIRICAL_CORRELATION,
+    check(cfg.liquid_viscosity_model == LiquidViscosityModel::EMPIRICAL,
           "viscosity model alias should parse");
     check(cfg.solubility_table.size() == 2,
           "property table should parse x:value pairs");
@@ -163,7 +163,7 @@ void test_pure_oil_fallback() {
 
 void test_solution_property_models() {
     SimulationConfig cfg;
-    cfg.fluid_property_model = FluidPropertyModel::OIL_DISSOLVED_GAS;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
     cfg.rho = 960.0;
     cfg.mu = 0.10;
     cfg.dissolved_gas_max = 0.5;
@@ -173,19 +173,20 @@ void test_solution_property_models() {
     const double c_high = FluidProperties::equilibrium_dissolved_gas(2.0e5, 300.0, cfg);
     check(c_high > c_low, "Henry dissolved gas concentration should increase with pressure");
 
-    cfg.density_model = DensityModel::MASS_VOLUME_MIXING;
+    cfg.density_model = DensityModel::MIXTURE;
     const double gas_rho = FluidProperties::gas_density(1.0e5, 300.0, cfg);
     const double mixture_rho = FluidProperties::liquid_solution_density(0.03, 1.0e5, 300.0, cfg);
     check(mixture_rho > gas_rho && mixture_rho < cfg.rho,
-          "mass-volume density should remain between gas and pure oil density");
+          "mixture density should remain between gas and pure oil density");
 
-    cfg.viscosity_model = ViscosityModel::LOG_MIXING;
+    // Empirical with the T and p coefficients left at 0 reduces to the old log-mixing law.
+    cfg.liquid_viscosity_model = LiquidViscosityModel::EMPIRICAL;
     cfg.solution_viscosity_gas_coeff = -4.0;
     const double mixture_mu = FluidProperties::liquid_solution_viscosity(0.05, 1.0e5, 300.0, cfg);
     check(mixture_mu > 0.0 && mixture_mu < cfg.mu,
-          "log viscosity model should apply gas-concentration coefficient");
+          "empirical viscosity should apply the gas-concentration coefficient");
 
-    cfg.viscosity_model = ViscosityModel::TABLE;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::TABLE;
     cfg.viscosity_table = {{0.0, 0.10}, {0.10, 0.05}};
     check(std::abs(FluidProperties::liquid_solution_viscosity(0.05, 1.0e5, 300.0, cfg) - 0.075) < 1.0e-14,
           "table viscosity should interpolate by dissolved gas concentration");
@@ -193,11 +194,11 @@ void test_solution_property_models() {
 
 void test_r290_pz68_reference_point() {
     SimulationConfig cfg;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
     cfg.dissolved_gas_species = DissolvedGasSpecies::PROPANE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
-    cfg.density_model = DensityModel::MASS_VOLUME_MIXING;
-    cfg.viscosity_model = ViscosityModel::EMPIRICAL_CORRELATION;
+    cfg.solubility_model = SolubilityModel::HENRY;
+    cfg.density_model = DensityModel::MIXTURE;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::EMPIRICAL;
     cfg.rho = 960.0;
     cfg.mu = 0.0653;
     cfg.dissolved_gas_max = 0.5;
@@ -231,8 +232,8 @@ void test_release_and_resorption() {
     SimulationConfig cfg;
     cfg.n_theta_global = 8;
     cfg.n_z_global = 2;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
     cfg.dissolved_gas_henry_coeff = 1.0e-8;
     cfg.dissolved_gas_max = 0.5;
     cfg.gas_mass_transfer_rate = 20.0;
@@ -272,8 +273,8 @@ void test_free_gas_is_not_deleted_in_full_film() {
     SimulationConfig cfg;
     cfg.n_theta_global = 8;
     cfg.n_z_global = 2;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
     cfg.dissolved_gas_henry_coeff = 2.0e-7;
     cfg.dissolved_gas_max = 0.5;
     cfg.gas_mass_transfer_rate = 20.0;
@@ -314,8 +315,8 @@ void test_pressure_inlet_imposes_initial_gas_state() {
     SimulationConfig cfg;
     cfg.n_theta_global = 8;
     cfg.n_z_global = 2;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
     cfg.dissolved_gas_initial = 0.20;
     cfg.dissolved_gas_max = 0.5;
     cfg.dissolved_gas_henry_coeff = 2.0e-7;
@@ -351,49 +352,39 @@ void test_pressure_inlet_imposes_initial_gas_state() {
           "non-inlet supersaturated cell should still release gas");
 }
 
-void test_gas_mixture_viscosity_models() {
+void test_mixture_viscosity_models() {
     SimulationConfig cfg;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
     cfg.mu = 0.05;
     cfg.mu_gas = 1.0e-5;
     cfg.gas_alpha_max = 1.0;
     const double mu_l = cfg.mu;
 
-    const GasMixtureViscosityModel all_models[] = {
-        GasMixtureViscosityModel::EINSTEIN_DILUTE,
-        GasMixtureViscosityModel::DUKLER_VOID,
-        GasMixtureViscosityModel::MCADAMS_QUALITY,
-        GasMixtureViscosityModel::KRIEGER_DOUGHERTY,
-        GasMixtureViscosityModel::LINEAR_QUALITY};
-    for (GasMixtureViscosityModel model : all_models) {
-        cfg.gas_mixture_viscosity_model = model;
+    const MixtureViscosityModel all_models[] = {
+        MixtureViscosityModel::DUKLER,
+        MixtureViscosityModel::LINEAR,
+        MixtureViscosityModel::MCADAMS};
+    for (MixtureViscosityModel model : all_models) {
+        cfg.mixture_viscosity_model = model;
         check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 0.0, 0.0, cfg) - mu_l) <
                   1.0e-15 * mu_l,
               "every mixture viscosity model must return mu_liquid at alpha_gas = 0");
     }
 
-    // Gas-limit asymptotes: void/quality-weighted models thin toward mu_gas.
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::DUKLER_VOID;
-    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 0.0, cfg) - cfg.mu_gas) <
-              1.0e-12,
-          "DUKLER_VOID must reach mu_gas at alpha_gas = 1");
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::MCADAMS_QUALITY;
-    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 1.0, cfg) - cfg.mu_gas) <
-              1.0e-12,
-          "MCADAMS_QUALITY must reach mu_gas at quality = 1");
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::LINEAR_QUALITY;
-    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 1.0, cfg) - cfg.mu_gas) <
-              1.0e-12,
-          "LINEAR_QUALITY must reach mu_gas at quality = 1");
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::KRIEGER_DOUGHERTY;
-    const double kd_limit = FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 0.0, cfg);
-    check(std::isfinite(kd_limit) && kd_limit > 10.0 * mu_l,
-          "KRIEGER_DOUGHERTY must stay finite and diverge upward near packing");
+    // Gas-limit asymptotes: every surviving model thins toward mu_gas at full void/quality.
+    cfg.mixture_viscosity_model = MixtureViscosityModel::DUKLER;
+    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 0.0, cfg) - cfg.mu_gas) < 1.0e-12,
+          "DUKLER must reach mu_gas at alpha_gas = 1");
+    cfg.mixture_viscosity_model = MixtureViscosityModel::LINEAR;
+    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 1.0, cfg) - cfg.mu_gas) < 1.0e-12,
+          "LINEAR must reach mu_gas at quality = 1");
+    cfg.mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
+    check(std::abs(FluidProperties::gas_mixture_viscosity(mu_l, 1.0, 1.0, cfg) - cfg.mu_gas) < 1.0e-12,
+          "MCADAMS must reach mu_gas at quality = 1");
 
-    // Monotonicity: thinning models decrease with gas content, Einstein is the
-    // documented dilute exception (increases).
-    auto monotone_decreasing = [&](GasMixtureViscosityModel model, bool use_quality) {
-        cfg.gas_mixture_viscosity_model = model;
+    // Monotonicity: each surviving model decreases (thins) with gas content.
+    auto monotone_decreasing = [&](MixtureViscosityModel model, bool use_quality) {
+        cfg.mixture_viscosity_model = model;
         double previous = mu_l + 1.0;
         for (double x = 0.0; x <= 1.0 + 1.0e-12; x += 0.1) {
             const double mu_mix = use_quality
@@ -404,35 +395,25 @@ void test_gas_mixture_viscosity_models() {
         }
         return true;
     };
-    check(monotone_decreasing(GasMixtureViscosityModel::DUKLER_VOID, false),
-          "DUKLER_VOID must decrease monotonically with alpha_gas");
-    check(monotone_decreasing(GasMixtureViscosityModel::MCADAMS_QUALITY, true),
-          "MCADAMS_QUALITY must decrease monotonically with quality");
-    check(monotone_decreasing(GasMixtureViscosityModel::LINEAR_QUALITY, true),
-          "LINEAR_QUALITY must decrease monotonically with quality");
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::EINSTEIN_DILUTE;
-    check(FluidProperties::gas_mixture_viscosity(mu_l, 0.5, 0.0, cfg) > mu_l,
-          "EINSTEIN_DILUTE thickens with alpha_gas (documented dilute behavior)");
+    check(monotone_decreasing(MixtureViscosityModel::DUKLER, false),
+          "DUKLER must decrease monotonically with alpha_gas");
+    check(monotone_decreasing(MixtureViscosityModel::MCADAMS, true),
+          "MCADAMS must decrease monotonically with quality");
+    check(monotone_decreasing(MixtureViscosityModel::LINEAR, true),
+          "LINEAR must decrease monotonically with quality");
 
-    // Validation guards.
+    // Validation guard: all surviving models need a positive free-gas viscosity.
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
     SimulationConfig guard = make_valid_r290_validation_config();
-    guard.gas_mixture_viscosity_model = GasMixtureViscosityModel::EINSTEIN_DILUTE;
-    guard.gas_alpha_max = 1.0;
-    guard.validate(errors, warnings);
-    check(contains_text(errors, "EINSTEIN_DILUTE"),
-          "EINSTEIN_DILUTE with gas_alpha_max > 0.6 must fail validation");
-
-    guard = make_valid_r290_validation_config();
     guard.mu_gas = 0.0;
     guard.validate(errors, warnings);
     check(contains_text(errors, "mu_gas"),
-          "quality/void-weighted mixture viscosity must require mu_gas > 0");
+          "mixture viscosity must require mu_gas > 0");
 
     guard = make_valid_r290_validation_config();
     guard.validate(errors, warnings);
-    check(errors.empty(), "shipped MCADAMS_QUALITY configuration must validate cleanly");
+    check(errors.empty(), "shipped MCADAMS configuration must validate cleanly");
 }
 
 }  // namespace
@@ -448,7 +429,7 @@ int main(int argc, char** argv) {
     test_release_and_resorption();
     test_free_gas_is_not_deleted_in_full_film();
     test_pressure_inlet_imposes_initial_gas_state();
-    test_gas_mixture_viscosity_models();
+    test_mixture_viscosity_models();
 
     int rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);

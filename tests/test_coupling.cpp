@@ -35,18 +35,18 @@ SimulationConfig gas_steady_config() {
     cfg.bc_z_south_val = 1.0e6;
     cfg.bc_z_north_val = 1.0e6;
     cfg.solution_mode = SolutionMode::STEADY_STATE;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
-    cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
-    cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
-    cfg.density_model = DensityModel::PURE_OIL;
-    cfg.viscosity_model = ViscosityModel::PURE_OIL;
+    cfg.cavitation_model = CavitationModel::JFO;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
+    cfg.density_model = DensityModel::CONSTANT;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
     cfg.dissolved_gas_initial = 0.2175;
     cfg.dissolved_gas_max = 0.5;
     cfg.dissolved_gas_henry_coeff = 2.175e-7;
     cfg.gas_mass_transfer_rate = 500.0;
     cfg.gas_alpha_max = 0.6;
     cfg.mu_gas = 8.7e-6;
-    cfg.gas_mixture_viscosity_model = GasMixtureViscosityModel::MCADAMS_QUALITY;
+    cfg.mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     cfg.property_reference_pressure = 1.0e6;
     cfg.property_reference_temperature = 313.15;
     cfg.temperature_initial = 313.15;
@@ -92,13 +92,13 @@ int main(int argc, char** argv) {
         striated.cavitated_film_model = CavitatedFilmModel::STRIATED;
         striated.cavitation_model = CavitationModel::GUMBEL;
         striated.validate(errors, warnings);
-        check(has_substr(errors, "STRIATED requires cavitation_model = ELROD_ADAMS"),
+        check(has_substr(errors, "STRIATED requires cavitation_model = JFO"),
               "WP-6: STRIATED + GUMBEL must error");
 
-        striated.cavitation_model = CavitationModel::ELROD_ADAMS;
+        striated.cavitation_model = CavitationModel::JFO;
         errors.clear(); warnings.clear();
         striated.validate(errors, warnings);
-        check(!has_substr(errors, "STRIATED requires"), "WP-6: STRIATED + ELROD_ADAMS is valid");
+        check(!has_substr(errors, "STRIATED requires"), "WP-6: STRIATED + JFO is valid");
     }
 
     // --- coupling config round-trip -----------------------------------------

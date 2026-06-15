@@ -24,5 +24,5 @@ powershell -File ..\validation\grid_convergence\run.ps1 -Ranks 2
 Outputs `grid_convergence_summary.csv` in the working directory. Cavitation
 extent and load should converge monotonically under refinement; archive the
 summary alongside result reviews. To study scheme sensitivity, change
-`theta_convection_scheme` in `config_base.txt` (UPWIND / TVD_VANLEER /
+`theta_convection_scheme` in `config_base.txt` (UPWIND / LINEAR / VANLEER /
 TYPE_DIFFERENCING) and rerun.

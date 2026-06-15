@@ -98,7 +98,7 @@ static double max_theta_ghost_mismatch(const Field& theta, const Mesh& mesh) {
 // Test 4: pressure positivity.
 static void test_journal_bearing(const Mesh& mesh, Communicator& comm) {
     SimulationConfig cfg;
-    cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+    cfg.cavitation_model = CavitationModel::JFO;
     cfg.e = 0.8 * cfg.c;   // eccentricity ratio ε = 0.8
     cfg.bulk_modulus = 1e5;
     cfg.outer_tol = 1e-8;

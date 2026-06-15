@@ -2,6 +2,50 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-06-15 - Config model-surface cleanup (rename / reorder / prune + LINEAR scheme)
+
+Reason: the model selectors had accumulated redundant and mislabeled options. This
+pass renames them for clarity, orders every enum simplest -> most accurate, prunes
+options with no distinct justification, and documents each model in PHYSICS.md §17.
+Old config tokens and keys remain accepted as aliases, so existing `config_*.txt`
+files keep working; full suite stays green (22/22).
+
+- **Renames** (enum types, values, config keys; old names still parse):
+  - `cavitation_model`: `ELROD_ADAMS` -> **`JFO`** (the model is the Elrod-Adams
+    algorithm for JFO cavitation; the internal `solve_elrod`/`elrod_*` code keeps its
+    name). Order: `FULL_SOMMERFELD` -> `GUMBEL` -> `JFO`.
+  - `fluid_property_model`: `OIL_DISSOLVED_GAS` -> **`SINGLE_PHASE`**,
+    `GAS_CAVITATION_MIXTURE` -> **`TWO_PHASE`**.
+  - `oil_gas_solution_model` -> key **`solubility_model`**.
+  - `density_model`: `PURE_OIL` -> **`CONSTANT`**, `MASS_VOLUME_MIXING` -> **`MIXTURE`**
+    (now documents both phase densities as explicit inputs: `rho` and
+    `dissolved_gas_liquid_density`).
+  - `viscosity_model` -> key **`liquid_viscosity_model`**; `PURE_OIL` -> **`CONSTANT`**,
+    `EMPIRICAL_CORRELATION` -> **`EMPIRICAL`**.
+  - `gas_mixture_viscosity_model` -> key **`mixture_viscosity_model`**; `*_QUALITY`/
+    `*_VOID` suffixes dropped (`MCADAMS`, `LINEAR`, `DUKLER`).
+  - `bc_z_*_thermal`: `OPEN` -> **`ZERO_GRADIENT`**, `RESERVOIR` -> **`CONSTANT`**.
+- **Pruned** (with graceful alias-to-survivor on parse):
+  - Liquid viscosity `LOG_MIXING` (it is `EMPIRICAL` with the T and p coefficients 0).
+  - Solubility `BUNSEN` (the same linear-in-p law as Henry); the unused
+    `dissolved_gas_bunsen_coeff` key now warns and is ignored.
+  - Mixture viscosity `EINSTEIN_DILUTE` (thickens with gas, wrong as alpha->1) and
+    `KRIEGER_DOUGHERTY` (suspension packing law). Survivors: `DUKLER` (legacy,
+    kept for comparison), `LINEAR` (Grando), `MCADAMS`. **Default is now `MCADAMS`**
+    (was `EINSTEIN_DILUTE`).
+  - Convection `TVD_MINMOD` (van Leer dominates it); `TVD_VANLEER` -> `VANLEER`.
+- **Added**: convection scheme **`LINEAR`** (2nd-order central, unbounded) as a
+  reference scheme alongside `UPWIND`/`VANLEER`/`TYPE_DIFFERENCING`, in
+  `couette_face_value` (reynolds.cpp) and `FVM::divergence` (fvm.cpp).
+- **Kept as labeled references** (per the "keep the simplest model for comparison"
+  principle): `FULL_SOMMERFELD` (already implemented as the no-clamp `Reynolds::solve`
+  path) and all five `motion_time_method` integrators (the non-default ones tagged
+  `[reference]` in the GUI).
+- GUI (`panels_setup.cpp`) combos reordered/relabeled with the new names and hover
+  text; `schema.cpp` drops the dead Bunsen entry. PHYSICS.md gains **§17 "Configurable
+  Model Options"** (the canonical reference the GUI hover text mirrors). README and
+  all example configs updated to the new tokens.
+
 ### 2026-06-15 - WP-11 follow-up: reformation reflood carries reservoir state
 
 Reason: complete the WP-11 boundary-flux unification. The shared
