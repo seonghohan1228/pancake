@@ -1,0 +1,156 @@
+# Geometry
+R = 0.0215
+c = 4.25e-05
+e = 1.2e-05
+L = 0.04
+attitude_angle_deg = -90.0
+load_angle_deg = 0.0
+tilt_slope_x = 0
+tilt_slope_y = 0
+
+# Grid
+n_theta_global = 60
+n_z_global = 20
+
+# Time
+end_t = 0.1
+dt = 0.000001
+write_interval = 0.001
+# solution_mode options: TRANSIENT, STEADY_STATE
+solution_mode = TRANSIENT
+# Field solves are backward-Euler; only bearing motion has a selectable integrator.
+motion_time_method = EULER_IMPLICIT
+
+# Numerics
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+gas_convection_scheme = UPWIND
+diagnostics_interval = 1
+
+# Physics
+omega = 104.71975512
+omega_ramp_time = 0.01
+mu = 0.0653
+rho = 960
+p_cav = 3.0e4
+bulk_modulus = 1e9
+
+# Energy Equation
+# temperature_model options: ISOTHERMAL, ENERGY_EQUATION
+temperature_model = ENERGY_EQUATION
+temperature_initial = 313.15
+temperature_reference = 313.15
+journal_wall_temperature = 313.15
+bearing_wall_temperature = 313.15
+rho_cp = 1.92e6
+thermal_conductivity = 0.15
+journal_heat_transfer = 1000
+bearing_heat_transfer = 1000
+
+# Fluid Properties
+# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE
+fluid_property_model = TWO_PHASE
+# dissolved_gas_species options: AIR, PROPANE
+dissolved_gas_species = PROPANE
+# solubility_model options: HENRY, TABLE
+solubility_model = HENRY
+# density_model options: CONSTANT, MIXTURE, TABLE
+density_model = MIXTURE
+# liquid_viscosity_model options: CONSTANT, EMPIRICAL, TABLE
+liquid_viscosity_model = EMPIRICAL
+dissolved_gas_initial = 0.2175
+dissolved_gas_max = 0.5
+dissolved_gas_henry_coeff = 2.175e-7
+dissolved_gas_henry_temp_coeff = 1800
+dissolved_gas_bunsen_coeff = 0
+dissolved_gas_liquid_density = 500
+gas_mass_transfer_rate = 500
+dissolved_gas_diffusivity = 1e-9
+solution_density_gas_coeff = 0
+solution_viscosity_gas_coeff = -11.40
+viscosity_temperature_coeff = 4000
+viscosity_pressure_coeff = 1.5e-8
+# McAdams homogeneous two-phase viscosity (correct thinning across the void range).
+# mu_gas is saturated propane vapor near 40 C (~8.7e-6 Pa s).
+gas_alpha_max = 0.6
+mixture_viscosity_model = MCADAMS
+mu_gas = 8.7e-6
+gas_pressure_floor = 1e5
+property_reference_pressure = 1e6
+property_reference_temperature = 313.15
+# Henry + exp(a_c c_d) viscosity are local tangents calibrated at (10 bar, 40 C)
+# only; measured R290/PZ68 isotherm table data is pending.
+# Tables use x:value pairs. Solubility is keyed by pressure; density/viscosity by dissolved mass fraction.
+solubility_table =
+density_table =
+viscosity_table =
+
+# Bearing Motion
+# motion_model options: STATIC, MOVING_BEARING
+motion_model = MOVING_BEARING
+bearing_initial_from_attitude = true
+bearing_initial_x = 0
+bearing_initial_y = 0
+bearing_initial_z = 0
+bearing_initial_vx = 0
+bearing_initial_vy = 0
+bearing_initial_vz = 0
+bearing_mass = 1.64
+bearing_stiffness_x = 0
+bearing_stiffness_y = 0
+bearing_stiffness_z = 0
+bearing_damping_x = 0
+bearing_damping_y = 0
+bearing_damping_z = 0
+external_load_x = 4.28612223838e-13
+external_load_y = 7000
+external_load_z = 0
+min_film_thickness = 1e-09
+stop_on_nonpositive_film = true
+
+# Axial Boundary Conditions (Outlets)
+# Options: DIRICHLET, NEUMANN, INLET_OUTLET
+# JFO derives boundary film content from bc_z_*_val, p_cav, and bulk_modulus.
+# bc_z_*_thermal: ZERO_GRADIENT (submerged/same-oil inflow),
+#   CONSTANT (fed inlet, carries temperature_reference on inflow)
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 1.0e6
+bc_z_south_thermal = ZERO_GRADIENT
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 1.0e6
+bc_z_north_thermal = ZERO_GRADIENT
+
+# Cavitation
+# Options: FULL_SOMMERFELD, GUMBEL, JFO
+cavitation_model = JFO
+max_outer_iters = 50
+outer_tol = 1e-6
+theta_min = 1e-6
+log_outer_iters = false
+
+# Inlets
+# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)]
+# inlet_groove   = theta(deg) width(deg) p_supply(Pa) [t_supply(K)]
+# Omit t_supply for an open same-oil region; provide it for a fed inlet.
+inlet_groove = 90 10 1.0e6
+# inlet_circular = 90 0.02 4.25e-05 1.0e6
+
+# Output
+# output_fields accepts comma-separated field names.
+# Options: pressure, film_content, h, rho, mu,
+#          rho_liquid_solution, mu_liquid_solution,
+#          temperature, heat_generation, dissolved_gas, alpha_gas,
+#          gas_mass_transfer,
+#          inlet_indicator, velocity (active vector),
+#          pressure_force_x, pressure_force_y, pressure_force_z,
+#          viscous_force_x, viscous_force_y, viscous_force_z,
+#          fluid_force_x, fluid_force_y, fluid_force_z,
+#          external_load_x, external_load_y, external_load_z,
+#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,
+#          friction_torque. Legacy load_x/load_y/load_z requests map to pressure_force_*.
+output_dir = results/r290_pz68
+filename_prefix = solution
+output_verbosity = DETAILED
+output_write_3d = true
+output_write_flat = true
+output_fields = pressure, film_content, h, rho, mu, rho_liquid_solution, mu_liquid_solution, rho_gas, temperature, heat_generation, dissolved_gas, free_gas_mass, alpha_gas, gas_mass_transfer, inlet_indicator, velocity, fluid_force_x, fluid_force_y, friction_torque

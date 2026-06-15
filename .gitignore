@@ -1,5 +1,22 @@
 # Build
 build/
+build-linux/
+build-windows-mingw/
+build-gui-check/
+
+# Results
+results/
+
+# Legacy
+legacy/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Claude (local agent state)
+.claude/settings.local.json
+.claude/*.lock
 
 # Zed
 .zed/

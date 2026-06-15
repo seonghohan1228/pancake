@@ -1,0 +1,76 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "GUI Release (MSVC, static CRT)",
+      "description": "Standalone pancake_gui.exe with MSVC. Run from a VS x64 developer prompt (cl.exe on PATH).",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>",
+        "PANCAKE_BUILD_SOLVER": "OFF",
+        "PANCAKE_BUILD_TESTS": "OFF",
+        "PANCAKE_BUILD_GUI": "ON"
+      }
+    },
+    {
+      "name": "release-mingw",
+      "displayName": "GUI Release (MinGW, fully static)",
+      "description": "Standalone pancake_gui.exe with MSYS2 MinGW64 GCC; import table contains only Windows-shipped DLLs.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-mingw",
+      "environment": {
+        "PATH": "C:\\msys64\\mingw64\\bin;$penv{PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "C:/msys64/mingw64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
+        "CMAKE_RC_COMPILER": "C:/msys64/mingw64/bin/windres.exe",
+        "PANCAKE_BUILD_SOLVER": "OFF",
+        "PANCAKE_BUILD_TESTS": "OFF",
+        "PANCAKE_BUILD_GUI": "ON"
+      }
+    },
+    {
+      "name": "windows-native-mingw",
+      "displayName": "Windows Native Solver + GUI",
+      "description": "Builds pancake.exe, pancake_gui.exe, tests, and deployed MinGW/PETSc runtime DLLs from the MSYS2 MINGW64 shell.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-windows-mingw",
+      "environment": {
+        "PATH": "C:\\msys64\\mingw64\\bin;$penv{PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PANCAKE_BUILD_SOLVER": "ON",
+        "PANCAKE_BUILD_TESTS": "ON",
+        "PANCAKE_BUILD_GUI": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "displayName": "GUI Release (MSVC)",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release-mingw",
+      "displayName": "GUI Release (MinGW)",
+      "configurePreset": "release-mingw"
+    },
+    {
+      "name": "windows-native-mingw-release",
+      "displayName": "Windows Native Solver + GUI Release",
+      "configurePreset": "windows-native-mingw"
+    }
+  ]
+}

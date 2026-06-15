@@ -22,6 +22,7 @@ public:
 
     inline double& operator()(int i, int j) { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }      // Read/write
     inline double operator()(int i, int j) const { return data[(j + n_ghost) * stride_theta + (i + n_ghost)]; } // Read-only
+    inline double old(int i, int j) const { return old_data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }    // Previous timestep
 
     void fill(double value);
     void store_old_time() { old_data = data; }
@@ -34,6 +35,8 @@ public:
     Field& add(const std::string& name, const Mesh& mesh, int ghost_layers = 2, GridLocation loc = GridLocation::CENTER);
     Field& operator[](const std::string& name);
     const Field& operator[](const std::string& name) const;
+
+    bool has(const std::string& name) const { return storage.find(name) != storage.end(); }
 
     // For iterating
     auto begin() { return storage.begin(); }
