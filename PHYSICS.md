@@ -185,6 +185,25 @@ the WP-1 void coupling (`PLAN.md` Phase E) is the planned mechanistic
 replacement; see §16 for the oil–refrigerant gaseous-cavitation theory and
 `docs/CAVITATION_OIL_REFRIGERANT.md` for the cited basis.
 
+**Reformation reflood at a cavitated end (`consistent_boundary_flux`).** The
+barotropic Dirichlet link above maps the boundary *film content* through the
+$\theta_{bc}=\exp[(p_{bc}-p_{cav})/\beta]$ relation, which is only valid for a
+full-film boundary cell. When a boundary cell is cavitated ($\theta<1$), the
+physical process at a submerged end is **reformation**: reservoir liquid floods
+back in at the Poiseuille rate set by the cavitation plateau,
+
+$$\dot m_{\text{reflood}} = \rho_\ell\,\frac{h^3}{12\mu}\,\frac{p_{bc}-p_{cav}}{\Delta z/2}\,R\,\Delta\theta \;\ge\; 0 ,$$
+
+an **inflow** (the bulk modulus cancels, so the rate is independent of $\beta$).
+With `consistent_boundary_flux` the liquid balance, energy equation, and
+dissolved-gas equation all use this single reflood rate
+(`SimulationConfig::reformation_boundary_velocity`). The reflooding liquid is
+reservoir liquid, so it convects the reservoir state into the cell: the
+**reservoir temperature** `temperature_reference` (energy, RESERVOIR mode) and the
+**reservoir composition** `dissolved_gas_initial` at the full liquid density
+$\rho_\ell$ (gas). Without the flag, or for a full-film boundary cell, the
+boundary face reduces to the barotropic Dirichlet link above (default, unchanged).
+
 ---
 
 ## 7. Reynolds Solvers

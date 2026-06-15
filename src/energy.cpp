@@ -150,12 +150,20 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
     const double face_length = mesh.R * mesh.get_d_theta();
     const double d_z = mesh.get_d_z();
     const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
-    const double g_face = full_film_switch(theta, i, 0);
-    const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_south_val);
-    const double dp_dz = (p(i, 0) - p_bc) / (0.5 * d_z);
     const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
     const double rho_cp_face = volumetric_heat_capacity(fields, cfg, i, 0);
-    const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+    // Cavitated boundary cell under consistent_boundary_flux re-floods at the Elrod
+    // reformation rate; the inflowing reservoir liquid carries temperature_reference
+    // (RESERVOIR mode) through add_axial_boundary_convection below.
+    double u_z;
+    if (cfg.is_reformation_boundary(theta(i, 0))) {
+        u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face, 0.5 * d_z, true);
+    } else {
+        const double g_face = full_film_switch(theta, i, 0);
+        const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_south_val);
+        const double dp_dz = (p(i, 0) - p_bc) / (0.5 * d_z);
+        u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+    }
     return rho_cp_face * h_face * u_z * face_length;
 }
 
@@ -167,12 +175,17 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
     const double face_length = mesh.R * mesh.get_d_theta();
     const double d_z = mesh.get_d_z();
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
-    const double g_face = full_film_switch(theta, i, j);
-    const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_north_val);
-    const double dp_dz = (p_bc - p(i, j)) / (0.5 * d_z);
     const double mu_face = dynamic_viscosity(fields, cfg, i, j);
     const double rho_cp_face = volumetric_heat_capacity(fields, cfg, i, j);
-    const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+    double u_z;
+    if (cfg.is_reformation_boundary(theta(i, j))) {
+        u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face, 0.5 * d_z, false);
+    } else {
+        const double g_face = full_film_switch(theta, i, j);
+        const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_north_val);
+        const double dp_dz = (p_bc - p(i, j)) / (0.5 * d_z);
+        u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+    }
     return rho_cp_face * h_face * u_z * face_length;
 }
 

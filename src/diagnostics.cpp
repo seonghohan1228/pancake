@@ -214,13 +214,23 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
         // South face: u_z > 0 is inflow.
         if (pressure_boundary(cfg.bc_z_south_type)) {
             const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
-            const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_south_val);
-            const double dp_dz = (pressure(i, 0) - p_bc) / (0.5 * d_z);
-            const double g_face = theta(i, 0) >= 1.0 ? 1.0 : 0.0;
-            const double u_z = -g_face * h_face * h_face * dp_dz /
-                (12.0 * dynamic_viscosity(fields, cfg, i, 0));
+            const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
+            double u_z;
+            double rho_face;
+            if (cfg.is_reformation_boundary(theta(i, 0))) {
+                // Mirror the gas-transport reflood: full-density reservoir liquid.
+                u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
+                                                        0.5 * d_z, true);
+                rho_face = std::max(field_value(fields, "rho_liquid_solution", cfg.rho, i, 0), 1.0e-30);
+            } else {
+                const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_south_val);
+                const double dp_dz = (pressure(i, 0) - p_bc) / (0.5 * d_z);
+                const double g_face = theta(i, 0) >= 1.0 ? 1.0 : 0.0;
+                u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+                rho_face = field_value(fields, "rho", cfg.rho, i, 0);
+            }
             const double volume_flux = u_z * mesh.R * mesh.get_d_theta();
-            const double mass_flux = field_value(fields, "rho", cfg.rho, i, 0) * h_face * volume_flux;
+            const double mass_flux = rho_face * h_face * volume_flux;
             if (mass_flux >= 0.0) {
                 inflow += mass_flux * c_in;  // reservoir composition, zero free gas
             } else {
@@ -232,13 +242,22 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
         if (pressure_boundary(cfg.bc_z_north_type)) {
             const int j = n_z - 1;
             const double h_face = std::max(h(i, j), cfg.min_film_thickness);
-            const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_north_val);
-            const double dp_dz = (p_bc - pressure(i, j)) / (0.5 * d_z);
-            const double g_face = theta(i, j) >= 1.0 ? 1.0 : 0.0;
-            const double u_z = -g_face * h_face * h_face * dp_dz /
-                (12.0 * dynamic_viscosity(fields, cfg, i, j));
+            const double mu_face = dynamic_viscosity(fields, cfg, i, j);
+            double u_z;
+            double rho_face;
+            if (cfg.is_reformation_boundary(theta(i, j))) {
+                u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
+                                                        0.5 * d_z, false);
+                rho_face = std::max(field_value(fields, "rho_liquid_solution", cfg.rho, i, j), 1.0e-30);
+            } else {
+                const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_north_val);
+                const double dp_dz = (p_bc - pressure(i, j)) / (0.5 * d_z);
+                const double g_face = theta(i, j) >= 1.0 ? 1.0 : 0.0;
+                u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+                rho_face = field_value(fields, "rho", cfg.rho, i, j);
+            }
             const double volume_flux = u_z * mesh.R * mesh.get_d_theta();
-            const double mass_flux = field_value(fields, "rho", cfg.rho, i, j) * h_face * volume_flux;
+            const double mass_flux = rho_face * h_face * volume_flux;
             if (mass_flux < 0.0) {
                 inflow += -mass_flux * c_in;
             } else {

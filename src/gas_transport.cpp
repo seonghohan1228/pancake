@@ -36,11 +36,17 @@ double south_boundary_velocity(const Field& p, const Field& h, const Field& thet
                                const SimulationConfig& cfg, int i) {
     if (!uses_pressure_boundary(cfg.bc_z_south_type)) return 0.0;
     const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
+    const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
+    // Cavitated boundary cell under consistent_boundary_flux: the Elrod solve
+    // re-floods it at the physical reformation rate, so convect that same inflow.
+    if (cfg.is_reformation_boundary(theta(i, 0))) {
+        return cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
+                                                 0.5 * mesh.get_d_z(), true);
+    }
     const double p_bc = cfg.cavitation_model == CavitationModel::ELROD_ADAMS
         ? cfg.elrod_boundary_pressure(cfg.bc_z_south_val)
         : cfg.bc_z_south_val;
     const double dp_dz = (p(i, 0) - p_bc) / (0.5 * mesh.get_d_z());
-    const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
     return -full_film_switch(theta, i, 0) * h_face * h_face * dp_dz / (12.0 * mu_face);
 }
 
@@ -50,12 +56,26 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
     if (!uses_pressure_boundary(cfg.bc_z_north_type)) return 0.0;
     const int j = mesh.n_z_local - 1;
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
+    const double mu_face = dynamic_viscosity(fields, cfg, i, j);
+    if (cfg.is_reformation_boundary(theta(i, j))) {
+        return cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
+                                                 0.5 * mesh.get_d_z(), false);
+    }
     const double p_bc = cfg.cavitation_model == CavitationModel::ELROD_ADAMS
         ? cfg.elrod_boundary_pressure(cfg.bc_z_north_val)
         : cfg.bc_z_north_val;
     const double dp_dz = (p_bc - p(i, j)) / (0.5 * mesh.get_d_z());
-    const double mu_face = dynamic_viscosity(fields, cfg, i, j);
     return -full_film_switch(theta, i, j) * h_face * h_face * dp_dz / (12.0 * mu_face);
+}
+
+// Density convected through an axial boundary face. Full-film faces carry the
+// Elrod density rho = rho_l*theta; a cavitated reflood instead brings full-density
+// reservoir liquid rho_l, matching the Elrod liquid reflood mass exactly (the bulk
+// modulus cancels, leaving rho_l*h^3/(12 mu) * dp/dz).
+double boundary_liquid_density(const Fields& fields, const SimulationConfig& cfg,
+                               const Field& theta, int i, int j) {
+    const char* name = cfg.is_reformation_boundary(theta(i, j)) ? "rho_liquid_solution" : "rho";
+    return std::max(field_value(fields, name, cfg.rho, i, j), 1.0e-30);
 }
 
 double south_boundary_mass_flux(const Field& p, const Field& h, const Field& theta,
@@ -63,7 +83,7 @@ double south_boundary_mass_flux(const Field& p, const Field& h, const Field& the
                                 const SimulationConfig& cfg, int i) {
     const double u_z = south_boundary_velocity(p, h, theta, fields, mesh, cfg, i);
     const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
-    const double rho_face = std::max(field_value(fields, "rho", cfg.rho, i, 0), 1.0e-30);
+    const double rho_face = boundary_liquid_density(fields, cfg, theta, i, 0);
     return rho_face * h_face * u_z * mesh.R * mesh.get_d_theta();
 }
 
@@ -73,7 +93,7 @@ double north_boundary_mass_flux(const Field& p, const Field& h, const Field& the
     const int j = mesh.n_z_local - 1;
     const double u_z = north_boundary_velocity(p, h, theta, fields, mesh, cfg, i);
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
-    const double rho_face = std::max(field_value(fields, "rho", cfg.rho, i, j), 1.0e-30);
+    const double rho_face = boundary_liquid_density(fields, cfg, theta, i, j);
     return rho_face * h_face * u_z * mesh.R * mesh.get_d_theta();
 }
 

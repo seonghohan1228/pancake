@@ -1252,6 +1252,31 @@ struct SimulationConfig {
         return cs * (theta_cell - std::max(elrod_boundary_theta(bc_val), theta_min));
     }
 
+    /// True when a cavitated axial-boundary cell re-floods at the physical
+    /// reformation rate (consistent_boundary_flux + Elrod) instead of the
+    /// full-film Dirichlet link. The energy and dissolved-gas convection use this
+    /// to switch their boundary face from the full-film Poiseuille gate to the
+    /// reflood inflow, so the reformation liquid carries reservoir temperature /
+    /// composition consistently with the Elrod theta-equation.
+    bool is_reformation_boundary(double theta_cell) const {
+        return consistent_boundary_flux &&
+               cavitation_model == CavitationModel::ELROD_ADAMS && theta_cell < 1.0;
+    }
+
+    /// +z Poiseuille velocity [m/s] of the reformation reflood at one open axial
+    /// end, driven from the cavitation plateau (p_bc - p_cav) across the half-cell
+    /// (half_dz = 0.5*d_z). is_south selects the end (south reflood is +z inflow,
+    /// north reflood is -z inflow). The magnitude matches the inflow
+    /// elrod_boundary_outflow imposes on the liquid balance, so the liquid, energy,
+    /// and gas equations all see one reformation rate.
+    double reformation_boundary_velocity(double bc_val, double h_face, double mu_face,
+                                         double half_dz, bool is_south) const {
+        const double drop = elrod_boundary_pressure(bc_val) - effective_p_cav();  // >= 0
+        const double u_mag = h_face * h_face * drop /
+            (12.0 * std::max(mu_face, 1.0e-30) * std::max(half_dz, 1.0e-30));
+        return is_south ? u_mag : -u_mag;
+    }
+
     double omega_at_time(double time) const {
         if (solution_mode == SolutionMode::STEADY_STATE || omega_ramp_time <= 0.0) return omega;
         const double fraction = std::clamp(time / omega_ramp_time, 0.0, 1.0);

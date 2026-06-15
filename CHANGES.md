@@ -2,6 +2,40 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-06-15 - WP-11 follow-up: reformation reflood carries reservoir state
+
+Reason: complete the WP-11 boundary-flux unification. The shared
+`elrod_boundary_outflow` already re-floods a cavitated axial-boundary cell at the
+physical reformation rate in the *liquid* (Elrod) balance, but the energy and
+dissolved-gas convection still gated their boundary face by the full-film switch,
+so the reflood inflow carried no temperature or composition — the reformation
+liquid entered the liquid balance but was thermally/compositionally invisible.
+
+- **Shared reflood velocity** (`SimulationConfig::is_reformation_boundary`,
+  `reformation_boundary_velocity`): one Poiseuille reflood velocity driven from the
+  cavitation plateau `(p_bc - p_cav)/(½Δz)`, matching the inflow
+  `elrod_boundary_outflow` imposes on the liquid balance (the bulk modulus cancels,
+  leaving `ρ_l h³/(12μ)·dp/dz`). The liquid, energy, and gas equations now see one
+  reformation rate.
+- **Energy** ([energy.cpp](src/energy.cpp)): a cavitated boundary cell under
+  `consistent_boundary_flux` re-floods at the reformation rate; the inflowing
+  reservoir liquid carries `temperature_reference` (RESERVOIR mode) through the
+  existing inflow/outflow handling. Full-film and flag-off paths unchanged.
+- **Dissolved gas** ([gas_transport.cpp](src/gas_transport.cpp)): the reflood
+  convects the reservoir composition `dissolved_gas_initial` into the cell and uses
+  the full liquid density `rho_liquid_solution` (not the cavitation-reduced Elrod
+  density `ρ = ρ_l·θ`), so the gas reflood mass equals the Elrod liquid reflood.
+- **Diagnostics** ([diagnostics.cpp](src/diagnostics.cpp)): `gas_boundary_inflow`
+  mirrors the same reflood, so the reported `gas_boundary_flux` tracks the solver
+  at a cavitated end instead of reading zero.
+- **Test** (new `test_reformation_boundary_reservoir_state` in
+  [test_diagnostics.cpp](tests/test_diagnostics.cpp)): with the flag off a cavitated
+  boundary cell stays depleted (0.05) and the diagnostic gas flux is zero; with it
+  on the cell re-saturates to the reservoir composition (0.2175) and the diagnostic
+  mirrors the reflood as a positive inflow.
+- Default off (`consistent_boundary_flux = false`) is bit-identical to before.
+  Full suite: 22/22.
+
 ### 2026-06-15 - WP-1 acceptance gates + WP-11 shared boundary flux
 
 Reason: harden the two newest model extensions per the AUDIT_PLAN acceptance

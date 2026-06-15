@@ -280,6 +280,119 @@ void test_gas_exchange_closure() {
     check(drift < 1.0e-12, "total propane mass must be conserved in a closed cell");
 }
 
+// WP-11 follow-up: under consistent_boundary_flux a cavitated axial-boundary cell
+// re-floods at the reformation rate. The reflood must convect the reservoir
+// dissolved-gas composition into the cell (it carries nothing without the flag),
+// and the diagnostics gas-boundary flux must mirror the same reflood (nonzero with
+// the flag, zero without -- a cavitated full-film face carries none). omega = 0,
+// uniform cavitated film, no kinetics/diffusion, so the axial boundary inflow is
+// the only thing that can change the composition. The film content theta is held
+// fixed to isolate the boundary convection, so the *global* gas residual is not a
+// closure check here (frozen theta against a net inflow breaks liquid continuity);
+// the gas balance closure under solved continuity is covered by the fixed-theta
+// closed cell in test_gas_exchange_closure.
+void test_reformation_boundary_reservoir_state() {
+    auto run = [](bool reflood, double& boundary_c, double& interior_c,
+                  double& gas_boundary_flux) {
+        SimulationConfig cfg;
+        cfg.cavitation_model = CavitationModel::ELROD_ADAMS;
+        cfg.solution_mode = SolutionMode::TRANSIENT;
+        cfg.fluid_property_model = FluidPropertyModel::GAS_CAVITATION_MIXTURE;
+        cfg.oil_gas_solution_model = OilGasSolutionModel::HENRY;
+        cfg.density_model = DensityModel::PURE_OIL;
+        cfg.viscosity_model = ViscosityModel::PURE_OIL;
+        cfg.n_theta_global = 8;
+        cfg.n_z_global = 4;
+        cfg.p_cav = 1.0e5;
+        cfg.bulk_modulus = 1.0e9;
+        cfg.omega = 0.0;                       // no Couette: isolate the axial inflow
+        cfg.dt = 1.0e-3;
+        cfg.rho = 960.0;
+        cfg.c = 1.0e-4;
+        cfg.dissolved_gas_initial = 0.2175;    // reservoir composition c_in
+        cfg.dissolved_gas_max = 0.5;
+        cfg.dissolved_gas_henry_coeff = 2.175e-7;
+        cfg.gas_mass_transfer_rate = 0.0;      // disable 0-D kinetics
+        cfg.dissolved_gas_diffusivity = 0.0;   // disable diffusion
+        cfg.gas_alpha_max = 0.6;
+        cfg.gas_pressure_floor = 1.0e5;
+        cfg.temperature_initial = 313.15;
+        cfg.bc_z_south_type = BCType::DIRICHLET;
+        cfg.bc_z_south_val = 1.0e6;            // supply > p_cav: reflood drives inflow
+        cfg.bc_z_north_type = BCType::DIRICHLET;
+        cfg.bc_z_north_val = 1.0e6;
+        cfg.consistent_boundary_flux = reflood;
+        cfg.linear_rtol = 1.0e-13;
+        cfg.inlets.clear();
+
+        Mesh mesh(cfg);
+        Communicator comm(mesh);
+        LinearSystem sys(mesh);
+
+        const double theta_cav = 0.5;          // cavitated film at the boundary
+        const double c_start = 0.05;           // depleted, below c_in
+        Fields fields;
+        fields.add("pressure", mesh).fill(cfg.p_cav);            // cavitated plateau
+        fields.add("theta", mesh).fill(theta_cav);
+        fields.add("h", mesh).fill(cfg.c);
+        fields.add("rho", mesh).fill(cfg.rho * theta_cav);       // Elrod density rho_l*theta
+        fields.add("rho_liquid_solution", mesh).fill(cfg.rho);   // full liquid density
+        fields.add("mu", mesh).fill(cfg.mu);
+        fields.add("temperature", mesh).fill(cfg.temperature_initial);
+        fields.add("dissolved_gas", mesh).fill(c_start);
+        fields.add("free_gas_mass", mesh).fill(0.0);
+        fields.add("alpha_gas", mesh).fill(0.0);
+        fields.add("gas_mass_transfer", mesh).fill(0.0);
+        fields.add("gas_clamp_mass", mesh).fill(0.0);
+        comm.update_ghosts(fields);
+        fields["dissolved_gas"].store_old_time();
+        fields["free_gas_mass"].store_old_time();
+        fields["theta"].store_old_time();
+
+        Diagnostics::MassBalance balance;
+        for (int step = 0; step < 20; ++step) {
+            comm.update_ghosts(fields);
+            GasTransport::solve(fields, sys, mesh, cfg, cfg.dt);
+            balance = Diagnostics::mass_balance(fields, mesh, cfg, cfg.dt);
+            fields["dissolved_gas"].store_old_time();
+            fields["free_gas_mass"].store_old_time();
+        }
+        gas_boundary_flux = balance.gas_boundary_flux;  // already MPI-reduced
+
+        double bc = 0.0, ic = 0.0;             // south boundary (j=0) vs interior (j=1)
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            bc = std::max(bc, fields["dissolved_gas"](i, 0));
+            ic = std::max(ic, fields["dissolved_gas"](i, 1));
+        }
+        MPI_Allreduce(&bc, &boundary_c, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Allreduce(&ic, &interior_c, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    };
+
+    double c_bound_off = 0, c_int_off = 0, flux_off = 0;
+    double c_bound_on = 0, c_int_on = 0, flux_on = 0;
+    run(false, c_bound_off, c_int_off, flux_off);
+    run(true, c_bound_on, c_int_on, flux_on);
+
+    log_rank0("  reformation BC: c_boundary OFF=" + std::to_string(c_bound_off) +
+              " ON=" + std::to_string(c_bound_on) + " (c_in=0.2175); gas_boundary_flux OFF=" +
+              std::to_string(flux_off) + " ON=" + std::to_string(flux_on));
+
+    const double c_in = 0.2175, c_start = 0.05;
+    check(std::abs(c_bound_off - c_start) < 1e-6,
+          "reformation BC OFF: cavitated boundary cell receives no reflood (stays depleted)");
+    check(c_bound_on > c_start + 1e-4,
+          "reformation BC ON: reflood re-saturates the boundary cell toward c_in");
+    check(c_bound_on <= c_in + 1e-9, "reformation BC ON: boundary cell stays bounded by c_in");
+    check(c_bound_on > c_int_on + 1e-6,
+          "reformation BC ON: boundary cell gains more gas than the interior");
+    // Diagnostics mirror: a cavitated boundary carries no full-film flux (OFF), and
+    // the diagnostic picks up the reflood inflow (ON) -- same formula as the solver.
+    check(std::abs(flux_off) < 1e-30,
+          "reformation BC OFF: diagnostics report zero gas boundary flux at a cavitated end");
+    check(flux_on > 0.0,
+          "reformation BC ON: diagnostics mirror the reflood as a positive gas inflow");
+}
+
 void test_regime_and_saturation_guards() {
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
@@ -338,6 +451,7 @@ int main(int argc, char** argv) {
     test_inlet_accounting();
     test_clamp_visibility();
     test_gas_exchange_closure();
+    test_reformation_boundary_reservoir_state();
 
     if (rank == 0) std::cout << "PASS: test_diagnostics\n";
     PetscFinalize();

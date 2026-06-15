@@ -946,7 +946,7 @@ gas volumetrically inert, which is the audit's headline defect. **WP-12 (new,
 | WP-9 | Starved / mass-flux inlet | §B2 | TODO |
 | WP-8 | Linearized K/C coefficients + whirl margin | §D1 | TODO |
 | WP-10 | Strategic: FBNS/complementarity cavitation kernel | §C2, §C3 | TODO |
-| WP-11 | Axial-boundary flux consistency (shared flux function; cavitated-cell reformation rate; INLET_OUTLET unification) | §B4 | **DONE** (2026-06-15) `consistent_boundary_flux` (default off); cavitated boundary cells re-flood at `cs·(p_bc−p_cav)/β`. The shared `SimulationConfig::elrod_boundary_outflow` is used by both `solve_elrod` and the diagnostics balance, so r_l stays small with the flag on (7e-8 vs 1.4e-3 before). Minor remaining: energy/gas boundary convection could carry the reformation inflow's reservoir state |
+| WP-11 | Axial-boundary flux consistency (shared flux function; cavitated-cell reformation rate; INLET_OUTLET unification) | §B4 | **DONE** (2026-06-15) `consistent_boundary_flux` (default off); cavitated boundary cells re-flood at `cs·(p_bc−p_cav)/β`. The shared `SimulationConfig::elrod_boundary_outflow` is used by both `solve_elrod` and the diagnostics balance, so r_l stays small with the flag on (7e-8 vs 1.4e-3 before). Follow-up (2026-06-15): energy and dissolved-gas convection now carry the reformation reflood via the shared `reformation_boundary_velocity` — reflood liquid convects `temperature_reference` (energy, RESERVOIR) and `dissolved_gas_initial` at the full liquid density (gas); `gas_boundary_inflow` mirrors it; `test_reformation_boundary_reservoir_state` (test #4 of the WP-11 spec). |
 | WP-12 | 2-D property tables from an editable file (P,T grid) + `p_sat`-driven cavitation onset threshold | §A3/§A4 (data), §A1 (onset) | **DONE** (2026-06-14); `test_property_tables`; R290 table smoke run verifies p_sat=1.0 MPa onset |
 
 ### Phase E implementation notes (2026-06-11, WP-4/WP-3/WP-5)
@@ -1673,6 +1673,17 @@ shared flux, evaluated with the current iterate.
 Cavitated-cell reformation inflow must also carry reservoir enthalpy and
 composition (today the g-gate zeroes both, so re-flooding liquid silently
 adopts the cell's T and c_d).
+
+> **Implemented (2026-06-15).** The shared flux lives on `SimulationConfig`, not a
+> separate `boundary_flux.cpp`: `elrod_boundary_outflow` (liquid mass balance, used
+> by `solve_elrod` + diagnostics) and `reformation_boundary_velocity` /
+> `is_reformation_boundary` (the reflood Poiseuille velocity, used by `energy.cpp`,
+> `gas_transport.cpp`, and `diagnostics.cpp`). The cavitated reflood carries
+> `temperature_reference` (energy, RESERVOIR mode) and `dissolved_gas_initial` at the
+> full liquid density $\rho_\ell$ (gas), resolving the g-gate-zeroes-both defect.
+> Acceptance: `test_reformation_boundary_reservoir_state` (the spec's test #4) plus
+> the existing `r_l ~7e-8` liquid-balance gate; the planned `test_boundary_fluxes.cpp`
+> table below was folded into `test_diagnostics.cpp`/`test_coupling.cpp`.
 
 ### Code implementation
 
