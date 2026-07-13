@@ -24,6 +24,27 @@ mpirun -n <N> ./build-linux/pancake
 
 Dependencies: C++20 compiler, CMake, MPI, and the current PETSc backend. The strategic target notes Trilinos, but the checked-in source currently uses PETSc; see `ASSESSMENT.md`.
 
+## Branching and Version Control
+
+The repository rule is: **one task, one branch, one verified merge, then delete
+the branch**.
+
+- Keep `main` clean and releasable. Do not leave feature work or uncommitted
+  experiments on `main`.
+- Start each task from current `main` on `codex/<short-scope>`. Synchronize with
+  a remote only when the user has authorized that remote operation.
+- Give a branch one coherent purpose. Do not mix product changes with local
+  agent settings, generated results, build products, or unrelated cleanup.
+- Preserve unrelated user changes. If the worktree is already dirty, separate
+  the task safely or ask before absorbing those changes.
+- Before commit, run the relevant tests and update `CHANGES.md`, `PLAN.md`, and
+  any user-facing or physics documentation affected by the task.
+- Use an imperative, scoped commit message. Push or open a pull request only
+  when requested; prefer a squash or fast-forward merge that leaves `main`
+  readable.
+- After merge, delete the task branch locally and remotely. Never force-push or
+  rewrite shared `main` history.
+
 Output goes to `results/` directory; open `results/results.pvd` in ParaView.
 
 ## Architecture

@@ -980,9 +980,13 @@ So the operative mechanism across the whole realistic $(p,T)$ map is
 **gaseous/outgassing cavitation governed by $p_{sat}$**, not boiling of the oil.
 A single fixed $p_{cav}$ (the classical JFO threshold) cannot represent this:
 the onset must track $p_{sat}$, which depends on local temperature and dissolved
-fraction. This is exactly the defect in the shipped config, where the Elrod
-threshold is pinned at the oil value $p_{cav}=3.0\times10^4$ Pa while propane
-releases at $\sim$1 MPa.
+fraction. This is why the propane configs set `cavitation_threshold = LOCAL_PSAT`
+(so the Elrod plateau is $\max(p_{cav}, p_{sat})\approx1$ MPa). With the code
+default `SCALAR_PCAV` the threshold is instead pinned at the oil value
+$p_{cav}=3.0\times10^4$ Pa while propane releases at $\sim$1 MPa — the cavitated
+zone then sits at 30 kPa and is far too small (a verified 30 kPa vs 1 MPa plateau,
+68 vs 506 cavitated cells on the shipped case). Both the threshold and the WP-1
+`gas_pressure_coupling` are exposed in the GUI Cavitation panel.
 
 ### 16.2 Phase picture across the PTSV map
 

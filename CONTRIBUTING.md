@@ -3,6 +3,21 @@
 `pancake` is cross-platform by policy. Changes should preserve Linux and
 Windows builds from the same CMake source tree.
 
+## Git Workflow
+
+Use one task, one branch, one verified merge, then delete the branch.
+
+1. Begin with a clean, current `main` and create `codex/<short-scope>`.
+2. Keep the branch limited to one coherent change. Never commit local agent
+   settings, build directories, generated results, or unrelated edits.
+3. Preserve unrelated work already in the checkout; do not silently absorb or
+   discard it.
+4. Run the relevant build/tests and update the required documentation before
+   committing with an imperative, scoped message.
+5. Push or open a pull request only when the repository owner requests it.
+   Prefer squash or fast-forward integration; never rewrite shared `main`.
+6. Delete the task branch locally and remotely after it is merged.
+
 ## Code Conventions
 
 - Use `std::filesystem::path` for filesystem paths.

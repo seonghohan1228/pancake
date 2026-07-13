@@ -112,6 +112,21 @@ void copyable_value(const char* label, double value, const char* unit, const cha
     ImGui::PopID();
 }
 
+/// Blue -> white -> red diverging colormap (Moreland cool-warm): low = blue,
+/// high = red. Registered once on first use, like the overlay mask colormaps.
+ImPlotColormap diverging_colormap() {
+    static ImPlotColormap map = -1;
+    if (map == -1) {
+        const ImU32 colors[] = {
+            IM_COL32(59, 76, 192, 255),   IM_COL32(123, 156, 235, 255),
+            IM_COL32(221, 221, 221, 255), IM_COL32(229, 128, 106, 255),
+            IM_COL32(180, 4, 38, 255),
+        };
+        map = ImPlot::AddColormap("BlueRed", colors, 5, false);
+    }
+    return map;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -232,25 +247,29 @@ void GuiApp::draw_heatmap_tab() {
         }
         ImGui::EndCombo();
     }
-    ImGui::SameLine();
+    // Checkmark grouping: tight gap from a label to its own checkbox, wider gap
+    // before the next control, so each checkbox reads as belonging to its label.
+    const float tight = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float wide = ImGui::GetFontSize() * 1.4f;
+    ImGui::SameLine(0.0f, wide);
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Cavitation zone");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Hatch cells where the film content is below 1 (ruptured film).");
     }
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, tight);
     static bool show_cavitation = true;
     ImGui::Checkbox("##cavzone", &show_cavitation);
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, wide);
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Inlet zones");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Outline cells inside oil inlets/grooves (inlet_indicator field).");
     }
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, tight);
     static bool show_inlets = true;
     ImGui::Checkbox("##inletzone", &show_inlets);
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, wide);
     if (ImGui::SmallButton("CSV")) export_grid_csv();
     ImGui::SameLine();
     bool want_png = ImGui::SmallButton("PNG");
@@ -258,6 +277,38 @@ void GuiApp::draw_heatmap_tab() {
     if (ImGui::SmallButton("Fit")) heatmap_fit_requested_ = true;
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Fit the entire domain to the frame after zooming in.");
+    }
+
+    // Color-scale controls: colormap choice + optional manual data range.
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Colormap");
+    ImGui::SameLine(0.0f, tight);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
+    const char* colormap_names[] = {"Viridis", "Blue-Red (diverging)"};
+    ImGui::Combo("##colormap", &heatmap_colormap_, colormap_names, 2);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Viridis: perceptually-uniform sequential.\n"
+                          "Blue-Red: diverging (low = blue, high = red); pair it with a "
+                          "symmetric manual range for signed fields.");
+    }
+    ImGui::SameLine(0.0f, wide);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Manual range");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::SetTooltip("Override the automatic min/max of the color scale.");
+    }
+    ImGui::SameLine(0.0f, tight);
+    ImGui::Checkbox("##manualrange", &heatmap_manual_range_);
+    if (heatmap_manual_range_) {
+        ImGui::SameLine(0.0f, wide);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7);
+        ImGui::InputDouble("##range_min", &heatmap_range_min_, 0.0, 0.0, "%g");
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("to");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7);
+        ImGui::InputDouble("##range_max", &heatmap_range_max_, 0.0, 0.0, "%g");
     }
 
     const auto* field = grid.field(selected_field_);
@@ -270,6 +321,15 @@ void GuiApp::draw_heatmap_tab() {
     double scale_min = stats.min;
     double scale_max = stats.max;
     if (scale_max <= scale_min) scale_max = scale_min + 1.0;
+    if (heatmap_manual_range_) {
+        scale_min = heatmap_range_min_;
+        scale_max = heatmap_range_max_;
+        if (scale_max <= scale_min) scale_max = scale_min + 1.0;
+    } else {
+        // Track the auto range so flipping "Manual range" on starts from it.
+        heatmap_range_min_ = scale_min;
+        heatmap_range_max_ = scale_max;
+    }
 
     // Row-flip so z increases upward; NaN cells pinned to the scale minimum.
     static std::vector<double> display;
@@ -341,7 +401,7 @@ void GuiApp::draw_heatmap_tab() {
         heatmap_fit_requested_ = false;
     }
 
-    ImPlot::PushColormap(ImPlotColormap_Viridis);
+    ImPlot::PushColormap(heatmap_colormap_ == 1 ? diverging_colormap() : ImPlotColormap_Viridis);
     if (ImPlot::BeginPlot("##fieldmap", plot_size, ImPlotFlags_NoLegend | ImPlotFlags_Equal)) {
         ImPlot::SetupAxes("bearing angle [deg]", "axial position z [m]");
         ImPlot::SetupAxesLimits(0, nx, 0, ny, ImPlotCond_Once);
@@ -713,17 +773,20 @@ void GuiApp::draw_convergence_panel() {
          "Liquid mass residual (log scale) from diagnostics.csv - the numerical "
          "convergence check."},
     };
+    // Tight gap from each label to its checkbox, wider gap before the next one.
+    const float toggle_tight = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float toggle_wide = ImGui::GetFontSize() * 1.4f;
     for (const SeriesToggle& toggle : toggles) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(toggle.label);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
             ImGui::SetTooltip("%s", toggle.tooltip);
         }
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, toggle_tight);
         ImGui::BeginDisabled(!toggle.available);
         ImGui::Checkbox((std::string("##mon_") + toggle.label).c_str(), toggle.selected);
         ImGui::EndDisabled();
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, toggle_wide);
     }
     if (ImGui::SmallButton("CSV")) export_monitors_csv();
     ImGui::SameLine();

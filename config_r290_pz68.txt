@@ -123,6 +123,14 @@ bc_z_north_thermal = ZERO_GRADIENT
 # Cavitation
 # Options: FULL_SOMMERFELD, GUMBEL, JFO
 cavitation_model = JFO
+# Hold the cavitated film at the dissolved-propane bubble point p_sat(T,c_d) ~ 1 MPa
+# (gaseous outgassing), not the oil vaporous value p_cav = 30 kPa. With SCALAR_PCAV
+# the cavitated zone is wrongly pinned at p_cav (PHYSICS.md S16.1); LOCAL_PSAT uses
+# max(p_cav, p_sat) so propane governs onset, as the model intends.
+cavitation_threshold = LOCAL_PSAT
+# NONE = released gas is volumetrically inert (plateau stays at the threshold above).
+# VOID_COUPLED = released gas sets a local plateau p_void mechanistically (fuller WP-1).
+gas_pressure_coupling = NONE
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6

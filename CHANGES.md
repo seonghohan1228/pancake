@@ -2,6 +2,138 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-07-13 - Repository consolidation, agent Git rule, and Phase F plan
+
+Reason: the latest GUI/config work and the maintainer handoff were left as a
+large uncommitted change set on `main`, while stale feature branches no longer
+represented the product state. Future agents also needed one explicit workflow
+and an ordered response to the verified defects in `HANDOFF.md`.
+
+- Consolidated the current GUI/config/property-table work and `HANDOFF.md` as
+  the authoritative repository state; obsolete local feature branches are
+  removed as part of the repository cleanup after validation and commit.
+- Added the same compact Git rule to `AGENTS.md`, `CLAUDE.md`, and
+  `CONTRIBUTING.md`: one task, one `codex/<scope>` branch, one verified merge,
+  then delete the branch. It also prohibits mixing local agent state or
+  generated artifacts with product work and requires explicit authorization
+  for remote operations.
+- Added `PLAN.md` Phase F, which converts `HANDOFF.md` D1-D16/B1-B10 into a
+  dependency-ordered remediation program. Silent solver failure, EOS
+  consistency, full-film classification, TVD directionality, MPI ghost parity,
+  and config round-tripping precede refactoring or new physics.
+- Reconciled `README.md` with the current GUI: expanded units, property-table
+  file selection, cavitation controls, and contour color ranges.
+- No numerical or physical model was changed by the cleanup itself.
+- Validation evidence: `cmake --preset windows-native-mingw` and the release
+  build completed successfully; CTest passed 22/22 tests in 24.28 s, including
+  `test_elrod_a2_mpi6`, `test_schemes_mpi6`, and `test_gas_coupling`.
+
+### 2026-07-07 - Maintainer handoff document (HANDOFF.md)
+
+Reason: capture the current solver architecture, its invariants, and a freshly
+verified defect list in one place for future contributors, before the original
+context is lost.
+
+- **Added `HANDOFF.md`** (repo root): one-page architecture/data-flow
+  orientation, the nine invariants that keep the solver correct (ghost
+  discipline, `old()` semantics, EOS triangle, single boundary-flux source,
+  clamp accounting, bit-exactness gates, triplicated config surface,
+  cross-platform contract, docs-move-with-code), a 16-item verified defect
+  list (D1-D16) with file:line citations, the improvement backlog (B1-B10),
+  doc-vs-code mismatches, and the verification gates (ctest, diagnostics
+  residuals, grid-convergence harness, MPI, model-off equivalence).
+- Headline new findings from this audit pass (all verified against current
+  code, none fixed yet): the `FVM::divergence` van Leer TVD correction uses
+  the wrong far-upwind cell for negative face fluxes and has no z-face branch
+  (D1, latent for `omega > 0`); post-processing/energy/gas/boundary code still
+  tests `theta >= 1.0` while the WP-1 solver uses `theta_full = 1 - alpha_g`
+  (D2); initial `theta` at `main.cpp:179` uses raw `p_cav` instead of
+  `effective_p_cav()`, so LOCAL_PSAT runs start ~`p_sat - p_cav` inconsistent
+  (D3); thermal-property ghosts go stale between the gas and energy solves
+  (D5, rank-dependent); `KSPSolve` convergence is never checked (D6); the
+  Picard relaxation acts on `p`/`T` while the Elrod state is `theta` (D8); the
+  force gauge datum drifted from PLAN.md WP-12's stated convention (D9);
+  STRIATED weights shear only, not thermal capacity/advection (D14).
+- No solver code changed in this entry.
+
+### 2026-06-15 - Cavitation threshold/coupling in GUI, property-table loading in GUI, propane config fix
+
+Reason: the propane case was cavitating at the oil value `p_cav = 30 kPa` instead of
+the dissolved-propane bubble point `p_sat ~ 1 MPa` (PHYSICS.md S16.1), and the two
+flags that fix it were not reachable from the GUI; separately, choosing a TABLE
+property model errored with no way to supply the data file.
+
+- **Cavitation physics exposed in the GUI.** The Case Setup > Cavitation panel now
+  has **Cavitation threshold** (`SCALAR_PCAV` = oil `p_cav`, `LOCAL_PSAT` =
+  `max(p_cav, p_sat)` = propane bubble point) and **Released-gas pressure coupling**
+  (`NONE` / `VOID_COUPLED`), with hover text explaining each.
+- **`gas_pressure_coupling` now serialized.** `to_config_text()` was parsing but not
+  writing it, so a GUI save silently dropped it; added the line (config.hpp). The
+  config round-trips and all 22 tests still pass.
+- **Property tables usable from the GUI.** The GUI now links the solver's
+  `property_table_io.cpp` and ingests the configured `*_table_file` CSVs into the
+  in-memory 2-D tables (`GuiApp::reload_property_tables`, run on load / new / preset /
+  table-file edit). TABLE models therefore validate exactly as the solver does, and
+  the FluidProperties panel shows a **table-file path + Browse** for each TABLE model
+  with a live "loaded N x M grid" / "not loaded" check. Verified: the supplier file
+  `data/R290_PZ68S/r290_pz68s.csv` loads as 79 x 45 for both solubility and viscosity,
+  0 errors, p_sat = 1.0 MPa.
+- **`*_table_file` paths now serialized.** `to_config_text()` wrote the inline tables
+  but not the `solubility_table_file` / `viscosity_table_file` / `density_table_file`
+  paths, so a GUI Browse-and-save silently dropped the path and the solver got TABLE
+  with no file (the recurring "viscosity_table needs ... entries" error, even after the
+  GUI showed the table loaded). Added the three lines (config.hpp); round-trip verified,
+  22/22 tests pass.
+- **`data/` now ships next to the binaries.** The case configs reference the table CSVs
+  by relative path (`data/R290_PZ68S/...`), which the solver resolves against the config's
+  directory - so a TABLE run from a build dir failed validation ("viscosity_table needs ...
+  entries") because `data/` was never copied there. CMake now copies `data/` next to both
+  `pancake` and `pancake_gui` (new `pancake_copy_data_dir`), and `config_r290_pz68_table.txt`
+  joins the copied case configs. Verified: the table config runs from inside the build dir.
+  For configs saved elsewhere, Browse to an absolute CSV path (the GUI hint says so).
+- **Shipped propane config corrected.** `config_r290_pz68.txt` now sets
+  `cavitation_threshold = LOCAL_PSAT` (+ an explicit `gas_pressure_coupling = NONE`
+  with both options documented). Verified by re-run: the cavitated-cell plateau moves
+  30 kPa -> 1.0 MPa and the cavitated extent grows 68 -> 506 cells at the same step.
+- PHYSICS.md S16.1 updated (the shipped config no longer carries the defect; the
+  default `SCALAR_PCAV` still does, by design, and is now a labeled GUI choice).
+
+### 2026-06-15 - GUI: unit options, motion simplification, contour colormap, species coefficient fill
+
+Reason: usability pass on the Case Setup / Results panels. All edits are GUI-only
+(`src/gui/`); `SimulationConfig` and the solver are untouched, so existing
+`config_*.txt` files keep loading and the form still stores solver-native SI.
+
+- **More display units.** `UnitOption` gained an affine `offset` (so a unit can be
+  `scale + offset`, not just a multiplier) with shared `unit_to_display` /
+  `unit_to_stored` helpers. New/extended families: pressure adds **bar**; bulk
+  modulus gets its own Pa/kPa/MPa/**GPa** family; tilt slope adds **mrad**
+  (small-angle: 1 m/m ~ 1 rad); temperature adds **degC** (offset -273.15);
+  dissolved-gas mass fractions add **%**; bearing support gets **N/m, kN/m, MN/m**
+  (stiffness) and **N.s/m, kN.s/m** (damping). Inlet supply temperature also uses
+  the K/degC family. Conversions stay display-only; the config file is unchanged.
+- **Cavitation model label.** "Full Sommerfeld (reference)" -> "Full Sommerfeld"
+  (the "(reference)" tag was dropped; the hover description is unchanged).
+- **Bearing motion simplified.** The form no longer exposes initial position
+  (it comes from the geometry: eccentricity + attitude angle) or initial velocity
+  (zero); per-axis stiffness/damping are collapsed to a single **isotropic**
+  stiffness and damping. `GuiApp::normalize_motion_config()` enforces this contract
+  (attitude-derived position, zero velocity, x-value mirrored to y/z) on new case,
+  load, and save, so the written config stays consistent.
+- **Field-map color scale.** New colormap selector — Viridis (sequential) or a
+  **blue->white->red diverging** map (`diverging_colormap()`, registered once) — and
+  an optional **manual min/max range** that overrides the auto data range.
+- **Checkmark grouping.** In the heatmap/monitor toolbars and the Advanced toggle,
+  each checkbox now sits tight to its own label with a wider gap before the next
+  control, so a checkbox reads as belonging to its label.
+- **Species coefficient fill.** Selecting a dissolved-gas species fills its
+  coefficient block (`apply_dissolved_gas_species_preset`): **Propane** loads the
+  calibrated R-290-in-PZ68S numbers from `config_r290_pz68.txt` (Henry slope
+  2.175e-7 1/Pa, van't Hoff 1800 K, mu_gas 8.7e-6, etc., calibrated at the
+  10 bar / 40 C reference state); **Air** loads a generic air-in-mineral-oil set.
+  Only the coefficients are written; the property/solubility/density/viscosity
+  model selectors stay as the user set them.
+
 ### 2026-06-15 - Config model-surface cleanup (rename / reorder / prune + LINEAR scheme)
 
 Reason: the model selectors had accumulated redundant and mislabeled options. This

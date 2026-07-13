@@ -3,6 +3,7 @@
 // enum/model selectors with hover descriptions, and the inlet editor.
 
 #include "gui_app.hpp"
+#include "exports.hpp"
 #include "imgui.h"
 #include "win_util.hpp"
 
@@ -125,6 +126,56 @@ void begin_param_row(const char* label, const char* help, const char* unit, bool
     ImGui::TableSetColumnIndex(1);
 }
 
+/// Fill the dissolved-gas coefficient block with a per-species default set, so
+/// picking a species makes the solubility / gas / viscosity numbers ready to
+/// run. Only the coefficients are written; the high-level model selectors
+/// (property/solubility/density/viscosity model) are left to the user.
+///
+/// PROPANE is the R-290-in-PAG-PZ68S set hand-calibrated to the supplier PTSV
+/// chart at the (10 bar, 40 C) reference state - the same numbers that live in
+/// config_r290_pz68.txt. AIR is a generic air-in-mineral-oil starting point
+/// (no equivalent calibrated case exists in the repo).
+void apply_dissolved_gas_species_preset(SimulationConfig& config, DissolvedGasSpecies species) {
+    switch (species) {
+        case DissolvedGasSpecies::PROPANE:
+            config.dissolved_gas_initial = 0.2175;       // saturated mass fraction at 10 bar, 40 C
+            config.dissolved_gas_max = 0.5;
+            config.dissolved_gas_henry_coeff = 2.175e-7;  // 1/Pa, Henry tangent at the reference state
+            config.dissolved_gas_henry_temp_coeff = 1800.0;
+            config.dissolved_gas_liquid_density = 500.0;  // liquid-propane phase density for mixing
+            config.gas_mass_transfer_rate = 500.0;
+            config.dissolved_gas_diffusivity = 1e-9;
+            config.solution_density_gas_coeff = 0.0;
+            config.solution_viscosity_gas_coeff = -11.40;  // exp(a_c c_d) thinning, PZ68S+R290
+            config.viscosity_temperature_coeff = 4000.0;   // PZ68S Andrade slope
+            config.viscosity_pressure_coeff = 1.5e-8;      // PZ68S Barus coefficient
+            config.gas_alpha_max = 0.6;
+            config.mu_gas = 8.7e-6;                        // saturated propane vapor near 40 C
+            config.gas_pressure_floor = 1e5;
+            config.property_reference_pressure = 1e6;      // 10 bar
+            config.property_reference_temperature = 313.15;  // 40 C
+            break;
+        case DissolvedGasSpecies::AIR:
+            config.dissolved_gas_initial = 1e-4;           // ~atmospheric saturation in mineral oil
+            config.dissolved_gas_max = 0.01;
+            config.dissolved_gas_henry_coeff = 1.2e-9;     // 1/Pa, from a Bunsen coefficient ~0.09
+            config.dissolved_gas_henry_temp_coeff = 0.0;   // weak T-dependence
+            config.dissolved_gas_liquid_density = 1.2;     // air density [kg/m^3]
+            config.gas_mass_transfer_rate = 500.0;
+            config.dissolved_gas_diffusivity = 1e-9;
+            config.solution_density_gas_coeff = 0.0;
+            config.solution_viscosity_gas_coeff = -1.0;    // small thinning, generic
+            config.viscosity_temperature_coeff = 4000.0;
+            config.viscosity_pressure_coeff = 1.5e-8;
+            config.gas_alpha_max = 0.6;
+            config.mu_gas = 1.8e-5;                        // air dynamic viscosity
+            config.gas_pressure_floor = 1e5;
+            config.property_reference_pressure = 101325.0;
+            config.property_reference_temperature = 300.0;
+            break;
+    }
+}
+
 }  // namespace
 
 void GuiApp::draw_setup_panel() {
@@ -211,9 +262,10 @@ void GuiApp::draw_form_tab() {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Show expert parameters (numerics, fluid-property models, ...).");
     }
-    ImGui::SameLine();
+    // Keep the checkbox tight to its label, then a wider gap before the next control.
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::Checkbox("##advanced", &show_advanced_);
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, ImGui::GetFontSize() * 1.4f);
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("##presets", "Presets...")) {
         if (ImGui::Selectable("Reset to defaults")) {
@@ -224,6 +276,7 @@ void GuiApp::draw_form_tab() {
             config_.bc_z_south_val = 101325.0;
             config_.bc_z_north_val = 101325.0;
             config_.output_dir = output_dir;
+            reload_property_tables();
             dirty_ = true;
         }
         if (ImGui::Selectable("High eccentricity (e = 0.9 c)")) {
@@ -331,17 +384,17 @@ void GuiApp::draw_form_tab() {
 
                 const auto& options = unit_options(spec.family);
                 int& choice = unit_choice(spec.key, spec.family);
-                const double factor = options[static_cast<size_t>(choice)].to_display;
+                const UnitOption& unit = options[static_cast<size_t>(choice)];
 
                 if (invalid) ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::kInvalidBg);
                 const float unit_width =
                     options.size() == 1 ? ImGui::CalcTextSize(spec.unit).x + 8.0f
                                         : ImGui::GetFontSize() * 4.8f;
                 ImGui::SetNextItemWidth(-unit_width);
-                double display_value = config_.*(spec.member) * factor;
+                double display_value = unit_to_display(unit, config_.*(spec.member));
                 if (ImGui::InputDouble((std::string("##") + spec.key).c_str(), &display_value,
                                        0.0, 0.0, "%g")) {
-                    config_.*(spec.member) = display_value / factor;
+                    config_.*(spec.member) = unit_to_stored(unit, display_value);
                     dirty_ = true;
                 }
                 help_tooltip(spec.help, options.size() == 1 ? spec.unit : nullptr);
@@ -431,7 +484,7 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                 row("Cavitation model", "How film rupture is treated.");
                 changed |= enum_combo<CavitationModel>(
                     "##cavitation_model", config_.cavitation_model,
-                    {{CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld (reference)",
+                    {{CavitationModel::FULL_SOMMERFELD, "Full Sommerfeld",
                       "No cavitation: sub-cavity (tensile) pressures are kept. The simplest "
                       "model - a reference baseline for verification / overlay plots, not for "
                       "real operating points."},
@@ -443,6 +496,31 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                       "Mass-conserving Jakobsson-Floberg-Olsson cavitation via the Elrod-Adams "
                       "film-content algorithm: rupture AND reformation are physical. The "
                       "recommended production model for accurate extent and oil transport."}});
+                row("Cavitation threshold", "Pressure the ruptured (cavitated) film is held at.");
+                changed |= enum_combo<CavitationThreshold>(
+                    "##cavitation_threshold", config_.cavitation_threshold,
+                    {{CavitationThreshold::SCALAR_PCAV, "Oil p_cav (scalar)",
+                      "Hold cavitated cells at the oil cavitation pressure p_cav everywhere. "
+                      "Classical single-threshold JFO; ignores the dissolved-gas bubble point. "
+                      "For oil+refrigerant this pins rupture at the oil value (e.g. 30 kPa) even "
+                      "though the gas releases far higher."},
+                     {CavitationThreshold::LOCAL_PSAT, "Local bubble point p_sat",
+                      "Hold cavitated cells at max(p_cav, p_sat(T, c_d)), the dissolved-species "
+                      "bubble point. For oil+propane this raises the cavitation plateau to the "
+                      "propane release pressure (~1 MPa) - the physical gaseous-cavitation onset. "
+                      "Needs a dissolved gas + solubility model."}});
+                row("Released-gas pressure coupling",
+                    "Whether desorbed free gas pushes back on the film pressure.");
+                changed |= enum_combo<GasPressureCoupling>(
+                    "##gas_pressure_coupling", config_.gas_pressure_coupling,
+                    {{GasPressureCoupling::NONE, "None (gas inert)",
+                      "Released gas is volumetrically inert: it does not raise the cavitated-zone "
+                      "pressure, which stays at the threshold above. The default."},
+                     {GasPressureCoupling::VOID_COUPLED, "Void-coupled",
+                      "Desorbed gas displaces liquid and sets a local plateau p_void via the gas "
+                      "equation of state, so gaseous rupture at p_sat emerges mechanistically. "
+                      "The fuller WP-1 two-phase model; needs Two phase fluid properties and "
+                      "mu_gas > 0."}});
                 break;
             case ParamGroup::Boundaries:
                 row("South boundary type (z = 0)", "Pressure condition at the south face.");
@@ -514,13 +592,28 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                           "Adds finite-rate gas release/resorption and a free-gas phase in "
                           "cavitated zones. The full gaseous-cavitation model; needs JFO "
                           "cavitation and gas parameters."}});
-                    row("Dissolved gas species", "Gas dissolved in the lubricant.");
-                    changed |= enum_combo<DissolvedGasSpecies>(
+                    row("Dissolved gas species",
+                        "Gas dissolved in the lubricant. Selecting a species fills its "
+                        "solubility / gas / viscosity coefficients below (Henry coefficient, "
+                        "gas viscosity, ...); the model selectors above stay as you set them.");
+                    const DissolvedGasSpecies previous_species = config_.dissolved_gas_species;
+                    const bool species_changed = enum_combo<DissolvedGasSpecies>(
                         "##dissolved_gas_species", config_.dissolved_gas_species,
                         {{DissolvedGasSpecies::PROPANE, "Propane (R-290)",
-                          "Refrigerant propane dissolved in oil (compressor bearings)."},
+                          "Refrigerant propane dissolved in oil (compressor bearings). Fills the "
+                          "calibrated R-290-in-PZ68S coefficient set."},
                          {DissolvedGasSpecies::AIR, "Air",
-                          "Air dissolved in oil (conventional aerated lubricant)."}});
+                          "Air dissolved in oil (conventional aerated lubricant). Fills a generic "
+                          "air-in-mineral-oil coefficient set."}});
+                    if (species_changed && config_.dissolved_gas_species != previous_species) {
+                        apply_dissolved_gas_species_preset(config_, config_.dissolved_gas_species);
+                        set_status(std::string("Filled ") +
+                                   (config_.dissolved_gas_species == DissolvedGasSpecies::PROPANE
+                                        ? "propane (R-290 in PZ68S)"
+                                        : "air-in-oil") +
+                                   " coefficients (Henry, gas viscosity, ...). Models unchanged.");
+                    }
+                    changed |= species_changed;
                     row("Solubility model", "Saturation law c_sat(p, T).");
                     changed |= enum_combo<SolubilityModel>(
                         "##solubility_model", config_.solubility_model,
@@ -566,6 +659,65 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                           "Homogeneous two-phase standard: reciprocal blend by mass quality "
                           "1/mu = x/mu_g + (1-x)/mu_l; needs mu_gas. Correct asymptotes; the "
                           "default."}});
+
+                    // TABLE models read a measured (P_MPa, T_C, value) CSV. The supplier
+                    // file data/R290_PZ68S/r290_pz68s.csv carries solubility_pct and
+                    // viscosity_mm2s (no density), so the same file feeds both tables.
+                    // The GUI loads it with the solver's own loader for an instant check.
+                    const auto table_file_row = [&](const char* label, const char* help,
+                                                    std::filesystem::path& path,
+                                                    const PropertyTable2D& table) {
+                        row(label, help);
+                        std::string text = winutil::path_to_utf8(path);
+                        ImGui::SetNextItemWidth(-(ImGui::GetFontSize() * 5.5f));
+                        if (input_text_string((std::string("##tf_") + label).c_str(), text)) {
+                            path = winutil::utf8_to_path(text);
+                            dirty_ = true;
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) reload_property_tables();
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton((std::string("Browse##") + label).c_str())) {
+                            const auto picked = exports::open_file_dialog(
+                                hwnd, L"CSV files (*.csv)\0*.csv\0All files\0*.*\0");
+                            if (!picked.empty()) {
+                                path = picked;
+                                reload_property_tables();
+                                dirty_ = true;
+                            }
+                        }
+                        if (!path.empty()) {
+                            if (!table.empty()) {
+                                ImGui::TextDisabled("loaded %zu x %zu (p x T) grid",
+                                                    table.p.size(), table.t.size());
+                            } else {
+                                ImGui::TextColored(theme::kError,
+                                                   "not found - Browse to an absolute path, or keep "
+                                                   "the CSV next to the config file (relative paths "
+                                                   "resolve there)");
+                            }
+                        }
+                    };
+                    if (config_.solubility_model == SolubilityModel::TABLE) {
+                        table_file_row("Solubility table file",
+                                       "CSV columns P_MPa, T_C, solubility_pct (saturated R290 "
+                                       "mass %). Sets c_sat(p,T) and the bubble point. Supplier "
+                                       "file: data/R290_PZ68S/r290_pz68s.csv.",
+                                       config_.solubility_table_file, config_.solubility_table_2d);
+                    }
+                    if (config_.density_model == DensityModel::TABLE) {
+                        table_file_row("Density table file",
+                                       "CSV columns P_MPa, T_C, density_kgm3. The supplier PTSV "
+                                       "chart has NO density column - provide your own or use the "
+                                       "MIXTURE density model instead.",
+                                       config_.density_table_file, config_.density_table_2d);
+                    }
+                    if (config_.liquid_viscosity_model == LiquidViscosityModel::TABLE) {
+                        table_file_row("Viscosity table file",
+                                       "CSV columns P_MPa, T_C, viscosity_mm2s (KINEMATIC nu, "
+                                       "converted to dynamic per cell). Supplier file: "
+                                       "data/R290_PZ68S/r290_pz68s.csv.",
+                                       config_.viscosity_table_file, config_.viscosity_table_2d);
+                    }
                 }
                 break;
             case ParamGroup::Motion:
@@ -670,11 +822,11 @@ void GuiApp::draw_inlets_editor() {
         ImGui::SameLine(label_column);
         const auto& options = unit_options(family);
         int& choice = unit_choice(choice_key, family);
-        const double factor = options[static_cast<size_t>(choice)].to_display;
-        double display = stored * factor;
+        const UnitOption& unit = options[static_cast<size_t>(choice)];
+        double display = unit_to_display(unit, stored);
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.5f);
         if (ImGui::InputDouble((std::string("##v_") + label).c_str(), &display, 0, 0, "%g")) {
-            stored = display / factor;
+            stored = unit_to_stored(unit, display);
             dirty_ = true;
         }
         ImGui::SameLine();
@@ -732,7 +884,7 @@ void GuiApp::draw_inlets_editor() {
             ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
             if (ImGui::Checkbox("##feeds", &inlet.feeds_fresh_oil)) dirty_ = true;
             if (inlet.feeds_fresh_oil) {
-                unit_input("Supply temperature", "inlet.t_supply", UnitFamily::Fixed,
+                unit_input("Supply temperature", "inlet.t_supply", UnitFamily::Temperature,
                            inlet.t_supply, "K");
             }
             if (ImGui::SmallButton("Remove inlet")) remove_index = static_cast<int>(i);

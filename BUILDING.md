@@ -105,8 +105,8 @@ cd /c/Dev/pancake
 ctest --test-dir build-windows-mingw --output-on-failure
 ```
 
-Known current status: `test_elrod_a1` fails its pressure regression threshold;
-the other native tests pass after the MinGW/PETSc runtime is available.
+Current native baseline (2026-07-13): configure and release build succeed; all
+22 CTest tests pass, including `test_elrod_a2_mpi6` and `test_schemes_mpi6`.
 
 ## Linux
 

@@ -7,6 +7,7 @@
 #include "exports.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"  // DockBuilder
+#include "property_table_io.hpp"
 #include "win_util.hpp"
 
 #include <shellapi.h>
@@ -97,6 +98,11 @@ void GuiApp::draw() {
     poll_loader();
 
     issues_ = validate_config(config_);
+    // Surface GUI-side property-table load failures (clearer than the generic
+    // "TABLE needs entries" the solver reports when the 2-D table is empty).
+    for (const std::string& error : property_table_errors_) {
+        issues_.push_back({true, "", "Property table - " + error});
+    }
     has_errors_ = std::any_of(issues_.begin(), issues_.end(),
                               [](const ValidationIssue& issue) { return issue.is_error; });
 
@@ -516,8 +522,29 @@ void GuiApp::fill_history_results(RunRecord& record) {
 // Config file handling
 // ---------------------------------------------------------------------------
 
+void GuiApp::normalize_motion_config() {
+    config_.bearing_initial_from_attitude = true;
+    config_.bearing_initial_x = config_.bearing_initial_y = config_.bearing_initial_z = 0.0;
+    config_.bearing_initial_vx = config_.bearing_initial_vy = config_.bearing_initial_vz = 0.0;
+    config_.bearing_stiffness_y = config_.bearing_stiffness_z = config_.bearing_stiffness_x;
+    config_.bearing_damping_y = config_.bearing_damping_z = config_.bearing_damping_x;
+}
+
+void GuiApp::reload_property_tables() {
+    // Resolve relative *_table_file paths against the saved config's directory
+    // first (matching the solver), then the CWD; the loader handles absolutes.
+    if (!config_path_.empty()) config_.config_dir = config_path_.parent_path();
+    config_.solubility_table_2d = {};
+    config_.viscosity_table_2d = {};
+    config_.density_table_2d = {};
+    property_table_errors_.clear();
+    FluidProperties::load_config_property_tables(config_, property_table_errors_);
+}
+
 void GuiApp::new_case() {
     config_ = default_case();
+    normalize_motion_config();
+    reload_property_tables();
     config_path_.clear();
     dirty_ = false;
     set_status("New case with default parameters.");
@@ -532,7 +559,9 @@ void GuiApp::load_config_from(const fs::path& path) {
     SimulationConfig fresh;
     fresh.load_from_file(path);
     config_ = std::move(fresh);
+    normalize_motion_config();
     config_path_ = path;
+    reload_property_tables();
     dirty_ = false;
     settings.last_config = winutil::path_to_utf8(path);
     for (const std::string& warning : config_.parse_warnings) {
@@ -547,6 +576,7 @@ bool GuiApp::save_config(bool save_as) {
         target = exports::save_file_dialog(hwnd, kConfigFilter, L"txt", L"config.txt");
         if (target.empty()) return false;
     }
+    normalize_motion_config();  // persist the isotropic / attitude-derived motion contract
     try {
         config_.save_to_file(target);
     } catch (const std::exception& ex) {

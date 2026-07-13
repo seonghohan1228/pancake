@@ -162,8 +162,9 @@ exes travel together in one folder. Dockable panels (layout is remembered in
   validation, inlet editor). Groups are ordered by edit frequency — Operating
   conditions, Geometry, Lubricant, Cavitation, Time stepping, Mesh open at
   the top; Boundaries, Thermal, Motion, Fluid properties, Output, Numerics
-  collapsed below. Numeric fields have display-unit selectors (`Pa/kPa/MPa`,
-  `deg/rad`, `rad/s`/`rpm`, `m/mm/um`, `s/ms`) — values convert in place
+  collapsed below. Numeric fields have display-unit selectors (`Pa/kPa/MPa/bar`,
+  `GPa` for bulk modulus, `K/degC`, `deg/rad/mrad`, `rad/s`/`rpm`, `m/mm/um`,
+  `s/ms`, mass fraction/percent, and engineering stiffness/damping units) — values convert in place
   while the config file stays solver-native SI. Every dropdown option shows a
   hover description; the convection scheme offers Upwind and Linear (type
   differencing), with TVD values from existing config files preserved.
@@ -174,7 +175,7 @@ exes travel together in one folder. Dockable panels (layout is remembered in
   with the true cell aspect ratio (equal-aspect; window resizes zoom rather
   than stretch, a `Fit` button in the plot corner restores the full domain),
   cavitation zone and inlet zone overlays, pan/zoom/hover readout, Viridis
-  colorbar;
+  or blue-white-red color scale, and optional manual color limits;
   mid-plane/arbitrary-slice pressure and film-thickness profiles; and a key
   results summary (min film thickness, peak pressure, attitude angle, friction
   torque/power, cavitated fraction) with one-click Copy per value.
@@ -195,7 +196,10 @@ ParaView` hands `results.pvd` to ParaView for full 3D inspection.
 **Configuration files.** The GUI reads/writes the same `key = value` config
 the solver consumes (shared `src/config.hpp`). It opens the last-used config
 (or `config.txt` beside the exe) at startup; Run auto-saves the current case
-first. Relative `output_dir` resolves next to the config file.
+first. Relative `output_dir` resolves next to the config file. Cavitation
+threshold and released-gas pressure coupling are editable in the Cavitation
+panel. TABLE property models expose CSV file pickers and a live loaded-grid
+status; the selected paths are preserved when the GUI saves the case.
 
 **Solver discovery.** `pancake.exe` next to the GUI exe is used by default;
 a custom path can be set in *Tools > Settings* (persisted). MPI ranks > 1
@@ -407,7 +411,6 @@ src/
   reynolds.hpp/cpp      Reynolds equation assembly and post-processing
   gui/                  ImGui + ImPlot desktop GUI around pancake.exe
                         (see docs/GUI_ARCHITECTURE.md; built per BUILD.md)
-  gui_win32.cpp         Legacy Win32 GUI (no longer built; pending removal)
 
 third_party/
   fonts/, stb/          Assets embedded into pancake_gui.exe at build time

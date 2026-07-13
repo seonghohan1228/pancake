@@ -136,9 +136,8 @@ cd /c/Dev/pancake
 ctest --test-dir build-windows-mingw --output-on-failure
 ```
 
-Known current status: `test_elrod_a1` fails a numerical pressure-regression
-threshold. The native build, runtime DLL deployment, smoke run, and other tests
-are working.
+Current native baseline (2026-07-13): configure and release build succeed; all
+22 CTest tests pass, including both registered six-rank MPI tests.
 
 ## Portability Notes
 

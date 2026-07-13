@@ -69,6 +69,9 @@ private:
     bool has_errors_ = false;
     bool show_advanced_ = false;
     char search_buffer_[96] = {};
+    // GUI-side load errors for the *_table_file CSVs (surfaced as run-blocking
+    // issues); refreshed by reload_property_tables().
+    std::vector<std::string> property_table_errors_;
 
     // --- solver run ---
     SolverRunner runner_;
@@ -100,6 +103,11 @@ private:
     SimulationConfig running_config_;  // snapshot taken at launch
     bool setup_panel_focused_ = false;
     bool heatmap_fit_requested_ = false;
+    // Field-map color scale: colormap choice and an optional manual data range.
+    int heatmap_colormap_ = 0;          // 0 = Viridis (sequential), 1 = Blue-Red (diverging)
+    bool heatmap_manual_range_ = false;
+    double heatmap_range_min_ = 0.0;
+    double heatmap_range_max_ = 1.0;
 
     // --- transient UI state ---
     std::string status_message_;
@@ -136,6 +144,14 @@ private:
     void open_config_dialog();
     void load_config_from(const std::filesystem::path& path);
     bool save_config(bool save_as);
+    /// Enforce the GUI motion contract: position comes from the bearing geometry
+    /// (attitude angle), initial velocity is zero, and support stiffness/damping
+    /// are isotropic (the single edited value mirrored onto the x/y/z members).
+    void normalize_motion_config();
+    /// Ingest the configured *_table_file CSVs into config_'s 2-D property tables
+    /// (the same loader the solver uses), so TABLE models validate and the user
+    /// gets an immediate load check. Errors land in property_table_errors_.
+    void reload_property_tables();
 
     // results helpers
     void request_scan(const std::filesystem::path& output_dir);

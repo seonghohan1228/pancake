@@ -23,7 +23,8 @@ configure_file(
 
 set(PANCAKE_CASE_CONFIGS
     config_r290_pz68.txt
-    config_r290_pz68_quick.txt)
+    config_r290_pz68_quick.txt
+    config_r290_pz68_table.txt)
 
 foreach(PANCAKE_CASE_CONFIG IN LISTS PANCAKE_CASE_CONFIGS)
     configure_file(
@@ -50,6 +51,19 @@ function(pancake_copy_case_configs target_name)
             COMMENT "Copying ${PANCAKE_CASE_CONFIG} next to target executable"
             VERBATIM)
     endforeach()
+endfunction()
+
+# Property-table CSVs (data/) are referenced by relative path in the case configs
+# (e.g. data/R290_PZ68S/r290_pz68s.csv). The solver resolves those against the
+# config's directory, so the data tree must sit next to the copied configs - copy
+# it beside the executable too, or a TABLE run from the build dir fails validation.
+function(pancake_copy_data_dir target_name)
+    add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/data"
+            "$<TARGET_FILE_DIR:${target_name}>/data"
+        COMMENT "Copying data/ (property-table CSVs) next to ${target_name}"
+        VERBATIM)
 endfunction()
 
 function(pancake_deploy_mingw_runtime target_name)
@@ -193,6 +207,7 @@ if(PANCAKE_BUILD_SOLVER)
     endif()
     pancake_copy_default_config(pancake)
     pancake_copy_case_configs(pancake)
+    pancake_copy_data_dir(pancake)
     pancake_deploy_mingw_runtime(pancake)
 
     if(PANCAKE_BUILD_TESTS)
@@ -270,6 +285,9 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
         src/gui/exports.cpp
         src/gui/settings.cpp
         src/gui/theme.cpp
+        # Shared header-driven property-table loader, so the GUI ingests the same
+        # *_table_file CSVs the solver does (for TABLE validation + a load check).
+        src/property_table_io.cpp
         src/gui/pancake_gui.rc
         ${PANCAKE_GUI_GENERATED_DIR}/embedded_roboto_regular.h
         ${PANCAKE_GUI_GENERATED_DIR}/embedded_roboto_medium.h
@@ -307,6 +325,7 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
     # Convenience for local runs; the exe itself does not require these files.
     pancake_copy_default_config(pancake_gui)
     pancake_copy_case_configs(pancake_gui)
+    pancake_copy_data_dir(pancake_gui)
 elseif(PANCAKE_BUILD_GUI)
     message(STATUS "PANCAKE_BUILD_GUI is ON, but the native GUI is Windows-only.")
 endif()

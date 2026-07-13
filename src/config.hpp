@@ -1434,7 +1434,12 @@ struct SimulationConfig {
             << "# Tables use x:value pairs. Solubility is keyed by pressure; density/viscosity by dissolved mass fraction.\n"
             << "solubility_table =" << (solubility_table.empty() ? "" : std::string(" ") + property_table_text(solubility_table)) << "\n"
             << "density_table =" << (density_table.empty() ? "" : std::string(" ") + property_table_text(density_table)) << "\n"
-            << "viscosity_table =" << (viscosity_table.empty() ? "" : std::string(" ") + property_table_text(viscosity_table)) << "\n\n";
+            << "viscosity_table =" << (viscosity_table.empty() ? "" : std::string(" ") + property_table_text(viscosity_table)) << "\n"
+            << "# 2-D (P_MPa, T_C, value) CSV files; when set they take precedence over the inline\n"
+            << "# tables above. Relative paths resolve against this config file's directory.\n"
+            << "solubility_table_file = " << solubility_table_file.generic_string() << "\n"
+            << "viscosity_table_file = " << viscosity_table_file.generic_string() << "\n"
+            << "density_table_file = " << density_table_file.generic_string() << "\n\n";
 
         out << "# Bearing Motion\n"
             << "# motion_model options: STATIC, MOVING_BEARING\n"
@@ -1479,6 +1484,10 @@ struct SimulationConfig {
             << "# and the dissolved-species bubble point, so the first-released species governs onset)\n"
             << "cavitation_threshold = "
             << (cavitation_threshold == CavitationThreshold::LOCAL_PSAT ? "LOCAL_PSAT" : "SCALAR_PCAV") << "\n"
+            << "# gas_pressure_coupling: NONE (released gas volumetrically inert) or VOID_COUPLED\n"
+            << "# (released gas displaces liquid and sets a local plateau p_void; needs TWO_PHASE + mu_gas)\n"
+            << "gas_pressure_coupling = "
+            << (gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED ? "VOID_COUPLED" : "NONE") << "\n"
             << "max_outer_iters = " << max_outer_iters << "\n"
             << "outer_tol = " << outer_tol << "\n"
             << "theta_min = " << theta_min << "\n"

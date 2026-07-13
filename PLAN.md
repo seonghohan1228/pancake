@@ -1716,6 +1716,80 @@ adopts the cell's T and c_d).
 - **Tier 4.** WP-7 quantitative validation campaign.
 
 
+## Phase F — Maintainer Handoff Remediation (2026-07-13)
+
+`HANDOFF.md` is the retiring senior maintainer''s verified risk register. This
+phase turns its D1-D16 defects and B1-B10 backlog into an execution order. It
+does not replace the handoff: keep the defect rationale, invariants, and cited
+code locations there, and record implementation evidence here.
+
+### Operating rules
+
+- Correctness and fail-loud behavior precede performance, refactoring, and new
+  physics. Do not start WP-8/WP-9/WP-10 while F1-F6 are open.
+- Use one `codex/<short-scope>` branch per row below. A row is DONE only after
+  its focused tests, the full available platform suite, and required docs pass.
+- Preserve the model-off equivalence gates from HANDOFF I6 and the conservation
+  accounting from I4/I5. Numerical changes also require MPI and grid checks
+  when their stencil, state, or boundary behavior is affected.
+- Record commands, rank counts, residual tolerances, and any accepted numerical
+  deltas in `CHANGES.md`; do not use "tests pass" without the test evidence.
+
+### Ordered work
+
+| ID | Work | Handoff source | Status |
+|----|------|----------------|--------|
+| F0 | Consolidate the authoritative worktree, establish the branch rule, and capture a clean Windows test baseline | I9, §7 | **DONE (2026-07-13)**; baseline evidence recorded with the consolidation commit |
+| F1 | Make PETSc solves fail loudly: convergence reason, iteration count, finite-field guard | D6 | TODO |
+| F2 | Initialize `theta` with the same effective cavitation pressure used by the EOS and solver | D3 | TODO |
+| F3 | Replace every hard-coded `theta >= 1` decision with one shared per-cell full-film predicate | D2, I3 | TODO |
+| F4 | Correct reversed-flow van Leer reconstruction and add north/south TVD correction | D1 | TODO |
+| F5 | Synchronize all properties consumed across partitions and add coupled-path 1-rank/2-rank parity | D5, B9, I1 | TODO |
+| F6 | Add a fully populated config parse/serialize round-trip gate before extending the config surface | I7, B1a | TODO |
+| F7 | Harden linear/nonlinear iteration: warm starts, `theta`-space relaxation, tolerance-scaled snapping, exact constraint rows | D7, D8, D10, D11 | TODO |
+| F8 | Reconcile model and documentation consistency: force datum, Gumbel path, striated thermal transport, transient density storage, dead code | D9, D13-D16 | TODO |
+| F9 | Implement ghost-exchanged per-cell `p_cav_eff(T,c_d)` and retain a deliberate scalar force datum | D4, D9 | TODO |
+| F10 | Establish structural seams: `Simulation` step API, typed field names, split config implementation, generated config descriptors | B1, B3-B5 | TODO |
+| F11 | Add restart and timestep controls after the step API exists: checkpoint/restart, adaptive `dt`, optional transient Picard | B2, B6, B7 | TODO |
+| F12 | Decide and document the linear-algebra strategy: bless PETSc or hide it behind a backend boundary before any Trilinos work | B10 | TODO — owner decision required |
+| F13 | Run the quantitative validation and R290 transfer-rate sensitivity campaigns | WP-7, B8 | TODO |
+| F14 | Resume new capability work in dependency order: mass-flux inlet, K/C and whirl margin, then complementarity cavitation | WP-9, WP-8, WP-10 | TODO |
+
+### Acceptance gates for F1-F6
+
+1. **F1 — solver status:** force a non-converged KSP case and assert a nonzero,
+   reason-bearing failure; normal solves report iterations and remain unchanged
+   within tolerance. NaN/Inf injection must stop before output is written.
+2. **F2 — EOS triangle:** for `SCALAR_PCAV` and `LOCAL_PSAT`, step-zero
+   `pressure -> theta -> pressure` round-trips to solver tolerance. The shipped
+   R290 case must not carry the previous approximately 0.97 MPa inconsistency.
+3. **F3 — one film classifier:** no consumer-owned `theta >= 1.0` decisions
+   remain in Reynolds post-processing, energy, gas transport, or boundary
+   logic. A nonzero-void `VOID_COUPLED` case changes continuously as
+   `alpha_gas -> 0`, while `NONE` remains equivalent to the baseline.
+4. **F4 — directional symmetry:** mirrored one-dimensional advection with
+   positive and negative flux produces mirrored results. An axial step becomes
+   sharper under VANLEER than UPWIND without violating boundedness.
+5. **F5 — MPI parity:** the quick TWO_PHASE transient agrees field-by-field for
+   one and two ranks at approximately `linear_rtol`; retain the six-rank Elrod
+   interface test.
+6. **F6 — config closure:** a config populated with every non-deprecated key
+   survives parse/serialize/parse with field-wise equality, including table
+   paths and GUI-only edit cycles.
+
+### Structural and science gates
+
+- F7 must land before transient Picard or adaptive time stepping: both depend
+  on trustworthy convergence detection and relaxation of the actual Elrod
+  state.
+- F10''s `Simulation` API precedes checkpoint/restart. The restart acceptance
+  test is `continuous run == split run + restart` within solver tolerance.
+- F12 must produce an explicit architecture decision record. Do not begin a
+  backend migration while PETSc-specific behavior remains exposed to solver
+  assembly code.
+- F13 archives grid, timestep, scheme, rank, and `k_dg` sensitivity tables.
+  Only after these are credible may F14 add new physical capability.
+
 ## References
 
 - Elrod, H.G. & Adams, M.L. (1975). A computer program for cavitation and starvation problems. *Cavitation and related phenomena in lubrication*, 37-41.

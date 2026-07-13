@@ -25,19 +25,35 @@ const char* group_label(ParamGroup group) {
 const std::vector<UnitOption>& unit_options(UnitFamily family) {
     static const std::vector<UnitOption> fixed = {{"", 1.0}};
     static const std::vector<UnitOption> pressure = {
-        {"Pa", 1.0}, {"kPa", 1e-3}, {"MPa", 1e-6}};
+        {"Pa", 1.0}, {"kPa", 1e-3}, {"MPa", 1e-6}, {"bar", 1e-5}};
+    static const std::vector<UnitOption> bulk_modulus = {
+        {"Pa", 1.0}, {"kPa", 1e-3}, {"MPa", 1e-6}, {"GPa", 1e-9}};
     static const std::vector<UnitOption> angle = {
         {"deg", 1.0}, {"rad", 3.14159265358979323846 / 180.0}};
     static const std::vector<UnitOption> angular_speed = {
         {"rad/s", 1.0}, {"rpm", 60.0 / (2.0 * 3.14159265358979323846)}};
     static const std::vector<UnitOption> length = {{"m", 1.0}, {"mm", 1e3}, {"um", 1e6}};
     static const std::vector<UnitOption> time = {{"s", 1.0}, {"ms", 1e3}};
+    // Misalignment slope (dh/dz). For the small tilts of a real bearing the slope
+    // and the tilt angle coincide (tan x ~ x), so 1 m/m ~ 1 rad = 1000 mrad.
+    static const std::vector<UnitOption> tilt_slope = {{"m/m", 1.0}, {"mrad", 1e3}};
+    static const std::vector<UnitOption> temperature = {{"K", 1.0, 0.0}, {"degC", 1.0, -273.15}};
+    static const std::vector<UnitOption> mass_fraction = {{"kg/kg", 1.0}, {"%", 100.0}};
+    static const std::vector<UnitOption> stiffness = {
+        {"N/m", 1.0}, {"kN/m", 1e-3}, {"MN/m", 1e-6}};
+    static const std::vector<UnitOption> damping = {{"N.s/m", 1.0}, {"kN.s/m", 1e-3}};
     switch (family) {
         case UnitFamily::Pressure: return pressure;
+        case UnitFamily::BulkModulus: return bulk_modulus;
         case UnitFamily::Angle: return angle;
         case UnitFamily::AngularSpeed: return angular_speed;
         case UnitFamily::Length: return length;
         case UnitFamily::Time: return time;
+        case UnitFamily::TiltSlope: return tilt_slope;
+        case UnitFamily::Temperature: return temperature;
+        case UnitFamily::MassFraction: return mass_fraction;
+        case UnitFamily::Stiffness: return stiffness;
+        case UnitFamily::Damping: return damping;
         case UnitFamily::Fixed: break;
     }
     return fixed;
@@ -47,10 +63,16 @@ namespace {
 constexpr double kInf = 1e300;
 using SC = SimulationConfig;
 constexpr UnitFamily kPressure = UnitFamily::Pressure;
+constexpr UnitFamily kBulkModulus = UnitFamily::BulkModulus;
 constexpr UnitFamily kAngle = UnitFamily::Angle;
 constexpr UnitFamily kAngularSpeed = UnitFamily::AngularSpeed;
 constexpr UnitFamily kLength = UnitFamily::Length;
 constexpr UnitFamily kTime = UnitFamily::Time;
+constexpr UnitFamily kTiltSlope = UnitFamily::TiltSlope;
+constexpr UnitFamily kTemperature = UnitFamily::Temperature;
+constexpr UnitFamily kMassFraction = UnitFamily::MassFraction;
+constexpr UnitFamily kStiffness = UnitFamily::Stiffness;
+constexpr UnitFamily kDamping = UnitFamily::Damping;
 }  // namespace
 
 const std::vector<DoubleSpec>& double_specs() {
@@ -69,10 +91,12 @@ const std::vector<DoubleSpec>& double_specs() {
          ParamGroup::Geometry, false, -360.0, 360.0, false, kAngle},
         {"load_angle_deg", "Load angle", "deg", "Direction of the external load in the x-y plane.",
          &SC::load_angle_deg, ParamGroup::Geometry, false, -360.0, 360.0, false, kAngle},
-        {"tilt_slope_x", "Tilt slope x", "m/m", "Journal misalignment slope along x.",
-         &SC::tilt_slope_x, ParamGroup::Geometry, true, -kInf, kInf, false},
-        {"tilt_slope_y", "Tilt slope y", "m/m", "Journal misalignment slope along y.",
-         &SC::tilt_slope_y, ParamGroup::Geometry, true, -kInf, kInf, false},
+        {"tilt_slope_x", "Tilt slope x", "m/m", "Journal misalignment slope along x "
+         "(displayable as mrad of tilt; equal for the small slopes of a real bearing).",
+         &SC::tilt_slope_x, ParamGroup::Geometry, true, -kInf, kInf, false, kTiltSlope},
+        {"tilt_slope_y", "Tilt slope y", "m/m", "Journal misalignment slope along y "
+         "(displayable as mrad of tilt; equal for the small slopes of a real bearing).",
+         &SC::tilt_slope_y, ParamGroup::Geometry, true, -kInf, kInf, false, kTiltSlope},
 
         // Operating conditions
         {"omega", "Rotational speed", "rad/s",
@@ -94,7 +118,7 @@ const std::vector<DoubleSpec>& double_specs() {
          ParamGroup::Lubricant, false, 0.0, kInf, true, kPressure},
         {"bulk_modulus", "Bulk modulus", "Pa",
          "Liquid compressibility for the Elrod-Adams model. Oils are about 1-2 GPa.",
-         &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true, kPressure},
+         &SC::bulk_modulus, ParamGroup::Lubricant, true, 0.0, kInf, true, kBulkModulus},
 
         // Time stepping
         {"end_t", "End time", "s", "Simulated duration (transient mode).", &SC::end_t,
@@ -123,16 +147,16 @@ const std::vector<DoubleSpec>& double_specs() {
 
         // Thermal
         {"temperature_initial", "Initial temperature", "K", "Initial film temperature.",
-         &SC::temperature_initial, ParamGroup::Thermal, false, 0.0, kInf, true},
+         &SC::temperature_initial, ParamGroup::Thermal, false, 0.0, kInf, true, kTemperature},
         {"temperature_reference", "Reference temperature", "K",
          "Reference temperature for property models.", &SC::temperature_reference,
-         ParamGroup::Thermal, true, 0.0, kInf, true},
+         ParamGroup::Thermal, true, 0.0, kInf, true, kTemperature},
         {"journal_wall_temperature", "Journal wall temperature", "K",
          "Journal surface temperature for wall heat exchange.", &SC::journal_wall_temperature,
-         ParamGroup::Thermal, true, 0.0, kInf, true},
+         ParamGroup::Thermal, true, 0.0, kInf, true, kTemperature},
         {"bearing_wall_temperature", "Bearing wall temperature", "K",
          "Bearing surface temperature for wall heat exchange.", &SC::bearing_wall_temperature,
-         ParamGroup::Thermal, true, 0.0, kInf, true},
+         ParamGroup::Thermal, true, 0.0, kInf, true, kTemperature},
         {"rho_cp", "Volumetric heat capacity", "J/(m^3.K)",
          "rho*cp of the lubricant. Mineral oil is about 1.9e6.", &SC::rho_cp, ParamGroup::Thermal,
          true, 0.0, kInf, true},
@@ -148,11 +172,11 @@ const std::vector<DoubleSpec>& double_specs() {
 
         // Fluid property models (all advanced)
         {"dissolved_gas_initial", "Initial dissolved gas", "kg/kg",
-         "Initial dissolved gas mass fraction.", &SC::dissolved_gas_initial,
-         ParamGroup::FluidProperties, true, 0.0, 1.0, false},
+         "Initial dissolved gas mass fraction (displayable as %).", &SC::dissolved_gas_initial,
+         ParamGroup::FluidProperties, true, 0.0, 1.0, false, kMassFraction},
         {"dissolved_gas_max", "Max dissolved gas", "kg/kg",
-         "Upper bound of the dissolved gas mass fraction.", &SC::dissolved_gas_max,
-         ParamGroup::FluidProperties, true, 0.0, 1.0, false},
+         "Upper bound of the dissolved gas mass fraction (displayable as %).",
+         &SC::dissolved_gas_max, ParamGroup::FluidProperties, true, 0.0, 1.0, false, kMassFraction},
         {"dissolved_gas_henry_coeff", "Henry coefficient", "1/Pa",
          "Henry's-law slope at the reference temperature: c_sat = H p.",
          &SC::dissolved_gas_henry_coeff, ParamGroup::FluidProperties, true, 0.0, kInf, false},
@@ -195,7 +219,7 @@ const std::vector<DoubleSpec>& double_specs() {
          ParamGroup::FluidProperties, true, 0.0, kInf, true, kPressure},
         {"property_reference_temperature", "Property reference temperature", "K",
          "Reference temperature for the property models.", &SC::property_reference_temperature,
-         ParamGroup::FluidProperties, true, 0.0, kInf, true},
+         ParamGroup::FluidProperties, true, 0.0, kInf, true, kTemperature},
 
         // Bearing motion
         {"external_load_x", "External load x", "N", "Applied load on the bearing, x component.",
@@ -206,30 +230,16 @@ const std::vector<DoubleSpec>& double_specs() {
          &SC::external_load_z, ParamGroup::Motion, true, -kInf, kInf, false},
         {"bearing_mass", "Bearing mass", "kg", "Moving bearing mass (MOVING_BEARING model).",
          &SC::bearing_mass, ParamGroup::Motion, true, 0.0, kInf, true},
-        {"bearing_initial_x", "Initial position x", "m", "Initial bearing offset, x.",
-         &SC::bearing_initial_x, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
-        {"bearing_initial_y", "Initial position y", "m", "Initial bearing offset, y.",
-         &SC::bearing_initial_y, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
-        {"bearing_initial_z", "Initial position z", "m", "Initial bearing offset, z.",
-         &SC::bearing_initial_z, ParamGroup::Motion, true, -kInf, kInf, false, kLength},
-        {"bearing_initial_vx", "Initial velocity x", "m/s", "Initial bearing velocity, x.",
-         &SC::bearing_initial_vx, ParamGroup::Motion, true, -kInf, kInf, false},
-        {"bearing_initial_vy", "Initial velocity y", "m/s", "Initial bearing velocity, y.",
-         &SC::bearing_initial_vy, ParamGroup::Motion, true, -kInf, kInf, false},
-        {"bearing_initial_vz", "Initial velocity z", "m/s", "Initial bearing velocity, z.",
-         &SC::bearing_initial_vz, ParamGroup::Motion, true, -kInf, kInf, false},
-        {"bearing_stiffness_x", "Support stiffness x", "N/m", "Support spring stiffness, x.",
-         &SC::bearing_stiffness_x, ParamGroup::Motion, true, 0.0, kInf, false},
-        {"bearing_stiffness_y", "Support stiffness y", "N/m", "Support spring stiffness, y.",
-         &SC::bearing_stiffness_y, ParamGroup::Motion, true, 0.0, kInf, false},
-        {"bearing_stiffness_z", "Support stiffness z", "N/m", "Support spring stiffness, z.",
-         &SC::bearing_stiffness_z, ParamGroup::Motion, true, 0.0, kInf, false},
-        {"bearing_damping_x", "Support damping x", "N.s/m", "Support damping, x.",
-         &SC::bearing_damping_x, ParamGroup::Motion, true, 0.0, kInf, false},
-        {"bearing_damping_y", "Support damping y", "N.s/m", "Support damping, y.",
-         &SC::bearing_damping_y, ParamGroup::Motion, true, 0.0, kInf, false},
-        {"bearing_damping_z", "Support damping z", "N.s/m", "Support damping, z.",
-         &SC::bearing_damping_z, ParamGroup::Motion, true, 0.0, kInf, false},
+        // Isotropic support: one value applied to every direction (the GUI mirrors
+        // it onto the x/y/z config members at save). The initial position comes
+        // from the bearing geometry (eccentricity + attitude angle) and the
+        // initial velocity is zero, so neither is exposed here.
+        {"bearing_stiffness_x", "Support stiffness", "N/m",
+         "Isotropic support spring stiffness (same in all directions).",
+         &SC::bearing_stiffness_x, ParamGroup::Motion, true, 0.0, kInf, false, kStiffness},
+        {"bearing_damping_x", "Support damping", "N.s/m",
+         "Isotropic support damping (same in all directions).",
+         &SC::bearing_damping_x, ParamGroup::Motion, true, 0.0, kInf, false, kDamping},
         {"min_film_thickness", "Minimum film thickness", "m",
          "Simulation guard: stop/clamp when the film drops below this.", &SC::min_film_thickness,
          ParamGroup::Motion, true, 0.0, kInf, true, kLength},
@@ -261,9 +271,6 @@ const std::vector<IntSpec>& int_specs() {
 
 const std::vector<BoolSpec>& bool_specs() {
     static const std::vector<BoolSpec> specs = {
-        {"bearing_initial_from_attitude", "Initial position from attitude angle",
-         "Derive the initial bearing position from eccentricity and attitude angle instead of explicit coordinates.",
-         &SC::bearing_initial_from_attitude, ParamGroup::Motion, true},
         {"stop_on_nonpositive_film", "Stop on film contact",
          "Abort the run when the film thickness reaches the minimum.",
          &SC::stop_on_nonpositive_film, ParamGroup::Motion, true},
