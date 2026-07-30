@@ -1047,10 +1047,25 @@ Because $\alpha_g$, $\theta_{full}=1-\alpha_g$ and $\theta$ are mutually
 dependent, the coupled iteration limit-cycles if taken undamped — the rupture
 front oscillates with zero flag flips and the Elrod loop stalls at a finite mass
 residual. `void_coupling_relaxation` $w$ (default $0.3$) under-relaxes $p_{void}$,
-$\alpha_g$ and $m_g$ toward their new values each outer iteration. Relaxation
-moves only the iteration path, not the fixed point. Stiffness scales with $L$:
-CO$_2$ in mineral oil ($L\simeq1.08$) needs $w\simeq0.1$ where air
-($L\simeq0.098$) converges at $w=0.3$.
+$\alpha_g$ and $m_g$ toward their new values each outer iteration, which fixes the
+*inner* Elrod loop.
+
+> **Status: `VOID_COUPLED` does not converge and must not be used for
+> quantitative work.** The *outer* segregated coupling between the flash
+> (`equilibrate_gas`) and the Elrod solve exhausts `coupling_max_iters` at
+> $R_p\sim10^0$–$10^1$ against a $10^{-9}$ tolerance. The diagnostic is
+> relaxation dependence: at a fixed mesh, $w=0.10/0.30/0.60$ give peak pressures
+> of $12.1/6.29/6.42$ bar and cavity arcs of $64/100/108^\circ$. Since
+> under-relaxation cannot move a fixed point, those states are not fixed points.
+> Refining the mesh does not help. The cure is a numerical-methods change —
+> an implicit/Newton coupling, or folding the flash into the Elrod switch so
+> $\alpha_g$ and $\theta$ are solved simultaneously rather than alternately.
+> Use `gas_pressure_coupling = NONE` meanwhile.
+
+The closed form above remains exact and useful on its own, independent of the
+solver: it can be applied *a posteriori* to a converged `NONE` solution to test
+whether the dissolved-gas inventory could sustain the void that solution
+predicts.
 
 **Consequence for gaseous cavitation.** At a given void fraction the sustainable
 plateau is set by solubility alone. With $p_{sat}=1$ bar and $\alpha=0.4$,

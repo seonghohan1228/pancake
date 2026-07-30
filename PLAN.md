@@ -15,18 +15,27 @@ Done:
 - Bounded, closed-form plateau `p_void = L theta p_sat / ((1-theta) + L theta)`
   replacing the divergent explicit `m_g R_s T / ((1-theta) h)` (PHYSICS.md §16.3).
 - `void_coupling_relaxation` damping the `alpha_gas <-> theta_full <-> theta`
-  limit cycle. 22/22 tests pass, WP-1 gates unchanged.
+  limit cycle in the inner Elrod loop. 22/22 tests pass, WP-1 gates unchanged.
+- Analytical benchmarks in `validation/journal_bearing`: infinitely-long
+  (Sommerfeld) and short-bearing (Ocvirk) limits, both converging to the closed
+  forms at the expected rates.
 
-Open:
-- Convergence cost scales with the Ostwald coefficient. CO2 (L ~ 1.08) needs
-  w ~ 0.1 and is ~24 s/case at 180x30; air (L ~ 0.098) converges at w = 0.3.
-  A stiffness-aware default (scale w with L) would remove the manual tuning.
-- `equilibrate_gas` still assigns free gas independently of film content. The
-  closed-form plateau makes this harmless for pressure, but `alpha_gas` remains a
-  flash diagnostic rather than a transported void fraction.
-- Solver validation against analytical/experimental journal-bearing benchmarks
-  (Sommerfeld long-bearing, Ocvirk short-bearing, Raimondi & Boyd charts,
-  Ferron 1983, Cole & Hughes cavity photographs) is not yet in `validation/`.
+Open — **VOID_COUPLED still does not converge and is not usable quantitatively**:
+- The outer `equilibrate_gas` <-> `solve_elrod` Picard coupling exhausts
+  `coupling_max_iters` at `R_p` between 0.57 and 7.2 (tolerance 1e-9). Answers
+  are relaxation-dependent (w = 0.10/0.30/0.60 give p_max 12.1/6.29/6.42 bar at a
+  fixed grid), which proves they are not fixed points. Fixing this is a
+  numerical-methods change: replace the segregated Picard iteration with an
+  implicit/Newton treatment, or fold the flash into the Elrod switch function so
+  the void fraction and film content are solved together rather than alternately.
+- The solver reports success on iteration-budget exhaustion. `ElrodStats` already
+  carries `converged`; the run should surface a non-zero exit or an explicit
+  warning when the coupling fails, so that "ran to completion" cannot be mistaken
+  for "converged".
+- `equilibrate_gas` still assigns free gas independently of film content, so
+  `alpha_gas` is a flash diagnostic rather than a transported void fraction.
+- Remaining validation targets: Raimondi & Boyd finite-width charts, Ferron 1983
+  measured pressure profiles, Cole & Hughes cavity photographs.
 
 ## Completed Phases
 

@@ -37,10 +37,36 @@ simulated at all. Two independent defects, both fixed here.
   is precisely the physics WP-1 gate 4 (`test_gas_coupling`) asserts. Gas creates
   its own void by displacing liquid, so the cap must not be applied.
 - All 22 tests pass, including the WP-1 acceptance gates (vaporous limit and
-  pressure cap) unchanged. Verified effect on the rig case (eps 0.7, 1500 rpm,
-  p_sat 1 bar, air): the cavitated plateau lifts off the bare-oil vaporous floor
-  from 0.0050 bar (NONE, gas inert) to 0.0357 bar, and mean void falls 0.41 ->
-  0.20 as the released gas resists void growth.
+  pressure cap) unchanged.
+
+**VOID_COUPLED is still not usable quantitatively.** The two defects above are
+real and fixed, but they were not the whole story, and this must not be read as
+the mode now working:
+
+- Fixed: pressures are bounded (no more O(1e4) bar), and the *inner* Elrod loop
+  converges cleanly (`mc -> 0`, zero flag flips) for the first solves.
+- Not fixed: the *outer* coupling loop (`equilibrate_gas` <-> `solve_elrod`) does
+  not converge on the rig case. It exhausts `coupling_max_iters` with
+  `R_p = 0.57` (CO2, 180x30, w = 0.10) to `R_p = 7.2` (air, 360x60, w = 0.3)
+  against a 1e-9 tolerance.
+- The decisive evidence is relaxation dependence: at a fixed 180x30 grid, w =
+  0.10 / 0.30 / 0.60 give p_max = 12.1 / 6.29 / 6.42 bar and cavity arc 64 / 100
+  / 108 deg. Relaxation cannot move a fixed point, so these runs are not at one.
+  A grid sequence 180x30 -> 360x60 likewise fails to converge (p_max 12.1, 8.9,
+  8.6, 17.7 bar).
+- Note the solver exits 0 and logs "Simulation finished successfully" when the
+  iteration budget is exhausted, so process exit status is not a convergence
+  test; `log_outer_iters = true` and the reported `R_p` are.
+- Remaining work is a numerical-methods change, not a bug fix: the segregated
+  Picard coupling between the flash and the Elrod solve needs replacing with an
+  implicit/Newton treatment (or the flash needs folding into the Elrod switch
+  itself). Until then use `gas_pressure_coupling = NONE` for quantitative work.
+
+The closed-form plateau is independently useful even so, since it is exact:
+at void fraction alpha the sustainable gaseous plateau is
+`p = L p_sat / (alpha/(1-alpha) + L)`, which for p_sat = 1 bar and alpha = 0.4
+gives 0.13 bar for air (L = 0.098, effectively a vaporous cavity) against
+0.62 bar for CO2 (L = 1.08, genuinely gaseous).
 
 
 ### 2026-07-13 - Repository consolidation, agent Git rule, and Phase F plan
