@@ -66,3 +66,6 @@ compile_commands.json
 
 # debug information files
 *.dwo
+
+# Validation benchmark run outputs
+validation/journal_bearing/_work/
