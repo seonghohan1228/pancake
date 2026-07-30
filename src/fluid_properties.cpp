@@ -67,6 +67,17 @@ double interpolate_property_table(const std::vector<PropertyTablePoint>& table,
     return fallback;
 }
 
+/// Under-relaxation weight for the free-gas state. Damps the two-way
+/// alpha_gas <-> theta_full <-> theta feedback that otherwise limit-cycles under
+/// VOID_COUPLED (the rupture front oscillates with no flag flips, so the Elrod
+/// loop stalls at a finite mass residual). The fixed point is unchanged, so the
+/// converged solution is identical -- only the path to it is damped. Returns 1
+/// (no relaxation) for every other coupling mode.
+double gas_state_relaxation(const SimulationConfig& cfg) {
+    if (cfg.gas_pressure_coupling != GasPressureCoupling::VOID_COUPLED) return 1.0;
+    return std::clamp(cfg.void_coupling_relaxation, 0.01, 1.0);
+}
+
 double equilibrium_dissolved_gas(double pressure, double temperature, const SimulationConfig& cfg) {
     if (!property_model_enabled(cfg)) return 0.0;
 
@@ -306,9 +317,13 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
                 ? std::clamp(free_mass / (rho_g * h), 0.0, alpha_max)
                 : 0.0;
 
+            const double w = gas_state_relaxation(cfg);
             if (fields.has("dissolved_gas")) fields["dissolved_gas"](i, j) = clamp_mass_fraction(dissolved, cfg);
-            if (fields.has("free_gas_mass")) fields["free_gas_mass"](i, j) = free_mass;
-            if (fields.has("alpha_gas")) fields["alpha_gas"](i, j) = alpha;
+            if (fields.has("free_gas_mass"))
+                fields["free_gas_mass"](i, j) =
+                    (1.0 - w) * fields["free_gas_mass"](i, j) + w * free_mass;
+            if (fields.has("alpha_gas"))
+                fields["alpha_gas"](i, j) = (1.0 - w) * fields["alpha_gas"](i, j) + w * alpha;
             if (fields.has("gas_mass_transfer")) fields["gas_mass_transfer"](i, j) = source;
             if (fields.has("rho_gas")) fields["rho_gas"](i, j) = rho_g;
         }
@@ -317,7 +332,6 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
 
 void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
     if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return;
-    const double alpha_max = std::clamp(cfg.gas_alpha_max, 0.0, 1.0);
     const double c_feed = clamp_mass_fraction(cfg.dissolved_gas_initial, cfg);
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
@@ -339,6 +353,7 @@ void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& c
             }
 
             // Local flash from the feed composition: gas above the saturation limit comes out.
+            const double alpha_max = std::clamp(cfg.gas_alpha_max, 0.0, 1.0);
             const double c_eq = equilibrium_dissolved_gas(pressure, temperature, cfg);
             const double dissolved = std::min(c_eq, c_feed);
             const double released = std::max(0.0, c_feed - dissolved);
@@ -348,9 +363,13 @@ void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& c
             const double alpha = (rho_g > 0.0 && h > 0.0)
                 ? std::clamp(free_mass / (rho_g * h), 0.0, alpha_max) : 0.0;
 
+            const double w = gas_state_relaxation(cfg);
             if (fields.has("dissolved_gas")) fields["dissolved_gas"](i, j) = dissolved;
-            if (fields.has("free_gas_mass")) fields["free_gas_mass"](i, j) = free_mass;
-            if (fields.has("alpha_gas")) fields["alpha_gas"](i, j) = alpha;
+            if (fields.has("free_gas_mass"))
+                fields["free_gas_mass"](i, j) =
+                    (1.0 - w) * fields["free_gas_mass"](i, j) + w * free_mass;
+            if (fields.has("alpha_gas"))
+                fields["alpha_gas"](i, j) = (1.0 - w) * fields["alpha_gas"](i, j) + w * alpha;
             if (fields.has("gas_mass_transfer")) fields["gas_mass_transfer"](i, j) = 0.0;
             if (fields.has("rho_gas")) fields["rho_gas"](i, j) = rho_g;
         }

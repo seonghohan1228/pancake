@@ -193,6 +193,12 @@ int main(int argc, char** argv) {
         fields.add("alpha_gas", mesh).fill(0.0);
         fields.add("gas_mass_transfer", mesh).fill(0.0);
         fields.add("rho_gas", mesh).fill(0.0);
+        // Lagged, under-relaxed cavitated-zone plateau. Only VOID_COUPLED needs it;
+        // its presence is what switches Reynolds from recomputing p_void every
+        // assembly (which limit-cycles) to relaxing it once per outer iteration.
+        if (cfg.gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED) {
+            fields.add("p_void", mesh).fill(cfg.effective_p_cav());
+        }
         fields.add("temperature", mesh).fill(cfg.temperature_initial);
         fields.add("heat_generation", mesh).fill(0.0);
         fields.add("inlet_indicator", mesh).fill(0.0);

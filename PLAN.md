@@ -1,5 +1,33 @@
 # Development Plan
 
+## In Progress
+
+### WP-1b — VOID_COUPLED made usable (2026-07-31)
+
+Driver: the optical journal-bearing rig study (50 mm bore, c = 250 um,
+L/D = 0.75, white mineral oil, air vs CO2 at ~1 atm) needs the released-gas
+volume to influence the cavity, because that is the only mechanism by which the
+dissolved species can matter. Under `NONE` the gas is volumetrically inert and
+air and CO2 give bit-identical fields; `VOID_COUPLED` was the intended path but
+diverged (10 831 bar) or hung.
+
+Done:
+- Bounded, closed-form plateau `p_void = L theta p_sat / ((1-theta) + L theta)`
+  replacing the divergent explicit `m_g R_s T / ((1-theta) h)` (PHYSICS.md §16.3).
+- `void_coupling_relaxation` damping the `alpha_gas <-> theta_full <-> theta`
+  limit cycle. 22/22 tests pass, WP-1 gates unchanged.
+
+Open:
+- Convergence cost scales with the Ostwald coefficient. CO2 (L ~ 1.08) needs
+  w ~ 0.1 and is ~24 s/case at 180x30; air (L ~ 0.098) converges at w = 0.3.
+  A stiffness-aware default (scale w with L) would remove the manual tuning.
+- `equilibrate_gas` still assigns free gas independently of film content. The
+  closed-form plateau makes this harmless for pressure, but `alpha_gas` remains a
+  flash diagnostic rather than a transported void fraction.
+- Solver validation against analytical/experimental journal-bearing benchmarks
+  (Sommerfeld long-bearing, Ocvirk short-bearing, Raimondi & Boyd charts,
+  Ferron 1983, Cole & Hughes cavity photographs) is not yet in `validation/`.
+
 ## Completed Phases
 
 ### Phase 1 — Infrastructure

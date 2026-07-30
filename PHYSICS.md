@@ -1013,9 +1013,51 @@ of the two species' release pressures (general, not R290-specific):
 
 $$p_{cav,\mathrm{eff}} = \max\!\big(p_{cav,\mathrm{oil}},\; p_{sat}(T,c_d)\big).$$
 
-With WP-1 void coupling the cavitated plateau generalizes further to the
-gas-filled value $p_{void}=\max(p_{cav,\mathrm{eff}},\, m_g R_g T/((1-\theta)h))$,
-of which $p_{cav,\mathrm{eff}}$ is the gas-free floor.
+With WP-1 void coupling the cavitated plateau generalizes further to a gas-filled
+value $p_{void}$, of which $p_{cav,\mathrm{eff}}$ is the gas-free floor. The
+plateau is obtained as the **fixed point** of the gas inventory rather than
+evaluated explicitly from the current free-gas mass. Requiring the gas released
+between the bubble point and the local pressure to exactly fill the void
+$(1-\theta)$ at ideal-gas density $\rho_g=p/(R_sT)$ gives
+
+$$H\,(p_{sat}-p)\,\rho_l\,\theta\,h\cdot\frac{R_sT}{p} = (1-\theta)\,h
+\quad\Longrightarrow\quad
+\boxed{\;p_{void}=\frac{L\,\theta\,p_{sat}}{(1-\theta)+L\,\theta}\;}$$
+
+where
+
+$$L \equiv H\,\rho_l\,R_s\,T$$
+
+is the dimensionless **Ostwald solubility coefficient** (gas volume dissolved per
+unit liquid volume) — the Henry slope $H$, the liquid density and the species gas
+constant collapse into that single group, so the plateau depends on the dissolved
+species *only* through $L$. Limits: $p_{void}\to p_{sat}$ as $\theta\to1$,
+$p_{void}\to0$ as $\theta\to0$, monotone in between, and never above $p_{sat}$.
+
+This replaces the earlier explicit form $p_{void}=m_gR_gT/((1-\theta)h)$, which is
+the same balance but unbounded: the flash (§16.2) releases gas wherever
+$p<p_{sat}$ regardless of film content, so a full-film cell could carry gas and
+divide it by a floored, near-zero void, yielding $O(10^4)$ bar plateaus. Note the
+tempting cap "free gas $\le$ the available void $(1-\theta)$" is **not** a valid
+repair: it suppresses outgassing in a supersaturated *full* film, which is the
+phenomenon the WP-1 pressure-cap gate asserts. Gas creates its own void by
+displacing liquid.
+
+Because $\alpha_g$, $\theta_{full}=1-\alpha_g$ and $\theta$ are mutually
+dependent, the coupled iteration limit-cycles if taken undamped — the rupture
+front oscillates with zero flag flips and the Elrod loop stalls at a finite mass
+residual. `void_coupling_relaxation` $w$ (default $0.3$) under-relaxes $p_{void}$,
+$\alpha_g$ and $m_g$ toward their new values each outer iteration. Relaxation
+moves only the iteration path, not the fixed point. Stiffness scales with $L$:
+CO$_2$ in mineral oil ($L\simeq1.08$) needs $w\simeq0.1$ where air
+($L\simeq0.098$) converges at $w=0.3$.
+
+**Consequence for gaseous cavitation.** At a given void fraction the sustainable
+plateau is set by solubility alone. With $p_{sat}=1$ bar and $\alpha=0.4$,
+air ($L=0.098$) supports only $0.13$ bar — effectively a vaporous cavity — while
+CO$_2$ ($L=1.08$) supports $0.62$ bar, a genuinely gaseous one. This is why a
+weakly soluble gas cannot produce a gas-filled cavity at moderate void, however
+much the Elrod solution says the film has ruptured.
 
 ### 16.4 Property closures and the supplier PTSV data
 

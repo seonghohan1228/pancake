@@ -44,6 +44,32 @@ struct VoidParams {
     double beta_bar = 0.0;    // mixture bulk modulus
 };
 
+/// Gas-inventory-consistent cavitated-zone plateau pressure [Pa].
+///
+/// Requiring the gas released between the bubble point p_sat and the local
+/// pressure p to exactly fill the void (1 - theta) at the ideal-gas density
+/// p / (R_s T) gives
+///     H (p_sat - p) rho_l theta h . R_s T / p = (1 - theta) h
+///  => p = L theta p_sat / [ (1 - theta) + L theta ],      L = H rho_l R_s T,
+/// the Ostwald coefficient. This is the fixed point of the explicit form
+/// p = m_g R_s T / ((1 - theta) h), but bounded: it tends to p_sat as theta -> 1
+/// rather than diverging like m_g / (1 - theta), and never exceeds p_sat. The
+/// explicit form divided a full-film cell's released gas by a ~zero void and
+/// produced O(1e4) bar plateaus whenever the flash left free gas in an
+/// uncavitated cell. Returns 0 when no Henry solubility model applies.
+double gas_inventory_plateau(const Fields& fields, const SimulationConfig& cfg,
+                             double theta, int i, int j) {
+    const double T = std::max(field_value(fields, "temperature", cfg.temperature_initial, i, j), 1.0);
+    const double rho_l = positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
+    const double L_ostwald = cfg.ostwald_coefficient(T, rho_l);
+    const double p_sat = cfg.saturation_pressure(cfg.dissolved_gas_initial, T);
+    if (!(L_ostwald > 0.0) || !(p_sat > 0.0)) return 0.0;
+    const double theta_c = std::clamp(theta, 0.0, 1.0);
+    const double denom = (1.0 - theta_c) + L_ostwald * theta_c;
+    if (!(denom > 0.0)) return p_sat;
+    return std::min(L_ostwald * theta_c * p_sat / denom, p_sat);
+}
+
 VoidParams void_params(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
     VoidParams vp;
     vp.p_void = cfg.effective_p_cav();
@@ -63,13 +89,29 @@ VoidParams void_params(const Fields& fields, const SimulationConfig& cfg, int i,
     // single-phase model (the vaporous-limit acceptance gate).
     const double inv_beta = vp.theta_full / cfg.bulk_modulus + alpha_g / p;
     vp.beta_bar = inv_beta > 0.0 ? 1.0 / inv_beta : cfg.bulk_modulus;
-    // Released gas filling the void sets the local plateau pressure (>= the onset threshold).
-    const double m_g = std::max(field_value(fields, "free_gas_mass", 0.0, i, j), 0.0);
-    const double T = std::max(field_value(fields, "temperature", cfg.temperature_initial, i, j), 1.0);
-    const double h = std::max(field_value(fields, "h", cfg.c, i, j), cfg.min_film_thickness);
-    const double void_frac = std::max(1.0 - theta, 1.0e-6);
-    const double Rg = FluidProperties::gas_specific_constant(cfg.dissolved_gas_species);
-    vp.p_void = std::max(vp.p_void, m_g * Rg * T / (void_frac * h));
+
+    // Released gas filling the void sets the local plateau pressure (>= the onset
+    // threshold). Solved in closed form rather than evaluated explicitly from the
+    // current free-gas mass: requiring the gas released between p_sat and p to
+    // exactly fill the void (1 - theta) at the ideal-gas density p / (R_s T) gives
+    //     H (p_sat - p) rho_l theta h . R_s T / p = (1 - theta) h
+    //  => p = L theta p_sat / [ (1 - theta) + L theta ],     L = H rho_l R_s T,
+    // the Ostwald coefficient. This is the fixed point of the explicit form
+    // p = m_g R_s T / ((1 - theta) h), but bounded: it tends to p_sat as theta -> 1
+    // instead of diverging like m_g / (1 - theta), and never exceeds p_sat. The
+    // explicit form divided a full-film cell's released gas by a ~zero void and
+    // produced O(1e4) bar plateaus (and non-convergence) whenever the flash put
+    // free gas in an uncavitated cell.
+    // When the lagged plateau field is present (VOID_COUPLED runs), read the
+    // under-relaxed value the outer loop maintains. Recomputing the closure on the
+    // instantaneous theta at every assembly makes the p_void <-> theta feedback
+    // limit-cycle: the rupture front oscillates without ever flipping a flag, so
+    // the Elrod loop stalls at a finite mass residual and never converges.
+    if (fields.has("p_void")) {
+        vp.p_void = std::max(vp.p_void, field_value(fields, "p_void", vp.p_void, i, j));
+        return vp;
+    }
+    vp.p_void = std::max(vp.p_void, gas_inventory_plateau(fields, cfg, theta, i, j));
     return vp;
 }
 
@@ -350,6 +392,22 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
         for (int i = 0; i < n_theta; ++i)
             for (int j = 0; j < n_z; ++j)
                 theta_prev[i * n_z + j] = theta(i, j);
+
+        // VOID_COUPLED: advance the lagged plateau once per outer iteration under
+        // relaxation. Updating it here (rather than inside every void_params call)
+        // breaks the p_void <-> θ limit cycle; w = 1 reproduces the unrelaxed,
+        // non-convergent behaviour.
+        if (fields.has("p_void") && outer > 0) {
+            Field& p_void = fields["p_void"];
+            const double w = std::clamp(cfg.void_coupling_relaxation, 0.01, 1.0);
+            const double floor_p = cfg.effective_p_cav();
+            for (int i = -ng; i < n_theta + ng; ++i)
+                for (int j = 0; j < n_z; ++j) {
+                    const double target =
+                        std::max(floor_p, gas_inventory_plateau(fields, cfg, theta(i, j), i, j));
+                    p_void(i, j) = (1.0 - w) * p_void(i, j) + w * target;
+                }
+        }
 
         // Apply switch function g(θ) to get the effective diffusion coefficient.
         // For the first outer iteration (outer=0), we force g=1 everywhere.

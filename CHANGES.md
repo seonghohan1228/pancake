@@ -2,6 +2,47 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-07-31 - VOID_COUPLED: bounded plateau closure and coupling relaxation
+
+Reason: `gas_pressure_coupling = VOID_COUPLED` was unusable on a sub-atmospheric
+optical-rig case (50 mm bore, c = 250 um, L/D = 0.75, white mineral oil + air/CO2
+at 1 atm). It produced a 10 831 bar peak pressure with air and never converged
+with CO2, so the gas-species dependence of gaseous cavitation could not be
+simulated at all. Two independent defects, both fixed here.
+
+- **Unbounded plateau (divergence).** `void_params` evaluated the cavitated-zone
+  plateau explicitly as `p_void = m_g R_s T / ((1 - theta) h)` with the void
+  floored at `1e-6`. The flash in `equilibrate_gas` assigns free gas wherever
+  `p < p_sat` regardless of film content, so a *full-film* cell could carry gas
+  and divide it by a ~zero void, giving O(1e4) bar plateaus. Replaced with the
+  closed-form fixed point of the same balance: requiring the gas released between
+  `p_sat` and `p` to fill the void `(1 - theta)` at ideal-gas density gives
+  `p = L theta p_sat / [(1 - theta) + L theta]` with `L = H rho_l R_s T` the
+  Ostwald coefficient. This tends to `p_sat` as `theta -> 1` instead of
+  diverging, never exceeds `p_sat`, and is monotone in `theta`. New helpers:
+  `Reynolds::gas_inventory_plateau`, `SimulationConfig::ostwald_coefficient`,
+  `SimulationConfig::gas_specific_constant_for_species`.
+- **Limit cycle (non-convergence).** The two-way `alpha_gas <-> theta_full <->
+  theta` feedback oscillated: the rupture front moved every iteration with zero
+  flag flips, so the Elrod loop stalled at a finite mass residual (`mc ~ 0.13`)
+  and ran to `max_outer_iters` forever. Added under-relaxation, weight
+  `void_coupling_relaxation` (new key, default 0.3, active only under
+  VOID_COUPLED): the lagged plateau is held in a new `p_void` field advanced once
+  per Elrod outer iteration, and `alpha_gas` / `free_gas_mass` are relaxed toward
+  the flash result. Relaxation changes only the iteration path, not the fixed
+  point, so converged solutions are unchanged.
+- A rejected intermediate fix is recorded because it looks correct and is not:
+  capping free gas by the available void `(1 - theta)` also removes the
+  divergence, but it suppresses outgassing in a supersaturated *full* film, which
+  is precisely the physics WP-1 gate 4 (`test_gas_coupling`) asserts. Gas creates
+  its own void by displacing liquid, so the cap must not be applied.
+- All 22 tests pass, including the WP-1 acceptance gates (vaporous limit and
+  pressure cap) unchanged. Verified effect on the rig case (eps 0.7, 1500 rpm,
+  p_sat 1 bar, air): the cavitated plateau lifts off the bare-oil vaporous floor
+  from 0.0050 bar (NONE, gas inert) to 0.0357 bar, and mean void falls 0.41 ->
+  0.20 as the released gas resists void growth.
+
+
 ### 2026-07-13 - Repository consolidation, agent Git rule, and Phase F plan
 
 Reason: the latest GUI/config work and the maintainer handoff were left as a

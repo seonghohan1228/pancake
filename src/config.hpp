@@ -553,6 +553,11 @@ struct SimulationConfig {
     double gas_pressure_floor = 1.0;             // Ideal-gas pressure floor [Pa]
     MixtureViscosityModel mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     GasPressureCoupling gas_pressure_coupling = GasPressureCoupling::NONE;  // released gas into pressure (WP-1)
+    // Under-relaxation on the VOID_COUPLED plateau p_void. The p_void <-> theta
+    // feedback limit-cycles at w = 1 (the rupture front oscillates with no flag
+    // flips, so the Elrod loop stalls at a finite mass residual). Ignored unless
+    // gas_pressure_coupling = VOID_COUPLED.
+    double void_coupling_relaxation = 0.3;
     double mu_gas = 0.0;                         // Free-gas dynamic viscosity [Pa s]; required by DUKLER/MCADAMS/LINEAR models
     double property_reference_pressure = 101325.0;
     double property_reference_temperature = 300.0;
@@ -759,6 +764,7 @@ struct SimulationConfig {
                 if (value == "VOID_COUPLED" || value == "VOID") gas_pressure_coupling = GasPressureCoupling::VOID_COUPLED;
                 else if (value == "NONE") gas_pressure_coupling = GasPressureCoupling::NONE;
             }
+            else if (key == "void_coupling_relaxation") void_coupling_relaxation = std::stod(value);
             else if (key == "mu_gas") mu_gas = std::stod(value);
             else if (key == "diagnostics_interval") diagnostics_interval = std::stoi(value);
             else if (key == "property_reference_pressure") property_reference_pressure = std::stod(value);
@@ -1151,6 +1157,40 @@ struct SimulationConfig {
                 }
             }
         }
+    }
+
+    /// Ostwald solubility coefficient L = V_gas(dissolved) / V_liquid, dimensionless.
+    ///
+    /// Derived from the configured Henry slope: with c_sat = H(T) p (mass fraction)
+    /// and an ideal free-gas phase rho_g = p / (R_s T),
+    ///     L = c_sat rho_liquid / rho_g = H rho_liquid R_s T,
+    /// which is independent of pressure, as the Ostwald coefficient must be.
+    /// Used by the VOID_COUPLED plateau closure; returns 0 when no Henry model
+    /// applies, which makes callers fall back to the uncoupled threshold.
+    double ostwald_coefficient(double temperature, double rho_liquid) const {
+        if (fluid_property_model == FluidPropertyModel::CONSTANT) return 0.0;
+        if (solubility_model != SolubilityModel::HENRY) return 0.0;
+        const double T = temperature > 0.0 ? temperature : property_reference_temperature;
+        double henry = dissolved_gas_henry_coeff;
+        if (dissolved_gas_henry_temp_coeff != 0.0 && T > 0.0 &&
+            property_reference_temperature > 0.0) {
+            henry *= std::exp(dissolved_gas_henry_temp_coeff *
+                              (1.0 / T - 1.0 / property_reference_temperature));
+        }
+        if (!(henry > 0.0)) return 0.0;
+        const double rho_l = rho_liquid > 0.0 ? rho_liquid : rho;
+        return henry * rho_l * gas_specific_constant_for_species() * T;
+    }
+
+    /// Specific gas constant R_s of the dissolved species [J/(kg K)].
+    /// Mirrors FluidProperties::gas_specific_constant; duplicated here so the
+    /// config header stays free of a dependency on the fluid-properties unit.
+    double gas_specific_constant_for_species() const {
+        switch (dissolved_gas_species) {
+            case DissolvedGasSpecies::AIR: return 287.05;
+            case DissolvedGasSpecies::PROPANE: return 188.55;
+        }
+        return 188.55;
     }
 
     /// Pressure at which oil with dissolved mass fraction c_d is saturated:
