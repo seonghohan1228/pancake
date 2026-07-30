@@ -37,6 +37,44 @@ Open — **VOID_COUPLED still does not converge and is not usable quantitatively
 - Remaining validation targets: Raimondi & Boyd finite-width charts, Ferron 1983
   measured pressure profiles, Cole & Hughes cavity photographs.
 
+### Deferred modelling gaps (optical-rig study, 2026-07-31)
+
+Recorded here so they are not silently inherited as validated physics.
+
+1. **No vaporous-cavitation physics.** The "vaporous" case is produced only by
+   setting `dissolved_gas_initial = 0` so the plateau falls back to the scalar
+   `p_cav`. There is no latent heat, no phase-change kinetics and no vapour
+   transport - it is a prescribed low-pressure plateau, not a vaporisation model.
+   Braun & Hendricks (1984) argued oil vaporisation needs energy not available in
+   normal bearing operation, so a real degassed rig should sit between the
+   gaseous and "vaporous" predictions rather than at the 0.005 bar extreme. Do
+   not quote the vaporous case as a validated prediction of vapour behaviour.
+2. **Reabsorption kinetics are symmetric.** `update_gas_state` uses the single
+   `gas_mass_transfer_rate` for both release and resorption, and the steady
+   `EQUILIBRIUM` path makes both instantaneous. Physically resorption is
+   diffusion-limited and much slower than release, which is why gaseous cavities
+   persist downstream of reformation while vapour cavities collapse at once.
+   Etsion & Ludwig (1982) proposed exactly this asymmetry as the mechanism behind
+   the ~50 kPa pressure variation they measured *inside* the cavitation zone. A
+   separate, slower resorption time constant would be needed to reproduce it.
+3. **Cavity pressure is assumed uniform.** `LOCAL_PSAT` pins every cavitated cell
+   at `p_sat`. Etsion & Ludwig measured ~50 kPa of variation across the cavity,
+   which is ~10% of a 0.5 bar plateau. Predicted cavity *extent* is trustworthy;
+   predicted cavity *pressure* is nominal.
+4. **No axial re-flooding of a cavitated film.** Elrod-Adams sets the switch
+   function to zero in cavitated cells, so there is no pressure-driven path for
+   liquid to re-enter. An ungrooved bearing therefore falls irreversibly into the
+   analytic fully-starved state `theta*h = const` (verified: rms 0.0065 against
+   the closed form, `theta_min` 0.1766 vs 0.1765). Etsion & Ludwig photographed
+   strong reverse flow re-flooding the cavity in a real submerged bearing, so
+   this is a model limitation, not a physical prediction. Ungrooved geometries
+   need an explicit inlet as a numerical stand-in.
+5. **`p_sat` ceiling was geometry-specific.** The `p_sat <= 0.7 bar` limit found
+   for the ungrooved case does not apply once a groove is present: at eps 0.5 /
+   1500 rpm the grooved bearing runs cleanly at `p_sat = 1.0 bar` (p_max 3.12
+   bar, arc 173 deg). Above `p_sat ~ 0.9 bar` the reformation front reaches the
+   groove edge, so reformation angle stops being an independent observable.
+
 ## Completed Phases
 
 ### Phase 1 — Infrastructure
