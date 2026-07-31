@@ -169,7 +169,10 @@ def fig_ferron_temperature(fr):
     ax.set_xlabel(r"$X/\pi$")
     ax.set_ylabel(r"$T$ ($^\circ$C)")
     ax.set_xlim(-1.0, 1.0)
-    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    # Headroom so the legend does not sit among the measured points, where its
+    # own marker reads as one of them.
+    ax.set_ylim(39.6, 52.4)
+    ax.legend(frameon=False, fontsize=9, loc="upper left", handlelength=1.6)
     save_figure(fig, "validation_ferron_temperature")
     plt.close(fig)
 

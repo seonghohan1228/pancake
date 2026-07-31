@@ -47,6 +47,29 @@ Open — **VOID_COUPLED still does not converge and is not usable quantitatively
     substitute and is also unavailable. Independently, the reformation angle is
     not a prediction of this solver in either available inlet configuration, so
     that half of the target cannot be scored even with the data.
+- **Next validation targets, located and screened 2026-07-31.** Verdict 2 (energy
+  equation) currently rests on a single experiment, and the cavitation model has
+  no void-fraction test at all. Three reachable datasets close both gaps:
+  - **Brito et al., ASME J. Tribology 129(1), 2006, DOI 10.1115/1.2401206** —
+    open access at repositorium.sdum.uminho.pt. 100 mm plain bearing, bronze
+    bush, two axial grooves at ±90 deg to the load, diametral clearance
+    171 ± 5 um at 20 C. Measures mid-plane pressure, oil–bush interface
+    temperature, **oil–shaft interface temperature via a rotary joint**, flow
+    rate and bush torque, swept over speed to 4000 rpm, 2 and 10 kN, three
+    supply temperatures and three supply pressures. The shaft-side temperature
+    is the quantity pancake's fixed-wall energy model cannot produce and which
+    is the suspected cause of the Ferron temperature-peak error; the supply
+    sweep addresses the inlet-mixing difference against Alakhramsing; and the
+    clearance is quoted diametrally with tolerance and reference temperature,
+    removing the ambiguity Ferron leaves. Full text verified, not just screened.
+  - **Brito, PhD thesis, U. Minho 2009, hdl:1822/9884** — open access, likely
+    the tabulated dataset behind the above.
+  - **Engels et al., Lubricants 13(1), 2024, DOI 10.3390/lubricants13010007** —
+    open access, **experimental void fraction** in a hydrodynamic bearing. This
+    is the quantity the Elrod model actually predicts, and the gap Cole & Hughes
+    was meant to fill. Screened by abstract only.
+  Lund & Tonnesen 1984 (ASME 106(2):237) remains the other V6 target and is
+  cited by Brito as the key prior two-groove work; not open access.
 - **Elrod free-boundary accuracy depends on `p_max/bulk_modulus`.** Because
   pressure is carried inside the film content, the rupture angle can be 20 deg
   wrong at `beta = 1e9` on a 720-cell mesh while every convergence indicator

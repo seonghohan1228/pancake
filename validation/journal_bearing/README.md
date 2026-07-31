@@ -399,16 +399,38 @@ Not trustworthy:
 
 - **The location of the temperature peak.** Predicted at X/pi = +0.95, measured
   at +0.55 -- roughly 71 deg out. The predicted profile climbs monotonically to
-  the groove; the measurement peaks and then falls. Alakhramsing et al. report
-  exactly the same failure for their own model and attribute it to how heat
-  transport in the cavitated region is treated, so it is a limitation of 2-D THD
-  film models rather than something peculiar to pancake -- but it fails the
-  stated criterion that the peak be in the right place.
-- **The wall heat-transfer coefficient.** Not a prediction: it is an input the
-  answer is very sensitive to. Going from adiabatic to h = 5000 W/(m2.K) moves
-  the film rise from 7.48 K to 3.00 K and the temperature error from -1.6 K to
-  -6.1 K, while moving the peak pressure by only 1.2%. Temperature results
-  should be quoted with the assumed wall condition attached.
+  the groove; the measurement peaks and then falls. This is very likely a direct
+  consequence of the wall model, see below.
+- **The wall heat-transfer treatment, which can only bracket the real problem.**
+  `Energy::apply_wall_transfer` is Newton cooling to a *prescribed constant* wall
+  temperature:
+
+  ```
+  h_wall  = journal_heat_transfer + bearing_heat_transfer
+  T_wall  = (h_j T_journal + h_b T_bearing) / h_wall        <- a fixed constant
+  a_p    += h_wall A ;   source += h_wall A T_wall
+  ```
+
+  There is **no conjugate conduction** -- the bush and shaft never heat up -- and
+  **no circumferential averaging by the rotating shaft**. So the two cases run
+  here are both unphysical limits: `h = 0` is perfectly insulating walls, and
+  `h = 5000` with `T_wall` = 40 C is infinitely conducting walls that are also
+  infinite heat sinks pinned at the supply temperature. A real bush and shaft
+  warm toward the film and remove far less heat than a 40 C sink, which is why
+  adiabatic matches the magnitude (-1.6 K) and h = 5000 over-cools (-6.1 K).
+
+  This bears directly on the peak-location failure. With no shaft conduction
+  there is no mechanism to move heat *circumferentially against the flow*, so
+  film temperature can only accumulate downstream -- exactly the monotonic climb
+  to the groove that the figure shows. A shaft at 2000 rpm sees a circumferential
+  average and acts as a heat spreader, warming the inlet region and cooling the
+  outlet, which puts the peak inside the film. Ferron's own model includes shaft
+  conduction; this one cannot. Consistently, the metal-bush curve peaks at
+  X/pi ~ 0.5, close to the measured +0.55 -- the shape improves as soon as any
+  wall coupling exists, it just over-cools.
+
+  Temperature results from this solver should always be quoted with the assumed
+  wall condition attached.
 - **The isothermal bracket does not enclose the measurement.** The criterion was
   that isothermal must overpredict; it gives 1.2751 MPa against a measured
   1.29 +/- 0.03 MPa, falling 1.1% short. Within digitising uncertainty, but the
@@ -469,17 +491,68 @@ against a measured 1.29** -- a 2.8% match. One scalar fixes both.
 
 Since `p ~ mu omega R^2 / c^2`, that scale factor corresponds to a running
 clearance about 35% above the nominal 145 um, or an effective viscosity of
-0.0153 rather than 0.0277 Pa.s. Alakhramsing et al. name thermal growth of the
-clearance as an unmodelled source of discrepancy in exactly this comparison, and
-Ferron's bush is bronze on a steel shaft.
+0.0153 rather than 0.0277 Pa.s.
 
-**This is a hypothesis consistent with the data, arrived at after seeing it, not
-an independent confirmation, and it is not a licence to tune the clearance until
-the benchmark passes.** What it does establish is that the *shape* of the
-predicted field -- peak location, rupture location, profile form and thermal
-response -- is right, and that the disagreement is concentrated in one overall
-scale. Settling it needs a number from the primary Ferron paper (hot running
-clearance, or the measured eccentricity datum), which is paywalled.
+**Thermal growth of the clearance cannot supply it.** Alakhramsing name clearance
+thermal growth as an unmodelled source of discrepancy, and Ferron's bush is
+bronze (alpha ~ 18e-6 /K) on a steel shaft (~12e-6 /K), but the magnitudes do not
+work. With `dc = R (alpha_b dT_b - alpha_s dT_s)` at R = 50 mm:
+
+| case | dc | c | pressure scale |
+|---|---|---|---|
+| bush and shaft both at the measured 9 K rise | 2.7 um | 147.7 um | x0.964 |
+| bush 9 K hot, shaft at ambient | 8.1 um | 153.1 um | x0.897 |
+| bush 20 K hot, shaft at ambient | 18.0 um | 163.0 um | x0.791 |
+| **needed for k = 0.553** | **50.0 um** | **195 um** | — |
+
+Reaching k = 0.553 needs the bush 56 K hotter than the shaft, against a measured
+film rise of 9 K. The mechanism is ruled out; the empirical scale observation
+stands on its own.
+
+**Half the gap is shared with the reference model.** Reading Alakhramsing's own
+Figure 10a, their finite-element THD prediction over-predicts load by roughly
+20-30% against the same measurements, where this solver over-predicts by 52-68%.
+So a substantial part of the discrepancy is common to two independent solvers and
+points at the experiment or at assumptions both share, rather than at a defect
+here.
+
+One concrete difference in the remainder: their *predicted* wall temperature at
+the groove is about 41.9 C, not the 40 C supply temperature -- they model hot-oil
+carry-over into the inlet, whereas the groove here is pinned at supply. A colder
+film is a more viscous film and carries more load. Sizing it (eps = 0.5345,
+2000 rpm, adiabatic, viscosity reference held at 40 C where Ferron quotes mu_0):
+
+| effective inlet [C] | W [N] | vs 40 C | p_max [MPa] | T_max [C] | T_max X/pi |
+|---|---|---|---|---|---|
+| 40 | 3979 | —      | 1.1777 | 47.49 | +0.948 |
+| 42 | 3741 | -6.0%  | 1.1092 | 49.07 | +0.948 |
+| 45 | 3399 | -14.6% | 1.0126 | 51.47 | +0.948 |
+| 48 | 3101 | -22.1% | 0.9273 | 53.95 | +0.948 |
+
+So the ~1.9 K of inlet mixing that Alakhramsing model and this setup does not
+accounts for about **6%** of load -- a real contributor, but roughly a fifth of
+the 25-35% by which this solver exceeds *their* over-prediction, and a small
+fraction of the 52-68% total. Closing the whole gap this way would need an
+effective inlet near 50 C, which exceeds the highest measured wall temperature
+(49.1 C) and is not physical for an inlet.
+
+Note also that **the temperature-peak location does not move at all** across the
+sweep (X/pi = +0.948 in every case). The inlet treatment is therefore ruled out
+as its cause, which leaves the missing conjugate/shaft conduction discussed
+under Verdict 2.
+
+**Warning for anyone repeating this.** The first attempt at this sweep raised
+`property_reference_temperature` along with the supply temperature, which
+re-defines `mu_0 = 0.0277 Pa.s` *at each new temperature* and silently cancels
+the effect being measured -- it produced a 0.4% load change over the same 8 K,
+against the true 22%. The viscosity reference must stay at the temperature where
+`mu_0` is quoted.
+
+What all of this establishes is that the *shape* of the predicted field -- peak
+location, rupture location, profile form and thermal response -- is right, and
+the disagreement is concentrated in one overall scale whose cause is not yet
+identified. Settling it needs numbers from the primary Ferron paper (hot running
+clearance, the eccentricity datum, or the inlet mixing model), which is paywalled.
 
 ## Limitations that bound what any of this can show
 
