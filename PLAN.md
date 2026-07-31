@@ -34,8 +34,24 @@ Open — **VOID_COUPLED still does not converge and is not usable quantitatively
   for "converged".
 - `equilibrate_gas` still assigns free gas independently of film content, so
   `alpha_gas` is a flash diagnostic rather than a transported void fraction.
-- Remaining validation targets: Raimondi & Boyd finite-width charts, Ferron 1983
-  measured pressure profiles, Cole & Hughes cavity photographs.
+- Remaining validation targets (status as of 2026-07-31, see
+  `validation/journal_bearing/README.md`):
+  - **Raimondi & Boyd finite-width charts — DONE, passes.** With a fed film,
+    S within 5.8% and attitude angle within 4.08 deg over eps = 0.2-0.9 at
+    L/D = 1/2 and 1. Ungrooved, the same solver has no load capacity at all.
+  - **Ferron 1983 measured pressure and temperature — DONE, partial.** See the
+    README verdict; the geometry in circulation as L/D = 0.55, C/R = 1.5e-3 is
+    wrong (it is L/D = 0.80, c = 145 um).
+  - **Cole & Hughes cavity photographs — NOT SOURCED.** Paywalled with no numeric
+    reproduction reachable; Jakobsson & Floberg 1957 was attempted as a
+    substitute and is also unavailable. Independently, the reformation angle is
+    not a prediction of this solver in either available inlet configuration, so
+    that half of the target cannot be scored even with the data.
+- **Elrod free-boundary accuracy depends on `p_max/bulk_modulus`.** Because
+  pressure is carried inside the film content, the rupture angle can be 20 deg
+  wrong at `beta = 1e9` on a 720-cell mesh while every convergence indicator
+  reports success. Any new cavitated case needs a mesh/beta check, not just a
+  residual check. `run_raimondi_boyd.convergence_study()` is the harness.
 
 ### Deferred modelling gaps (optical-rig study, 2026-07-31)
 

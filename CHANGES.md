@@ -2,6 +2,50 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-07-31 - Cavitation and energy-equation validation
+
+Reason: the committed analytical benchmarks validated the Reynolds
+discretisation only -- they ran `FULL_SOMMERFELD` and `GUMBEL`, so the
+mass-conserving Elrod-Adams free boundary, the `LOCAL_PSAT` threshold and every
+predicted rupture angle and void fraction were unvalidated. Three targets were
+attempted; two produced usable verdicts.
+
+- **New validation modules** in `validation/journal_bearing/`: `raimondi_boyd.py`
+  (chart data plus an exact infinite-length Swift-Stieber solution used to audit
+  it), `ferron.py` (Ferron's rig and digitised measurements with per-number
+  provenance), `run_raimondi_boyd.py`, `run_ferron.py`, `make_tables.py` and
+  `plot_validation.py`.
+- **A free-boundary resolution requirement was found, and it is not
+  self-announcing.** Elrod carries pressure inside the film content
+  (`p = p_cav + beta ln theta`), so the accuracy of the rupture boundary is
+  controlled by `p_max/beta` and degrades as the film becomes more
+  incompressible. At `beta = 1e9` on a 720-cell mesh the rupture angle is
+  **20.8 deg** from the exact Swift-Stieber value while the solver reports
+  `mc = 0`, `ns = 0`, `R_p = 0` and exits zero. At `beta = 1e8` with 2880 cells
+  it is within 0.23 deg. Recorded as `CONVERGENCE_MEASURED` and regenerable via
+  `convergence_study()`.
+- **Target A (Raimondi & Boyd) passes with a fed film.** With a full-film supply
+  groove at the maximum gap -- the inlet condition the charts assume -- the
+  Sommerfeld number is within 5.8% and the attitude angle within 4.08 deg over
+  eps = 0.2-0.9 at L/D = 1/2 and 1, against 10% and 5 deg criteria. Every case
+  converged on the Elrod tolerance.
+- **Target A also shows the ungrooved bearing has no load capacity.** Without a
+  supply, load falls three to six orders of magnitude below the chart at every
+  eccentricity (0.007 N against kN at L/D = 1, eps = 0.2). Below eps ~ 0.6 the
+  film is driven onto the `theta_min` clamp; above it the solution settles on the
+  analytic starved state `theta h = const`. This follows from the Elrod switch
+  function suppressing Poiseuille flow in cavitated cells, so nothing re-floods
+  the film.
+- **Target C (Cole & Hughes 1956) could not be sourced** and is recorded as such.
+  Its reformation criterion is additionally untestable: ungrooved the film never
+  reforms, grooved the reformation point is pinned at the groove by construction.
+
+Reference data is cited per number and audited, not taken from memory: the
+transcribed Raimondi & Boyd table reproduces the exact Swift-Stieber solution to
+0.6% in S and 0.4 deg in attitude angle. Ferron's geometry is corrected against
+the commonly circulated secondary values -- the rig is L/D = 0.80 with
+c = 145 um, not L/D = 0.55 with C/R = 1.5e-3.
+
 ### 2026-07-31 - VOID_COUPLED: bounded plateau closure and coupling relaxation
 
 Reason: `gas_pressure_coupling = VOID_COUPLED` was unusable on a sub-atmospheric
