@@ -221,12 +221,45 @@ Alakhramsing Figure 9 specifies its operating point by **load** (4 kN at
 carries 4 kN. The eccentricity that comes out is then itself a prediction,
 testable against the measured eps-load curve.
 
-The rig has a single axial groove feeding the unloaded region, so the groove is
-placed diametrically opposite the load line; since the load direction is an
-output, the groove angle is found by fixed-point iteration. That is the one
-convention-dependent input in the comparison, which is why the peak pressure
-magnitude and the peak-to-rupture arc -- neither of which depends on it -- are
-reported alongside the position, which does.
+### The angular convention, verified rather than assumed
+
+Every reported *position* depends on how pancake's theta maps onto Ferron's X,
+so the mapping is pinned from the source rather than guessed:
+
+- **X is a polar angle in the same frame as the eccentricity.** Alakhramsing
+  Equation (12) gives `H = 1 - eps_x cos(X) - eps_y sin(X)`, the identical form
+  to `FilmThickness::compute_static`'s `h = c - e_x cos(theta) - e_y sin(theta)`.
+- **The load angle is measured in that same frame from the same origin.**
+  Equations (26b-d): `W_x = int -P cos(X) dOmega`, `W_y = int -P sin(X) dOmega`,
+  `X_W = arctan(W_y / W_x)`.
+- **The load is at X = 0.** The Figure 9 caption specifies the operating point as
+  `w^a_x = 4 kN`, i.e. the applied load lies along the x axis of that frame.
+- **The groove is at X = +-pi.** The text attributes the pressure jump "at both
+  ends of the interval" to the imposed supply pressure over the groove's finite
+  width.
+- **X increases with entrainment.** Equation (24a), `qX = -H^3/(12 eta) dxi/dX +
+  H f / 2`, has a positive Couette term in +X.
+
+Load at X = 0 with the groove at X = +-pi means the groove sits diametrically
+opposite the load line, which is how it is placed here. Since the load direction
+is an output of the solve, the groove angle is found by fixed-point iteration.
+
+Note the sign trap: pancake's `pressure_force_*` is the force on the *bearing*
+(`+int p e_r`), while Alakhramsing's `W` carries a minus sign and is the force on
+the *journal*; the two differ by 180 deg. Journal equilibrium makes the external
+load equal to the bearing force, so placing the groove at
+`angle(pressure_force) + 180 deg` is correct. A 180 deg error would put the
+predicted pressure peak near X/pi = +-1 instead of the +0.104 obtained.
+
+**The mapping is also self-checking.** Pressure and temperature are plotted in
+the same coordinate system from the same solve, so a convention error of `d`
+shifts both by `d`. The predicted pressure peak lands 4.2 deg from the measured
+one, which bounds `d` at about 5 deg -- so the 71 deg discrepancy in the
+temperature peak location is not a convention artefact.
+
+The one thing the source does not settle is whether "groove angle 18 deg" in
+Table 1 is the full width or a half-angle; it is used here as the full width.
+See the groove-width sensitivity below.
 
 ### Reference point, W = 4 kN at 2000 rpm
 
@@ -409,6 +442,19 @@ the load by under 5%:
 306 deg is the self-consistent placement (groove opposite the load line). The
 total spread, 3966 to 4155 N, is 4.8% -- an order of magnitude smaller than the
 discrepancy being explained.
+
+Nor is it the groove *width*, which settles the "18 deg: full width or
+half-angle?" ambiguity in Table 1 as immaterial:
+
+| groove width [deg] | W [N] | p_max [MPa] | p_max X/pi | T_max [C] |
+|---|---|---|---|---|
+| 9  | 4025 | 1.1766 | +0.1000 | 47.550 |
+| 18 | 3979 | 1.1777 | +0.1005 | 47.492 |
+| 36 | 3901 | 1.1803 | +0.1005 | 47.358 |
+
+Quadrupling the width moves the load by 3%, the peak pressure by 0.3%, the peak
+position by 0.09 deg and the peak temperature by 0.19 K. Either reading of
+Table 1 gives the same answer.
 
 The two apparently contradictory results reconcile under a single scale factor:
 
