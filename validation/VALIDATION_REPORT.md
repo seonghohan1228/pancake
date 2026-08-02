@@ -138,7 +138,8 @@ masquerades as grid error.
 | Ferron et al. (1983) | peak temperature | **PASS adiabatic** (−1.62 K); **FAIL** metal bush (−6.10 K) |
 | Ferron et al. (1983) | temperature peak *location* | **FAIL** — 71° out (§5.1) |
 | Ferron et al. (1983) | load at measured ε | **OPEN** — +52–68%, shared with the literature (§4) |
-| Brito et al. (2006) | pressure, eccentricity, flow, interface T | **INCOMPLETE** — 5 of 6 committed runs unconverged; re-run required |
+| Brito et al. (2006) | load, via eccentricity-for-load | **NOT SCOREABLE** — the digitisation ambiguity spans the discrepancy (§4.1) |
+| Brito et al. (2006) | pressure, flow, interface T | **INCOMPLETE** — 5 of 6 committed runs unconverged; re-run required |
 | Cole & Hughes (1956) | reformation | **NOT SCOREABLE** — not sourced, and not a prediction of this solver in either inlet configuration |
 | Engels et al. (2024) | measured void fraction | **NOT RUN** — the direct Elrod observable; nothing currently tests it |
 | Grando et al. | refrigerant-oil equilibrium | **NOT RUN** — blocked on §5.3 |
@@ -178,6 +179,49 @@ clearance-derived eccentricity as the leading suspect. If a load criterion is
 wanted, reproduce Ferron's *theory* curve, not his measurements.
 
 ---
+
+### 4.1 Brito — the load comparison cannot currently discriminate
+
+Same lesson as Ferron, applied before the fact: rather than prescribing a
+digitised eccentricity and calling the load a prediction, solve for the
+eccentricity that carries the load Brito **applied** and therefore knew exactly.
+The uncertain quantity becomes a check instead of an input.
+
+Eccentricity carrying the applied 10 kN, `Pf` = 70 kPa gauge, `Tf` = 40 °C:
+
+| N (rpm) | ε for 10 kN, c at 20 °C | ε hot (+8.8%) | ε digitised (polar) | Δε |
+|---|---|---|---|---|
+| 1000 | 0.648 | 0.678 | 0.761 | −0.113 |
+| 3000 | 0.426 | 0.461 | 0.576 | −0.150 |
+| 4000 | 0.367 | 0.401 | 0.558 | −0.191 |
+
+Three readings, in order of how much they should change your mind:
+
+1. **The digitisation ambiguity is larger than the discrepancy.** `brito.py`
+   records that the earlier *Cartesian* reading of Fig. 6 — a polar chart — gave
+   eccentricities about 0.15 lower than the polar re-digitisation now in use.
+   That puts the Cartesian values near 0.61 / 0.43 / 0.41, and the solver answers
+   0.648 / 0.426 / 0.367. **The solver tracks the Cartesian reading to within
+   ~0.04 at every speed and sits 0.11–0.19 below the polar one.** This does not
+   prove the polar reading wrong — using the solver to pick the digitisation
+   would be circular — but it does mean **the Brito load comparison cannot
+   discriminate until Fig. 6 is re-read from the source.** Report it as
+   unscoreable, not as a 65–106% error.
+2. **The hot-clearance bracket closes 0.030–0.035**, roughly a quarter of the gap
+   at 1000 rpm and a fifth at 4000 rpm. Real, insufficient, and it rests on
+   *assumed* metal temperatures (bush ~55 °C, shaft ~60 °C) that Brito did not
+   measure. It is a bracket, never a correction.
+3. **The deficit grows monotonically with speed** (−0.113, −0.150, −0.191),
+   which is the qualitative signature of a thermal mechanism. It is *not* a U²
+   growth, so it does not by itself confirm the cross-film hypothesis of §5.2 —
+   and eccentricity is a compressed measure of a load error, so the scaling
+   should be re-tested on load at fixed ε after the Phase 2 energy fixes.
+
+Convergence: the two 1000 rpm rows did not meet the convergence criterion and are
+marked accordingly in `brito_eps_for_load.json`; the 3000 and 4000 rpm rows did.
+
+*Reproduce:* `python -c "import run_brito; run_brito.eps_for_load_sweep(EXE, WORK)"`
+→ `brito_eps_for_load.json`
 
 ## 5. Known limitations of the physics
 
