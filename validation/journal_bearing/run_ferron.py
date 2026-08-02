@@ -48,6 +48,11 @@ MAX_OUTER = 4000
 
 E_MU, E_MU_ERR = F.andrade_from_exponential()
 
+# CrossFilm diagnostic line emitted once per timestep when the model is active.
+XFILM_RE = re.compile(
+    r"CrossFilm: T_shaft=([-\d.eE+]+) K T_bush_mean=([-\d.eE+]+) K "
+    r"Q_shaft=([-\d.eE+]+) W Q_bush=([-\d.eE+]+) W core_rise_max=([-\d.eE+]+) K")
+
 CFG = """R = {R}
 c = {c}
 e = {e}
@@ -128,12 +133,23 @@ max_outer_iters = {max_outer}
 outer_tol = 1e-10
 theta_min = 1e-6
 log_outer_iters = true
-coupling_max_iters = 80
+coupling_max_iters = {coupling_max}
 coupling_tolerance = 1e-8
 coupling_relaxation = {relax}
 steady_gas_model = FROZEN
 allow_frozen_gas_steady = true
-inlet_groove = {groove} {groove_size} {p_sup} {t_sup}
+cross_film_thermal_model = {xfilm}
+cross_film_profile_order = {xorder}
+cross_film_quadrature_points = 6
+cross_film_relaxation = 1.0
+shaft_ambient_heat_transfer = {shaft_h}
+shaft_ambient_area_ratio = 1.0
+thermal_ambient_temperature = {t_sup}
+bush_thermal_conductivity = {k_bush}
+bush_outer_radius = {r_bush}
+bush_outer_heat_transfer = {bush_h}
+groove_mixing_model = {mixing}
+inlet_groove = {groove} {groove_size} {p_sup} {t_sup} {glambda} {gflow}
 output_dir = out
 filename_prefix = solution
 output_verbosity = DETAILED
@@ -143,17 +159,48 @@ output_fields = pressure, film_content, h, temperature, mu, velocity_z, pressure
 """
 
 
+# Cross-film / conjugate-wall defaults for the Ferron rig.
+#
+# The bush is bronze on a steel backing, 100 mm bore; BUSH_OUTER_R is taken as
+# 1.35x the bore, the ratio quoted for the housing in the rig description, and
+# K_BUSH is bronze. BUSH_H_OUT is a still-air-plus-housing-contact value: the
+# rig is not instrumented for it, so it is a modelling input, not a measurement,
+# and the sensitivity to it is reported rather than hidden.
+K_BUSH = 50.0
+BUSH_OUTER_R = 1.35 * F.R
+BUSH_H_OUT = 80.0
+# Shaft: adiabatic to ambient. Its temperature then follows from the film-shaft
+# balance alone, which is the mechanism that lets heat travel upstream.
+SHAFT_H_AMB = 0.0
+# Wider coupling budget: the conjugate wall temperatures are extra unknowns in
+# the same segregated loop, and the measured Ferron case needs ~40-90 outer
+# iterations against the ~26 of the uniform-temperature model.
+COUPLING_MAX = 150
+
+
 def run_case(exe, work, tag, *, eps, rpm, groove_deg, thermal="ENERGY_EQUATION",
-             h_wall=0.0, relax=0.7, nth=N_THETA, nz=N_Z):
+             h_wall=0.0, relax=0.7, nth=N_THETA, nz=N_Z,
+             cross_film=False, xorder=4, shaft_h=SHAFT_H_AMB, bush_h=BUSH_H_OUT,
+             groove_lambda=None, groove_flow=None):
     d = os.path.join(work, tag)
     os.makedirs(d, exist_ok=True)
     isothermal = (thermal == "ISOTHERMAL")
+    if groove_flow is not None:
+        mixing, glambda, gflow = "FLOW_WEIGHTED", 1.0, groove_flow
+    elif groove_lambda is not None:
+        mixing, glambda, gflow = "FIXED_LAMBDA", groove_lambda, 0.0
+    else:
+        mixing, glambda, gflow = "PINNED", 1.0, 0.0
     cfg = CFG.format(
         R=F.R, c=F.C, e=eps * F.C, L=F.L, nth=nth, nz=nz,
         omega=2.0 * math.pi * rpm / 60.0, mu=F.MU_INLET, rho=F.RHO,
         p_amb=P_AMB, bulk=BULK, tmodel=thermal,
         t_sup=F.T_SUPPLY, t_wall=F.T_SUPPLY, rho_cp=F.RHO_CP, k_th=F.K_THERMAL,
         h_j=h_wall, h_b=h_wall,
+        coupling_max=COUPLING_MAX,
+        xfilm="POLYNOMIAL" if cross_film else "NONE",
+        xorder=xorder, shaft_h=shaft_h, k_bush=K_BUSH, r_bush=BUSH_OUTER_R,
+        bush_h=bush_h, mixing=mixing, glambda=glambda, gflow=gflow,
         fpm="CONSTANT" if isothermal else "SINGLE_PHASE",
         vmodel="CONSTANT" if isothermal else "EMPIRICAL",
         e_mu=0.0 if isothermal else E_MU,
@@ -192,6 +239,7 @@ def run_case(exe, work, tag, *, eps, rpm, groove_deg, thermal="ENERGY_EQUATION",
     if not os.path.exists(f):
         raise RuntimeError(f"{tag}: no output\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
     fp = read_vector3(f, "Fp")
+    xf = XFILM_RE.findall(r.stdout) or XFILM_RE.findall(r.stderr)
     out = dict(p=read_field(f, nth, nz, "p"),
                theta=read_field(f, nth, nz, "film_content"),
                h=read_field(f, nth, nz, "h"),
@@ -201,7 +249,14 @@ def run_case(exe, work, tag, *, eps, rpm, groove_deg, thermal="ENERGY_EQUATION",
                elrod_iters=n_it + 1, mc=mc, ns=ns, R_p=R_p, R_T=R_T,
                coupling_iters=coup_iters, converged=converged,
                groove_deg=groove_deg, eps=eps, rpm=rpm, thermal=thermal,
-               h_wall=h_wall, dir=d)
+               h_wall=h_wall, dir=d, cross_film=cross_film, xorder=xorder,
+               shaft_h=shaft_h, bush_h=bush_h, mixing=mixing,
+               glambda=glambda, gflow=gflow,
+               t_shaft=float(xf[-1][0]) if xf else float("nan"),
+               t_bush_mean=float(xf[-1][1]) if xf else float("nan"),
+               q_shaft_W=float(xf[-1][2]) if xf else float("nan"),
+               q_bush_W=float(xf[-1][3]) if xf else float("nan"),
+               core_rise_K=float(xf[-1][4]) if xf else float("nan"))
     return out
 
 
@@ -210,19 +265,19 @@ def load_angle_deg(res):
 
 
 def solve_groove(exe, work, tag, *, eps, rpm, thermal, h_wall, tol=1.0, max_it=5,
-                 nth=N_THETA, nz=N_Z):
+                 nth=N_THETA, nz=N_Z, groove0=None, **case_kw):
     """Fixed point on 'the groove sits opposite the load line'.  Returns the
     converged case plus the iteration history.
 
     `tol` is 1 deg: the groove angle only sets the origin of Ferron's X
     coordinate, and the acceptance tolerance on peak and rupture location is
     10 deg, so resolving it further buys nothing and costs a full solve each."""
-    groove, hist = 0.0, []
+    groove, hist = (0.0 if groove0 is None else groove0), []
     res = None
     for k in range(max_it):
         res = run_case(exe, work, f"{tag}_g{k}", eps=eps, rpm=rpm,
                        groove_deg=groove, thermal=thermal, h_wall=h_wall,
-                       nth=nth, nz=nz)
+                       nth=nth, nz=nz, **case_kw)
         target = (load_angle_deg(res) + 180.0) % 360.0
         delta = (target - groove + 180.0) % 360.0 - 180.0
         hist.append((groove, target, delta))
@@ -288,6 +343,15 @@ def metrics(res):
     W = math.hypot(res["fx"], res["fy"])
     return dict(eps=res["eps"], rpm=res["rpm"], thermal=res["thermal"],
                 h_wall=res["h_wall"], groove_deg=res["groove_deg"],
+                cross_film=res.get("cross_film", False),
+                mixing=res.get("mixing", "PINNED"),
+                glambda=res.get("glambda", 1.0),
+                bush_h=res.get("bush_h", 0.0),
+                t_shaft=res.get("t_shaft", float("nan")),
+                t_bush_mean=res.get("t_bush_mean", float("nan")),
+                q_shaft_W=res.get("q_shaft_W", float("nan")),
+                q_bush_W=res.get("q_bush_W", float("nan")),
+                core_rise_K=res.get("core_rise_K", float("nan")),
                 W_N=W, attitude_deg=(180.0 - load_angle_deg(res)) % 360.0,
                 p_max_MPa=ps[ip], p_max_xpi=xs[ip],
                 T_max_C=Ts[iT], T_max_xpi=xs[iT],
@@ -329,7 +393,7 @@ def report(m, label):
 
 def solve_eps_for_load(exe, work, tag, *, W_target, rpm, thermal, h_wall,
                        tol=0.02, max_it=6, nth=720, nz=40,
-                       confirm_nth=N_THETA, confirm_nz=N_Z):
+                       confirm_nth=N_THETA, confirm_nz=N_Z, **case_kw):
     """Find the eccentricity ratio that carries `W_target`, with the groove
     fixed point re-solved at every eccentricity.
 
@@ -346,7 +410,7 @@ def solve_eps_for_load(exe, work, tag, *, W_target, rpm, thermal, h_wall,
     """
     def evaluate(k, eps):
         res = solve_groove(exe, work, f"{tag}_e{k}", eps=eps, rpm=rpm,
-                           thermal=thermal, h_wall=h_wall, nth=nth, nz=nz)
+                           thermal=thermal, h_wall=h_wall, nth=nth, nz=nz, **case_kw)
         W = math.hypot(res["fx"], res["fy"])
         print(f"    eps={eps:.4f} -> W={W:.0f} N  ({nth}x{nz})")
         sys.stdout.flush()
@@ -376,7 +440,7 @@ def solve_eps_for_load(exe, work, tag, *, W_target, rpm, thermal, h_wall,
     sys.stdout.flush()
     res = solve_groove(exe, work, f"{tag}_final", eps=eps, rpm=rpm,
                        thermal=thermal, h_wall=h_wall,
-                       nth=confirm_nth, nz=confirm_nz)
+                       nth=confirm_nth, nz=confirm_nz, **case_kw)
     return eps, res, math.hypot(res["fx"], res["fy"])
 
 
@@ -398,6 +462,129 @@ def resolution_check(exe, work, eps, rpm=F.REF_RPM):
                          T_max_C=m["T_max_C"], W_N=m["W_N"]))
         sys.stdout.flush()
     return rows
+
+
+def cross_film_compare(exe, work, *, eps_fixed=None, nth=720, nz=40, rpm=F.REF_RPM):
+    """Phase 2 before/after: the depth-averaged model against the cross-film
+    profile with conjugate walls and the generalized (Dowson) Reynolds equation.
+
+    Both legs are run at the SAME eccentricity so the comparison is of the model
+    and not of two different operating points, and the load-vs-eccentricity table
+    is then re-run for both so the load change can be read directly.
+
+    The acceptance criterion for task 2.4 is T_max within 2 K and the temperature
+    peak within ~15 deg of Ferron's measurement using ONE wall setting. The
+    depth-averaged model can only bracket it (adiabatic passes T_max, metal bush
+    fails it), so both legs here use a single setting per model.
+    """
+    eps = eps_fixed if eps_fixed is not None else F.FERRON_ECC_VS_LOAD[2][1]
+    legs = [
+        ("depth_averaged", dict(cross_film=False, h_wall=0.0),
+         "uniform T across the film, adiabatic walls (the Phase 1 reference case)"),
+        ("cross_film", dict(cross_film=True, h_wall=0.0, shaft_h=SHAFT_H_AMB,
+                            bush_h=BUSH_H_OUT),
+         "cross-film T(y), conjugate shaft + 1-D bush, generalized Reynolds"),
+    ]
+    out = {}
+    print(f"\n=== task 2.4: cross-film / conjugate walls / generalized Reynolds "
+          f"(eps = {eps:.3f}, {nth}x{nz}) ===")
+    for tag, kw, label in legs:
+        res = solve_groove(exe, work, f"xf_{tag}", eps=eps, rpm=rpm,
+                           thermal="ENERGY_EQUATION", nth=nth, nz=nz, **kw)
+        m = metrics(res)
+        m["label"] = label
+        m["profile"] = profile(res)
+        out[tag] = m
+        report(m, label)
+        if m["cross_film"]:
+            print(f"  conjugate: T_shaft {m['t_shaft'] - 273.15:.2f} C, "
+                  f"T_bush(mean) {m['t_bush_mean'] - 273.15:.2f} C, "
+                  f"Q_shaft {m['q_shaft_W']:.3g} W, Q_bush {m['q_bush_W']:.3g} W, "
+                  f"core rise max {m['core_rise_K']:.2f} K")
+        sys.stdout.flush()
+    return out
+
+
+def groove_carryover_compare(exe, work, *, eps=None, nth=720, nz=40, rpm=F.REF_RPM,
+                             lambdas=(1.0, 0.6, 0.4, 0.2)):
+    """Task 2.3: hot-oil carry-over at the groove.
+
+    lambda = 1 is the historical hard pin to t_supply. Alakhramsing report a
+    groove-exit temperature near 41.9 C against a 40 C supply on this rig, so the
+    lambda that reproduces it is a direct read of how much recirculated oil the
+    groove actually carries.
+    """
+    eps = eps if eps is not None else F.FERRON_ECC_VS_LOAD[2][1]
+    rows = []
+    print(f"\n=== task 2.3: groove hot-oil carry-over (eps = {eps:.3f}, {nth}x{nz}) ===")
+    print(f"{'lambda':>7} {'T_groove/C':>11} {'T_max/C':>9} {'T_max X/pi':>11} "
+          f"{'W/N':>8} {'p_max/MPa':>10} {'conv':>5}")
+    seed = None
+    for lam in lambdas:
+        res = solve_groove(exe, work, f"gm_{lam:g}", eps=eps, rpm=rpm,
+                           thermal="ENERGY_EQUATION", h_wall=0.0, nth=nth, nz=nz,
+                           groove_lambda=lam, groove0=seed)
+        seed = res["groove_deg"]
+        m = metrics(res)
+        # Groove-exit temperature: the mid-plane cell at the groove centre.
+        mid = nz // 2
+        i_groove = int(round(res["groove_deg"] / 360.0 * nth)) % nth
+        t_groove = res["T"][mid][i_groove] - 273.15
+        rows.append(dict(mixing_lambda=lam, T_groove_C=t_groove,
+                         T_max_C=m["T_max_C"], T_max_xpi=m["T_max_xpi"],
+                         W_N=m["W_N"], p_max_MPa=m["p_max_MPa"],
+                         converged=m["converged"], R_p=m["R_p"],
+                         mc=m["mc"], ns=m["ns"]))
+        print(f"{lam:>7.2f} {t_groove:>11.2f} {m['T_max_C']:>9.2f} "
+              f"{m['T_max_xpi']:>11.3f} {m['W_N']:>8.0f} {m['p_max_MPa']:>10.3f} "
+              f"{str(m['converged']):>5}")
+        sys.stdout.flush()
+    return rows
+
+
+def load_curve(exe, work, prefix, *, nth=720, nz=40, **case_kw):
+    """Load at each of Ferron's measured eccentricities, for a before/after table."""
+    rows, seed = [], None
+    for W_meas, eps in F.FERRON_ECC_VS_LOAD[::3]:
+        res = solve_groove(exe, work, f"{prefix}_eps{eps:g}", eps=eps,
+                           rpm=F.REF_RPM, thermal="ENERGY_EQUATION",
+                           nth=nth, nz=nz, groove0=seed, **case_kw)
+        seed = res["groove_deg"]
+        m = metrics(res)
+        rows.append(dict(W_meas=W_meas, eps=eps, W_sim=m["W_N"],
+                         converged=m["converged"], p_max_MPa=m["p_max_MPa"],
+                         T_max_C=m["T_max_C"], T_max_xpi=m["T_max_xpi"],
+                         T_rise_K=m["T_rise_K"], R_p=m["R_p"], mc=m["mc"], ns=m["ns"]))
+        sys.stdout.flush()
+    return rows
+
+
+def phase2(exe, work, nth=720, nz=40):
+    """Everything task 2.3 and 2.4 need, in one run, written to ferron_phase2.json."""
+    os.makedirs(work, exist_ok=True)
+    out = {"mesh": [nth, nz], "rpm": F.REF_RPM,
+           "eps": F.FERRON_ECC_VS_LOAD[2][1]}
+    out["cross_film"] = cross_film_compare(exe, work, nth=nth, nz=nz)
+    out["groove_carryover"] = groove_carryover_compare(exe, work, nth=nth, nz=nz)
+
+    print("\n=== load at Ferron's measured eccentricities, before/after ===")
+    print(f"{'W meas':>8} {'eps':>6} {'W before':>9} {'W after':>9} {'change':>8}")
+    before = load_curve(exe, work, "lc_before", nth=nth, nz=nz,
+                        cross_film=False, h_wall=0.0)
+    after = load_curve(exe, work, "lc_after", nth=nth, nz=nz,
+                       cross_film=True, h_wall=0.0,
+                       shaft_h=SHAFT_H_AMB, bush_h=BUSH_H_OUT)
+    for b, a in zip(before, after):
+        print(f"{b['W_meas']:>8.0f} {b['eps']:>6.2f} {b['W_sim']:>9.0f} "
+              f"{a['W_sim']:>9.0f} {(a['W_sim'] / b['W_sim'] - 1.0):>7.1%}")
+    out["load_before"] = before
+    out["load_after"] = after
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    dst = os.path.join(here, "ferron_phase2.json")
+    json.dump(out, open(dst, "w"), indent=1)
+    print(f"\nwrote {dst}")
+    return out
 
 
 def main(exe, work):

@@ -188,13 +188,111 @@ sentinel metric for Phase 2.
 |---|------|-------|---------------------|
 | 2.1 | Theta-weight the cavitated thermal inventory: capacity `rho_cp*theta*h`, conduction `k*theta*h`, convected flux `rho_cp*theta*h*u` (D14/B3). Mirror the Reynolds-side weighting (`fluid_properties.cpp:258`) | `src/energy.cpp:316,318,334,352` | Rerun Ferron adiabatic: report delta T_max, delta T-profile through the cavitated arc |
 | 2.2 | Scale Couette dissipation by theta in cavitated cells; either make STRIATED the default under JFO or add the theta factor to FULL_FILM (B4) | `src/energy.cpp:73-75`, `src/config.hpp:620` | Ferron STRIATED-vs-FULL_FILM delta documented (do 2.1 and 2.2 together; their errors partially cancel — see energy audit section 1) |
-| 2.3 | Hot-oil carry-over at grooves: replace the hard pin with `T_groove = lambda*T_supply + (1-lambda)*T_upstream_film`, lambda from a mixing model (flow-weighted: supply flow vs upstream Couette flux is the standard closure) with a config override | `src/energy.cpp:224-266` | Ferron groove-exit T ~ 41.9 C (Alakhramsing) reproduced within ~0.5 K; load moves toward measurement; peak location expected NOT to move (in-repo sweep showed location insensitive to inlet T) |
-| 2.4 | **Cross-film temperature profile + wall coupling** — the fix for the 71 deg peak-location error and the high-speed load residual. The film's uniform-T assumption fails all three validity criteria on these rigs (Br ~ 2.6, reduced Peclet ~ 10-30, unequal walls; core superheat ~3 K Ferron / ~6 K Brito 4000 rpm, scaling as U^2). Do it Lund-Tonnesen style: assume a low-order polynomial T(z) per cell (4th order), collocated with (a) the depth-averaged energy balance, (b) wall BCs from a minimal conjugate model — shaft circumferentially averaged (solved from the global film-shaft heat balance), 1D radial bush conduction to an outer convection BC. The same T(z) then supplies BOTH the wall heat flux (replacing the constant h_wall closure) and the viscosity z-integrals for a **generalized Reynolds equation** (Dowson F0/F1/F2) — do not fix one without the other; they come from the same missing profile. Full 2D bush conduction stays Phase D scope | new module + `src/energy.cpp:128-144`, `src/reynolds.cpp` (gamma assembly) | Ferron: T_max within 2 K **and** peak location within ~15 deg with one wall setting (no more bracketing); Brito: shaft interface T vs supply-T sweep qualitatively reproduced; Brito 4000 rpm sentinel load closes while 1000 rpm is untouched (cross-film effect must scale as U^2 — if the 1000 rpm gap moves equally, something else changed) |
+| 2.3 | ~~Hot-oil carry-over at grooves~~ | **DONE 2026-08-02.** `groove_mixing_model = PINNED (default) / FIXED_LAMBDA / FLOW_WEIGHTED` with per-inlet `mixing_lambda` and `supply_flow_rate` tokens on `inlet_groove`/`inlet_circular`. Upstream sample taken per axial row at the groove's leading edge in the entrainment sense, gathered across ranks. Default is bit-identical to the old hard pin. See PHYSICS.md §13.1.1 |
+| 2.4 | ~~Cross-film temperature profile + wall coupling~~ | **IMPLEMENTED 2026-08-02**, single switch `cross_film_thermal_model = NONE (default) / POLYNOMIAL`, new module `src/cross_film.{hpp,cpp}`. Quartic T(y) on zero-mean shape functions (mean = the depth-averaged solve by construction), conjugate circumferentially-isothermal shaft + 1-D radial bush, Dowson F0/F1/F2 replacing h^3/12mu and h/2, exact dissipation U^2/F0 + F2|grad p|^2. Two stated approximations in the order-4 collocation (convective term saturated against the dissipative one; Couette-only evaluation) are forced by measured non-convergence, not convenience — see PHYSICS.md §13.1.2 and CHANGES.md. Acceptance verdict: see the Phase 2 results block below |
 | 2.5 | Sensitivity: enable `consistent_boundary_flux = true` (default false forces theta -> 1 on axial-boundary rows of the cavitated zone — artificial end re-flooding, `src/reynolds.cpp:490-494`) | config only | Cavity shape/side-flow delta documented |
 
 Order matters: 2.1+2.2 first (cheap, local), then 2.3, then 2.4. Rerun the
 Brito 4000 rpm sentinel after each step; success = predicted mean film
 temperature rising toward the ~71 C the load data implies.
+
+### Phase 2 results (2026-08-02) — 2.4 does NOT meet its acceptance criterion
+
+Ferron rig, 2000 rpm, eps = 0.534 (the eccentricity that carries 4 kN), 720x40,
+beta = 1e8, `coupling_max_iters = 150`, groove fixed point re-solved per leg.
+Both legs converged and pass every quoting guard: mc = 0, ns = 0, R_p = 5.9e-4
+and 8.0e-4, p_max/beta = 1.17e-2 and 1.10e-2 (both well above the 4e-3
+free-boundary floor), theta_min = 0.387 and 0.379.
+
+| leg | W [N] | T_max [C] | T_max err [K] | T-peak X/pi | T-peak err [deg] | p_max [MPa] | R_p |
+|---|---|---|---|---|---|---|---|
+| depth-averaged, adiabatic (before) | 3971 | 47.48 | -1.62 | 0.949 | **+71.8** | 1.175 | 5.9e-4 |
+| cross-film + conjugate walls (after) | 3710 | 46.74 | -2.36 | 0.949 | **+71.8** | 1.102 | 8.0e-4 |
+
+Conjugate state of the "after" leg: T_shaft = 43.43 C (circumferentially
+isothermal, globally adiabatic — net film-to-shaft heat 3.9e-10 W, i.e. the
+constraint is satisfied to round-off), T_bush(area mean) = 42.25 C, net
+film-to-bush heat 5.92 W, largest midplane-minus-mean core rise 1.19 K.
+
+**The 71 deg temperature-peak error does not move — at all, to three decimals in
+X/pi.** The diagnosis recorded in §0 of this plan and in §5.1 of the validation
+report, that a conjugate shaft carrying heat upstream is what relocates the peak,
+is **not supported** by this implementation. Load does fall as predicted (-6.6%),
+and T_max falls with it, which moves T_max slightly *away* from the measurement
+(-1.62 K -> -2.36 K) and past the 2 K acceptance band.
+
+Why the peak does not move, sized from the run itself: the shaft exchange is a
+conduction flux of order (k/h) dT ~ (0.13/1e-4) x 3 K ~ 4 kW/m^2, against an
+advective enthalpy divergence of order rho c h u dT/ds ~ 1.7e6 x 1e-4 x 5 x 70 ~
+60 kW/m^2. The wall path is ~6% of advection, so it shifts temperatures by a
+fraction of a kelvin but cannot relocate a peak whose position is set by "the
+film heats monotonically from one groove to the next". A **circumferentially
+isothermal** shaft additionally spreads whatever it returns uniformly over 360
+deg, which is the least effective possible way to move a peak.
+
+Two candidate explanations, both testable and neither yet tested:
+
+1. **The comparison may be against the wrong quantity.** Ferron instrumented a
+   bush temperature 0.5 mm below the surface, not a film temperature (§6 of the
+   validation report). The model now produces a bush *surface* temperature field
+   (`cross_film_t_bush`); with a nearly adiabatic bush it tracks the film and its
+   peak sits in the same place, but a bush with real circumferential conduction
+   would not. That is 2-D bush conduction, explicitly out of scope here.
+2. **A circumferentially isothermal shaft is too weak a model.** The
+   `h_wall = 5000` "metal bush" bracket already puts the peak at X/pi = 0.534
+   (right) while making T_max 43.0 C (6.1 K too cold). The conjugate model as
+   built interpolates between the adiabatic and metal-bush brackets rather than
+   resolving them, so the bracketing problem the task set out to remove is still
+   there. **The wall sensitivity sweep intended to test this could not be run:**
+   at `bush_outer_heat_transfer = 500` (a strongly cooled bush) the Ferron case
+   aborts in the Elrod solve with `DIVERGED_BREAKDOWN`. The Phase 0.1 KSP guard
+   catches it loudly instead of returning a plausible field, which is the guard
+   working, but it means how far the conjugate model can be pushed toward the
+   metal-bush limit is currently unknown. Making the Elrod solve robust at strong
+   wall cooling is a prerequisite for closing 2.4.
+
+**Verdict on 2.4: implemented, converging, load moves the right way; acceptance
+criterion (T_max within 2 K AND peak within 15 deg at one wall setting) NOT met.**
+
+#### Brito speed sentinel — the U^2 signature IS present
+
+The cleanest discriminator is load at **one** eccentricity and two speeds, so the
+only thing that differs is U. Brito rig, eps = 0.50, Pf = 70 kPa gauge, Tf = 40 C,
+720x40, `coupling_max_iters = 150`:
+
+| N [rpm] | W before [N] | W after [N] | change | T_max before [C] | T_max after [C] | R_p before | R_p after |
+|---|---|---|---|---|---|---|---|
+| 1000 | 4971 | 4820 | **-3.0%** | 46.93 | 43.90 | 3.7e-6 | 7.0e-5 |
+| 4000 | 16502 | 14839 | **-10.1%** | 61.06 | 57.35 | 6.2e-3 | 1.3e-2 |
+
+The effect is strongly speed-dependent and roughly 3.4x larger at 4x the speed,
+so it is **not** a speed-independent offset — the cross-film mechanism behaves as
+its U^2 scaling argument predicts, and the 1000 rpm case is nearly untouched.
+The load-change ratio is 3.4 rather than 16 because the load response is not
+linear in the core superheat: the viscosity sensitivity falls as the mean film
+temperature rises, and the saturation in the order-4 collocation caps the
+flattening.
+
+**Convergence caveat, stated rather than buried.** The two 4000 rpm rows did not
+meet the harness criterion at the 150-iteration budget (`R_p` 6.2e-3 and 1.3e-2
+against a 1e-3 target; the 1.3e-2 also exceeds the campaign's own 1e-2 quoting
+rule). A 500-iteration re-run of the 4000 rpm **before** case converges
+(`R_p = 6.6e-4`) and lands on W = 16503 N, i.e. **1 N from the 150-iteration
+value**, so the budget was affecting the residual rather than the answer. The
+matching 500-iteration **after** case had not finished when this was written, so
+the -10.1% figure is quoted from the 150-iteration run and should be re-confirmed.
+The 1000 rpm rows are converged at 150 iterations and can be quoted as they
+stand. `brito_phase2.json` therefore holds only the one 500-iteration row that
+finished; the rest of the table above is from the 150-iteration probe and is
+recorded here rather than in the JSON.
+
+*Reproduce:* `run_brito.phase2_sentinel(EXE, WORK)`, or the Ferron pair with
+`run_ferron.cross_film_compare(EXE, WORK)` / `run_ferron.phase2(EXE, WORK)`.
+Both harnesses now take `cross_film=`, `bush_h=`, `shaft_h=` and
+`groove_lambda=` through to the config. Brito's own digitised eccentricity at 1000 rpm (0.761) is not
+usable as the fixed point: the depth-averaged model does not converge there
+either, and its temperature solve aborts on a KSP divergence.
+
 
 ## Phase 3 — Grid and time-step independence (after Phase 2, before final validation)
 

@@ -6,6 +6,7 @@
 
 #include <mpi.h>
 
+#include "cross_film.hpp"
 #include "equation_of_state.hpp"
 #include "fvm.hpp"
 #include "communicator.hpp"
@@ -32,6 +33,39 @@ double theta_base_density(const Fields& fields, const SimulationConfig& cfg, int
 
 double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
     return positive_field_value(fields, "mu", cfg.mu, i, j);
+}
+
+/// Poiseuille coefficient of the (generalized) Reynolds equation, per unit density.
+///
+/// Uniform across-the-gap viscosity gives h^3/(12 mu). With the cross-film model
+/// active it is Dowson's F2 = int_0^h y (y - F1/F0) dy/mu, which reduces to
+/// h^3/(12 mu) exactly when mu does not vary through the film. The two are
+/// alternatives, not a correction of one by the other.
+/// `prefactor` multiplies the coefficient from the left; it is an argument rather
+/// than applied by the caller so the classical branch keeps the exact original
+/// floating-point association and stays bit-identical when the model is off.
+double reynolds_diffusion(const Fields& fields, const SimulationConfig& cfg,
+                          double prefactor, int i, int j) {
+    if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
+        return prefactor * positive_field_value(fields, "cross_film_f2", 0.0, i, j);
+    }
+    const double h_val = fields["h"](i, j);
+    return prefactor * h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
+}
+
+double poiseuille_coefficient(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    return reynolds_diffusion(fields, cfg, 1.0, i, j);
+}
+
+/// Film thickness that carries the Couette flux. The generalized Reynolds
+/// equation transports U * F1/F0 rather than U * h/2, so this returns 2 F1/F0,
+/// which equals h under uniform viscosity and lets every Couette expression keep
+/// its explicit factor of one half.
+double couette_thickness(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    if (CrossFilm::active(cfg) && fields.has("cross_film_couette_h")) {
+        return positive_field_value(fields, "cross_film_couette_h", 0.0, i, j);
+    }
+    return fields["h"](i, j);
 }
 
 // WP-1 two-phase void coupling: per-cell generalized EOS parameters. Under NONE
@@ -214,15 +248,14 @@ void solve(Fields& fields, LinearSystem& sys,
     const double R       = mesh.R;
     const int ng         = h.n_ghost;
 
-    // Compute gamma = ρh³/(12μ) over physical cells plus theta ghost layers.
-    // h and rho theta-ghost cells must already be synced before calling this function.
+    // Compute gamma = ρ·(Poiseuille coefficient) over physical cells plus theta
+    // ghost layers: ρh³/(12μ) normally, ρF2 under the generalized (cross-film)
+    // Reynolds equation. h, rho and the cross-film theta-ghost cells must already
+    // be synced before calling this function.
     Field gamma_f("gamma",  mesh);
     for (int i = -ng; i < n_theta + ng; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            const double h_val   = h(i, j);
-            const double rho_val = rho(i, j);
-            const double mu_val = dynamic_viscosity(fields, cfg, i, j);
-            gamma_f(i, j) = rho_val * h_val * h_val * h_val / (12.0 * mu_val);
+            gamma_f(i, j) = reynolds_diffusion(fields, cfg, rho(i, j), i, j);
         }
     }
 
@@ -256,7 +289,7 @@ void solve(Fields& fields, LinearSystem& sys,
     for (int i = -ng; i < n_theta + ng; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double rho0 = theta_base_density(fields, cfg, i, j);
-            rho0_h(i, j) = rho0 * h(i, j);
+            rho0_h(i, j) = rho0 * couette_thickness(fields, cfg, i, j);
             theta_lag_f(i, j) = rho(i, j) / rho0;
         }
     }
@@ -337,16 +370,15 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
     const double R       = mesh.R;
     const int ng         = h.n_ghost;
 
-    // Γ_base = ρ₀βh³/(12μ) — effective diffusion without switch function.
-    // h theta-ghost cells must already be synced before calling this function.
+    // Γ_base = ρ₀β·(Poiseuille coefficient) — effective diffusion without switch
+    // function: ρ₀βh³/(12μ) normally, ρ₀βF2 under the generalized Reynolds
+    // equation. h and the cross-film theta-ghost cells must already be synced.
     Field Gamma_base("Gamma_base", mesh);
     for (int i = -ng; i < n_theta + ng; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            const double hv = h(i, j);
             const double rho_base = theta_base_density(fields, cfg, i, j);
-            const double mu_val = dynamic_viscosity(fields, cfg, i, j);
             const double beta_eff = void_params(fields, cfg, i, j).beta_bar;
-            Gamma_base(i, j) = rho_base * beta_eff * hv * hv * hv / (12.0 * mu_val);
+            Gamma_base(i, j) = reynolds_diffusion(fields, cfg, rho_base * beta_eff, i, j);
         }
     }
 
@@ -356,7 +388,8 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
     Field zero_flux_z("zero_flux_z", mesh);
     for (int i = -1; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            const double h_e = 0.5 * (h(i, j) + h(i + 1, j));
+            const double h_e = 0.5 * (couette_thickness(fields, cfg, i, j) +
+                                      couette_thickness(fields, cfg, i + 1, j));
             const double rho_e = 0.5 * (
                 theta_base_density(fields, cfg, i, j) +
                 theta_base_density(fields, cfg, i + 1, j));
@@ -606,16 +639,27 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             // Face values at west face of cell (i, j)
-            double h_f = 0.5 * (h(i-1, j) + h(i, j));
-            const double mu_f = 0.5 * (
-                dynamic_viscosity(fields, cfg, i - 1, j) +
-                dynamic_viscosity(fields, cfg, i, j));
-            
             // Poiseuille term active only if both cells are full film
             double g_f = (theta(i-1, j) >= 1.0 && theta(i, j) >= 1.0) ? 1.0 : 0.0;
-            
             double dp_dtheta = (p(i, j) - p(i-1, j)) / d_theta;
-            u_theta(i, j) = 0.5 * omega * R - g_f * (h_f * h_f) / (12.0 * mu_f * R) * dp_dtheta;
+
+            if (CrossFilm::active(cfg)) {
+                // Depth-averaged velocity q/h from the generalized Reynolds flux
+                // q = U F1/F0 - F2 dp/ds, the same flux the pressure solve conserved.
+                const double h_f = std::max(0.5 * (h(i - 1, j) + h(i, j)), cfg.min_film_thickness);
+                const double couette_f = 0.5 * (couette_thickness(fields, cfg, i - 1, j) +
+                                                couette_thickness(fields, cfg, i, j));
+                const double poise_f = 0.5 * (poiseuille_coefficient(fields, cfg, i - 1, j) +
+                                              poiseuille_coefficient(fields, cfg, i, j));
+                u_theta(i, j) = 0.5 * omega * R * (couette_f / h_f)
+                    - g_f * poise_f / (h_f * R) * dp_dtheta;
+            } else {
+                const double h_f = 0.5 * (h(i-1, j) + h(i, j));
+                const double mu_f = 0.5 * (
+                    dynamic_viscosity(fields, cfg, i - 1, j) +
+                    dynamic_viscosity(fields, cfg, i, j));
+                u_theta(i, j) = 0.5 * omega * R - g_f * (h_f * h_f) / (12.0 * mu_f * R) * dp_dtheta;
+            }
         }
     }
 
@@ -624,7 +668,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
     // Field u_z has n_z_local + 1 faces in z direction.
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j <= n_z; ++j) {
-            double p_prev, p_next, h_f, g_f, mu_f;
+            double p_prev, p_next, h_f, g_f, mu_f, poise_f;
             double dz_eff = d_z;
 
             if (j == 0) { // South boundary face
@@ -637,6 +681,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                 }
                 h_f = h(i, 0);
                 mu_f = dynamic_viscosity(fields, cfg, i, 0);
+                poise_f = poiseuille_coefficient(fields, cfg, i, 0);
                 g_f = (theta(i, 0) >= 1.0) ? 1.0 : 0.0;
             } else if (j == n_z) { // North boundary face
                 p_prev = p(i, n_z - 1);
@@ -648,6 +693,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                 }
                 h_f = h(i, n_z - 1);
                 mu_f = dynamic_viscosity(fields, cfg, i, n_z - 1);
+                poise_f = poiseuille_coefficient(fields, cfg, i, n_z - 1);
                 g_f = (theta(i, n_z - 1) >= 1.0) ? 1.0 : 0.0;
             } else { // Interior face
                 p_prev = p(i, j - 1);
@@ -656,11 +702,17 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                 mu_f = 0.5 * (
                     dynamic_viscosity(fields, cfg, i, j - 1) +
                     dynamic_viscosity(fields, cfg, i, j));
+                poise_f = 0.5 * (poiseuille_coefficient(fields, cfg, i, j - 1) +
+                                 poiseuille_coefficient(fields, cfg, i, j));
                 g_f = (theta(i, j-1) >= 1.0 && theta(i, j) >= 1.0) ? 1.0 : 0.0;
             }
 
             double dp_dz = (p_next - p_prev) / dz_eff;
-            u_z(i, j) = - g_f * (h_f * h_f) / (12.0 * mu_f) * dp_dz;
+            if (CrossFilm::active(cfg)) {
+                u_z(i, j) = - g_f * poise_f / std::max(h_f, cfg.min_film_thickness) * dp_dz;
+            } else {
+                u_z(i, j) = - g_f * (h_f * h_f) / (12.0 * mu_f) * dp_dz;
+            }
         }
     }
 }

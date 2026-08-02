@@ -69,3 +69,5 @@ compile_commands.json
 
 # Validation benchmark run outputs
 validation/journal_bearing/_work/
+# Ad-hoc harness work directories (_work_f2, _work_b5, ...): solver scratch only.
+validation/journal_bearing/_work_*/

@@ -35,6 +35,7 @@ add_test(NAME test_schemes_mpi6
 add_pancake_test(test_property_tables)
 target_compile_definitions(test_property_tables PRIVATE
     PANCAKE_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
+add_pancake_test(test_cross_film)
 add_pancake_test(test_coupling)
 add_pancake_test(test_gas_coupling)
 # Aborts by design: passes only when the KSP guard prints its own diagnosis.

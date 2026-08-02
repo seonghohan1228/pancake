@@ -26,6 +26,16 @@ used for any of these sweeps, and load carries ~5e-5 of relative solver noise at
 `linear_rtol = 1e-8`, which is far below the percent-level differences these
 benchmarks resolve but is not zero.
 
+**Counter-example found 2026-08-02, read this before trusting 4 ranks.** The
+*thermohydrodynamic* Ferron case at eps = 0.67, 720x40, adiabatic walls
+**diverges at 4 ranks** (`[FATAL] linear solve 'elrod film content' failed`,
+after the Elrod loop stalls with no cavitated cell) while converging normally at
+1 and 2 ranks. Confirmed against a binary built from the then-current `main`, so
+it is not a regression from any one change. The rank-independence measurements
+below were taken on the *isothermal* case and on the Brito eccentricity sweep;
+they do not cover the THD Ferron path. Use 2 ranks for THD sweeps until this is
+diagnosed.
+
 Correctness note: rank count must not change the answer, and the ghost exchange
 is covered by MPI tests (`test_elrod_a2_mpi6`, `test_schemes_mpi6`). Defect D5 is
 the known exception -- `rho_cp` and `k` ghosts go stale between the gas solve and

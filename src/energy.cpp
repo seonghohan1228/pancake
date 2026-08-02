@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include <mpi.h>
+
+#include "cross_film.hpp"
 #include "fvm.hpp"
 
 namespace Energy {
@@ -105,7 +109,18 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
             // theta and the error cancels) while leaving conduction and storage
             // over-weighted by 1/theta.
             const double liquid = liquid_fraction(theta, cfg, g, i, j);
-            const double couette = mu_val * U * U / h_val * liquid;
+            // Depth-integrated Couette dissipation. With uniform viscosity the shear
+            // stress is mu U/h and the integral is mu U^2/h. With a cross-film
+            // temperature profile the stress is still uniform across the gap (the
+            // thin-film momentum balance with no pressure gradient) but its value is
+            // U/F0, and int tau^2/mu dy = U^2/F0 exactly. The hot core raises F0
+            // above h/mu(T_mean), so this is strictly less than the uniform-viscosity
+            // estimate -- the correct, not an approximated, replacement.
+            const double couette_specific = (CrossFilm::active(cfg) && fields.has("cross_film_f0") &&
+                                             fields["cross_film_f0"](i, j) > 0.0)
+                ? U * U / fields["cross_film_f0"](i, j)
+                : mu_val * U * U / h_val;
+            const double couette = couette_specific * liquid;
 
             // Pressure-flow dissipation must follow the same active faces as the
             // Reynolds/velocity solve. Cavitated faces carry no Poiseuille flow, so
@@ -151,9 +166,39 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
                         }
                     }
                 }
-                poiseuille = h_val * h_val * h_val * grad_sq / (12.0 * mu_val);
+                // Pressure-flow dissipation equals the pressure work -q.grad p, and
+                // q = -F2 grad p for the pressure-driven part, so the exact
+                // depth-integrated value is F2 |grad p|^2. F2 -> h^3/(12 mu) under
+                // uniform viscosity, which is the historical expression. The
+                // Couette-Poiseuille cross term integrates to zero identically, so
+                // the two contributions simply add.
+                poiseuille = (CrossFilm::active(cfg) && fields.has("cross_film_f2"))
+                    ? fields["cross_film_f2"](i, j) * grad_sq
+                    : h_val * h_val * h_val * grad_sq / (12.0 * mu_val);
             }
             heat(i, j) = couette + poiseuille;
+        }
+    }
+}
+
+// Conjugate wall closure. CrossFilm::update has already solved the shaft and bush
+// surface temperatures and reduced them to a per-cell flux and its derivative with
+// respect to the depth-averaged temperature, so the energy equation only has to
+// apply the Newton linearisation
+//     Q_w(T) ~ Q_w(T_lag) + dQ/dT (T - T_lag)
+// around the lagged film temperature. This replaces the constant-T_wall cooling
+// entirely, which is why the two h_wall coefficients are ignored when it is active.
+void add_conjugate_wall_heat_loss(LinearSystem& sys, const Fields& fields,
+                                  const Field& temperature, const Mesh& mesh) {
+    const Field& flux = fields["cross_film_wall_flux"];
+    const Field& coeff = fields["cross_film_wall_coeff"];
+    const double area = mesh.R * mesh.get_d_theta() * mesh.get_d_z();
+
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double c = coeff(i, j) * area;
+            sys.a_p(i, j) += c;
+            sys.source(i, j) += c * temperature(i, j) - flux(i, j) * area;
         }
     }
 }
@@ -254,45 +299,124 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
     }
 }
 
+/// Test whether the cell at global circumferential index `i_global` and axial
+/// index `j` lies inside an inlet feature. The global index is wrapped, so a
+/// neighbour index of -1 or n_theta_global (a cell owned by another rank) is
+/// answered without any communication.
+bool inside_inlet_global(const InletConfig& inlet, const Mesh& mesh, int i_global, int j) {
+    const int n = mesh.n_theta_global;
+    const int wrapped = ((i_global % n) + n) % n;
+    const double theta_c = (wrapped + 0.5) * mesh.get_d_theta();
+    double dth = std::abs(theta_c - inlet.theta * M_PI / 180.0);
+    if (dth > M_PI) dth = 2.0 * M_PI - dth;
+    if (inlet.type == InletConfig::Type::CIRCULAR) {
+        const double z_c = (j + 0.5) * mesh.get_d_z();
+        const double dist_sq = (mesh.R * dth) * (mesh.R * dth) +
+                               (z_c - inlet.z) * (z_c - inlet.z);
+        return dist_sq <= inlet.size * inlet.size;
+    }
+    return dth <= 0.5 * (inlet.size * M_PI / 180.0);
+}
+
+bool inside_inlet(const InletConfig& inlet, const Mesh& mesh, int i, int j) {
+    return inside_inlet_global(inlet, mesh, mesh.offset_theta + i, j);
+}
+
+/// Hot-oil carry-over at one fed inlet.
+///
+/// A real groove does not deliver pure supply oil: the film sweeping into it
+/// recirculates and mixes with the fresh charge, so the oil leaving the groove is
+///
+///     T_groove = lambda T_supply + (1 - lambda) T_upstream,
+///
+/// with lambda the fresh-oil share of the mixture. `t_mix` is filled per axial row
+/// (the groove spans the full width and the upstream film is not uniform in z);
+/// `lambda_out` receives the row-independent mixing fraction actually used.
+///
+/// The upstream film state is read one cell circumferentially ahead of the
+/// feature's leading edge, in the sense the shaft entrains. That cell can live on
+/// any rank, so its temperature and its Couette carry-over flux are gathered with
+/// a sum reduction over an array indexed by the (undecomposed) axial index.
+void groove_mixing_temperatures(const InletConfig& inlet, const Fields& fields,
+                                const Mesh& mesh, const SimulationConfig& cfg,
+                                std::vector<double>& t_mix, double& lambda_out) {
+    const int n_theta = mesh.n_theta_local;
+    const int n_z = mesh.n_z_local;
+    t_mix.assign(n_z, inlet.t_supply);
+    lambda_out = 1.0;
+    if (cfg.groove_mixing_model == GrooveMixingModel::PINNED) return;
+
+    const Field& temperature = fields["temperature"];
+    const Field& h = fields["h"];
+    const Field& theta = fields["theta"];
+    const double d_z = mesh.get_d_z();
+    const int downstream = cfg.omega >= 0.0 ? 1 : -1;
+
+    // Leading edge in global theta indices: the first inlet cell met when walking
+    // downstream, so the upstream sample sits one cell before it.
+    std::vector<double> gathered(static_cast<size_t>(2) * n_z, 0.0);
+    for (int i = 0; i < n_theta; ++i) {
+        for (int j = 0; j < n_z; ++j) {
+            if (inside_inlet(inlet, mesh, i, j)) continue;
+            // (i) is outside; it is the upstream sample only if the next cell
+            // downstream is inside the feature.
+            if (!inside_inlet_global(inlet, mesh, mesh.offset_theta + i + downstream, j)) continue;
+            const double h_val = std::max(h(i, j), cfg.min_film_thickness);
+            const double liquid = std::clamp(theta(i, j), 0.0, 1.0);
+            // Volumetric Couette carry-over through this row, m^3/s.
+            const double q_up = 0.5 * std::abs(cfg.omega) * mesh.R * h_val * liquid * d_z;
+            gathered[j] += temperature(i, j) * q_up;
+            gathered[n_z + j] += q_up;
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, gathered.data(), static_cast<int>(gathered.size()),
+                  MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    double q_up_total = 0.0;
+    for (int j = 0; j < n_z; ++j) q_up_total += gathered[n_z + j];
+
+    double lambda = 1.0;
+    if (cfg.groove_mixing_model == GrooveMixingModel::FIXED_LAMBDA) {
+        lambda = std::clamp(inlet.mixing_lambda, 0.0, 1.0);
+    } else if (q_up_total > 0.0) {
+        // Flow-weighted closure: the groove delivers the supply stream and the
+        // recirculating film in proportion to the two flow rates.
+        lambda = inlet.supply_flow_rate / (inlet.supply_flow_rate + q_up_total);
+    }
+    lambda_out = lambda;
+
+    for (int j = 0; j < n_z; ++j) {
+        const double q = gathered[n_z + j];
+        const double t_up = q > 0.0 ? gathered[j] / q : inlet.t_supply;
+        t_mix[j] = lambda * inlet.t_supply + (1.0 - lambda) * t_up;
+    }
+}
+
 // Actual fed inlets (feeds_fresh_oil) pump fresh oil in at a fixed supply
-// temperature, so their cells are pinned to inlet.t_supply via the penalty method.
+// temperature, so their cells are pinned via the penalty method. Under the default
+// groove_mixing_model = PINNED the pinned value is inlet.t_supply exactly; the
+// mixing models pin the groove to the hot-oil carry-over mixture instead.
 // Open large-clearance regions (feeds_fresh_oil == false) impose no thermal
 // condition and are left thermally transparent to the energy solve.
-void apply_inlet_thermal_conditions(LinearSystem& sys, const Mesh& mesh,
-                                    const SimulationConfig& cfg) {
+void apply_inlet_thermal_conditions(LinearSystem& sys, const Fields& fields,
+                                    const Mesh& mesh, const SimulationConfig& cfg) {
     if (cfg.inlets.empty()) return;
 
     const int n_theta = mesh.n_theta_local;
     const int n_z = mesh.n_z_local;
-    const double d_theta = mesh.get_d_theta();
-    const double d_z = mesh.get_d_z();
-    const double R = mesh.R;
+    std::vector<double> t_mix;
+    double lambda = 1.0;
 
     for (const auto& inlet : cfg.inlets) {
         if (!inlet.feeds_fresh_oil) continue;  // open region: thermally transparent
-        const double theta_in_rad = inlet.theta * M_PI / 180.0;
-        const double size_rad = inlet.size * M_PI / 180.0;
+        groove_mixing_temperatures(inlet, fields, mesh, cfg, t_mix, lambda);
 
         for (int i = 0; i < n_theta; ++i) {
-            const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
-            double dth = std::abs(theta_c - theta_in_rad);
-            if (dth > M_PI) dth = 2.0 * M_PI - dth;
-
             for (int j = 0; j < n_z; ++j) {
-                const double z_c = (j + 0.5) * d_z;
-                bool inside = false;
-                if (inlet.type == InletConfig::Type::CIRCULAR) {
-                    const double dist_sq = (R * dth) * (R * dth) + (z_c - inlet.z) * (z_c - inlet.z);
-                    if (dist_sq <= inlet.size * inlet.size) inside = true;
-                } else {  // GROOVE
-                    if (dth <= 0.5 * size_rad) inside = true;
-                }
-
-                if (inside) {
-                    const double penalty = 1e20;
-                    sys.a_p(i, j) = penalty;
-                    sys.source(i, j) = penalty * inlet.t_supply;
-                }
+                if (!inside_inlet(inlet, mesh, i, j)) continue;
+                const double penalty = 1e20;
+                sys.a_p(i, j) = penalty;
+                sys.source(i, j) = penalty * t_mix[j];
             }
         }
     }
@@ -378,7 +502,20 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
             // which damps the temperature rise reaching the next inlet.
             const double liquid_face =
                 liquid_fraction_face(theta, cfg, g_face, i, j, i + 1, j);
-            flux_theta(i, j) = rho_cp_face * liquid_face * h_face * u_theta * d_z;
+            if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
+                // Volumetric flux per unit width from the same generalized law the
+                // Reynolds solve conserved, q = U F1/F0 - F2 grad p, so enthalpy and
+                // mass ride on one velocity field rather than two.
+                const double couette_face = 0.5 * (fields["cross_film_couette_h"](i, j) +
+                                                   fields["cross_film_couette_h"](i + 1, j));
+                const double f2_face = 0.5 * (fields["cross_film_f2"](i, j) +
+                                              fields["cross_film_f2"](i + 1, j));
+                const double q_face =
+                    0.5 * cfg.omega * R * couette_face - g_face * f2_face * dp_dtheta / R;
+                flux_theta(i, j) = rho_cp_face * liquid_face * q_face * d_z;
+            } else {
+                flux_theta(i, j) = rho_cp_face * liquid_face * h_face * u_theta * d_z;
+            }
         }
     }
 
@@ -397,7 +534,14 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
             const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
             const double liquid_face =
                 liquid_fraction_face(theta, cfg, g_face, i, j, i, j + 1);
-            flux_z(i, j) = rho_cp_face * liquid_face * h_face * u_z * R * d_theta;
+            if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
+                const double f2_face = 0.5 * (fields["cross_film_f2"](i, j) +
+                                              fields["cross_film_f2"](i, j + 1));
+                const double q_face = -g_face * f2_face * dp_dz;
+                flux_z(i, j) = rho_cp_face * liquid_face * q_face * R * d_theta;
+            } else {
+                flux_z(i, j) = rho_cp_face * liquid_face * h_face * u_z * R * d_theta;
+            }
         }
     }
 
@@ -420,10 +564,17 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
         FVM::ddt_weighted(sys, temperature, capacity, cfg.dt, mesh);
     }
     FVM::add_source(sys, heat, mesh);
-    add_wall_heat_loss(sys, mesh, cfg);
+    // The conjugate closure replaces the Newton cooling outright: with the shaft
+    // and bush surface temperatures solved, a prescribed-wall-temperature term on
+    // top of them would double-count the same heat path.
+    if (CrossFilm::active(cfg) && fields.has("cross_film_wall_flux")) {
+        add_conjugate_wall_heat_loss(sys, fields, temperature, mesh);
+    } else {
+        add_wall_heat_loss(sys, mesh, cfg);
+    }
     add_axial_boundary_convection(sys, p, h, theta, mesh, fields, cfg);
     add_nonconservative_convection_correction(sys, flux_theta, flux_z, p, h, theta, fields, mesh, cfg);
-    apply_inlet_thermal_conditions(sys, mesh, cfg);
+    apply_inlet_thermal_conditions(sys, fields, mesh, cfg);
 
     sys.solve(temperature, cfg.linear_rtol, 1000, "temperature");
 }

@@ -302,6 +302,34 @@ heat-transfer coefficients close the steady thermal balance. `ISOTHERMAL`
 leaves the temperature field fixed but still refreshes `heat_generation` for
 inspection.
 
+`cross_film_thermal_model = POLYNOMIAL` (default `NONE`) replaces the
+uniform-across-the-gap assumption of the energy equation with a reconstructed
+`T(y)` profile. It is a single switch for three coupled things: the cross-film
+profile, a conjugate wall model (circumferentially isothermal shaft whose
+temperature is solved from the global film-to-shaft heat balance, plus 1-D radial
+conduction through the bush to an outer convection boundary), and a generalized
+Reynolds equation using Dowson's `F0/F1/F2` viscosity integrals in place of
+`h^3/(12 mu)`. When it is active, `journal_heat_transfer`,
+`bearing_heat_transfer`, `journal_wall_temperature` and
+`bearing_wall_temperature` are ignored — the conjugate model replaces them, and
+the config validator warns rather than letting them look effective. Its own keys
+are `cross_film_profile_order` (2 or 4), `cross_film_quadrature_points`,
+`cross_film_relaxation`, `shaft_ambient_heat_transfer`,
+`shaft_ambient_area_ratio`, `thermal_ambient_temperature`,
+`bush_thermal_conductivity`, `bush_outer_radius` and
+`bush_outer_heat_transfer`. With `NONE` nothing in the module runs and results
+are bit-identical to the model-free solver. The equations as implemented, and
+the two stated approximations inside the order-4 collocation, are in PHYSICS.md
+sections 13.1.2 and 13.1.3.
+
+`groove_mixing_model` (default `PINNED`) controls hot-oil carry-over at fed
+inlets. `PINNED` holds groove cells at `t_supply`, the historical behaviour.
+`FIXED_LAMBDA` and `FLOW_WEIGHTED` instead impose
+`lambda*t_supply + (1-lambda)*T_upstream`, taking `lambda` either from the
+inlet's own token or from its supply flow rate against the solved upstream
+Couette carry-over. Both read two optional trailing tokens on the inlet line:
+`inlet_groove = theta width p_supply t_supply [lambda] [q_supply]`.
+
 `fluid_property_model = CONSTANT` keeps the previous pure-oil behavior. The
 new opt-in `SINGLE_PHASE` (oil + dissolved gas, single-phase) and `TWO_PHASE`
 (adds a free-gas phase) modes add a liquid oil plus dissolved gas property layer

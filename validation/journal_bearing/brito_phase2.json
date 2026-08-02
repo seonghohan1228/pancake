@@ -1,0 +1,32 @@
+[
+ {
+  "rpm": 4000.0,
+  "cross_film": false,
+  "m": {
+   "eps": 0.5,
+   "rpm": 4000.0,
+   "p_supply_gauge": 70000.0,
+   "t_supply_c": 40.0,
+   "thermal": "ENERGY_EQUATION",
+   "h_wall": 0.0,
+   "upstream_groove_deg": 36.66751211388356,
+   "W_N": 16503.065063193564,
+   "attitude_deg": 51.96959969920684,
+   "p_max_MPa": 4.68829,
+   "p_max_angle_deg": 102.08248788611644,
+   "p_min_MPa": 0.0,
+   "T_max_C": 61.06200000000001,
+   "T_max_angle_deg": 170.58248788611644,
+   "T_rise_K": 21.062000000000012,
+   "theta_min": 0.435219,
+   "p_over_beta": 0.015627633333333335,
+   "mc": 0.0,
+   "ns": 0,
+   "R_p": 0.000654895,
+   "elrod_iters": 5,
+   "coupling_iters": 500,
+   "coupling_capped": true,
+   "converged": true
+  }
+ }
+]

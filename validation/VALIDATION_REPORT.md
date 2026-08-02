@@ -136,7 +136,7 @@ masquerades as grid error.
 | Ferron et al. (1983) | peak pressure location | **PASS** — +4.2° |
 | Ferron et al. (1983) | rupture position | **PASS** — inside measured bracket |
 | Ferron et al. (1983) | peak temperature | **PASS adiabatic** (−1.62 K); **FAIL** metal bush (−6.10 K) |
-| Ferron et al. (1983) | temperature peak *location* | **FAIL** — 71° out (§5.1) |
+| Ferron et al. (1983) | temperature peak *location* | **FAIL** — 71° out, and **unchanged** by the conjugate wall model (§5.1) |
 | Ferron et al. (1983) | load at measured ε | **OPEN** — +52–68%, shared with the literature (§4) |
 | Brito et al. (2006) | load, via eccentricity-for-load | **NOT SCOREABLE** — the digitisation ambiguity spans the discrepancy (§4.1) |
 | Brito et al. (2006) | pressure, flow, interface T | **INCOMPLETE** — 5 of 6 committed runs unconverged; re-run required |
@@ -227,6 +227,23 @@ marked accordingly in `brito_eps_for_load.json`; the 3000 and 4000 rpm rows did.
 
 ### 5.1 No conjugate wall model — cause of the 71° temperature-peak error
 
+**Status 2026-08-02: a conjugate model is now implemented** behind
+`cross_film_thermal_model = POLYNOMIAL` (off by default). The shaft is
+circumferentially isothermal with its temperature solved from the global
+film-to-shaft heat balance, which with `shaft_ambient_heat_transfer = 0` is
+"net zero" - heat entering the shaft in the loaded arc leaves it again upstream,
+the transport path the prescribed-wall closure has no representation of. The bush
+adds 1-D radial conduction to an outer convection boundary. Full 2-D bush
+conduction (circumferential spreading inside the bush) is still absent. See
+PHYSICS.md 13.1.2. **Measured on Ferron at eps = 0.534, it does not move the
+peak at all** (X/pi = 0.949 before and after, +71.8 deg both times), so the
+diagnosis in the paragraph above is not supported by this implementation. The
+wall exchange is ~6% of the advective enthalpy divergence at this operating
+point, and a circumferentially isothermal shaft spreads its return over the whole
+circumference. See VALIDATION_PLAN.md "Phase 2 results" for the numbers, the
+sizing and the two candidate explanations.
+
+
 `Energy::apply_wall_transfer` is Newton cooling to a **prescribed constant** wall
 temperature. No bush or shaft conduction; no circumferential heat spreading by
 the rotating shaft. With no path for heat to travel upstream against the flow,
@@ -236,6 +253,22 @@ runnable settings are unphysical limits (perfect insulator, or infinite sink
 pinned at supply temperature).
 
 ### 5.2 Uniform temperature across the film is invalid on these rigs
+
+**Status 2026-08-02: implemented** behind the same switch. A quartic `T(y)` is
+reconstructed per cell on zero-mean shape functions (so its depth average is the
+depth-averaged solve's own answer), and the resulting `mu(y)` feeds Dowson's
+`F0/F1/F2`, which replace `h^3/12mu` and `h/2` in the Reynolds equation rather
+than correcting them. The dissipation source becomes exact under the same
+integrals, `Phi = U^2/F0 + F2 |grad p|^2`. Two approximations inside the order-4
+midplane collocation - the convective term is saturated against the dissipative
+one, and the collocation uses the Couette part of the flow only - are forced by
+measured non-convergence rather than by convenience, and are documented with
+their evidence in PHYSICS.md 13.1.2 and CHANGES.md. Measured effect on the Ferron
+load at eps = 0.534: 3971 N -> 3710 N, -6.6%, in the predicted direction (mu is
+convex in T and the core is hottest, so the effective viscosity implied by F2 is
+below mu(T_mean)). T_max falls 0.74 K with it, which takes the temperature
+comparison from -1.62 K to -2.36 K against the measurement.
+
 
 The energy equation is depth-averaged with viscosity at the mean temperature.
 That is valid only when Br ≪ 1, reduced Péclet ≪ 1, and the walls are at equal

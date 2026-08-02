@@ -9,6 +9,7 @@
 #include "communicator.hpp"
 #include "config.hpp"
 #include "diagnostics.hpp"
+#include "cross_film.hpp"
 #include "energy.hpp"
 #include "equation_of_state.hpp"
 #include "field.hpp"
@@ -201,6 +202,7 @@ int main(int argc, char** argv) {
         }
         fields.add("temperature", mesh).fill(cfg.temperature_initial);
         fields.add("heat_generation", mesh).fill(0.0);
+        CrossFilm::register_fields(fields, mesh, cfg);
         fields.add("inlet_indicator", mesh).fill(0.0);
         fields.add("velocity_theta", mesh, 2, GridLocation::FACE_THETA);
         fields.add("velocity_z",     mesh, 2, GridLocation::FACE_Z);
@@ -276,6 +278,7 @@ int main(int argc, char** argv) {
             int coupling_iters = 0;
             double coupling_R_p = 0.0;
             double coupling_R_T = 0.0;
+            CrossFilm::WallState cross_film_state;
 
             for (int outer = 0; outer < max_coupling; ++outer) {
                 if (steady_state) {
@@ -285,6 +288,20 @@ int main(int argc, char** argv) {
 
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
                 comm.update_ghosts(fields);
+
+                // Cross-film profile, conjugate walls and the Dowson F-integrals.
+                // Runs before Reynolds so the generalized coefficients it produces
+                // are the ones the pressure solve uses this iteration, and the wall
+                // temperatures it solves are the ones the energy solve closes on.
+                // No-op unless cross_film_thermal_model is enabled.
+                if (CrossFilm::active(cfg)) {
+                    cross_film_state = CrossFilm::update(fields, mesh, cfg);
+                    // The Reynolds assembly reads these on both theta ghost layers.
+                    comm.update_ghosts(fields["cross_film_f0"]);
+                    comm.update_ghosts(fields["cross_film_f1"]);
+                    comm.update_ghosts(fields["cross_film_f2"]);
+                    comm.update_ghosts(fields["cross_film_couette_h"]);
+                }
 
                 if (cfg.cavitation_model == CavitationModel::JFO)
                     elrod_stats = Reynolds::solve_elrod(fields, sys, mesh, step_cfg);
@@ -344,6 +361,15 @@ int main(int argc, char** argv) {
                 cl << "Coupling: " << coupling_iters << " outer iters, R_p=" << coupling_R_p
                    << " R_T=" << coupling_R_T;
                 Utils::log(cl.str(), Utils::Color::CYAN, 1);
+                if (CrossFilm::active(cfg)) {
+                    std::ostringstream xf;
+                    xf << "CrossFilm: T_shaft=" << cross_film_state.t_shaft
+                       << " K T_bush_mean=" << cross_film_state.t_bush_mean
+                       << " K Q_shaft=" << cross_film_state.q_shaft_net
+                       << " W Q_bush=" << cross_film_state.q_bush_net
+                       << " W core_rise_max=" << cross_film_state.core_rise_max << " K";
+                    Utils::log(xf.str(), Utils::Color::CYAN, 1);
+                }
             }
 
             // Conservation/convergence diagnostics. Must run before

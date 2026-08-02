@@ -83,6 +83,7 @@ endfunction()
 set(PANCAKE_HEADERS
     src/communicator.hpp
     src/config.hpp
+    src/cross_film.hpp
     src/diagnostics.hpp
     src/energy.hpp
     src/equation_of_state.hpp
@@ -159,6 +160,7 @@ if(PANCAKE_BUILD_SOLVER)
 
     set(PANCAKE_CORE_SOURCES
         src/communicator.cpp
+        src/cross_film.cpp
         src/diagnostics.cpp
         src/energy.cpp
         src/field.cpp

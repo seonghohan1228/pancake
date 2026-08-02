@@ -2,6 +2,117 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Phase 2.3/2.4: groove carry-over, cross-film T(y), conjugate
+walls, generalized Reynolds
+
+Three coupled additions, all off by default and all bit-identical to the previous
+solver when off. New module `src/cross_film.{hpp,cpp}`, new test
+`tests/test_cross_film.cpp` (24/24 tests pass), physics written up in PHYSICS.md
+sections 13.1.1-13.1.3.
+
+**Why they are one change.** The wall heat flux, the effective viscosity in the
+Reynolds coefficient, and the shape of the temperature profile across the film
+are three readings of the same unknown T(y). Fixing any one of them alone means
+inventing a closure for the other two, which is what the constant-h_wall Newton
+cooling was.
+
+**2.3 - hot-oil carry-over at grooves** (`groove_mixing_model`).
+`T_groove = lambda*T_supply + (1-lambda)*T_upstream`, with lambda either given
+per inlet (`FIXED_LAMBDA`) or computed from the supply flow against the solved
+upstream Couette carry-over (`FLOW_WEIGHTED`). The upstream sample is taken per
+axial row at the cell before the groove's leading edge, in the sense the shaft
+entrains; that cell can live on any rank, so its temperature and flux are gathered
+with a sum reduction over the (undecomposed) axial index. `PINNED` is the default
+and reproduces the old hard pin exactly.
+
+**2.4a - cross-film profile.** T(eta) = T_bar + a psi1 + b psi2 + c psi4 on three
+zero-mean shape functions, so the depth average is the depth-averaged solve's own
+answer by construction. Closed by the two wall values plus one midplane
+collocation of the cross-film energy balance. Recovers the classical
+conduction/dissipation parabola T = T_w + S eta(1-eta) exactly.
+
+**2.4b - conjugate walls.** The shaft is circumferentially isothermal at a
+temperature solved from the global film-to-shaft balance; with
+`shaft_ambient_heat_transfer = 0` that balance is "net zero", so heat entering the
+shaft in the loaded arc leaves it again upstream. This is the transport path the
+prescribed-T_wall closure has no representation of at all. The bush closes per
+cell through 1-D radial conduction to an outer convection boundary. Both reduce
+to closed form; only four scalars are reduced across ranks. When active, the two
+Newton-cooling coefficients and the two prescribed wall temperatures are ignored,
+and the validator says so rather than letting them look effective.
+
+**2.4c - generalized Reynolds.** Dowson's F0/F1/F2 replace h^3/(12 mu) and h/2:
+q = -F2 grad p + U F1/F0. Not an effective-viscosity correction of h^3/12mu - the
+integrals are the coefficient. The dissipation source follows exactly from the
+same integrals, Phi = U^2/F0 + F2 |grad p|^2 (the Couette-Poiseuille cross term
+integrates to zero identically), and the energy equation's convective flux uses
+the same q the pressure solve conserved.
+
+**Two approximations, both forced by measurement rather than convenience, both
+documented in the source with the evidence:**
+
+1. *The collocation's convective term is saturated against its dissipative term.*
+   One midplane collocation cannot represent the thin wall layers that appear at
+   reduced Peclet 10-30. Unbounded it produced a 494 K core rise on the Ferron
+   rig, against a physical scale of about 3 K. Saturated, the core rise is 1.1 K
+   and the conduction-dominated limit is still exact.
+2. *The collocation uses the Couette part of the flow only.* A dp/ds dependence
+   makes the profile shape jump whenever an Elrod cell flips between full film
+   and cavitated, closing a loop profile -> viscosity -> Couette flux -> rupture
+   position -> profile. Measured on the Ferron rig: the coupling residual R_p sat
+   at 9.4 bar, *identical at 40 and at 120 outer iterations*, and under-relaxing
+   the profile amplitude did not move it (9.4 / 2.3 / 7.6 / 2.2 bar at
+   w = 1.0 / 0.5 / 0.3 / 0.15). Removing the pressure terms from the collocation
+   alone took the same case to R_p = 8e-9 and changed the load by 0.7%. What is
+   given up is about 6% of the dissipation and 14% of the midplane velocity, both
+   feeding a shape correction that the saturation already caps; everything else
+   still uses the full pressure field.
+
+**Measured on Ferron (2000 rpm, eps = 0.534, 720x40, both legs converged to
+R_p < 1e-3): the load prediction improves, the temperature-peak location does
+not move at all.**
+
+    leg                                   W/N   T_max/C  T_max err  T-peak X/pi  err/deg
+    depth-averaged, adiabatic (before)   3971    47.48    -1.62 K       0.949     +71.8
+    cross-film + conjugate (after)       3710    46.74    -2.36 K       0.949     +71.8
+
+Load falls 6.6%, in the predicted direction and for the predicted reason: mu is
+convex in T and the core is the hottest part of the film, so the effective
+viscosity implied by F2 is below mu(T_mean). T_max falls with it, which moves
+T_max slightly *away* from Ferron's measurement and outside the 2 K band.
+
+**The 71 deg peak-location error does not move, to three decimals in X/pi.** The
+diagnosis this task was built on — that a conjugate shaft carrying heat upstream
+is what relocates the peak — is not supported by this implementation. Sized from
+the run itself: the shaft exchange is (k/h) dT ~ 4 kW/m^2 against an advective
+enthalpy divergence rho c h u dT/ds ~ 60 kW/m^2, so the wall path is ~6% of
+advection, and a *circumferentially isothermal* shaft spreads what it does return
+uniformly over 360 deg. Full detail, and the two candidate explanations (the
+measurement is a bush sub-surface temperature; the shaft model is too weak),
+are in VALIDATION_PLAN.md under "Phase 2 results".
+
+Also recorded, two robustness findings that are **not** caused by this change but
+that bound what can be validated:
+
+- With a strongly cooled bush (`bush_outer_heat_transfer = 500`) the Ferron case
+  aborts in the Elrod solve with `DIVERGED_BREAKDOWN`. The Phase 0.1 KSP guard
+  catches it loudly rather than returning a plausible-looking field, which is the
+  guard doing its job, but the wall sensitivity could not be swept as far as
+  intended.
+- The Ferron THD case at eps = 0.67, 720x40 **diverges at 4 MPI ranks and
+  converges at 1 and 2**. Verified against a binary built from the pre-change
+  HEAD: identical trace, identical abort. It is a pre-existing rank-dependence,
+  not something introduced here, and it contradicts the rank-independence note in
+  `mpi_launch.py`, which was established on the *isothermal* Ferron case. All
+  Phase 2 validation runs were therefore done at 2 ranks.
+
+**Bit-identity when off, verified rather than assumed.** Outputs compared
+byte-for-byte against a binary built from the pre-change HEAD, on four
+configurations: JFO steady, GUMBEL steady, transient, and 4-rank MPI. All four
+identical. The classical branches keep their original floating-point association
+deliberately (see `reynolds_diffusion`'s `prefactor` argument), because
+`rho*(h*h*h/(12*mu))` and `rho*h*h*h/(12*mu)` are not the same double.
+
 ### 2026-08-02 - Phase 2.1/2.2: consistent theta-weighting (measured: no steady effect)
 
 Defect D14 fixed. Under `cavitated_film_model = STRIATED` every thermal term that

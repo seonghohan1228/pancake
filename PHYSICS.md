@@ -621,12 +621,200 @@ retaining the lagged squeeze source would not conserve liquid content and can
 create artificial startup cavitation. The explicit part is the lagged
 $\theta^n\,\partial h/\partial t$ source.
 
+### 13.1.1 Groove Hot-Oil Carry-Over
+
+A fed groove does not deliver pure supply oil. The film sweeping into it
+recirculates and mixes with the fresh charge, so the oil leaving the groove is
+warmer than `t_supply`. `groove_mixing_model` selects the closure:
+
+$$T_{groove}(z) = \lambda\,T_{supply} + (1-\lambda)\,T_{upstream}(z)$$
+
+- `PINNED` (default) is $\lambda = 1$: the historical hard pin, bit-identical to
+  the model-free solver.
+- `FIXED_LAMBDA` takes $\lambda$ from the inlet's own `mixing_lambda` token.
+- `FLOW_WEIGHTED` computes it from the two flow rates,
+
+$$\lambda = \frac{Q_{supply}}{Q_{supply} + Q_{up}}, \qquad
+  Q_{up} = \sum_j \tfrac{1}{2}|\omega| R\,h\,\theta_{film}\,\Delta z ,$$
+
+  with $Q_{supply}$ the inlet's configured `supply_flow_rate` and $Q_{up}$ the
+  solved circumferential Couette carry-over crossing the groove's leading edge.
+
+$T_{upstream}(z)$ is the flow-weighted temperature of the cell immediately
+upstream of the groove's leading edge, taken per axial row so the axial structure
+of the incoming film survives the mixing. The leading edge is defined in the
+sense the shaft entrains ($\mathrm{sign}\,\omega$), and the sample cell may be
+owned by any rank, so both the temperature and the flux are gathered with a sum
+reduction over an array indexed by the (undecomposed) axial index. The mixed
+temperature is then imposed on the groove cells by the same penalty method the
+hard pin used.
+
+### 13.1.2 Cross-Film Temperature Profile and Conjugate Walls
+
+The depth-averaged energy equation of §13.1 assumes the film is isothermal across
+the gap. That requires $Br \ll 1$, reduced Peclet $\rho c U h^2/(kR) \ll 1$, and
+equal wall temperatures; on the Ferron and Brito rigs all three fail
+($Br \approx 2.6$, $\rho c U h^2/(kR) \approx 10\text{--}30$, walls unequal).
+`cross_film_thermal_model = POLYNOMIAL` replaces the assumption with a
+reconstructed profile. `NONE` (the default) removes the entire model and is
+bit-identical to the previous solver.
+
+Let $\eta = y/h \in [0,1]$ with $y = 0$ at the shaft (journal) surface, which
+moves at $U = \omega R$, and $y = h$ at the bush surface. The profile is a
+quartic in three zero-mean shape functions,
+
+$$T(\eta) = \bar T + a\,\psi_1(\eta) + b\,\psi_2(\eta) + c\,\psi_4(\eta),$$
+
+$$\psi_1 = \eta - \tfrac12, \qquad
+  \psi_2 = \eta - \eta^2 - \tfrac16, \qquad
+  \psi_4 = \eta^2(1-\eta)^2 - \tfrac1{30},$$
+
+each of which integrates to zero over $[0,1]$. The depth average of $T(\eta)$ is
+therefore $\bar T$ **by construction**: the profile is collocated with the
+depth-averaged balance of §13.1 and can never contradict it.
+
+Three conditions close the three coefficients.
+
+**1. Wall values.** $T(0) = T_s$ (shaft) and $T(1) = T_b$ (bush) give
+
+$$a = T_b - T_s, \qquad b + \tfrac15 c = 6\,\Delta T_w,
+  \qquad \Delta T_w = \bar T - \tfrac12 (T_s + T_b).$$
+
+**2. Midplane collocation of the cross-film energy balance** (order 4 only;
+`cross_film_profile_order = 2` sets $c = 0$):
+
+$$k\,\frac{\partial^2 T}{\partial y^2}
+  = \rho c_p\!\left(u\frac{\partial T}{\partial s} + w\frac{\partial T}{\partial z}\right)
+    - \Phi(y).$$
+
+With $\psi_2'' = -2$ and $\psi_4''(\tfrac12) = -1$ this is $-2b - c = X$ where
+$X = (h^2/k)\,\mathrm{rhs}(\tfrac12)$, so
+
+$$c = -\tfrac53 X - 20\,\Delta T_w, \qquad
+  b = \tfrac13 X + 10\,\Delta T_w.$$
+
+In the pure conduction-plus-dissipation equilibrium ($\Delta T_w = S/6$,
+$X = -2S$, $S = \mu U^2/2k$) this returns $c = 0$, $b = S$: the classical
+parabola $T = T_w + S\,\eta(1-\eta)$ is recovered **exactly**.
+
+**3. Conjugate walls** supply $T_s$ and $T_b$ (below).
+
+**Two stated approximations in the collocation.** The right-hand side is
+evaluated with the Couette part of the flow only ($\tau = -U/F_0$, uniform across
+the gap), and the convective term is saturated against the dissipative one,
+
+$$X = X_\Phi + X_{conv}\frac{|X_\Phi|}{|X_\Phi| + |X_{conv}|},
+  \qquad X_\Phi = -\frac{h^2}{k}\Phi(\tfrac12),
+  \qquad X_{conv} = \frac{h^2}{k}\rho c_p\,u\frac{\partial\bar T}{\partial s}.$$
+
+Both are exact in the conduction-dominated limit the profile is derived for. The
+saturation exists because one midplane collocation cannot represent the thin wall
+layers that appear at reduced Peclet $\gg 1$; unbounded, the convective term
+produced several-hundred-kelvin cores on the Ferron rig. The Couette-only
+evaluation exists because a $\partial p/\partial s$ dependence makes the profile
+shape jump whenever an Elrod cell flips between full film and cavitated, which
+turns the segregated solve into a limit cycle (measured: the coupling residual
+$R_p$ sat at 9.4 bar, identical at 40 and at 120 outer iterations, and
+under-relaxation did not move it). Both are recorded with their measured evidence
+in `src/cross_film.cpp`. The dissipation source, the $F$-integrals, the wall
+fluxes and the Reynolds coefficients all still use the full pressure field.
+
+**Conjugate walls.** The wall conduction fluxes follow from the profile,
+
+$$q_{shaft} = \frac{k}{h}(a + b), \qquad q_{bush} = \frac{k}{h}(b - a),$$
+
+positive meaning heat leaving the film. The bush closes locally through 1-D
+radial conduction in series with outer-surface convection, referred to the bore
+area,
+
+$$q_{bush} = G\,(T_b - T_\infty), \qquad
+  \frac1G = \frac{R\ln(r_o/R)}{k_{bush}} + \frac{R}{r_o\,h_{out}},$$
+
+which is linear in $T_b$ and solves in closed form. `bush_outer_heat_transfer = 0`
+makes $G = 0$, an adiabatic bush. The shaft is treated as **circumferentially
+isothermal**, its single temperature $T_s$ set by the global film-to-shaft
+balance
+
+$$\oint q_{shaft}\,\mathrm{d}A
+  = h_{shaft}\,A_{shaft}\,(T_s - T_\infty).$$
+
+With `shaft_ambient_heat_transfer = 0` the shaft is globally adiabatic: the
+integral of the film-to-shaft flux is zero, so heat entering the shaft in the
+loaded arc leaves it again upstream. **That is the transport path the
+constant-$T_{wall}$ Newton closure has no representation of**, and it is why no
+value of `journal_heat_transfer` could move the predicted temperature peak.
+Substituting the bush relation $T_b = \alpha + \beta T_s$ into the shaft balance
+closes $T_s$ in one step; only four scalars need reducing across ranks. Full 2-D
+bush conduction (circumferential spreading in the bush itself) remains out of
+scope.
+
+The net wall term entering the depth-averaged equation is
+$Q_w = q_{shaft} + q_{bush} = 2(k/h)\,b$, applied with the consistent Newton
+linearisation
+
+$$Q_w(T) \approx Q_w(\bar T_{lag})
+  + \frac{\partial Q_w}{\partial \bar T}\,(T - \bar T_{lag}),
+  \qquad \frac{\partial Q_w}{\partial \bar T}
+  = 2\frac{k}{h}\,b_{slope}\left(1 - \frac{b_{slope}}{2}\frac{\partial T_b}{\partial\bar T}\right),$$
+
+with $b_{slope} = 10$ (order 4) or $6$ (order 2). Taking $T_b$ as frozen would
+give $12k/h$, the fully-sunk-wall value, and over-damp the adiabatic-bush limit
+by a factor of four. When this closure is active, `journal_heat_transfer`,
+`bearing_heat_transfer`, `journal_wall_temperature` and
+`bearing_wall_temperature` are ignored, and the config validator emits a warning
+saying so.
+
+### 13.1.3 Generalized (Dowson) Reynolds Equation
+
+The same $T(\eta)$ gives $\mu(\eta)$, so the Poiseuille coefficient is no longer
+$h^3/12\mu$. Integrating the thin-film momentum balance
+$\partial p/\partial x = \partial(\mu\,\partial u/\partial y)/\partial y$ twice
+with $u(0) = U$, $u(h) = 0$ gives the exact flux
+
+$$q = -F_2\frac{\partial p}{\partial x} + U\frac{F_1}{F_0},$$
+
+$$F_0 = \int_0^h \frac{\mathrm{d}y}{\mu}, \qquad
+  F_1 = \int_0^h \frac{y\,\mathrm{d}y}{\mu}, \qquad
+  F_2 = \int_0^h \frac{y\left(y - F_1/F_0\right)}{\mu}\,\mathrm{d}y .$$
+
+$F_2$ **replaces** $h^3/12\mu$, and $2F_1/F_0$ replaces $h$ in the Couette flux.
+Both reduce to their classical values identically when $\mu$ does not vary across
+the gap, which `tests/test_cross_film.cpp` asserts to machine precision. This is
+not a correction of $h^3/12\mu$ by an effective viscosity: because $\mu$ is
+convex in $T$ and the core is the hottest part of the film, the effective
+viscosity implied by $F_2$ is *lower* than $\mu(\bar T)$, and the load falls.
+
+The dissipation source becomes exact under the same integrals:
+
+$$\Phi = \frac{U^2}{F_0} + F_2\left|\nabla p\right|^2 .$$
+
+The Couette-Poiseuille cross term integrates to zero identically, so the two
+contributions simply add, and both reduce to $\mu U^2/h$ and
+$h^3|\nabla p|^2/12\mu$ at uniform viscosity. The energy equation's convective
+flux uses the same $q$ the pressure solve conserved, so enthalpy and mass ride on
+one velocity field.
+
+The $F$-integrals are evaluated by Gauss-Legendre quadrature
+(`cross_film_quadrature_points`, default 6) on
+$\mu(\eta) = \mu_{cell}\,\mu_l(T(\eta))/\mu_l(\bar T)$: the cell's own viscosity
+field already carries the pressure, dissolved-gas and mixture corrections, so
+only the temperature ratio is applied on top of it and every property model keeps
+working through the reconstruction. The ratio is clamped to $[0.05, 20]$ as a
+numerical guard; on the validation rigs it stays inside about $[0.6, 1.6]$.
+
+`CrossFilm::update` runs once per outer (Picard) iteration, before the Reynolds
+solve, and the caller exchanges ghosts for $F_0$, $F_1$, $F_2$ and $2F_1/F_0$
+because the Reynolds assembly reads them on both theta ghost layers.
+
 ### 13.2 Temperature-dependent Fluid Properties
 
 Thermal hydrodynamic coupling enters Reynolds through field-valued liquid
 solution density and viscosity. The Reynolds diffusion coefficient becomes:
 
 $$\gamma(\theta,z) = \frac{\rho(T,p)h^3}{12\mu(T,p)}$$
+
+(replaced by $\rho(T,p)\,F_2$ when the cross-film model of §13.1.3 is active,
+and the Elrod form below likewise by $\rho_0\beta F_2$ — see §13.1.3)
 
 and the Elrod-Adams diffusion coefficient becomes:
 

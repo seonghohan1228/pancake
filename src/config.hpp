@@ -109,6 +109,25 @@ enum class GasPressureCoupling { NONE, VOID_COUPLED };
 //   STRIATED  - in cavitated cells only the liquid fraction theta carries Couette
 //               shear, thermal capacity, and enthalpy; full-film cells unchanged.
 enum class CavitatedFilmModel { FULL_FILM, STRIATED };
+// Cross-film (through-thickness) temperature treatment:
+//   NONE       - the film is isothermal across the gap: viscosity is taken at the
+//                depth-averaged temperature and wall heat loss is Newton cooling
+//                to prescribed journal/bearing temperatures (historical default).
+//   POLYNOMIAL - a low-order polynomial T(y) is reconstructed per cell (Lund &
+//                Tonnesen style), supplying the wall conduction fluxes, the
+//                conjugate wall temperatures, and the Dowson viscosity integrals
+//                F0/F1/F2 that replace h^3/(12 mu) in the Reynolds equation.
+// This is the single highest-level switch for the whole cross-film model: with
+// NONE nothing in the cross-film module runs and the results are bit-identical
+// to the pre-model solver.
+enum class CrossFilmModel { NONE, POLYNOMIAL };
+// Thermal condition imposed on the cells of a fed inlet groove:
+//   PINNED        - groove cells are held at t_supply (historical default).
+//   FIXED_LAMBDA  - T = lambda*t_supply + (1-lambda)*T_upstream, lambda per inlet.
+//   FLOW_WEIGHTED - the same mix, with lambda = Q_supply/(Q_supply + Q_upstream)
+//                   from the inlet's supply flow rate and the solved upstream
+//                   circumferential film flow.
+enum class GrooveMixingModel { PINNED, FIXED_LAMBDA, FLOW_WEIGHTED };
 
 struct PropertyTablePoint {
     double x = 0.0;
@@ -284,6 +303,23 @@ inline const char* to_config_value(TemperatureModel model) {
     return "ISOTHERMAL";
 }
 
+inline const char* to_config_value(CrossFilmModel model) {
+    switch (model) {
+        case CrossFilmModel::NONE: return "NONE";
+        case CrossFilmModel::POLYNOMIAL: return "POLYNOMIAL";
+    }
+    return "NONE";
+}
+
+inline const char* to_config_value(GrooveMixingModel model) {
+    switch (model) {
+        case GrooveMixingModel::PINNED: return "PINNED";
+        case GrooveMixingModel::FIXED_LAMBDA: return "FIXED_LAMBDA";
+        case GrooveMixingModel::FLOW_WEIGHTED: return "FLOW_WEIGHTED";
+    }
+    return "PINNED";
+}
+
 inline const char* to_config_value(FluidPropertyModel model) {
     switch (model) {
         case FluidPropertyModel::CONSTANT: return "CONSTANT";
@@ -416,6 +452,26 @@ inline TemperatureModel temperature_model_from_config(std::string value) {
     return TemperatureModel::ISOTHERMAL;
 }
 
+inline CrossFilmModel cross_film_model_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "POLYNOMIAL" || value == "LUND_TONNESEN" || value == "PROFILE" ||
+        value == "CROSS_FILM" || value == "ON" || value == "TRUE") {
+        return CrossFilmModel::POLYNOMIAL;
+    }
+    return CrossFilmModel::NONE;  // NONE, OFF, FALSE, UNIFORM, DEPTH_AVERAGED
+}
+
+inline GrooveMixingModel groove_mixing_model_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "FIXED_LAMBDA" || value == "FIXED" || value == "LAMBDA") {
+        return GrooveMixingModel::FIXED_LAMBDA;
+    }
+    if (value == "FLOW_WEIGHTED" || value == "FLOW" || value == "MIXING") {
+        return GrooveMixingModel::FLOW_WEIGHTED;
+    }
+    return GrooveMixingModel::PINNED;  // PINNED, SUPPLY, NONE
+}
+
 inline FluidPropertyModel fluid_property_model_from_config(std::string value) {
     value = normalise_config_token(value);
     if (value == "SINGLE_PHASE" || value == "OIL_DISSOLVED_GAS" || value == "DISSOLVED_GAS" ||
@@ -475,6 +531,13 @@ struct InletConfig {
     // When true it is an actual fed inlet that pumps fresh oil in at t_supply.
     bool feeds_fresh_oil = false;
     double t_supply = 0.0;  // Fresh-oil supply temperature (K), used when feeds_fresh_oil.
+    // Hot-oil carry-over. Fraction of the groove-cell temperature supplied as fresh
+    // oil: T = mixing_lambda*t_supply + (1-mixing_lambda)*T_upstream_film. 1.0 is the
+    // historical hard pin. Used only when groove_mixing_model = FIXED_LAMBDA.
+    double mixing_lambda = 1.0;
+    // Volumetric fresh-oil supply rate through this feature [m^3/s]. Used only when
+    // groove_mixing_model = FLOW_WEIGHTED, where lambda = Q_supply/(Q_supply + Q_up).
+    double supply_flow_rate = 0.0;
 };
 
 struct SimulationConfig {
@@ -531,6 +594,43 @@ struct SimulationConfig {
     double thermal_conductivity = 0.15;  // Lubricant thermal conductivity [W/(m K)]
     double journal_heat_transfer = 0.0;  // Wall heat-transfer coefficient [W/(m^2 K)]
     double bearing_heat_transfer = 0.0;  // Wall heat-transfer coefficient [W/(m^2 K)]
+
+    // Cross-film temperature profile, conjugate walls, generalized Reynolds.
+    // cross_film_thermal_model is the single switch for all three: NONE (default)
+    // leaves the solver exactly as it was; POLYNOMIAL turns on the reconstructed
+    // T(y), the conjugate shaft/bush wall temperatures (which then replace the
+    // journal_heat_transfer / bearing_heat_transfer Newton cooling entirely), and
+    // the Dowson F0/F1/F2 viscosity integrals in the Reynolds coefficient.
+    CrossFilmModel cross_film_thermal_model = CrossFilmModel::NONE;
+    // Polynomial order of T(y): 2 (parabola from the two wall values and the
+    // depth-averaged mean) or 4 (adds one midplane collocation of the cross-film
+    // energy balance, which flattens the core where convection dominates).
+    int cross_film_profile_order = 4;
+    // Number of Gauss-Legendre points used for the F0/F1/F2 integrals across the gap.
+    int cross_film_quadrature_points = 6;
+    // Under-relaxation of the order-4 midplane collocation source between outer
+    // iterations. 1.0 (no relaxation) converges on the validation rigs; the lever
+    // exists because the collocation is the one part of the model that reads a
+    // gradient of the solution. Only affects the path to the fixed point.
+    double cross_film_relaxation = 1.0;
+    // Shaft: circumferentially isothermal, its temperature solved from the global
+    // film-to-shaft heat balance. shaft_ambient_heat_transfer = 0 (default) makes
+    // the shaft globally adiabatic, so the integral of the film-to-shaft flux is
+    // zero and the shaft carries heat from the loaded arc back upstream.
+    double shaft_ambient_heat_transfer = 0.0;   // [W/(m^2 K)] shaft to ambient
+    double shaft_ambient_area_ratio = 1.0;      // exposed shaft area / bearing surface area
+    double thermal_ambient_temperature = 300.0; // Ambient/sump temperature [K]
+    // Bush: 1-D radial conduction from the film surface through the bush wall to an
+    // outer-surface convection boundary. bush_outer_heat_transfer = 0 (default)
+    // makes the bush adiabatic at its outer surface, i.e. no net heat leaves the film
+    // through the bush.
+    double bush_thermal_conductivity = 50.0;    // [W/(m K)] bush material
+    double bush_outer_radius = 0.0;             // [m]; <=0 means R + 0.1*R
+    double bush_outer_heat_transfer = 0.0;      // [W/(m^2 K)] bush outer surface to ambient
+
+    // Hot-oil carry-over at fed grooves. PINNED (default) reproduces the historical
+    // hard pin of groove cells to t_supply.
+    GrooveMixingModel groove_mixing_model = GrooveMixingModel::PINNED;
 
     // Liquid oil plus dissolved gas property model. Defaults keep pure-oil behavior.
     FluidPropertyModel fluid_property_model = FluidPropertyModel::CONSTANT;
@@ -736,6 +836,17 @@ struct SimulationConfig {
             else if (key == "thermal_conductivity") thermal_conductivity = std::stod(value);
             else if (key == "journal_heat_transfer") journal_heat_transfer = std::stod(value);
             else if (key == "bearing_heat_transfer") bearing_heat_transfer = std::stod(value);
+            else if (key == "cross_film_thermal_model") cross_film_thermal_model = cross_film_model_from_config(value);
+            else if (key == "cross_film_profile_order") cross_film_profile_order = std::stoi(value);
+            else if (key == "cross_film_quadrature_points") cross_film_quadrature_points = std::stoi(value);
+            else if (key == "cross_film_relaxation") cross_film_relaxation = std::stod(value);
+            else if (key == "shaft_ambient_heat_transfer") shaft_ambient_heat_transfer = std::stod(value);
+            else if (key == "shaft_ambient_area_ratio") shaft_ambient_area_ratio = std::stod(value);
+            else if (key == "thermal_ambient_temperature") thermal_ambient_temperature = std::stod(value);
+            else if (key == "bush_thermal_conductivity") bush_thermal_conductivity = std::stod(value);
+            else if (key == "bush_outer_radius") bush_outer_radius = std::stod(value);
+            else if (key == "bush_outer_heat_transfer") bush_outer_heat_transfer = std::stod(value);
+            else if (key == "groove_mixing_model") groove_mixing_model = groove_mixing_model_from_config(value);
             else if (key == "fluid_property_model") fluid_property_model = fluid_property_model_from_config(value);
             else if (key == "dissolved_gas_species") dissolved_gas_species = dissolved_gas_species_from_config(value);
             else if (key == "solubility_model" || key == "oil_gas_solution_model") solubility_model = solubility_model_from_config(value);
@@ -874,7 +985,13 @@ struct SimulationConfig {
                 std::stringstream ss(value);
                 ss >> inlet.theta >> inlet.z >> inlet.size >> inlet.p_supply;
                 // Optional 5th token = fresh-oil supply temperature -> actual fed inlet.
+                // Optional 6th/7th = hot-oil carry-over lambda and supply flow rate.
                 if (ss >> inlet.t_supply) inlet.feeds_fresh_oil = true;
+                // Read into temporaries: a failed extraction zeroes its target in
+                // C++11 and later, which would silently overwrite mixing_lambda = 1.
+                double token = 0.0;
+                if (ss >> token) inlet.mixing_lambda = token;
+                if (ss >> token) inlet.supply_flow_rate = token;
                 inlets.push_back(inlet);
             }
             else if (key == "inlet_groove") {
@@ -883,7 +1000,11 @@ struct SimulationConfig {
                 std::stringstream ss(value);
                 ss >> inlet.theta >> inlet.size >> inlet.p_supply;
                 // Optional 4th token = fresh-oil supply temperature -> actual fed inlet.
+                // Optional 5th/6th = hot-oil carry-over lambda and supply flow rate.
                 if (ss >> inlet.t_supply) inlet.feeds_fresh_oil = true;
+                double token = 0.0;
+                if (ss >> token) inlet.mixing_lambda = token;
+                if (ss >> token) inlet.supply_flow_rate = token;
                 inlets.push_back(inlet);
             }
         }
@@ -975,10 +1096,56 @@ struct SimulationConfig {
                      "for a coupled THD run.");
             }
 
-            if (journal_heat_transfer == 0.0 && bearing_heat_transfer == 0.0) {
+            if (journal_heat_transfer == 0.0 && bearing_heat_transfer == 0.0 &&
+                cross_film_thermal_model == CrossFilmModel::NONE) {
                 warn("journal_heat_transfer = bearing_heat_transfer = 0: the film is fully "
                      "adiabatic and the configured wall temperatures are inert. Quote any "
                      "temperature result together with this wall condition.");
+            }
+            if (cross_film_thermal_model != CrossFilmModel::NONE &&
+                (journal_heat_transfer > 0.0 || bearing_heat_transfer > 0.0)) {
+                warn("cross_film_thermal_model is active: the conjugate shaft/bush model "
+                     "replaces the Newton-cooling wall closure entirely, so "
+                     "journal_heat_transfer, bearing_heat_transfer, journal_wall_temperature "
+                     "and bearing_wall_temperature are IGNORED. Use "
+                     "shaft_ambient_heat_transfer, bush_outer_heat_transfer and "
+                     "thermal_ambient_temperature instead.");
+            }
+        }
+        if (cross_film_thermal_model != CrossFilmModel::NONE) {
+            if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
+                error("cross_film_thermal_model requires temperature_model = ENERGY_EQUATION; "
+                      "there is no temperature field for it to build a profile from.");
+            }
+            if (cross_film_profile_order != 2 && cross_film_profile_order != 4) {
+                error("cross_film_profile_order must be 2 or 4.");
+            }
+            if (cross_film_quadrature_points < 2 || cross_film_quadrature_points > 8) {
+                error("cross_film_quadrature_points must be between 2 and 8.");
+            }
+            if (!finite(cross_film_relaxation) || cross_film_relaxation <= 0.0 ||
+                cross_film_relaxation > 1.0) {
+                error("cross_film_relaxation must be in (0, 1].");
+            }
+            require_positive(bush_thermal_conductivity, "bush_thermal_conductivity");
+            require_nonnegative(shaft_ambient_heat_transfer, "shaft_ambient_heat_transfer");
+            require_nonnegative(bush_outer_heat_transfer, "bush_outer_heat_transfer");
+            require_positive(shaft_ambient_area_ratio, "shaft_ambient_area_ratio");
+            require_positive(thermal_ambient_temperature, "thermal_ambient_temperature");
+            if (bush_outer_radius > 0.0 && bush_outer_radius <= R) {
+                error("bush_outer_radius must exceed R.");
+            }
+        }
+        if (groove_mixing_model != GrooveMixingModel::PINNED) {
+            if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
+                error("groove_mixing_model requires temperature_model = ENERGY_EQUATION.");
+            }
+            bool any_fed = false;
+            for (const auto& inlet : inlets) any_fed = any_fed || inlet.feeds_fresh_oil;
+            if (!any_fed) {
+                error("groove_mixing_model is set but no inlet feeds fresh oil, so the key "
+                      "would have no effect. Give an inlet a t_supply token or leave the "
+                      "model at PINNED.");
             }
         }
         if (motion_model == MotionModel::MOVING_BEARING) {
@@ -1005,6 +1172,20 @@ struct SimulationConfig {
             if (inlet.feeds_fresh_oil && (!finite(inlet.t_supply) || inlet.t_supply <= 0.0)) {
                 error(prefix + ".t_supply must be a positive absolute temperature in K "
                                "when the inlet feeds fresh oil.");
+            }
+            if (inlet.feeds_fresh_oil &&
+                groove_mixing_model == GrooveMixingModel::FIXED_LAMBDA &&
+                (!finite(inlet.mixing_lambda) || inlet.mixing_lambda < 0.0 ||
+                 inlet.mixing_lambda > 1.0)) {
+                error(prefix + ".mixing_lambda must be in [0, 1] under "
+                               "groove_mixing_model = FIXED_LAMBDA.");
+            }
+            if (inlet.feeds_fresh_oil &&
+                groove_mixing_model == GrooveMixingModel::FLOW_WEIGHTED &&
+                (!finite(inlet.supply_flow_rate) || inlet.supply_flow_rate <= 0.0)) {
+                error(prefix + ".supply_flow_rate must be a positive volumetric flow rate "
+                               "[m^3/s] under groove_mixing_model = FLOW_WEIGHTED; without it "
+                               "the mixing fraction is undefined.");
             }
         }
 
@@ -1469,7 +1650,23 @@ struct SimulationConfig {
             << "rho_cp = " << rho_cp << "\n"
             << "thermal_conductivity = " << thermal_conductivity << "\n"
             << "journal_heat_transfer = " << journal_heat_transfer << "\n"
-            << "bearing_heat_transfer = " << bearing_heat_transfer << "\n\n";
+            << "bearing_heat_transfer = " << bearing_heat_transfer << "\n"
+            << "# cross_film_thermal_model options: NONE, POLYNOMIAL. POLYNOMIAL turns on the\n"
+            << "# cross-film T(y) profile, the conjugate shaft/bush walls (which replace the\n"
+            << "# two Newton-cooling coefficients above) and the Dowson F0/F1/F2 viscosity\n"
+            << "# integrals in the Reynolds equation. NONE is bit-identical to the model-free solver.\n"
+            << "cross_film_thermal_model = " << to_config_value(cross_film_thermal_model) << "\n"
+            << "cross_film_profile_order = " << cross_film_profile_order << "\n"
+            << "cross_film_quadrature_points = " << cross_film_quadrature_points << "\n"
+            << "cross_film_relaxation = " << cross_film_relaxation << "\n"
+            << "shaft_ambient_heat_transfer = " << shaft_ambient_heat_transfer << "\n"
+            << "shaft_ambient_area_ratio = " << shaft_ambient_area_ratio << "\n"
+            << "thermal_ambient_temperature = " << thermal_ambient_temperature << "\n"
+            << "bush_thermal_conductivity = " << bush_thermal_conductivity << "\n"
+            << "bush_outer_radius = " << bush_outer_radius << "\n"
+            << "bush_outer_heat_transfer = " << bush_outer_heat_transfer << "\n"
+            << "# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED\n"
+            << "groove_mixing_model = " << to_config_value(groove_mixing_model) << "\n\n";
 
         out << "# Fluid Properties\n"
             << "# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE\n"
@@ -1563,8 +1760,10 @@ struct SimulationConfig {
             << "log_outer_iters = " << (log_outer_iters ? "true" : "false") << "\n\n";
 
         out << "# Inlets\n"
-            << "# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)]\n"
-            << "# inlet_groove   = theta(deg) width(deg) p_supply(Pa) [t_supply(K)]\n"
+            << "# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]\n"
+            << "# inlet_groove   = theta(deg) width(deg) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]\n"
+            << "# lambda and q_supply feed groove_mixing_model (FIXED_LAMBDA / FLOW_WEIGHTED)\n"
+            << "# and are ignored under the default PINNED.\n"
             << "# Omit the optional t_supply to model an open large-clearance region of the\n"
             << "# same recirculating oil (pressure-only, thermally transparent). Provide it to\n"
             << "# model an actual fed inlet that pumps fresh oil in at t_supply.\n";
@@ -1579,7 +1778,12 @@ struct SimulationConfig {
                     out << "inlet_groove = " << inlet.theta << " "
                         << inlet.size << " " << inlet.p_supply;
                 }
-                if (inlet.feeds_fresh_oil) out << " " << inlet.t_supply;
+                if (inlet.feeds_fresh_oil) {
+                    out << " " << inlet.t_supply;
+                    if (groove_mixing_model != GrooveMixingModel::PINNED) {
+                        out << " " << inlet.mixing_lambda << " " << inlet.supply_flow_rate;
+                    }
+                }
                 out << "\n";
             }
         }

@@ -19,11 +19,18 @@ status; update both files together.
   assumed 2000). Brito Fig. 6 polar re-digitisation, hot running clearance, and
   wiring up the dead `solve_eps_for_load`. An R&B regression at Ferron's
   L/D = 0.8.
-- **Phase 2 (energy-equation fixes) — TODO.** Theta-weight the cavitated thermal
-  inventory (D14); scale Couette dissipation by theta; hot-oil carry-over at
-  grooves; then the cross-film `T(z)` profile with conjugate wall coupling and a
-  generalized Reynolds equation, which is the fix for both the 71 deg peak-location
-  error and the high-speed load residual.
+- **Phase 2 (energy-equation fixes) — 2.1-2.4 IMPLEMENTED 2026-08-02; 2.5 TODO.**
+  2.1/2.2 theta-weighted the cavitated thermal inventory (D14) and measured **no
+  steady effect** — the source and the mass flux scale with theta identically and
+  cancel, so D14 is ruled out as a contributor. 2.3 added hot-oil carry-over at
+  grooves (`groove_mixing_model`). 2.4 added the cross-film `T(y)` profile,
+  conjugate shaft/bush walls and the generalized (Dowson) Reynolds equation as one
+  switch, `cross_film_thermal_model` — new module `src/cross_film.{hpp,cpp}`, new
+  `tests/test_cross_film.cpp`, 24/24 tests pass. Everything is off by default and
+  bit-identical to the previous solver when off (verified byte-for-byte against a
+  HEAD build on JFO/GUMBEL/transient/4-rank). Two approximations inside the
+  order-4 collocation are forced by measured non-convergence, not by convenience,
+  and are written up in PHYSICS.md §13.1.2 and CHANGES.md.
 - **Phase 3 (grid and time-step independence) — TODO**, blocked on Phase 2.
   Must scale `beta` per grid level to hold `p_max/beta >= 4e-3`, or the rupture
   angle error masquerades as grid error.

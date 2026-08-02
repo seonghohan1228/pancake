@@ -42,7 +42,7 @@ BULK = 3.0e8
 N_THETA = 1440
 N_Z = 60
 MAX_OUTER = 4000
-MAX_COUPLING = 80
+MAX_COUPLING = 400
 
 CFG = """R = {R}
 c = {c}
@@ -125,8 +125,19 @@ coupling_tolerance = 1e-8
 coupling_relaxation = {relax}
 steady_gas_model = FROZEN
 allow_frozen_gas_steady = true
-inlet_groove = {g_up} {g_width} {p_sup} {t_sup}
-inlet_groove = {g_down} {g_width} {p_sup} {t_sup}
+cross_film_thermal_model = {xfilm}
+cross_film_profile_order = 4
+cross_film_quadrature_points = 6
+cross_film_relaxation = 1.0
+shaft_ambient_heat_transfer = 0.0
+shaft_ambient_area_ratio = 1.0
+thermal_ambient_temperature = {t_sup}
+bush_thermal_conductivity = {k_bush}
+bush_outer_radius = {r_bush}
+bush_outer_heat_transfer = {bush_h}
+groove_mixing_model = {mixing}
+inlet_groove = {g_up} {g_width} {p_sup} {t_sup} {glambda} 0
+inlet_groove = {g_down} {g_width} {p_sup} {t_sup} {glambda} 0
 output_dir = out
 filename_prefix = solution
 output_verbosity = DETAILED
@@ -136,9 +147,19 @@ output_fields = pressure, film_content, h, temperature, mu, pressure_force_x, pr
 """
 
 
+# Cross-film / conjugate-wall inputs for the Brito rig (bronze bush, steel shaft,
+# 100 mm bore). Same basis as the Ferron harness: bush outer radius 1.35x the
+# bore, bronze conductivity, a still-air-plus-housing outer film coefficient.
+# None of these is a Brito measurement, so a sensitivity is reported, not a fit.
+K_BUSH = 50.0
+BUSH_OUTER_R = 1.35 * B.R
+BUSH_H_OUT = 80.0
+
+
 def run_case(exe, work, tag, *, eps, rpm, upstream_groove_deg, p_supply_gauge,
              t_supply_c=40.0, thermal="ENERGY_EQUATION", h_wall=0.0, relax=0.7,
-             nth=N_THETA, nz=N_Z):
+             nth=N_THETA, nz=N_Z, cross_film=False, bush_h=BUSH_H_OUT,
+             groove_lambda=None):
     d = os.path.join(work, tag)
     os.makedirs(d, exist_ok=True)
     isothermal = (thermal == "ISOTHERMAL")
@@ -158,6 +179,10 @@ def run_case(exe, work, tag, *, eps, rpm, upstream_groove_deg, p_supply_gauge,
         e_mu=0.0 if isothermal else B.E_MU,
         max_outer=MAX_OUTER, max_coupling=MAX_COUPLING,
         relax=1.0 if isothermal else relax,
+        xfilm="POLYNOMIAL" if cross_film else "NONE",
+        k_bush=K_BUSH, r_bush=BUSH_OUTER_R, bush_h=bush_h,
+        mixing="PINNED" if groove_lambda is None else "FIXED_LAMBDA",
+        glambda=1.0 if groove_lambda is None else groove_lambda,
         g_up=upstream_groove_deg % 360.0,
         g_down=(upstream_groove_deg + 180.0) % 360.0,
         g_width=B.GROOVE_ANGLE_DEG,
@@ -197,7 +222,9 @@ def run_case(exe, work, tag, *, eps, rpm, upstream_groove_deg, p_supply_gauge,
                 coupling_capped=coupling_capped,
                 upstream_groove_deg=upstream_groove_deg % 360.0, eps=eps, rpm=rpm,
                 p_supply_gauge=p_supply_gauge, t_supply_c=t_supply_c,
-                thermal=thermal, h_wall=h_wall, dir=d)
+                thermal=thermal, h_wall=h_wall, dir=d,
+                cross_film=cross_film, bush_h=bush_h,
+                groove_lambda=1.0 if groove_lambda is None else groove_lambda)
 
 
 def load_angle_deg(res):
@@ -362,6 +389,83 @@ def eps_for_load_sweep(exe, work, W_applied=10000.0, p_supply_gauge=70e3):
     print("the rig. The hot-clearance row bounds how much of that the 20 C clearance")
     print("quotation can account for.")
     return rows
+
+
+def phase2_sentinel(exe, work, W_applied=10000.0, p_supply_gauge=70e3,
+                    speeds=(1000.0, 4000.0), eps_fixed=0.50, nth=720, nz=40):
+    """Phase 2 sentinel: does the cross-film model close the high-speed gap and
+    leave the low-speed one alone?
+
+    Two readings per speed, both before and after:
+
+    1. Load at a FIXED eccentricity. This is the clean discriminator. The
+       cross-film core superheat scales as U^2 (mu U^2 / 8k), so if the model is
+       doing what it claims, the load should fall by markedly more at 4000 rpm
+       than at 1000 rpm. Eccentricity is a compressed measure of load and would
+       blur exactly the scaling being tested, so it is reported second.
+    2. Eccentricity that carries the applied load (the existing comparison), at
+       the 20 C clearance only. The hot-clearance bracket is a separate
+       sensitivity and is not re-run here.
+
+    A change of the same size at both speeds means something other than the
+    cross-film physics moved, and must be reported as such.
+    """
+    rows = []
+    print(f"\n=== Phase 2 sentinel: load at fixed eccentricity, {nth}x{nz} ===")
+    print(f"{'N rpm':>6} {'eps':>6} {'W before/N':>11} {'W after/N':>10} "
+          f"{'change':>8} {'T_max before':>13} {'T_max after':>12} {'conv':>9}")
+    seed_b = seed_a = 32.0
+    for rpm in speeds:
+        # One eccentricity for BOTH speeds, so the only thing that differs
+        # between them is U and the load change is a clean U^2 test. Brito's own
+        # digitised eccentricity at 1000 rpm (0.761) does not converge in the
+        # depth-averaged model either, so it cannot serve as the fixed point.
+        eps = eps_fixed
+        rb = solve_groove(exe, work, f"sent_before_{int(rpm)}", eps=eps, rpm=rpm,
+                          p_supply_gauge=p_supply_gauge, nth=nth, nz=nz,
+                          groove0=seed_b, cross_film=False)
+        seed_b = rb["upstream_groove_deg"]
+        mb = metrics(rb)
+        ra = solve_groove(exe, work, f"sent_after_{int(rpm)}", eps=eps, rpm=rpm,
+                          p_supply_gauge=p_supply_gauge, nth=nth, nz=nz,
+                          groove0=seed_a, cross_film=True)
+        seed_a = ra["upstream_groove_deg"]
+        ma = metrics(ra)
+        rows.append(dict(rpm=rpm, eps=eps, before=mb, after=ma,
+                         dW_frac=ma["W_N"] / mb["W_N"] - 1.0))
+        conv = ("ok" if mb["converged"] else "NO") + "/" + ("ok" if ma["converged"] else "NO")
+        print(f"{rpm:>6.0f} {eps:>6.3f} {mb['W_N']:>11.0f} {ma['W_N']:>10.0f} "
+              f"{ma['W_N'] / mb['W_N'] - 1.0:>7.1%} {mb['T_max_C']:>13.2f} "
+              f"{ma['T_max_C']:>12.2f} {conv:>9}", flush=True)
+
+    eps_rows = []
+    print(f"\n=== Phase 2 sentinel: eccentricity carrying {W_applied/1e3:g} kN "
+          f"(c at 20 C) ===")
+    print(f"{'N rpm':>6} {'eps meas':>9} {'eps before':>11} {'eps after':>10} "
+          f"{'d before':>9} {'d after':>9}")
+    for rpm in speeds:
+        meas = {p: (e, a) for p, e, a in B.ECC_ATTITUDE[rpm]}
+        eps_meas = meas[p_supply_gauge][0]
+        out = {}
+        for label, xf in (("before", False), ("after", True)):
+            eps_solved, res = solve_eps_for_load(
+                exe, work, f"epsW2_{label}_N{int(rpm)}", W_target=W_applied,
+                rpm=rpm, p_supply_gauge=p_supply_gauge, tol=0.03, groove0=32.0,
+                cross_film=xf)
+            out[label] = dict(eps=eps_solved, metrics=metrics(res))
+        eps_rows.append(dict(rpm=rpm, eps_measured=eps_meas, **out))
+        print(f"{rpm:>6.0f} {eps_meas:>9.3f} {out['before']['eps']:>11.3f} "
+              f"{out['after']['eps']:>10.3f} "
+              f"{out['before']['eps'] - eps_meas:>+9.3f} "
+              f"{out['after']['eps'] - eps_meas:>+9.3f}", flush=True)
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    dst = os.path.join(here, "brito_phase2.json")
+    json.dump(dict(fixed_eps=rows, eps_for_load=eps_rows,
+                   W_applied=W_applied, p_supply_gauge=p_supply_gauge,
+                   mesh=[nth, nz]), open(dst, "w"), indent=1)
+    print(f"\nwrote {dst}")
+    return rows, eps_rows
 
 
 def main(exe, work):
