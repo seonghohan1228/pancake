@@ -189,14 +189,58 @@ OUTER_RE = re.compile(r"outer=(\d+) mc=([0-9.eE+-]+) ns=(\d+) th=\[([0-9.eE+-]+)
 COUPLING_RE = re.compile(r"Coupling: (\d+) outer iters, R_p=([0-9.eE+-]+) R_T=([0-9.eE+-]+)")
 
 
-def read_field(path, nth, nz, name):
+def _read_field_piece(path, name):
+    """Raw values and the theta extent of one rank's .vts piece."""
     txt = open(path).read()
     m = re.search(r'<DataArray[^>]*Name="%s"[^>]*format="ascii"[^>]*>(.*?)</DataArray>' % name,
                   txt, re.S)
     if m is None:
         raise RuntimeError(f"field {name} missing from {path}")
-    vals = [float(v) for v in m.group(1).split()]
-    return [vals[j * nth:(j + 1) * nth] for j in range(nz)]
+    return [float(v) for v in m.group(1).split()]
+
+
+def read_field(path, nth, nz, name):
+    """Field as `nz` rows of `nth` values, stitched across ranks.
+
+    Under MPI each rank writes its own theta slice to processorN/, so reading
+    processor0 alone returns 1/N of the circumference. That truncation is silent
+    and does not raise -- the load happens to survive it because `Fp` is a
+    globally reduced uniform field, so a rank-count check done on load alone will
+    pass while every 2-D field is quietly wrong. Always stitch.
+    """
+    directory = os.path.dirname(path)
+    parent = os.path.dirname(directory)
+    base = os.path.basename(path)
+
+    pieces = []
+    if os.path.basename(directory).startswith("processor"):
+        ranks = sorted(
+            (int(d[len("processor"):]), d) for d in os.listdir(parent)
+            if d.startswith("processor") and d[len("processor"):].isdigit())
+        # Rank N writes processorN/solution_<step>_N.vts -- the trailing index is
+        # the rank, so the rank-0 basename does not exist in the other directories.
+        stem, _, ext = base.rpartition(".")
+        prefix = stem.rpartition("_")[0]
+        for rank, d in ranks:
+            candidate = os.path.join(parent, d, f"{prefix}_{rank}.{ext}")
+            if os.path.exists(candidate):
+                pieces.append(candidate)
+    if not pieces:
+        pieces = [path]
+
+    # Ranks partition theta, each carrying the full z extent.
+    columns = []
+    for piece in pieces:
+        vals = _read_field_piece(piece, name)
+        n_local = len(vals) // nz
+        columns.append([vals[j * n_local:(j + 1) * n_local] for j in range(nz)])
+
+    rows = [sum((c[j] for c in columns), []) for j in range(nz)]
+    if len(rows[0]) != nth:
+        raise RuntimeError(
+            f"{name}: stitched {len(rows[0])} theta cells from {len(pieces)} "
+            f"rank file(s), expected {nth}")
+    return rows
 
 
 def read_vector3(path, name):
