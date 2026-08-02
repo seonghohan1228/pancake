@@ -32,6 +32,7 @@ Usage:  $PY run_raimondi_boyd.py <path-to-pancake.exe> [workdir]
 import json, math, os, re, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mpi_launch import solver_command, describe as describe_ranks
 from analytic import sommerfeld_number
 from raimondi_boyd import RB_TABLE, rb_lookup, swift_stieber_infinite
 
@@ -221,7 +222,7 @@ def run_case(exe, work, tag, *, eps, LD, flooded, nth=N_THETA, nz=N_Z):
                      mu=MU, rho=RHO, p_amb=P_AMB, bulk=BULK, max_outer=MAX_OUTER,
                      inlet=inlet)
     open(os.path.join(d, "config.txt"), "w").write(cfg)
-    r = subprocess.run([exe, "--config", "config.txt"], cwd=d,
+    r = subprocess.run(solver_command(exe), cwd=d,
                        capture_output=True, text=True, timeout=3600)
 
     outers = OUTER_RE.findall(r.stderr)

@@ -30,6 +30,7 @@ Usage:  $PY run_brito.py <path-to-pancake.exe> [workdir]
 import json, math, os, re, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mpi_launch import solver_command, describe as describe_ranks
 import brito as B
 from run_raimondi_boyd import read_field, read_vector3, OUTER_RE, COUPLING_RE
 
@@ -162,7 +163,7 @@ def run_case(exe, work, tag, *, eps, rpm, upstream_groove_deg, p_supply_gauge,
         g_width=B.GROOVE_ANGLE_DEG,
         p_sup=P_AMB + p_supply_gauge)
     open(os.path.join(d, "config.txt"), "w").write(cfg)
-    r = subprocess.run([exe, "--config", "config.txt"], cwd=d,
+    r = subprocess.run(solver_command(exe), cwd=d,
                        capture_output=True, text=True, timeout=7200)
 
     outers = OUTER_RE.findall(r.stderr)

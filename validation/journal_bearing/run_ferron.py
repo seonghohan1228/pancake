@@ -25,6 +25,7 @@ Usage:  $PY run_ferron.py <path-to-pancake.exe> [workdir]
 import json, math, os, re, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mpi_launch import solver_command, describe as describe_ranks
 import ferron as F
 from run_raimondi_boyd import read_field, read_vector3, OUTER_RE, COUPLING_RE
 
@@ -165,7 +166,7 @@ def run_case(exe, work, tag, *, eps, rpm, groove_deg, thermal="ENERGY_EQUATION",
         groove=groove_deg, groove_size=F.GROOVE_ANGLE_DEG,
         p_sup=P_AMB + F.P_SUPPLY_GAUGE)
     open(os.path.join(d, "config.txt"), "w").write(cfg)
-    r = subprocess.run([exe, "--config", "config.txt"], cwd=d,
+    r = subprocess.run(solver_command(exe), cwd=d,
                        capture_output=True, text=True, timeout=7200)
 
     outers = OUTER_RE.findall(r.stderr)
