@@ -278,14 +278,19 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
     const ConvectionScheme gas_scheme =
         cfg.gas_convection_scheme == ConvectionScheme::TYPE_DIFFERENCING
             ? ConvectionScheme::UPWIND : cfg.gas_convection_scheme;
-    FVM::divergence(sys, flux_theta, flux_z, c, gas_scheme, mesh);
+    // See the note in Energy::solve: phi.old on the live field lags a whole
+    // timestep, so the deferred correction needs the current iterate instead.
+    Field c_lag("dissolved_gas_lag", mesh);
+    c_lag.data = c.data;
+    c_lag.store_old_time();
+    FVM::divergence(sys, flux_theta, flux_z, c_lag, gas_scheme, mesh);
     add_dissolved_axial_boundary_convection(sys, p, h, theta, fields, mesh, cfg);
     if (cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0) {
         FVM::ddt_weighted(sys, c, capacity, dt, mesh);
     }
     add_nonconservative_correction(sys, flux_theta, flux_z, p, h, theta, fields, cfg, mesh);
 
-    sys.solve(c, cfg.linear_rtol);
+    sys.solve(c, cfg.linear_rtol, 1000, "dissolved gas concentration");
 
     const double c_max = std::max(0.0, cfg.dissolved_gas_max);
     for (int i = 0; i < n_theta; ++i) {
@@ -308,7 +313,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                         gas_scheme, mesh);
         add_free_gas_axial_boundary_convection(sys, p, h, theta, fields, mesh, cfg);
         FVM::ddt(sys, free_gas_mass, dt, mesh);
-        sys.solve(free_gas_mass, cfg.linear_rtol);
+        sys.solve(free_gas_mass, cfg.linear_rtol, 1000, "free gas mass");
 
         for (int i = 0; i < n_theta; ++i) {
             for (int j = 0; j < n_z; ++j) {

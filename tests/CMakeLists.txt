@@ -37,3 +37,7 @@ target_compile_definitions(test_property_tables PRIVATE
     PANCAKE_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 add_pancake_test(test_coupling)
 add_pancake_test(test_gas_coupling)
+# Aborts by design: passes only when the KSP guard prints its own diagnosis.
+add_pancake_test(test_ksp_guard)
+set_tests_properties(test_ksp_guard PROPERTIES
+    PASS_REGULAR_EXPRESSION "linear solve 'ksp guard probe' failed")

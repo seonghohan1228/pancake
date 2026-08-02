@@ -301,7 +301,7 @@ void solve(Fields& fields, LinearSystem& sys,
 
     apply_inlet_conditions(sys, mesh, cfg);
 
-    sys.solve(pressure, cfg.linear_rtol);
+    sys.solve(pressure, cfg.linear_rtol, 1000, "pressure");
 
     // Gumbel cavitation condition: enforce p >= p_cav
     if (cfg.cavitation_model == CavitationModel::GUMBEL) {
@@ -511,7 +511,7 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
 
         apply_inlet_conditions(sys, mesh, cfg);
 
-        sys.solve(theta, cfg.linear_rtol);
+        sys.solve(theta, cfg.linear_rtol, 1000, "elrod film content");
 
         // Clamp θ ≥ θ_min and snap near-full-film cells to exactly 1.0, accounting
         // the implied mass so the diagnostics balance still closes (clamps are not

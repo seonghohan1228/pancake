@@ -42,6 +42,12 @@ bulk_modulus = 1e9
 
 # Energy Equation
 # temperature_model options: ISOTHERMAL, ENERGY_EQUATION
+# NOTE: this example solves the energy equation but leaves fluid_property_model and
+# liquid_viscosity_model at CONSTANT below, so viscosity is frozen and the computed
+# temperature does NOT feed back into pressure or load -- the flow is isothermal.
+# The solver warns about this at startup. For a genuinely coupled THD run set
+# fluid_property_model = SINGLE_PHASE and liquid_viscosity_model = EMPIRICAL with
+# viscosity_temperature_coeff set to the oil's Andrade constant.
 temperature_model = ENERGY_EQUATION
 temperature_initial = 313
 temperature_reference = 313

@@ -2,6 +2,36 @@
 
 ## In Progress
 
+### Validation campaign (2026-08-02) — see `VALIDATION_PLAN.md`
+
+The full diagnosis of the Ferron/Brito temperature and load mismatches, and the
+phased task list for other agents, live in `VALIDATION_PLAN.md`. Summary of
+status; update both files together.
+
+- **Phase 0 (guardrails) — DONE 2026-08-02.** KSP convergence guard (defect D6)
+  with the `test_ksp_guard` regression test; config warnings for the silent
+  THD-decoupling trap and for adiabatic walls; `t_supply` validation; deferred
+  correction unstaled in the energy and gas paths (B2); iteration counts recorded
+  by `run_brito.py`. 23/23 tests pass. No physics changed.
+- **Phase 1 (reference-data verification) — TODO, highest value, no code
+  changes.** Ferron L / radial clearance / the speed of the eccentricity-vs-load
+  figure (the source panel does not label one; 1000 rpm fits far better than the
+  assumed 2000). Brito Fig. 6 polar re-digitisation, hot running clearance, and
+  wiring up the dead `solve_eps_for_load`. An R&B regression at Ferron's
+  L/D = 0.8.
+- **Phase 2 (energy-equation fixes) — TODO.** Theta-weight the cavitated thermal
+  inventory (D14); scale Couette dissipation by theta; hot-oil carry-over at
+  grooves; then the cross-film `T(z)` profile with conjugate wall coupling and a
+  generalized Reynolds equation, which is the fix for both the 71 deg peak-location
+  error and the high-speed load residual.
+- **Phase 3 (grid and time-step independence) — TODO**, blocked on Phase 2.
+  Must scale `beta` per grid level to hold `p_max/beta >= 4e-3`, or the rupture
+  angle error masquerades as grid error.
+- **Phase 4 (validation matrix) — TODO.** JFO (adds Engels 2024 measured void
+  fraction, the direct Elrod observable), energy equation (Ferron + full Brito
+  matrix), gaseous cavitation (blocked on reformulating the VOID_COUPLED
+  coupling below).
+
 ### WP-1b — VOID_COUPLED made usable (2026-07-31)
 
 Driver: the optical journal-bearing rig study (50 mm bore, c = 250 um,

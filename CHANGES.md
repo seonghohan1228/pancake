@@ -2,6 +2,71 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Validation plan and Phase 0 guardrails
+
+Reason: the temperature and load mismatches against Ferron (1983) and Brito
+(2006) were being investigated on a solver that could not report a failed linear
+solve, and on configurations that could silently disable the very coupling under
+test. Three audits (defect register, energy-equation implementation, an
+independent re-solve of both load cases) were combined into `VALIDATION_PLAN.md`,
+and its Phase 0 landed here. No physics changed in this entry.
+
+Diagnosis recorded in `VALIDATION_PLAN.md`:
+
+- **The load over-prediction is not a discretisation bug.** Load integration,
+  film thickness, clearance handling, groove pressure and viscosity wiring all
+  audit clean, and an independent Christopherson solver reproduces pancake's
+  loads at the same inputs. It is inherited from reference data and from shared
+  modelling assumptions.
+- **The 71 deg temperature-peak error is structural**: with wall temperature a
+  prescribed constant there is no path for heat to travel circumferentially
+  against the flow, so no value of `h_wall` can move the peak.
+- **The uniform-across-the-film temperature assumption is invalid on these
+  rigs**: Br ~ 2.6, reduced Peclet ~ 10-30, unequal walls. Dissipation-driven
+  core superheat is ~3 K (Ferron 2000 rpm) to ~6 K (Brito 4000 rpm) and scales
+  as U^2, worth ~10-20% of load at high speed. Wall heat flux and effective
+  viscosity both follow from the same missing `T(z)` profile, so they cannot be
+  fixed independently. This gives a discriminator: after the reference data is
+  settled, a residual error growing as U^2 is cross-film physics; a
+  speed-independent one is geometry or property data.
+
+Phase 0 changes:
+
+- **Defect D6 fixed.** `LinearSystem::solve` now takes an equation label, checks
+  `KSPGetConvergedReason`, scans the solution for non-finite values under an
+  `MPI_Allreduce` so all ranks agree, and aborts with a named diagnosis. All five
+  call sites labelled. Previously a diverged solve or a NaN was copied into the
+  field and the run reported success.
+- **New test `test_ksp_guard`** (23 tests total, all passing). It asserts on the
+  guard's own message via `PASS_REGULAR_EXPRESSION` rather than on a nonzero exit,
+  so a PETSc-internal failure that never reached the guard cannot pass it. The
+  test aborts by design.
+- **Silent THD decoupling now warns.** `temperature_model = ENERGY_EQUATION`
+  combined with `fluid_property_model = CONSTANT` or
+  `liquid_viscosity_model = CONSTANT` freezes viscosity, so the energy equation
+  runs and writes a plausible temperature field with no effect on pressure or
+  load. The shipped `config.txt` was in exactly this state; it now carries a
+  comment saying so and the solver warns at startup. The example's physics was
+  left unchanged deliberately, since enabling coupling requires the
+  `EMPIRICAL` + `solution_viscosity_gas_coeff` workaround.
+- **Adiabatic walls now warn.** Both wall heat-transfer coefficients at zero is a
+  perfectly insulating film; temperature results must be quoted with the wall
+  condition attached.
+- **Fed inlets with non-positive `t_supply` are now rejected.** `t_supply`
+  defaults to 0 K and `feeds_fresh_oil` is set by the mere presence of the
+  optional token, so a mistyped value silently pinned the groove to absolute zero.
+- **Deferred-correction staleness (B2) fixed in the energy and gas paths.**
+  `FVM::divergence` reads `phi.old`, which on a live field is the previous
+  timestep: stale across outer iterations and, in `STEADY_STATE` (one timestep,
+  many outer iterations), never refreshed at all, silently degrading LINEAR and
+  VANLEER to first-order upwind. `energy.cpp` and `gas_transport.cpp` now pass a
+  lagged copy carrying the current iterate, the idiom `solve_elrod` already used
+  for theta -- the Elrod path was correct and was left alone.
+- **`run_brito.py` now records `elrod_iters`, `coupling_iters` and
+  `coupling_capped`**, so a run that exhausted the coupling budget is no longer
+  indistinguishable in the JSON from one that converged. `coupling_max_iters` is
+  now sourced from a single constant instead of being hardcoded in the template.
+
 ### 2026-07-31 - Cavitation and energy-equation validation
 
 Reason: the committed analytical benchmarks validated the Reynolds

@@ -1,5 +1,8 @@
 #include "linear_system.hpp"
 
+#include <cmath>
+#include <iostream>
+
 LinearSystem::LinearSystem(const Mesh& mesh)
     : mesh_ref(mesh), n_theta(mesh.n_theta_local), n_z(mesh.n_z_local)
 {
@@ -67,7 +70,7 @@ double& LinearSystem::a_n(int i, int j)    { return coeff_an [local_index(i, j)]
 double& LinearSystem::a_s(int i, int j)    { return coeff_as [local_index(i, j)]; }
 double& LinearSystem::source(int i, int j) { return coeff_src[local_index(i, j)]; }
 
-void LinearSystem::solve(Field& result, double rtol, int max_iters) {
+void LinearSystem::solve(Field& result, double rtol, int max_iters, const char* label) {
     MatZeroEntries(A);
     VecZeroEntries(b);
 
@@ -121,11 +124,42 @@ void LinearSystem::solve(Field& result, double rtol, int max_iters) {
     VecZeroEntries(x);
     KSPSolve(ksp, b, x);
 
+    // A diverged KSP or a NaN must not be mistaken for a converged solve: without
+    // this check the bad values propagate into the fields and the run still exits
+    // successfully.
+    KSPConvergedReason reason;
+    KSPGetConvergedReason(ksp, &reason);
+    PetscInt n_iters = 0;
+    KSPGetIterationNumber(ksp, &n_iters);
+
     // Copy local solution back to field
     const PetscScalar* arr;
     VecGetArrayRead(x, &arr);
-    for (int i = 0; i < n_theta; ++i)
-        for (int j = 0; j < n_z; ++j)
-            result(i, j) = arr[local_index(i, j)];
+    int local_nonfinite = 0;
+    for (int i = 0; i < n_theta; ++i) {
+        for (int j = 0; j < n_z; ++j) {
+            const double value = arr[local_index(i, j)];
+            if (!std::isfinite(value)) local_nonfinite = 1;
+            result(i, j) = value;
+        }
+    }
     VecRestoreArrayRead(x, &arr);
+
+    int any_nonfinite = 0;
+    MPI_Allreduce(&local_nonfinite, &any_nonfinite, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+
+    if (reason < 0 || any_nonfinite) {
+        int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+            std::cerr << "\033[31m[FATAL] linear solve '" << label << "' failed after "
+                      << static_cast<long long>(n_iters) << " iterations: ";
+            if (reason < 0)
+                std::cerr << "KSP diverged (" << KSPConvergedReasons[reason]
+                          << ", reason " << static_cast<int>(reason) << ")";
+            else
+                std::cerr << "solution contains non-finite values";
+            std::cerr << "\033[0m" << std::endl;
+        }
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 }

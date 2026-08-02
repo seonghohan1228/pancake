@@ -362,7 +362,15 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     const ConvectionScheme thermal_scheme =
         cfg.thermal_convection_scheme == ConvectionScheme::TYPE_DIFFERENCING
             ? ConvectionScheme::UPWIND : cfg.thermal_convection_scheme;
-    FVM::divergence(sys, flux_theta, flux_z, temperature, thermal_scheme, mesh);
+    // Deferred corrections read phi.old, which on the live field is the previous
+    // timestep: stale across outer iterations, and in STEADY_STATE (one timestep,
+    // many outer iterations) never refreshed at all, which silently degrades every
+    // high-order scheme to first-order upwind. Carry the current iterate through a
+    // lagged copy, as solve_elrod does for theta.
+    Field temperature_lag("temperature_lag", mesh);
+    temperature_lag.data = temperature.data;
+    temperature_lag.store_old_time();
+    FVM::divergence(sys, flux_theta, flux_z, temperature_lag, thermal_scheme, mesh);
     if (cfg.solution_mode != SolutionMode::STEADY_STATE) {
         FVM::ddt_weighted(sys, temperature, capacity, cfg.dt, mesh);
     }
@@ -372,7 +380,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     add_nonconservative_convection_correction(sys, flux_theta, flux_z, p, h, theta, fields, mesh, cfg);
     apply_inlet_thermal_conditions(sys, mesh, cfg);
 
-    sys.solve(temperature, cfg.linear_rtol);
+    sys.solve(temperature, cfg.linear_rtol, 1000, "temperature");
 }
 
 }  // namespace Energy

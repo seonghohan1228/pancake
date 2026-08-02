@@ -28,7 +28,10 @@ public:
     double& source(int i, int j);
 
     /// Assemble the PETSc matrix and RHS, then solve. Writes result into field.
-    void solve(Field& result, double rtol = 1e-8, int max_iters = 1000);
+    /// Aborts the run if the KSP diverges or the solution is non-finite; `label`
+    /// names the equation in that message (e.g. "pressure", "temperature").
+    void solve(Field& result, double rtol = 1e-8, int max_iters = 1000,
+               const char* label = "unnamed");
 
 private:
     const Mesh& mesh_ref;
