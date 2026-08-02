@@ -97,18 +97,69 @@ Do **not** "fix" `ddt_weighted`'s new-time capacity (B7 in the energy audit) —
 it is consistent with the non-conservative `F·grad T` convection form used
 deliberately; changing one without the other breaks the pair.
 
-## Phase 1 — Reference-data verification (no code changes; can run parallel to Phase 0)
+## Phase 1 — Reference-data verification — **1.1 and 1.4 DONE 2026-08-02; both of my hypotheses were WRONG**
 
-The single highest-value item: **one scalar of ~0.55 on `mu*omega*R^2/c^2`
-explains the entire Ferron load error**, and the only unverified inputs in
-that group are L, c, and the speed of the eps-vs-load figure.
+Read this before doing any more work on the load discrepancy. The plan's premise
+— that a wrong L, c or speed supplies a ~0.55 scale factor — **has been tested and
+refuted.** The load over-prediction is real, is not a solver defect, and is shared
+with the published models it is being compared against.
 
-| # | Task | Acceptance |
+**1.1 Ferron inputs — RESOLVED, `ferron.py` was already correct.**
+- Geometry confirmed by three independent open sources: `D = 100 mm`, `L = 80 mm`
+  (L/D = 0.80), `c = 145 um` **radial** (c/R = 2.9e-3). The competing
+  `L/D = 0.55, C/R = 1.5e-3` belongs to a **different experiment** — Tonnesen &
+  Hansen (1981), also 100 mm, also ~9 kN. Not a Ferron variant at all.
+- Speed confirmed **2000 rpm**. The 1000 rpm hypothesis is dead: Alakhramsing
+  Fig. 10a is unlabelled, but Lubricants 11(7) 308 (2023) Fig. 8 reproduces the
+  same dataset captioned "At 2000 rpm", agreeing within 0.03 in eps at every load.
+- **Ferron's own theory over-predicts the same data by ~75-80%** — worse than
+  pancake's 52-68%. His published theory reaches eps = 0.67 only at ~7.2 kN where
+  he measured it at 4 kN. Alakhramsing's FE model is displaced the same way.
+  Three independent codes, including the original authors', land where pancake is.
+- The measured eps is a proximity-probe displacement **divided by the assumed
+  clearance**, so a clearance error contaminates the "measurement" itself. The
+  2023 paper reduces the published eps by 0.10 on that basis (c_eff ~ 171 um).
+  Independent reproductions of the same 4 kN point disagree by 0.05 in eps.
+- **What was instrumented is a bush temperature 0.5 mm below the surface**, not a
+  film temperature. pancake's film-averaged T is not the same quantity. The two
+  open reproductions also disagree by ~30 deg on where the peak sits within a
+  250-285 deg plateau, which bounds how precisely the 71 deg peak-location error
+  can be scored against this data at all.
+
+**1.4 Cross-solver check — DONE, pancake is sound at this geometry.**
+`christopherson.py` (new) is an independent Python finite-volume Reynolds solver
+with Christopherson clamping, sharing no code with pancake, self-audited against
+the R&B charts to **1.3% in S and 0.80 deg in attitude** (tighter than pancake's
+own 5.8%/4.08%). `run_cross_solver.py` runs both isothermally at Ferron's exact
+geometry:
+
+| eps (measured load) | pancake | independent | diff |
+|---|---|---|---|
+| 0.47 (2 kN) | 3248 N | 3206 N | +1.3% |
+| 0.67 (4 kN) | 7933 N | 7591 N | +4.5% |
+| 0.78 (8 kN) | 15010 N | 14129 N | +6.2% |
+
+Peak pressure agrees to 3-4%. Two unrelated discretisations agree within a few
+percent while both exceed the measured load by 60-90%. **The load gap is not in
+the solver.** (pancake reads a few percent high, growing with eps — consistent
+with the Elrod free-boundary/`p_max/beta` treatment and the `(R+h)` area term.
+Worth a look eventually, but it is not the 50% effect.)
+
+**Consequence — re-scope the remaining work.** Stop trying to close W(eps)
+against Ferron's measurements; nobody closes it, including Ferron. Validate on
+the quantities all three published models *do* match — `p_max` and its angular
+position, and the temperature profile — and quote W(eps) as a known open
+discrepancy shared with the literature, with the clearance-derived eccentricity
+named as the leading suspect. If a load criterion is wanted, reproduce **Ferron's
+theory curve**, not his measurements.
+
+| # | Remaining task | Acceptance |
 |---|------|-----------|
-| 1.1 | Obtain primary Ferron/Frene/Boncompain 1983 values for **L, radial clearance c, and the speed of the eccentricity-vs-load data** (currently digitised from Alakhramsing Fig. 10a, whose panel does not label a speed — `ferron.py:82-87`). Test the 1000 rpm hypothesis: an independent solve at 1000 rpm gives 1604/3798/7069 N at eps = 0.47/0.67/0.78 vs measured 2000/4000/8000 — a far better fit than 2000 rpm | Speed and geometry pinned to the primary source; load table re-run; error either collapses or is confirmed real |
 | 1.2 | Brito Fig. 6: the polar re-digitisation of eccentricity (`brito.py:105-137`) moved eps up ~0.15 and drives the whole +65-106%. Re-digitise independently; also run the **Cartesian reading as a documented bracket** (`solve_eps_for_load` at `run_brito.py:261-289` is dead code — wire it up to report eps-for-10kN as a third line) | Both readings + eps-for-load reported side by side with uncertainties |
 | 1.3 | Brito hot running clearance: Cd = 171 um is quoted at 20 C; bulk rise ~20 K with bronze bush on steel shaft grows c by ~15-20% (W ~ 1/c^2, ~30% of load). Add a clearance-at-temperature sensitivity line to run_brito | Load bracket [c_20C, c_hot] reported per case |
-| 1.4 | Bridge the validated regime to the benchmark regime: add an R&B-style fed-film regression at **L/D = 0.8, c/R ~ 2-3e-3** (Ferron/Brito ratios) against the independent Christopherson solver used in the audit | Agreement < 5% in W at fixed eps across eps = 0.4-0.8 |
+| 1.4 | ~~Bridge the validated regime to the benchmark regime~~ | **DONE** — see above. `christopherson.py` + `run_cross_solver.py`, agreement 1.3-6.2% |
+| 1.6 | **New, from 1.1:** re-frame the Ferron temperature verdict. The measurement is a bush temperature 0.5 mm below the surface; pancake reports a film-averaged T. Either add a bush-subsurface estimate (needs the conjugate model of 2.4) or state the mismatch explicitly next to every temperature number | No temperature verdict quoted without naming the compared quantity |
+| 1.7 | **New, from 1.1:** add Ferron's *theory* curve as a second comparison line alongside his measurements, so the shared over-prediction is visible rather than being re-discovered | Load plot shows measurement, Ferron theory, Alakhramsing FE, pancake |
 | 1.5 | Re-run or drop Brito 3000 rpm / 70 kPa (R_p = 3.56) and mark 4000/70 (R_p = 0.42) marginal; never quote unconverged rows | brito_results.json has no rows with R_p > 1e-2 quoted in tables |
 
 Note for 1.2/1.3: the 4000 rpm Brito cases cannot be rescued by eccentricity

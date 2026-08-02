@@ -1,0 +1,77 @@
+[
+ {
+  "label": "eps=0.47 (2 kN measured)",
+  "eps": 0.47,
+  "rpm": 2000.0,
+  "pancake": {
+   "W_N": 3248.196730695356,
+   "attitude_deg": 55.584049941411976,
+   "p_max_MPa": 0.93076,
+   "p_max_angle_deg": 142.25,
+   "theta_min": 0.44723,
+   "converged": true,
+   "R_p": 0.0
+  },
+  "independent": {
+   "W_N": 3205.794440071067,
+   "attitude_deg": 59.29496335112913,
+   "p_max_MPa": 0.9028356658145744,
+   "p_max_angle_deg": 139.875,
+   "rupture_deg": 203.625,
+   "converged": true,
+   "sweeps": 12628
+  },
+  "dW": 0.013226765289214548,
+  "dp_max": 0.03092958690353816
+ },
+ {
+  "label": "eps=0.67 (4 kN measured)",
+  "eps": 0.67,
+  "rpm": 2000.0,
+  "pancake": {
+   "W_N": 7932.866639317719,
+   "attitude_deg": 42.11007614722715,
+   "p_max_MPa": 2.67509,
+   "p_max_angle_deg": 154.75,
+   "theta_min": 0.263435,
+   "converged": true,
+   "R_p": 0.0
+  },
+  "independent": {
+   "W_N": 7590.645774672793,
+   "attitude_deg": 45.45841727191811,
+   "p_max_MPa": 2.585494919886881,
+   "p_max_angle_deg": 152.875,
+   "rupture_deg": 199.875,
+   "converged": true,
+   "sweeps": 11687
+  },
+  "dW": 0.045084552066280315,
+  "dp_max": 0.0346529708582985
+ },
+ {
+  "label": "eps=0.78 (8 kN measured)",
+  "eps": 0.78,
+  "rpm": 2000.0,
+  "pancake": {
+   "W_N": 15009.506213343597,
+   "attitude_deg": 33.90598510110598,
+   "p_max_MPa": 5.85729,
+   "p_max_angle_deg": 161.75,
+   "theta_min": 0.172814,
+   "converged": true,
+   "R_p": 0.0
+  },
+  "independent": {
+   "W_N": 14129.422684376274,
+   "attitude_deg": 36.98658420717655,
+   "p_max_MPa": 5.625323302628369,
+   "p_max_angle_deg": 159.375,
+   "rupture_deg": 197.125,
+   "converged": true,
+   "sweeps": 10922
+  },
+  "dW": 0.06228729571099058,
+  "dp_max": 0.0412361538870569
+ }
+]

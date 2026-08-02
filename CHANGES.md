@@ -2,6 +2,49 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Phase 1: the load over-prediction is not a solver defect
+
+Two hypotheses from `VALIDATION_PLAN.md` were tested and both are wrong. Recorded
+because the wrong version is easy to re-derive.
+
+- **Ferron's geometry in `ferron.py` was already correct**, confirmed against
+  three independent open sources: L/D = 0.80, c = 145 um radial. The competing
+  `L/D = 0.55, C/R = 1.5e-3` belongs to a *different experiment*, Tonnesen &
+  Hansen (1981) -- also a 100 mm bearing loaded to ~9 kN, so the two are easy to
+  conflate. 1.5e-3 is also what you get by misreading 145 um as diametral, so the
+  wrong number has two independent routes into a config file.
+- **The eccentricity-vs-load data is 2000 rpm.** Alakhramsing's Fig. 10a carries
+  no speed label and the 1000 rpm hypothesis fitted the loads far better, but
+  Lubricants 11(7) 308 (2023) Fig. 8 reproduces the identical dataset captioned
+  "At 2000 rpm", agreeing within 0.03 in eps at every load. The hypothesis was
+  wrong.
+- **Ferron's own theory over-predicts his own measurements by ~75-80%**, worse
+  than pancake's 52-68%: his theory reaches eps = 0.67 at ~7.2 kN where he
+  measured it at 4 kN, and Alakhramsing's FE model is displaced the same way.
+- **New `christopherson.py`**: an independent Python finite-volume Reynolds
+  solver with Christopherson clamping, sharing no code with pancake and having no
+  `p_max/beta` failure mode. Self-audited against the Raimondi & Boyd charts to
+  1.3% in S and 0.80 deg in attitude angle -- tighter than pancake's own
+  5.8%/4.08%. `audit()` regenerates the check.
+- **New `run_cross_solver.py`** runs both solvers isothermally at Ferron's exact
+  geometry, the first independent check ever made at L/D = 0.80, c/R = 2.9e-3:
+  3248/7933/15010 N (pancake) against 3206/7591/14129 N (independent) at
+  eps = 0.47/0.67/0.78, agreeing to 1.3-6.2%, peak pressure to 3-4%. Two
+  unrelated discretisations agree while both exceed the measured load by 60-90%.
+  **The discrepancy is in the reference data or the shared physics, not the
+  discretisation.** pancake reads a few percent high and growing with eps, which
+  is worth a separate look but is not the 50% effect.
+- **The measured temperature is a bush temperature 0.5 mm below the surface**,
+  not a film temperature, so it is not the quantity pancake reports. The two open
+  reproductions also disagree by ~30 deg on where the peak sits inside a 250-285
+  deg plateau, bounding how precisely the 71 deg peak-location error can be scored
+  against this data. Recorded in `ferron.py`.
+
+Consequence: stop chasing W(eps) against Ferron's measurements, which nobody
+matches including Ferron. Validate on peak pressure, its position, and the
+temperature profile; quote W(eps) as an open discrepancy shared with the
+literature with the clearance-derived eccentricity as the leading suspect.
+
 ### 2026-08-02 - Validation plan and Phase 0 guardrails
 
 Reason: the temperature and load mismatches against Ferron (1983) and Brito

@@ -19,10 +19,45 @@ repository (resolver.tudelft.nl/uuid:b84a2854-b276-49e7-aa2e-a66bf9724717); the
 MDPI copy is not reachable from this environment.  The per-number provenance is
 recorded against each entry below.
 
-NOTE ON THE GEOMETRY.  Secondary sources circulate L/D = 0.55 and C/R = 1.5e-3
-for this rig.  Alakhramsing Table 1, which cites Ferron directly, gives
-L = 80 mm (L/D = 0.80) and C = 145 um (C/R = 2.9e-3).  The values here follow
-Table 1.
+NOTE ON THE GEOMETRY -- settled 2026-08-02, three independent sources.
+Secondary sources circulate L/D = 0.55 and C/R = 1.5e-3 for this rig.  That pair
+belongs to a DIFFERENT experiment: Tonnesen & Hansen (1981), ASME J. Lubr.
+Technol. 103(1), 107-114, whose abstract states L/D = 0.55 and C/R = 1.5e-3 on a
+bearing that is also 100 mm and also loaded to ~9 kN -- easy to conflate, and a
+standard THD benchmark in its own right.  Note 1.5e-3 is additionally what you
+get by misreading Ferron's 145 um as diametral (72.5/50), so the wrong number has
+two independent routes into a config file.
+
+Ferron's geometry is D = 100 mm, L = 80 mm (L/D = 0.80), c = 145 um RADIAL
+(c/R = 2.9e-3), corroborated by Alakhramsing Table 1, by Lubricants 11(7), 308
+(2023) Table 2, and by Lubricants 14(2), 76 (2026), the last stating verbatim
+that the clearance is radial.  The reference temperature of the clearance is NOT
+recorded in any source reached; the same laboratory's later rig (Brito) quotes
+clearance at 20 C, so treat 145 um as a cold/nominal value.
+
+NOTE ON THE ECCENTRICITY DATA.  `FERRON_ECC_VS_LOAD` is digitised from
+Alakhramsing Fig. 10a, whose panel carries no speed label.  It is 2000 rpm:
+Lubricants 11(7), 308 (2023) Fig. 8 reproduces the identical dataset with the
+caption "Eccentricity against load At 2000 rpm", and the two digitisations agree
+within 0.03 in eps at every load.  Two caveats that bound what this data can
+settle:
+  * eps is not measured directly.  It is a proximity-probe displacement divided
+    by the assumed clearance, so a clearance error enters the "measurement"
+    itself.  The 2023 paper reduces the published eps by 0.10 on exactly this
+    argument, which corresponds to c_eff ~ 171 um.
+  * Secondary reproductions of the same measurement disagree: Brito et al.,
+    Tribology International 72 (2014) Fig. 8c reads eps = 0.61-0.63 at 2000 rpm
+    / 4 kN where Alakhramsing and the 2023 paper both read 0.665-0.67.
+
+NOTE ON WHAT WAS INSTRUMENTED.  The thermocouples sit 0.5 mm BELOW THE BUSH
+SURFACE, not in the film: "Thermocouples were installed 0.5 mm below the surface
+along the circumference of the bush" (Lubricants 14(2), 76 (2026)).  Pressure is
+taken through 15 holes in the bush.  So `FERRON_TEMP_PROFILE` is a bush
+sub-surface temperature and pancake's film-averaged T is not the same quantity;
+any temperature verdict must state that gap.  The two open reproductions also
+disagree by ~30 deg on where the maximum sits inside a plateau spanning roughly
+250-285 deg from the groove, which bounds how precisely the peak LOCATION can be
+scored against this data at all.
 """
 import math
 
