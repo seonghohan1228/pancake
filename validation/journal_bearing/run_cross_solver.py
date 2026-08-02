@@ -72,6 +72,72 @@ CASES = [
 ]
 
 
+def diagnose(exe, work, eps=0.78, rpm=2000.0):
+    """Explain the residual pancake-minus-independent difference.
+
+    The headline comparison ran pancake at 720x40 against the reference at
+    1440x60, so part of the gap is simply grid.  The rest is expected to be
+    physical: pancake solves the *compressible* Elrod-Adams equation, where
+    `theta = exp(p_gauge/beta)` carries a real density excursion of `p_max/beta`,
+    while the reference solver is incompressible.  At Ferron's eps = 0.78 the peak
+    is ~5.9 MPa against `beta = 1e8`, i.e. a 6% density rise -- the same order as
+    the 6.2% load difference.
+
+    Raising beta removes that excursion but shrinks `p_max/beta` toward the 4e-3
+    free-boundary resolution floor established by `run_raimondi_boyd.
+    convergence_study()`, so beta and mesh must be refined together.  Both effects
+    are checked here.
+    """
+    import run_ferron as RF
+
+    print(f"\n=== Diagnosing the residual difference (eps = {eps}, {rpm:g} rpm) ===",
+          flush=True)
+    ch_ref = None
+    print("\nA. Grid convergence of each solver at beta = 1e8", flush=True)
+    print(f"{'grid':>12} {'W pancake':>10} {'W indep':>10} {'diff':>7} {'p/beta':>8}",
+          flush=True)
+    rows_grid = []
+    for nth, nz in ((720, 40), (1440, 60), (2880, 60)):
+        RF.BULK = 1.0e8
+        pk = pancake_isothermal(exe, work, f"d_g{nth}", eps=eps, rpm=rpm,
+                                groove_deg=FERRON_GROOVE_DEG, nth=nth, nz=nz)
+        ch = CH.solve(eps=eps, R=F.R, c=F.C, L=F.L, mu=F.MU_INLET,
+                      omega=2.0 * math.pi * rpm / 60.0, p_amb=P_AMB,
+                      n_theta=nth, n_z=nz, groove_deg=FERRON_GROOVE_DEG,
+                      groove_width_deg=18.0)
+        ch_ref = ch
+        d = (pk["W_N"] - ch["W"]) / ch["W"]
+        rows_grid.append(dict(nth=nth, nz=nz, W_pancake=pk["W_N"], W_indep=ch["W"],
+                              diff=d, p_over_beta=pk["p_max_MPa"] * 1e6 / 1.0e8,
+                              pancake_converged=pk["converged"],
+                              indep_converged=ch["converged"]))
+        print(f"{f'{nth}x{nz}':>12} {pk['W_N']:>10.1f} {ch['W']:>10.1f} {d:>6.1%} "
+              f"{pk['p_max_MPa'] * 1e6 / 1.0e8:>8.4f}", flush=True)
+
+    print("\nB. Compressibility: raise beta at a fixed 2880x60 mesh", flush=True)
+    print(f"{'beta':>10} {'W pancake':>10} {'W indep':>10} {'diff':>7} {'p/beta':>8} "
+          f"{'resolved':>9}", flush=True)
+    rows_beta = []
+    for beta in (1.0e8, 3.0e8, 1.0e9):
+        RF.BULK = beta
+        pk = pancake_isothermal(exe, work, f"d_b{beta:g}", eps=eps, rpm=rpm,
+                                groove_deg=FERRON_GROOVE_DEG, nth=2880, nz=60)
+        pob = pk["p_max_MPa"] * 1e6 / beta
+        d = (pk["W_N"] - ch_ref["W"]) / ch_ref["W"]
+        rows_beta.append(dict(beta=beta, W_pancake=pk["W_N"], W_indep=ch_ref["W"],
+                              diff=d, p_over_beta=pob, resolved=bool(pob >= 4e-3),
+                              pancake_converged=pk["converged"]))
+        print(f"{beta:>10.0e} {pk['W_N']:>10.1f} {ch_ref['W']:>10.1f} {d:>6.1%} "
+              f"{pob:>8.4f} {'yes' if pob >= 4e-3 else 'NO':>9}", flush=True)
+    RF.BULK = 1.0e8
+
+    print("\nExpected: the difference shrinks as beta rises (pancake approaches the")
+    print("incompressible limit the reference solves), bottoming out near the O(c/R)")
+    print("= 0.3% area-element difference. If it does, the gap is compressibility")
+    print("plus grid, not a defect.")
+    return dict(grid=rows_grid, beta=rows_beta, eps=eps, rpm=rpm)
+
+
 def main(exe, work):
     os.makedirs(work, exist_ok=True)
     print("=== pancake vs independent Christopherson solver, Ferron geometry ===")
@@ -99,11 +165,13 @@ def main(exe, work):
     print("force integration are sound at this geometry, and the 52-68% load gap")
     print("against Ferron's MEASURED eccentricity is not a solver defect.")
 
+    diag = diagnose(exe, work)
+
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "cross_solver_results.json")
-    json.dump(rows, open(out, "w"), indent=1)
+    json.dump(dict(cases=rows, diagnosis=diag), open(out, "w"), indent=1)
     print(f"wrote {out}")
-    return rows
+    return rows, diag
 
 
 if __name__ == "__main__":
