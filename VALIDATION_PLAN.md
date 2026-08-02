@@ -145,6 +145,20 @@ the solver.** (pancake reads a few percent high, growing with eps — consistent
 with the Elrod free-boundary/`p_max/beta` treatment and the `(R+h)` area term.
 Worth a look eventually, but it is not the 50% effect.)
 
+**Follow-up, resolved 2026-08-02: the residual is mesh convergence, no defect.**
+At fixed `beta = 1e8` pancake moves monotonically onto the reference under
+refinement — 6.2% (720x40), 4.2% (1440x60), 2.9% (2880x60) — while the reference
+is already grid-converged at 1440x60. pancake converges more slowly because its
+Couette term is a first-order upwinded flux on the film content, whereas the
+reference solves for pressure directly with the wedge as a source and has no
+convective discretisation. Counter-intuitively, raising `beta` toward
+incompressibility makes agreement *worse* (2.9% → 3.5% → 9.4% at 1e8/3e8/1e9),
+because it drives `p_max/beta` toward the 4e-3 free-boundary floor and trades
+compressibility for under-resolution. `beta = 1e8` is near optimal here; never
+raise it to flatter a comparison. Practical consequence: the production 1440x60
+Ferron mesh carries ~4% of discretisation error in load, which should be stated
+whenever load is quoted to better than ~5%.
+
 **Consequence — re-scope the remaining work.** Stop trying to close W(eps)
 against Ferron's measurements; nobody closes it, including Ferron. Validate on
 the quantities all three published models *do* match — `p_max` and its angular

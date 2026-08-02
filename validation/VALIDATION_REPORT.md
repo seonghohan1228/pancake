@@ -76,7 +76,43 @@ Isothermal, Ferron geometry, 2000 rpm:
 
 *Reproduce:* `python run_cross_solver.py <pancake.exe>` → `cross_solver_results.json`
 
-<!-- DIAGNOSIS-SECTION -->
+**Is the residual few-percent difference a defect? No — it is mesh convergence.**
+The headline table ran pancake at 720×40 against the reference at 1440×60. At a
+fixed β = 1e8, refining pancake's mesh moves it monotonically onto the reference:
+
+| grid | pancake | independent | Δ |
+|---|---|---|---|
+| 720×40 | 15010 N | 14139 N | +6.2% |
+| 1440×60 | 14717 N | 14129 N | +4.2% |
+| 2880×60 | 14540 N | 14129 N | **+2.9%** |
+
+The reference is already grid-converged at 1440×60 (unchanged at 2880). pancake
+converges more slowly in mesh because its Couette term is an **upwinded flux on
+the film content — first order**, while the reference solves for pressure
+directly with the wedge as a source and has no convective discretisation at all.
+Monotone convergence onto an independent solution under refinement is the
+signature of discretisation error, not a defect. **No defect was found.**
+
+**A finding that inverts an intuition, recorded so it is not re-derived:**
+raising β to approach the incompressible limit the reference solves makes
+agreement *worse*, not better —
+
+| β | Δ vs reference | `p_max/β` |
+|---|---|---|
+| 1e8 | +2.9% | 0.058 |
+| 3e8 | +3.5% | 0.019 |
+| 1e9 | +9.4% | 0.0059 |
+
+Raising β shrinks `p_max/β` toward the 4e-3 free-boundary resolution floor
+(§2.4), so it trades a small compressibility difference for a larger
+under-resolution error. The two effects oppose each other and β = 1e8 sits near
+the optimum for this case. **Do not raise β to flatter a comparison.**
+
+*Practical consequence:* 1440×60 (the production Ferron mesh) carries ~4% of
+discretisation error in load. That is inside the R&B validation tolerance and an
+order of magnitude below the 52–68% discrepancy under investigation, but it
+should be stated whenever a load number is quoted to better than ~5%.
+
 
 ### 2.4 Free-boundary resolution — a trap that does not announce itself
 

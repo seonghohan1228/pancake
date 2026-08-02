@@ -75,18 +75,36 @@ CASES = [
 def diagnose(exe, work, eps=0.78, rpm=2000.0):
     """Explain the residual pancake-minus-independent difference.
 
-    The headline comparison ran pancake at 720x40 against the reference at
-    1440x60, so part of the gap is simply grid.  The rest is expected to be
-    physical: pancake solves the *compressible* Elrod-Adams equation, where
-    `theta = exp(p_gauge/beta)` carries a real density excursion of `p_max/beta`,
-    while the reference solver is incompressible.  At Ferron's eps = 0.78 the peak
-    is ~5.9 MPa against `beta = 1e8`, i.e. a 6% density rise -- the same order as
-    the 6.2% load difference.
+    MEASURED RESULT (eps = 0.78, 2000 rpm, recorded 2026-08-02).
 
-    Raising beta removes that excursion but shrinks `p_max/beta` toward the 4e-3
-    free-boundary resolution floor established by `run_raimondi_boyd.
-    convergence_study()`, so beta and mesh must be refined together.  Both effects
-    are checked here.
+    A. Grid is the whole story.  At fixed beta = 1e8 pancake converges
+       monotonically *down* onto the reference under refinement:
+
+           720x40   15010 N   +6.2%
+          1440x60   14717 N   +4.2%
+          2880x60   14540 N   +2.9%
+
+       while the reference is already grid-converged by 1440x60 (14129 N,
+       unchanged at 2880).  pancake converges more slowly in mesh because its
+       Couette term is an upwinded flux on the film content (first order),
+       whereas this reference solves for pressure directly with the wedge as a
+       source term and has no convective discretisation at all.  Monotone
+       convergence toward an independent solution under refinement is the
+       signature of discretisation error, not of a defect.
+
+    B. Raising beta makes it WORSE, which was not the expectation.  The guess was
+       that pancake would approach the incompressible limit the reference solves;
+       instead, at a fixed 2880x60 mesh:
+
+          beta = 1e8   +2.9%   p_max/beta = 0.058
+          beta = 3e8   +3.5%   p_max/beta = 0.019
+          beta = 1e9   +9.4%   p_max/beta = 0.0059
+
+       Raising beta shrinks `p_max/beta` toward the 4e-3 free-boundary resolution
+       floor established by `run_raimondi_boyd.convergence_study()`, so it trades
+       a small compressibility difference for a larger under-resolution error.
+       The two effects pull in opposite directions and beta = 1e8 sits near the
+       optimum for this case.  Do not "improve" a comparison by raising beta.
     """
     import run_ferron as RF
 
@@ -131,10 +149,11 @@ def diagnose(exe, work, eps=0.78, rpm=2000.0):
               f"{pob:>8.4f} {'yes' if pob >= 4e-3 else 'NO':>9}", flush=True)
     RF.BULK = 1.0e8
 
-    print("\nExpected: the difference shrinks as beta rises (pancake approaches the")
-    print("incompressible limit the reference solves), bottoming out near the O(c/R)")
-    print("= 0.3% area-element difference. If it does, the gap is compressibility")
-    print("plus grid, not a defect.")
+    print("\nMeasured 2026-08-02: A shows monotone convergence onto the reference")
+    print("under mesh refinement, which is discretisation error, not a defect.")
+    print("B rises rather than falls -- raising beta pushes p_max/beta toward the")
+    print("4e-3 free-boundary floor, trading compressibility for under-resolution.")
+    print("beta = 1e8 is near the optimum here; do not raise it to flatter a result.")
     return dict(grid=rows_grid, beta=rows_beta, eps=eps, rpm=rpm)
 
 

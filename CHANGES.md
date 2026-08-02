@@ -2,6 +2,36 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Cross-solver residual explained; consolidated validation report
+
+- **The few-percent pancake-minus-reference difference is mesh convergence, not a
+  defect.** At fixed `beta = 1e8` pancake moves monotonically onto the
+  independent solver under refinement: 15010 N (720x40), 14717 N (1440x60),
+  14540 N (2880x60) against a reference already grid-converged at 14129 N. The
+  slower mesh convergence is expected: pancake's Couette term is a first-order
+  upwinded flux on the film content, while the reference solves for pressure
+  directly with the wedge as a source term and has no convective discretisation
+  at all. **No defect was found.**
+- **Raising `bulk_modulus` toward incompressibility makes agreement worse, not
+  better** -- 2.9%, 3.5%, 9.4% at beta = 1e8, 3e8, 1e9 on a fixed 2880x60 mesh.
+  The expectation was the opposite and is recorded as refuted. Raising beta
+  drives `p_max/beta` toward the 4e-3 free-boundary resolution floor, trading a
+  small compressibility difference for a larger under-resolution error; the two
+  oppose each other and beta = 1e8 is near optimal for this case. Do not raise
+  beta to flatter a comparison.
+- **Practical consequence:** the production 1440x60 Ferron mesh carries ~4% of
+  discretisation error in load -- inside the Raimondi & Boyd tolerance and an
+  order of magnitude below the discrepancy under investigation, but it must be
+  stated whenever load is quoted to better than ~5%.
+- **New `validation/VALIDATION_REPORT.md`**: one document holding every
+  verification and validation verdict, with the reproducing command against each
+  number, verification and validation kept separate, and the reference-data
+  provenance caveats attached to the numbers they qualify.
+- **New `make_report_figures.py`** producing `validation_cross_solver.png` and
+  `validation_load_in_context.png` in the repository plot style. The literature
+  comparison points are plotted as isolated markers rather than joined into
+  curves, because they are secondhand single digitisations.
+
 ### 2026-08-02 - Phase 1: the load over-prediction is not a solver defect
 
 Two hypotheses from `VALIDATION_PLAN.md` were tested and both are wrong. Recorded
