@@ -2,6 +2,36 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Phase 2.1/2.2: consistent theta-weighting (measured: no steady effect)
+
+Defect D14 fixed. Under `cavitated_film_model = STRIATED` every thermal term that
+scales with liquid content is now weighted by the liquid fraction through one
+shared helper: heat generation, stored energy, conduction, and convected enthalpy
+in both directions. Previously only the Couette shear was weighted while
+capacity, conduction and the convective flux carried the full gap, so a ruptured
+cell stored and conducted as though it were solid oil. `FULL_FILM` remains the
+default and is unchanged, so the cavitated zone is still not thermally modelled
+unless asked for; 23/23 tests pass either way.
+
+**Measured effect on Ferron (2000 rpm, adiabatic, 720x40): none.** T_max moves
+0.003 K, load 0.2 N, peak pressure and rupture unchanged. The reason is an exact
+cancellation, and it corrects an estimate recorded earlier in this campaign:
+
+    dT/ds ~ Phi / (rho_cp theta h u) = (mu U^2 theta / h) / (rho_cp theta h U/2)
+          = 2 mu U / (rho_cp h^2)          -- theta cancels
+
+Weighting the heat source and the mass flux by the same fraction leaves the
+steady temperature rise unchanged. The earlier claim that carrying the full film
+through the cavitated arc "overstates the mass flux by ~2.5x and damps the
+temperature rise" was wrong: it considered the flux in isolation and missed that
+the source scales identically. The 0.003 K residual is conduction, which does not
+cancel but is negligible against advection at this Peclet number.
+
+So the fix is correct physics and makes the model self-consistent, but D14 is
+**not** a contributor to the temperature discrepancy and is now ruled out as a
+candidate. It should still matter where the cancellation breaks: transients
+(the storage term), and any regime where conduction competes with advection.
+
 ### 2026-08-02 - Brito load comparison is not scoreable as it stands
 
 Applied the Ferron lesson before repeating the mistake: instead of prescribing a

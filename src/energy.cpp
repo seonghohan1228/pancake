@@ -16,6 +16,35 @@ double full_film_face_switch(const Field& theta, int i0, int j0, int i1, int j1)
     return (theta(i0, j0) >= 1.0 && theta(i1, j1) >= 1.0) ? 1.0 : 0.0;
 }
 
+/// Fraction of the gap occupied by liquid, for weighting the thermal terms.
+///
+/// A ruptured cell holds liquid theta*h per unit area, not h, in both the
+/// striated and the homogeneous picture. Under STRIATED every thermal term that
+/// scales with liquid content -- heat generation, stored energy, conduction and
+/// convected enthalpy -- is weighted by this. Under FULL_FILM (the default) the
+/// cavitated zone is not thermally modelled and this returns 1, which is the
+/// historical behaviour.
+///
+/// `g` is the caller's full-film switch, passed in so cell and face users share
+/// one definition of "cavitated".
+double liquid_fraction(const Field& theta, const SimulationConfig& cfg,
+                       double g, int i, int j) {
+    if (cfg.cavitated_film_model != CavitatedFilmModel::STRIATED || g > 0.0) {
+        return 1.0;
+    }
+    return std::clamp(theta(i, j), 0.0, 1.0);
+}
+
+/// Liquid fraction on a face, as the mean of the two cells it separates.
+double liquid_fraction_face(const Field& theta, const SimulationConfig& cfg,
+                            double g_face, int i0, int j0, int i1, int j1) {
+    if (cfg.cavitated_film_model != CavitatedFilmModel::STRIATED || g_face > 0.0) {
+        return 1.0;
+    }
+    return 0.5 * (std::clamp(theta(i0, j0), 0.0, 1.0) +
+                  std::clamp(theta(i1, j1), 0.0, 1.0));
+}
+
 bool uses_pressure_boundary(BCType type) {
     return type == BCType::DIRICHLET || type == BCType::INLET_OUTLET;
 }
@@ -68,11 +97,15 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
             const double h_val = std::max(h(i, j), cfg.min_film_thickness);
             const double g = full_film_switch(theta, i, j);
             const double mu_val = dynamic_viscosity(fields, cfg, i, j);
-            // STRIATED: in a cavitated (striated) cell only the liquid fraction theta
-            // carries Couette shear; full-film cells (g=1) are unchanged.
-            const double shear_w = (cfg.cavitated_film_model == CavitatedFilmModel::STRIATED && g <= 0.0)
-                ? std::max(theta(i, j), 0.0) : 1.0;
-            const double couette = mu_val * U * U / h_val * shear_w;
+            // Only the liquid fraction theta carries Couette shear in a cavitated
+            // cell; full-film cells (g=1) are unchanged. Shares one helper with the
+            // capacity, conduction and convective flux weights so the four cannot
+            // drift apart: weighting shear alone conserves the leading-order
+            // temperature rise by accident (source and mass flux both scale with
+            // theta and the error cancels) while leaving conduction and storage
+            // over-weighted by 1/theta.
+            const double liquid = liquid_fraction(theta, cfg, g, i, j);
+            const double couette = mu_val * U * U / h_val * liquid;
 
             // Pressure-flow dissipation must follow the same active faces as the
             // Reynolds/velocity solve. Cavitated faces carry no Poiseuille flow, so
@@ -313,9 +346,13 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     for (int i = -h.n_ghost; i < n_theta + h.n_ghost; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double h_val = std::max(h(i, j), cfg.min_film_thickness);
-            conductivity(i, j) = thermal_conductivity(fields, cfg, i, j) * h_val;
+            // Liquid depth theta*h, not the full gap: a ruptured cell neither
+            // stores nor conducts as though it were solid oil.
+            const double liquid_h =
+                h_val * liquid_fraction(theta, cfg, full_film_switch(theta, i, j), i, j);
+            conductivity(i, j) = thermal_conductivity(fields, cfg, i, j) * liquid_h;
             if (i >= 0 && i < n_theta) {
-                capacity(i, j) = volumetric_heat_capacity(fields, cfg, i, j) * h_val;
+                capacity(i, j) = volumetric_heat_capacity(fields, cfg, i, j) * liquid_h;
             }
         }
     }
@@ -335,7 +372,13 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
                 volumetric_heat_capacity(fields, cfg, i + 1, j));
             const double u_theta = 0.5 * cfg.omega * R
                 - g_face * h_face * h_face * dp_dtheta / (12.0 * mu_face * R);
-            flux_theta(i, j) = rho_cp_face * h_face * u_theta * d_z;
+            // Enthalpy rides on the liquid that is actually there. Carrying the
+            // full film through the cavitated arc overstates the mass flux by
+            // 1/theta -- a factor of ~2.5 at the measured theta_min ~ 0.39 --
+            // which damps the temperature rise reaching the next inlet.
+            const double liquid_face =
+                liquid_fraction_face(theta, cfg, g_face, i, j, i + 1, j);
+            flux_theta(i, j) = rho_cp_face * liquid_face * h_face * u_theta * d_z;
         }
     }
 
@@ -352,7 +395,9 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
                 volumetric_heat_capacity(fields, cfg, i, j) +
                 volumetric_heat_capacity(fields, cfg, i, j + 1));
             const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
-            flux_z(i, j) = rho_cp_face * h_face * u_z * R * d_theta;
+            const double liquid_face =
+                liquid_fraction_face(theta, cfg, g_face, i, j, i, j + 1);
+            flux_z(i, j) = rho_cp_face * liquid_face * h_face * u_z * R * d_theta;
         }
     }
 
