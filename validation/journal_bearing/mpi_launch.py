@@ -16,7 +16,12 @@ Rank-independence, measured 2026-08-02 (Ferron geometry, eps = 0.6, isothermal,
     linear_rtol = 1e-12   W = 5711.252515 both                      BIT-IDENTICAL
 
 So the partitioning is exact and the residual difference at the default tolerance
-is the linear solve, not the ghost exchange. Two things follow: 4 ranks may be
+is the linear solve, not the ghost exchange.
+
+Checked end to end as well, after `read_field` learned to stitch per-rank output:
+the whole Brito eccentricity-for-load sweep reproduces on 4 ranks to 2.9e-4 in
+eps, against a secant tolerance of 3e-2. Field-dependent metrics, not just the
+globally reduced load, therefore survive the partitioning. Two things follow: 4 ranks may be
 used for any of these sweeps, and load carries ~5e-5 of relative solver noise at
 `linear_rtol = 1e-8`, which is far below the percent-level differences these
 benchmarks resolve but is not zero.
