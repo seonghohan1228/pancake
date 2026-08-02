@@ -302,6 +302,67 @@ def solve_eps_for_load(exe, work, tag, *, W_target, rpm, p_supply_gauge,
     return eps, res
 
 
+# Hot running clearance. Brito quotes Cd = 171 um AT 20 C, but the rig runs with a
+# 40 C supply and ~20 K of film rise, so the bore is larger in operation and
+# W ~ 1/c^2. Bore growth is alpha_bronze * R * dT_bush and the shaft grows
+# alpha_steel * R * dT_shaft; with alpha_bronze = 1.8e-5, alpha_steel = 1.2e-5,
+# R = 50 mm, bush at ~55 C (dT = 35 K) and shaft at ~60 C (dT = 40 K):
+#   dc = 1.8e-5*0.05*35 - 1.2e-5*0.05*40 = 31.5 - 24.0 = +7.5 um  (+8.8% on 85.5)
+# The metal temperatures are assumed, not measured, so this is reported as a
+# BRACKET on the answer, never as a correction.
+C_HOT_FACTOR = 1.088
+
+
+def eps_for_load_sweep(exe, work, W_applied=10000.0, p_supply_gauge=70e3):
+    """The eccentricity that carries the applied load, at both clearances.
+
+    This is the robust form of the Brito comparison and it replaces the
+    run-at-the-measured-eccentricity form for the load verdict. Prescribing a
+    digitised eps makes the load a prediction whose error inherits every bit of
+    the digitisation uncertainty; solving for the eps that carries a load Brito
+    APPLIED (and therefore knew exactly) inverts that, and the digitised eps
+    becomes a check rather than an input.
+
+    Learned from the Ferron case: do not fight W(eps) when eps is the uncertain
+    quantity.
+    """
+    rows, seed = [], 32.0
+    print(f"\n=== eccentricity that carries {W_applied/1e3:g} kN "
+          f"(Pf = {p_supply_gauge/1e3:g} kPa gauge, Tf = 40 C) ===")
+    print("clearance bracket: c at 20 C, and c hot (+8.8%, assumed metal temperatures)")
+    print(f"{'N rpm':>6} {'clearance':>10} {'eps for W':>10} {'eps meas':>9} "
+          f"{'d eps':>7} {'conv':>5}", flush=True)
+
+    c_nominal = B.C
+    for rpm in B.SPEEDS_RPM:
+        meas = {p: (e, a) for p, e, a in B.ECC_ATTITUDE[rpm]}
+        eps_meas = meas[p_supply_gauge][0]
+        for label, factor in (("20 C", 1.0), ("hot", C_HOT_FACTOR)):
+            B.C = c_nominal * factor
+            try:
+                eps_solved, res = solve_eps_for_load(
+                    exe, work, f"epsW_N{int(rpm)}_{label.replace(' ', '')}",
+                    W_target=W_applied, rpm=rpm,
+                    p_supply_gauge=p_supply_gauge, tol=0.03, groove0=seed)
+            finally:
+                B.C = c_nominal
+            m = metrics(res)
+            seed = res["upstream_groove_deg"]
+            rows.append(dict(rpm=rpm, clearance=label, c_m=c_nominal * factor,
+                             eps_for_load=eps_solved, eps_measured=eps_meas,
+                             d_eps=eps_solved - eps_meas, W_applied=W_applied,
+                             p_supply_gauge=p_supply_gauge, metrics=m))
+            print(f"{rpm:>6.0f} {label:>10} {eps_solved:>10.3f} {eps_meas:>9.3f} "
+                  f"{eps_solved - eps_meas:>+7.3f} "
+                  f"{'yes' if m['converged'] else 'NO':>5}", flush=True)
+
+    print("\nA negative d eps means the solver reaches the applied load at a LOWER")
+    print("eccentricity than Brito's digitised Fig. 6 value, i.e. it is stiffer than")
+    print("the rig. The hot-clearance row bounds how much of that the 20 C clearance")
+    print("quotation can account for.")
+    return rows
+
+
 def main(exe, work):
     os.makedirs(work, exist_ok=True)
     print(f"pancake: {exe}")

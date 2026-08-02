@@ -1,0 +1,1758 @@
+[
+ {
+  "case": "brito_N1000_Pf210_g0",
+  "file": "brito_N1000_Pf210_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2071
+ },
+ {
+  "case": "brito_N1000_Pf210_g1",
+  "file": "brito_N1000_Pf210_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 351596
+ },
+ {
+  "case": "brito_N1000_Pf70_g0",
+  "file": "brito_N1000_Pf70_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2055
+ },
+ {
+  "case": "brito_N1000_Pf70_g1",
+  "file": "brito_N1000_Pf70_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2070
+ },
+ {
+  "case": "brito_N1000_Pf70_g2",
+  "file": "brito_N1000_Pf70_g2.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 327094
+ },
+ {
+  "case": "brito_N3000_Pf210_g0",
+  "file": "brito_N3000_Pf210_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2079
+ },
+ {
+  "case": "brito_N3000_Pf210_g1",
+  "file": "brito_N3000_Pf210_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 355326
+ },
+ {
+  "case": "brito_N3000_Pf70_g0",
+  "file": "brito_N3000_Pf70_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2073
+ },
+ {
+  "case": "brito_N3000_Pf70_g1",
+  "file": "brito_N3000_Pf70_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2069
+ },
+ {
+  "case": "brito_N3000_Pf70_g2",
+  "file": "brito_N3000_Pf70_g2.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2071
+ },
+ {
+  "case": "brito_N3000_Pf70_g3",
+  "file": "brito_N3000_Pf70_g3.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 305908
+ },
+ {
+  "case": "brito_N4000_Pf210_g0",
+  "file": "brito_N4000_Pf210_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2078
+ },
+ {
+  "case": "brito_N4000_Pf210_g1",
+  "file": "brito_N4000_Pf210_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2078
+ },
+ {
+  "case": "brito_N4000_Pf210_g2",
+  "file": "brito_N4000_Pf210_g2.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 356037
+ },
+ {
+  "case": "brito_N4000_Pf70_g0",
+  "file": "brito_N4000_Pf70_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2076
+ },
+ {
+  "case": "brito_N4000_Pf70_g1",
+  "file": "brito_N4000_Pf70_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 308868
+ },
+ {
+  "case": "bsmoke_g0",
+  "file": "bsmoke_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2052
+ },
+ {
+  "case": "bsmoke_g1",
+  "file": "bsmoke_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2077
+ },
+ {
+  "case": "bsmoke_g2",
+  "file": "bsmoke_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2074
+ },
+ {
+  "case": "bsmoke_g3",
+  "file": "bsmoke_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2078
+ },
+ {
+  "case": "bsmoke_g4",
+  "file": "bsmoke_g4.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2069
+ },
+ {
+  "case": "conv_b1e+08_n720",
+  "file": "conv_b1e+08_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "conv_b1e+09_n1440",
+  "file": "conv_b1e+09_n1440.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1932
+ },
+ {
+  "case": "conv_b1e+09_n2880",
+  "file": "conv_b1e+09_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1931
+ },
+ {
+  "case": "conv_b1e+09_n720",
+  "file": "conv_b1e+09_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "conv_b1e+10_n720",
+  "file": "conv_b1e+10_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cross__d_b1e+08",
+  "file": "cross__d_b1e+08.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 682519
+ },
+ {
+  "case": "cross__d_b1e+09",
+  "file": "cross__d_b1e+09.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 570202
+ },
+ {
+  "case": "cross__d_b3e+08",
+  "file": "cross__d_b3e+08.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 622304
+ },
+ {
+  "case": "cross__d_g1440",
+  "file": "cross__d_g1440.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 341866
+ },
+ {
+  "case": "cross__d_g2880",
+  "file": "cross__d_g2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 682519
+ },
+ {
+  "case": "cross__d_g720",
+  "file": "cross__d_g720.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 109476
+ },
+ {
+  "case": "cross__x_eps0.47",
+  "file": "cross__x_eps0.47.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 99809
+ },
+ {
+  "case": "cross__x_eps0.67",
+  "file": "cross__x_eps0.67.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 105056
+ },
+ {
+  "case": "cross__x_eps0.78",
+  "file": "cross__x_eps0.78.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 109476
+ },
+ {
+  "case": "cv_b1e+08_n1440",
+  "file": "cv_b1e+08_n1440.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1932
+ },
+ {
+  "case": "cv_b1e+08_n2880",
+  "file": "cv_b1e+08_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1933
+ },
+ {
+  "case": "cv_b1e+08_n5760",
+  "file": "cv_b1e+08_n5760.npz",
+  "n_theta": 5760,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cv_b1e+08_n720",
+  "file": "cv_b1e+08_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cv_b1e+09_n1440",
+  "file": "cv_b1e+09_n1440.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1932
+ },
+ {
+  "case": "cv_b1e+09_n2880",
+  "file": "cv_b1e+09_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1933
+ },
+ {
+  "case": "cv_b1e+09_n5760",
+  "file": "cv_b1e+09_n5760.npz",
+  "n_theta": 5760,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cv_b1e+09_n720",
+  "file": "cv_b1e+09_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cv_b1e+10_n1440",
+  "file": "cv_b1e+10_n1440.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1932
+ },
+ {
+  "case": "cv_b1e+10_n2880",
+  "file": "cv_b1e+10_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1933
+ },
+ {
+  "case": "cv_b1e+10_n5760",
+  "file": "cv_b1e+10_n5760.npz",
+  "n_theta": 5760,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cv_b1e+10_n720",
+  "file": "cv_b1e+10_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1935
+ },
+ {
+  "case": "cvg_b1e+08_n2880",
+  "file": "cvg_b1e+08_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 633258
+ },
+ {
+  "case": "cvg_b1e+08_n720",
+  "file": "cvg_b1e+08_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 167863
+ },
+ {
+  "case": "cvg_b1e+09_n2880",
+  "file": "cvg_b1e+09_n2880.npz",
+  "n_theta": 2880,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 524989
+ },
+ {
+  "case": "cvg_b1e+09_n720",
+  "file": "cvg_b1e+09_n720.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 137633
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e0_g0",
+  "file": "epsw__epsW_N1000_20C_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2053
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e1_g0",
+  "file": "epsw__epsW_N1000_20C_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2049
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e1_g1",
+  "file": "epsw__epsW_N1000_20C_e1_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2065
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e1_g2",
+  "file": "epsw__epsW_N1000_20C_e1_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2066
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e1_g3",
+  "file": "epsw__epsW_N1000_20C_e1_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2067
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e2_g0",
+  "file": "epsw__epsW_N1000_20C_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2066
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e2_g1",
+  "file": "epsw__epsW_N1000_20C_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2078
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e2_g2",
+  "file": "epsw__epsW_N1000_20C_e2_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2087
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_e2_g3",
+  "file": "epsw__epsW_N1000_20C_e2_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2082
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_final_g0",
+  "file": "epsw__epsW_N1000_20C_final_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2067
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_final_g1",
+  "file": "epsw__epsW_N1000_20C_final_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2082
+ },
+ {
+  "case": "epsw__epsW_N1000_20C_final_g2",
+  "file": "epsw__epsW_N1000_20C_final_g2.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2080
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e0_g0",
+  "file": "epsw__epsW_N1000_hot_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2077
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e0_g1",
+  "file": "epsw__epsW_N1000_hot_e0_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2076
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e0_g2",
+  "file": "epsw__epsW_N1000_hot_e0_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2078
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e0_g3",
+  "file": "epsw__epsW_N1000_hot_e0_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2081
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e1_g0",
+  "file": "epsw__epsW_N1000_hot_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2081
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e2_g0",
+  "file": "epsw__epsW_N1000_hot_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2080
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_e2_g1",
+  "file": "epsw__epsW_N1000_hot_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2087
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_final_g0",
+  "file": "epsw__epsW_N1000_hot_final_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2083
+ },
+ {
+  "case": "epsw__epsW_N1000_hot_final_g1",
+  "file": "epsw__epsW_N1000_hot_final_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2082
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e0_g0",
+  "file": "epsw__epsW_N3000_20C_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2070
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e0_g1",
+  "file": "epsw__epsW_N3000_20C_e0_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2069
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e0_g2",
+  "file": "epsw__epsW_N3000_20C_e0_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2072
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e0_g3",
+  "file": "epsw__epsW_N3000_20C_e0_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2069
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e1_g0",
+  "file": "epsw__epsW_N3000_20C_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2070
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e1_g1",
+  "file": "epsw__epsW_N3000_20C_e1_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2068
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e2_g0",
+  "file": "epsw__epsW_N3000_20C_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2091
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e2_g1",
+  "file": "epsw__epsW_N3000_20C_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2088
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e2_g2",
+  "file": "epsw__epsW_N3000_20C_e2_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2084
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e2_g3",
+  "file": "epsw__epsW_N3000_20C_e2_g3.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2094
+ },
+ {
+  "case": "epsw__epsW_N3000_20C_e2_g4",
+  "file": "epsw__epsW_N3000_20C_e2_g4.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2084
+ },
+ {
+  "case": "ferron_bracket_ISOTHERMAL_g0",
+  "file": "ferron_bracket_ISOTHERMAL_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2199
+ },
+ {
+  "case": "ferron_bracket_ISOTHERMAL_g1",
+  "file": "ferron_bracket_ISOTHERMAL_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2224
+ },
+ {
+  "case": "ferron_bracket_THD_g0",
+  "file": "ferron_bracket_THD_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_bracket_THD_g1",
+  "file": "ferron_bracket_THD_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_cvg_b80",
+  "file": "ferron_cvg_b80.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 135970
+ },
+ {
+  "case": "ferron_gsweep_0",
+  "file": "ferron_gsweep_0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_gsweep_270",
+  "file": "ferron_gsweep_270.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_gsweep_290",
+  "file": "ferron_gsweep_290.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_gsweep_306",
+  "file": "ferron_gsweep_306.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2249
+ },
+ {
+  "case": "ferron_gsweep_320",
+  "file": "ferron_gsweep_320.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_gsweep_340",
+  "file": "ferron_gsweep_340.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2247
+ },
+ {
+  "case": "ferron_gw_18_g0",
+  "file": "ferron_gw_18_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_gw_18_g1",
+  "file": "ferron_gw_18_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_gw_36_g0",
+  "file": "ferron_gw_36_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2246
+ },
+ {
+  "case": "ferron_gw_36_g1",
+  "file": "ferron_gw_36_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2267
+ },
+ {
+  "case": "ferron_gw_9_g0",
+  "file": "ferron_gw_9_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2244
+ },
+ {
+  "case": "ferron_gw_9_g1",
+  "file": "ferron_gw_9_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2263
+ },
+ {
+  "case": "ferron_isothermal_e0_g0",
+  "file": "ferron_isothermal_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2197
+ },
+ {
+  "case": "ferron_isothermal_e0_g1",
+  "file": "ferron_isothermal_e0_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 98761
+ },
+ {
+  "case": "ferron_isothermal_e1_g0",
+  "file": "ferron_isothermal_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2189
+ },
+ {
+  "case": "ferron_isothermal_e1_g1",
+  "file": "ferron_isothermal_e1_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 109597
+ },
+ {
+  "case": "ferron_isothermal_e2_g0",
+  "file": "ferron_isothermal_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2208
+ },
+ {
+  "case": "ferron_isothermal_e2_g1",
+  "file": "ferron_isothermal_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 100279
+ },
+ {
+  "case": "ferron_isothermal_final_g0",
+  "file": "ferron_isothermal_final_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2208
+ },
+ {
+  "case": "ferron_isothermal_final_g1",
+  "file": "ferron_isothermal_final_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 100279
+ },
+ {
+  "case": "ferron_load_eps0.47_g0",
+  "file": "ferron_load_eps0.47_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_load_eps0.47_g1",
+  "file": "ferron_load_eps0.47_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_load_eps0.78_g0",
+  "file": "ferron_load_eps0.78_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2237
+ },
+ {
+  "case": "ferron_load_eps0.78_g1",
+  "file": "ferron_load_eps0.78_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2261
+ },
+ {
+  "case": "ferron_load_eps0.7_g0",
+  "file": "ferron_load_eps0.7_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2235
+ },
+ {
+  "case": "ferron_load_eps0.7_g1",
+  "file": "ferron_load_eps0.7_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2254
+ },
+ {
+  "case": "ferron_res_1440_g0",
+  "file": "ferron_res_1440_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2251
+ },
+ {
+  "case": "ferron_res_1440_g1",
+  "file": "ferron_res_1440_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2271
+ },
+ {
+  "case": "ferron_res_720_g0",
+  "file": "ferron_res_720_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_res_720_g1",
+  "file": "ferron_res_720_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2272
+ },
+ {
+  "case": "ferron_thd_adiabatic_e0_g0",
+  "file": "ferron_thd_adiabatic_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_thd_adiabatic_e0_g1",
+  "file": "ferron_thd_adiabatic_e0_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 129265
+ },
+ {
+  "case": "ferron_thd_adiabatic_e1_g0",
+  "file": "ferron_thd_adiabatic_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2235
+ },
+ {
+  "case": "ferron_thd_adiabatic_e1_g1",
+  "file": "ferron_thd_adiabatic_e1_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 146066
+ },
+ {
+  "case": "ferron_thd_adiabatic_e2_g0",
+  "file": "ferron_thd_adiabatic_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_thd_adiabatic_e2_g1",
+  "file": "ferron_thd_adiabatic_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 135652
+ },
+ {
+  "case": "ferron_thd_adiabatic_final_g0",
+  "file": "ferron_thd_adiabatic_final_g0.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 2251
+ },
+ {
+  "case": "ferron_thd_adiabatic_final_g1",
+  "file": "ferron_thd_adiabatic_final_g1.npz",
+  "n_theta": 1440,
+  "n_z": 60,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 397636
+ },
+ {
+  "case": "ferron_thd_metalbush_e0_g0",
+  "file": "ferron_thd_metalbush_e0_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2244
+ },
+ {
+  "case": "ferron_thd_metalbush_e0_g1",
+  "file": "ferron_thd_metalbush_e0_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2267
+ },
+ {
+  "case": "ferron_thd_metalbush_e0_g2",
+  "file": "ferron_thd_metalbush_e0_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 119117
+ },
+ {
+  "case": "ferron_thd_metalbush_e1_g0",
+  "file": "ferron_thd_metalbush_e1_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2236
+ },
+ {
+  "case": "ferron_thd_metalbush_e1_g1",
+  "file": "ferron_thd_metalbush_e1_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 137459
+ },
+ {
+  "case": "ferron_thd_metalbush_e2_g0",
+  "file": "ferron_thd_metalbush_e2_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2256
+ },
+ {
+  "case": "ferron_thd_metalbush_e2_g1",
+  "file": "ferron_thd_metalbush_e2_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 123595
+ },
+ {
+  "case": "ferron_thd_metalbush_final_g0",
+  "file": "ferron_thd_metalbush_final_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2256
+ },
+ {
+  "case": "ferron_thd_metalbush_final_g1",
+  "file": "ferron_thd_metalbush_final_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [
+   "T",
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 123595
+ },
+ {
+  "case": "ferron_tin2_40_g0",
+  "file": "ferron_tin2_40_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_tin2_40_g1",
+  "file": "ferron_tin2_40_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_tin2_42_g0",
+  "file": "ferron_tin2_42_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2247
+ },
+ {
+  "case": "ferron_tin2_42_g1",
+  "file": "ferron_tin2_42_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2267
+ },
+ {
+  "case": "ferron_tin2_45_g0",
+  "file": "ferron_tin2_45_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2248
+ },
+ {
+  "case": "ferron_tin2_45_g1",
+  "file": "ferron_tin2_45_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2270
+ },
+ {
+  "case": "ferron_tin2_48_g0",
+  "file": "ferron_tin2_48_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2249
+ },
+ {
+  "case": "ferron_tin2_48_g1",
+  "file": "ferron_tin2_48_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_tin2_48_g2",
+  "file": "ferron_tin2_48_g2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2274
+ },
+ {
+  "case": "ferron_tin_40_g0",
+  "file": "ferron_tin_40_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2243
+ },
+ {
+  "case": "ferron_tin_40_g1",
+  "file": "ferron_tin_40_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2268
+ },
+ {
+  "case": "ferron_tin_42_g0",
+  "file": "ferron_tin_42_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2242
+ },
+ {
+  "case": "ferron_tin_42_g1",
+  "file": "ferron_tin_42_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2266
+ },
+ {
+  "case": "ferron_tin_45_g0",
+  "file": "ferron_tin_45_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2244
+ },
+ {
+  "case": "ferron_tin_45_g1",
+  "file": "ferron_tin_45_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2264
+ },
+ {
+  "case": "ferron_tin_48_g0",
+  "file": "ferron_tin_48_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2245
+ },
+ {
+  "case": "ferron_tin_48_g1",
+  "file": "ferron_tin_48_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2267
+ },
+ {
+  "case": "fsm_THD_g0",
+  "file": "fsm_THD_g0.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2239
+ },
+ {
+  "case": "fsm_THD_g1",
+  "file": "fsm_THD_g1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 2259
+ },
+ {
+  "case": "ocvirk_LD0.0625",
+  "file": "ocvirk_LD0.0625.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1895
+ },
+ {
+  "case": "ocvirk_LD0.125",
+  "file": "ocvirk_LD0.125.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1892
+ },
+ {
+  "case": "ocvirk_LD0.25",
+  "file": "ocvirk_LD0.25.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1894
+ },
+ {
+  "case": "ocvirk_LD0.5",
+  "file": "ocvirk_LD0.5.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1888
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.2_mu0.01",
+  "file": "rb_LD0.5_flooded_eps0.2_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1936
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.4_mu0.003",
+  "file": "rb_LD0.5_flooded_eps0.4_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1928
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.4_mu0.01",
+  "file": "rb_LD0.5_flooded_eps0.4_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1929
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.6_mu0.003",
+  "file": "rb_LD0.5_flooded_eps0.6_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1930
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.6_mu0.01",
+  "file": "rb_LD0.5_flooded_eps0.6_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1930
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.8_mu0.003",
+  "file": "rb_LD0.5_flooded_eps0.8_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1932
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.8_mu0.01",
+  "file": "rb_LD0.5_flooded_eps0.8_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1933
+ },
+ {
+  "case": "rb_LD0.5_flooded_eps0.9_mu0.01",
+  "file": "rb_LD0.5_flooded_eps0.9_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1934
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.2_mu0.01",
+  "file": "rb_LD0.5_ungrooved_eps0.2_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1911
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.4_mu0.003",
+  "file": "rb_LD0.5_ungrooved_eps0.4_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1904
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.4_mu0.01",
+  "file": "rb_LD0.5_ungrooved_eps0.4_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1904
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.6_mu0.01",
+  "file": "rb_LD0.5_ungrooved_eps0.6_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1905
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.8_mu0.003",
+  "file": "rb_LD0.5_ungrooved_eps0.8_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1909
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.8_mu0.01",
+  "file": "rb_LD0.5_ungrooved_eps0.8_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1908
+ },
+ {
+  "case": "rb_LD0.5_ungrooved_eps0.9_mu0.01",
+  "file": "rb_LD0.5_ungrooved_eps0.9_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1911
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.2_mu0.01",
+  "file": "rb_LD1_flooded_eps0.2_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1937
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.4_mu0.003",
+  "file": "rb_LD1_flooded_eps0.4_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1931
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.4_mu0.01",
+  "file": "rb_LD1_flooded_eps0.4_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1930
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.6_mu0.01",
+  "file": "rb_LD1_flooded_eps0.6_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 810669
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.8_mu0.003",
+  "file": "rb_LD1_flooded_eps0.8_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1934
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.8_mu0.01",
+  "file": "rb_LD1_flooded_eps0.8_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1934
+ },
+ {
+  "case": "rb_LD1_flooded_eps0.9_mu0.01",
+  "file": "rb_LD1_flooded_eps0.9_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1936
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.2_mu0.01",
+  "file": "rb_LD1_ungrooved_eps0.2_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1913
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.4_mu0.003",
+  "file": "rb_LD1_ungrooved_eps0.4_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1906
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.4_mu0.01",
+  "file": "rb_LD1_ungrooved_eps0.4_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1905
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.6_mu0.01",
+  "file": "rb_LD1_ungrooved_eps0.6_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 429698
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.8_mu0.003",
+  "file": "rb_LD1_ungrooved_eps0.8_mu0.003.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1910
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.8_mu0.01",
+  "file": "rb_LD1_ungrooved_eps0.8_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1910
+ },
+ {
+  "case": "rb_LD1_ungrooved_eps0.9_mu0.01",
+  "file": "rb_LD1_ungrooved_eps0.9_mu0.01.npz",
+  "n_theta": 2880,
+  "n_z": 80,
+  "fields": [],
+  "bytes": 1912
+ },
+ {
+  "case": "smoke_LD1_flooded_eps0.6",
+  "file": "smoke_LD1_flooded_eps0.6.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1934
+ },
+ {
+  "case": "smoke_LD1_ungrooved_eps0.6",
+  "file": "smoke_LD1_ungrooved_eps0.6.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [],
+  "bytes": 1910
+ },
+ {
+  "case": "sommerfeld_LD1",
+  "file": "sommerfeld_LD1.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 1900
+ },
+ {
+  "case": "sommerfeld_LD2",
+  "file": "sommerfeld_LD2.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 1898
+ },
+ {
+  "case": "sommerfeld_LD4",
+  "file": "sommerfeld_LD4.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 1901
+ },
+ {
+  "case": "sommerfeld_LD8",
+  "file": "sommerfeld_LD8.npz",
+  "n_theta": 720,
+  "n_z": 40,
+  "fields": [],
+  "bytes": 1903
+ },
+ {
+  "case": "ss_LD1",
+  "file": "ss_LD1.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 140508
+ },
+ {
+  "case": "ss_LD2",
+  "file": "ss_LD2.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 146454
+ },
+ {
+  "case": "ss_LD4",
+  "file": "ss_LD4.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 149750
+ },
+ {
+  "case": "ss_LD8",
+  "file": "ss_LD8.npz",
+  "n_theta": 720,
+  "n_z": 60,
+  "fields": [
+   "film_content",
+   "h",
+   "p"
+  ],
+  "bytes": 137633
+ }
+]
