@@ -2,6 +2,63 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-02 - Brito load comparison is not scoreable as it stands
+
+Applied the Ferron lesson before repeating the mistake: instead of prescribing a
+digitised eccentricity and calling the load a prediction, solve for the
+eccentricity that carries the load Brito APPLIED and therefore knew exactly, so
+the uncertain quantity becomes a check rather than an input. `solve_eps_for_load`
+already existed in the harness and had never been called.
+
+Eccentricity carrying 10 kN at Pf = 70 kPa, Tf = 40 C:
+
+    N rpm    c at 20 C    c hot (+8.8%)   digitised (polar)   d eps
+     1000        0.648          0.678               0.761    -0.113
+     3000        0.426          0.461               0.576    -0.150
+     4000        0.367          0.401               0.558    -0.191
+
+- **The digitisation ambiguity is larger than the discrepancy.** `brito.py`
+  records that the earlier Cartesian reading of Fig. 6 -- a polar chart -- gave
+  eccentricities about 0.15 lower, i.e. near 0.61/0.43/0.41. The solver answers
+  0.648/0.426/0.367, tracking the Cartesian reading to within ~0.04 at every
+  speed. That does not prove the polar re-digitisation wrong -- using the solver
+  to choose the digitisation would be circular -- but it does mean the Brito load
+  comparison cannot discriminate until Fig. 6 is re-read from the source. It is
+  now reported as NOT SCOREABLE rather than as a 65-106% error.
+- The hot-clearance bracket closes 0.030-0.035, about a quarter of the gap at
+  1000 rpm. It rests on assumed metal temperatures Brito did not measure, so it
+  is a bracket and never a correction.
+- The deficit grows monotonically with speed, the qualitative signature of a
+  thermal mechanism, but not as U^2, so it does not by itself confirm the
+  cross-film hypothesis. Eccentricity compresses a load error; re-test the
+  scaling on load at fixed eps after the Phase 2 energy fixes.
+- The two 1000 rpm rows did not converge and are marked in the JSON.
+
+### 2026-08-02 - Validation harnesses can run on multiple ranks
+
+`PANCAKE_VALIDATION_RANKS` selects the rank count (default 1). Verified exact:
+1 and 4 ranks agree bit-identically at `linear_rtol = 1e-12`, and to 4.9e-5 at
+the 1e-8 default, so the residual is the linear solve rather than the
+partitioning.
+
+Enabling it exposed a silent truncation in `read_field`: under N ranks the solver
+writes one theta slice per rank to `processorN/`, and the reader only ever opened
+`processor0`, returning 1/N of the circumference. It failed in the worst way --
+the rank-independence check on LOAD passed throughout, because load comes from
+`Fp`, a globally reduced uniform field that is correct in any single rank's file.
+Only a downstream IndexError exposed it. `read_field` now stitches the per-rank
+pieces (rank N writes `solution_<step>_N.vts`, so the rank-0 basename does not
+exist elsewhere) and raises on a stitched extent that does not match `n_theta`.
+
+### 2026-08-02 - Case data archived behind each verdict
+
+`case_archive/` holds the verbatim `config.txt` for all 197 cases plus the 2-D
+fields for the 38 that back a figure or a verdict, 11 MB total. Previously both
+existed only in the gitignored 1.4 GB `_work/` tree, so a case was reproducible
+only through a harness that may since have changed, and no contour could be drawn
+without re-running the solver. `archive_cases.py --all` regenerates the full 2-D
+set; it is derived data, not a source of truth.
+
 ### 2026-08-02 - Cross-solver residual explained; consolidated validation report
 
 - **The few-percent pancake-minus-reference difference is mesh convergence, not a
