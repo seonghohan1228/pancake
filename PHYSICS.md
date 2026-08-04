@@ -209,7 +209,10 @@ boundary face reduces to the barotropic Dirichlet link above (default, unchanged
 
 ## 7. Reynolds Solvers
 
-Two solvers are available, selected by `cfg.cavitation_model`.
+Three solvers are available, selected by `cfg.cavitation_model`: the
+pressure-primary Gumbel/Sommerfeld solve (§7.1), the Elrod-Adams film-content
+solve (§7.2, `JFO`), and the FBNS complementarity solve (§7.3, `FBNS`). The last
+two both resolve the JFO free boundary; they differ in how.
 
 Before the time loop, the pressure field is initialized from the first
 non-Neumann axial outlet pressure, not from a supply groove. For
@@ -224,6 +227,10 @@ Legacy `bc_z_*_theta` config keys are parsed for old files but are not used by
 the solver. This keeps boundary and initial conditions pressure-based:
 changing pressure or bulk modulus changes the corresponding Elrod film content
 through the EOS. Supply inlets are still imposed during the linear solve.
+
+`FBNS` has no bulk modulus, so its film content starts at $\theta^0 = 1$; the
+solver detects that as a cold start and builds its own uncavitated initial guess
+(§7.3.4).
 
 ### 7.1 Gumbel Solver (`Reynolds::solve`)
 
@@ -296,6 +303,206 @@ $$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \un
 **Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Historically the two paths differed by $\approx 1.2\%$ because the Gumbel wedge term was centered while the Elrod path was upwind; since the WP-3 alignment both paths use the configured `theta_convection_scheme` and the matched full-film comparison agrees to $\approx 0.01\%$ (`tests/test_schemes.cpp`). The switch function $g(\theta)$ (Phase A.2) handles the cavitated region.
 
 **Weighted time derivative.** The FVM operator `FVM::ddt_weighted(sys, theta, weight, dt, mesh)` discretises the liquid-content storage $\partial(\rho_0\theta h)/\partial t$ with weight $\rho_0 h$. It adds $\rho_0 h\,V/\Delta t$ to $a_P$ and $\rho_0 h\,V\,\theta^n/\Delta t$ to `source`. This capacity term is assembled for **every** transient solve (`solution_mode = TRANSIENT`), fixed or moving bearing — gating it on bearing motion would make a fixed-bearing transient (e.g. an `omega_ramp_time` startup) quasi-steady in $\theta$ with film-history physics silently absent. The explicit squeeze source $-\rho_0\theta^n\,\partial h/\partial t$ is added whenever a `dh_dt` field is present. `STEADY_STATE` mode omits both, giving the quasi-steady operating-point solve.
+
+### 7.3 FBNS Complementarity Solver (`FBNS::solve`, `cavitation_model = FBNS`)
+
+The Elrod–Adams path of §7.2 reaches the JFO conditions indirectly: it introduces
+an artificial bulk modulus $\beta$, writes $p = p_{cav} + \beta\ln\theta$, and lets
+a switch function $g(\theta)$ turn Poiseuille diffusion off where $\theta < 1$. The
+free boundary is then located by reading the sign of a quantity that is
+$O(\beta^{-1})$ small near the front, which places the rupture line with
+first-order error and a large prefactor (§7.3.5).
+
+`cavitation_model = FBNS` imposes the same JFO conditions **directly**, following
+Woloszynski, Podsiadlo & Stachowiak, *Efficient Solution to the Cavitation Problem
+in Hydrodynamic Lubrication*, Tribology Letters **58**:18 (2015). There is no bulk
+modulus and no switch function anywhere in the model.
+
+#### 7.3.1 The complementarity form
+
+The liquid is incompressible. The unknowns are the pressure $p$ and the film
+content $\theta$ of every cell, subject to
+
+$$p - p_{cav} \;\ge\; 0, \qquad 1 - \theta \;\ge\; 0, \qquad (p - p_{cav})\,(1 - \theta) \;=\; 0 .$$
+
+A cell is either full ($\theta = 1$, pressure free to rise) or cavitated
+($p = p_{cav}$, content free to fall) — never both, never neither. Mass balance is
+the ordinary Reynolds equation with the film content multiplying the Couette flux
+and the storage term, and the pressure driving Poiseuille flow:
+
+$$\nabla\!\cdot\!\left(\frac{\rho_l h^3}{12\mu}\,\nabla p\right)
+\;-\; \frac{\partial}{R\,\partial\vartheta}\!\left(\rho_l\,\frac{\omega R}{2}\,h\,\theta\right)
+\;-\; \frac{\partial(\rho_l h \theta)}{\partial t} \;=\; 0 ,$$
+
+with $\vartheta$ the circumferential coordinate. Note that no $g(\theta)$ gates the
+Poiseuille term: in a cavitated region complementarity already pins $p = p_{cav}$,
+so $\nabla p = 0$ there and the term switches itself off. The reformation jump is
+likewise automatic — at the reformation face the upstream cell delivers
+$\rho_l\,\omega R\,h_f\,\theta/2$ and the downstream full-film cell absorbs the
+difference through its pressure gradient.
+
+#### 7.3.2 Fischer–Burmeister reformulation
+
+The complementarity triple is equivalent to the single smooth equation
+
+$$\mathrm{FB}(a,b) \;=\; a + b - \sqrt{a^2+b^2} \;=\; 0 ,
+\qquad a = \frac{p - p_{cav}}{p_{ref}}, \qquad b = 1 - \theta ,$$
+
+because $\mathrm{FB}(a,b) = 0 \iff a\ge0,\;b\ge0,\;ab=0$. The system is now
+*unconstrained and continuously differentiable*, so it admits a Newton method — no
+active-set logic, no flag array, no outer flag-update loop.
+
+**Scaling matters.** $\mathrm{FB}$ weights its two arguments equally. Feeding raw
+pascals against a film content in $[0,1]$ makes the pressure branch dominate by six
+orders of magnitude, drives $\partial \mathrm{FB}/\partial p \to 0$ everywhere, and
+degenerates the column swap of §7.3.3. The pressure is therefore nondimensionalized
+by $p_{ref}$ (`fbns_pressure_scale`; $0$ = derived automatically as the Couette
+pressure scale $6\mu|\omega|R^2/c^2$, raised to cover any supplied overpressure).
+The mass balance is likewise divided by a flux scale $g_{ref}$ — the largest
+assembled row sum — which only sets what `fbns_tol` means and cannot change the
+solution.
+
+#### 7.3.3 Newton with a column swap and a Schur reduction
+
+Write $\alpha = 1 - \theta$ (the cavity fraction) so both Fischer–Burmeister
+derivatives come out non-negative, and let $G$ be the scaled mass-balance residual
+and $F$ the vector of $\mathrm{FB}$ values. Newton's step solves
+
+$$\begin{bmatrix} J_{F,p} & J_{F,\alpha} \\ J_{G,p} & J_{G,\alpha} \end{bmatrix}
+\begin{bmatrix}\delta p^{*} \\ \delta\alpha\end{bmatrix} = -\begin{bmatrix}F \\ G\end{bmatrix},$$
+
+where $J_{F,p}$ and $J_{F,\alpha}$ are **diagonal**,
+
+$$J_{F,p}^{(j)} = 1 - \frac{a_j}{\sqrt{a_j^2+b_j^2}}, \qquad
+J_{F,\alpha}^{(j)} = 1 - \frac{b_j}{\sqrt{a_j^2+b_j^2}},$$
+
+both in $[0,2]$, and $J_{G,p} = A$ (Poiseuille), $J_{G,\alpha} = B$ (upwind Couette
+plus backward-Euler storage). Under `fluid_property_model = CONSTANT` and
+`ISOTHERMAL`, $A$ and $B$ are **constant** through the whole Newton iteration:
+the mobility, the face fluxes and the storage weight depend only on the film
+geometry, and the upwind direction follows the face flux sign, not the solution.
+Every nonlinearity lives in $F$.
+
+At the non-differentiable point $a_j = b_j = 0$ the Jacobian arguments — and only
+the Jacobian arguments, never $F$ itself — are perturbed to $\pm\varepsilon$
+($\varepsilon = 10^{-14}$ on the scaled variables), which gives
+$J_{F,p} = J_{F,\alpha} = 1 - 1/\sqrt2$ there.
+
+**Column swap.** For each cell the unknown whose FB derivative is larger is moved
+into the first block:
+
+$$r_j = j,\; r_{j+N} = j+N \quad\text{if } J_{F,p}^{(j)} \ge J_{F,\alpha}^{(j)},
+\qquad r_j = j+N,\; r_{j+N} = j \quad\text{otherwise},$$
+
+giving $\;A_F = \mathrm{diag}\big(\max(J_{F,p},J_{F,\alpha})\big)$ and
+$B_F = \mathrm{diag}\big(\min(J_{F,p},J_{F,\alpha})\big)$. Because
+$\max(J_{F,p}^{(j)},J_{F,\alpha}^{(j)}) \in [1-\tfrac{\sqrt2}{2},\,2]$,
+$\operatorname{cond}(A_F) \le 4 + 2\sqrt2$ regardless of the state, and $B_F \to 0$
+at the solution. $A_G$ and $B_G$ are the correspondingly column-mixed versions of
+$A$ and $B$; since $A$ and $B$ share the 5-point stencil, so do $A_G$, $B_G$ and
+the Schur complement, which is why the existing `LinearSystem` wrapper carries the
+reduced system unchanged.
+
+**Schur reduction.** One sparse solve per Newton step:
+
+$$\big(B_G - A_G A_F^{-1} B_F\big)\,\delta b = -G + A_G A_F^{-1} F,
+\qquad A_F\,\delta a = -F - B_F\,\delta b ,$$
+
+the second being a diagonal scaling. $\delta p^{*}$ and $\delta\alpha$ follow by
+undoing the swap. At the solution $B_F = 0$, so the reduced matrix is exactly
+$B_G$. The linear solve therefore costs what an uncavitated pressure solve costs;
+this is the result the paper's title refers to.
+
+**Update.** $p^{*} \leftarrow \max(p^{*} + \omega_N\,\delta p^{*},\,0)$ and
+$\alpha \leftarrow \mathrm{clamp}(\alpha + \omega_N\,\delta\alpha,\;0,\;1-\theta_{min})$
+with $\omega_N =$ `fbns_relaxation` (default $1$, i.e. a full Newton step). The
+truncation is a safeguard, not the model: it snaps each cell exactly onto the
+complementary axis, so $\mathrm{FB} = 0$ holds identically from the first iterate
+onward and the mass balance $G$ alone drives convergence.
+
+#### 7.3.4 Discretization, boundaries and initial guess
+
+Every face expression matches the finite-volume forms of §5–§7 so the two
+mass-conserving solvers can be compared face by face:
+
+| Term | Face expression (east face of cell $P$) |
+|---|---|
+| Poiseuille | $\mathrm{harm}\big(\gamma_P,\gamma_E\big)\,\dfrac{\Delta z}{R\,\Delta\vartheta}\,(p_P - p_E)$, $\;\gamma = \rho_l h^3/(12\mu)$ |
+| Couette | $F_e\,\theta_{up}$, $\;F_e = \bar\rho_l\,\omega R\,\bar h\,\Delta z/2$, first-order upwind on $\mathrm{sign}(F_e)$ |
+| Storage | $\rho_l h\,\dfrac{\theta_P - \theta_P^{\,n}}{\Delta t}\,\Delta A \;+\; \rho_l\,\theta_P^{\,n}\,\dfrac{\partial h}{\partial t}\,\Delta A$ |
+
+- **Circumferential**: periodic, handled by the ghost exchange and by
+  `LinearSystem`'s wrapping column indices. Nothing special is needed — $\mathrm{FB}$
+  is pointwise, so periodicity never touches $A_F$ or $B_F$.
+- **Axial `DIRICHLET`**: a half-cell Poiseuille link
+  $\gamma_P\,R\Delta\vartheta/(\tfrac12\Delta z)\,(p_P - p_{bc})$ in the mass balance.
+  A cavitated boundary cell therefore re-floods at the *physical* Poiseuille rate
+  driven by $p_{bc} - p_{cav}$; the Elrod path needs the `consistent_boundary_flux`
+  option to approximate this, because its barotropic link overstates re-flooding by
+  $\sim\beta/(p_{bc}-p_{cav})$.
+- **Axial `NEUMANN`**: no flux, no term. No $\theta$ boundary condition is required
+  on either axial end, because the Couette transport is purely circumferential.
+- **`INLET_OUTLET`** is rejected: it switches on the sign of the solution and would
+  break the differentiability the Newton step relies on.
+- **Inlet groove / circular inlet**: both rows of the cell are replaced, which is
+  the FBNS boundary treatment — the mass balance becomes $p^{*} = p^{*}_{supply}$
+  and the complementarity row becomes $\alpha = 0$ with
+  $(J_{F,p}, J_{F,\alpha}) = (0,1)$. Forcing that pair also forces the swap, which
+  is what keeps the Schur complement non-singular on those rows. No penalty
+  coefficient is used.
+- **Initial guess**: on a cold start (no cavitation information in $\theta$ yet) the
+  uncavitated problem $G(p,\alpha{=}0) = 0$ is solved once and clamped to
+  $p \ge p_{cav}$. A transient step warm-starts from the previous step instead.
+
+#### 7.3.5 Verified behaviour
+
+Against the exact incompressible-JFO solution of the infinitely long grooved
+bearing (`cases/00c_jfo_verification/exact_1d_jfo.py`: rupture $302.766608^\circ$,
+reformation $79.006725^\circ$, $p_{max} = 7.597141$ MPa, $W' = 495463.6$ N/m),
+with the front reported at the face between the last full-film and the first
+cavitated cell:
+
+| $N_\vartheta$ | cell | FBNS rupture err | in cells | JFO rupture err | in cells | FBNS $p_{max}$ | JFO $p_{max}$ | FBNS $W'$ | JFO $W'$ |
+|---|---|---|---|---|---|---|---|---|---|
+| 120 | 3.000° | $-2.767^\circ$ | $-0.92$ | $-23.77^\circ$ | $-7.9$ | $+0.54\%$ | $+50.4\%$ | $+0.70\%$ | $+42.0\%$ |
+| 240 | 1.500° | $-1.267^\circ$ | $-0.84$ | $-17.77^\circ$ | $-11.8$ | $+0.28\%$ | $+39.9\%$ | $+0.27\%$ | $+41.0\%$ |
+| 480 | 0.750° | $-0.517^\circ$ | $-0.69$ | $-10.27^\circ$ | $-13.7$ | $+0.14\%$ | $+24.0\%$ | $+0.07\%$ | $+31.1\%$ |
+| 960 | 0.375° | $-0.142^\circ$ | $-0.38$ | $-5.02^\circ$ | $-13.4$ | $+0.07\%$ | $+12.2\%$ | $-0.04\%$ | $+17.8\%$ |
+
+The reformation front lands within $0.66$ cells at every resolution
+($+1.99^\circ, +0.49^\circ, +0.49^\circ, +0.12^\circ$). The JFO column keeps a
+front error of $7$–$13$ cell widths — it shrinks in degrees but not relative to the
+mesh, which is the defect that motivated this solver.
+
+Convergence is Newton-like and grid-independent: **4 Newton iterations** at every
+resolution from $N_\vartheta = 120$ to $960$. The residual history at
+$N_\vartheta = 480$ is
+
+$$6.40\times10^{-4} \to 6.02\times10^{-4} \to 3.93\times10^{-5} \to 1.23\times10^{-5} \to 3.49\times10^{-12},$$
+
+the last step dropping seven orders at once: once the active set (which cells are
+cavitated) stops changing, the remaining system is exactly linear and the semismooth
+Newton step terminates finitely.
+
+The per-cell continuity residual (§15.1) on the converged $N_\vartheta = 480$ run is
+$1.5\times10^{-11}$ kg/s at worst, $3.5\times10^{-10}$ of the peak Couette face flux
+— the Krylov tolerance — and $3\times10^{-14}$ of it on the rupture and reformation
+cells themselves. The groove cells are exactly zero (their imbalance is the modelled
+supply, reported separately as `inlet_mass_source`).
+
+#### 7.3.6 Scope and limits
+
+Phase 1 supports `temperature_model = ISOTHERMAL`, `fluid_property_model =
+CONSTANT`, `solution_mode` `STEADY_STATE` and `TRANSIENT` (backward Euler),
+`motion_model` `STATIC` and `MOVING_BEARING`, groove and circular inlets,
+`DIRICHLET`/`NEUMANN` axial boundaries, and MPI decomposition in $\vartheta$.
+The energy equation, the dissolved-gas/two-phase property layer, the cross-film
+Dowson coefficients and `gas_pressure_coupling` are **rejected at config
+validation** rather than silently ignored, because each of them couples back into
+the Reynolds operator and is not yet part of the FBNS Jacobian. Use
+`cavitation_model = JFO` for those. `theta_convection_scheme` is ignored (FBNS uses
+first-order upwind, and a higher-order upwind stencil would add $\vartheta$-second-
+neighbour columns to $B$); `bulk_modulus` is unused.
 
 ---
 
@@ -1123,8 +1330,8 @@ and summarized on the DETAILED log line.
 
 A global balance that closes to round-off cannot distinguish a cell-by-cell
 conservative scheme from large local errors that cancel on summation. The
-optional output field `mass_residual` (select it in `output_fields`; JFO only)
-exposes the *per-cell* liquid-continuity residual of the converged state, in
+optional output field `mass_residual` (select it in `output_fields`; JFO and FBNS
+only) exposes the *per-cell* liquid-continuity residual of the converged state, in
 **kg/s, cell-integrated — not area-normalized**, so it carries the same units as
 every rate in the global balance. For cell $P$ with faces $f \in \{e,w,n,s\}$,
 
@@ -1147,6 +1354,16 @@ $$\sum_P r_P \;=\; S_{storage} - \Phi_{boundary} - S_{inlet} - \frac{M_{clamp}}{
 Inlet penalty cells carry only the clamp term. Their flux imbalance *is* the
 modelled supply source, which the global balance already reports separately as
 $S_{inlet}$; leaving it in the field would double-count it in the sum above.
+
+**Under `cavitation_model = FBNS`** the field mirrors the FBNS operator instead
+(`FBNS::cell_outflow`), because that solver assembles different face fluxes: the
+Poiseuille term is $\mathrm{harm}(\rho_l h^3/12\mu)\,(p_P-p_F)\,A_f/\delta_f$ —
+driven by pressure, with no bulk modulus and no switch function — the Couette face
+value is always first-order upwind, and axial Dirichlet faces use the plain
+half-cell pressure link of §7.3.4. There is no clamp term: the FBNS truncations act
+on Newton iterates, not on the converged state, so `cavitation_clamp_mass` stays
+zero and the sum identity reads $\sum_P r_P = -\Phi_{boundary} - S_{inlet}$ in
+steady state. Inlet cells are zeroed for the same reason as above.
 
 Reading the field: a cell that is not a groove cell, not clamped and not on the
 rupture or reformation front must sit at round-off of its own row — the
@@ -1352,7 +1569,8 @@ hover text mirrors these; this section is the canonical explanation.
 |---|---|---|
 | `FULL_SOMMERFELD` | No cavitation; sub-cavity (tensile) $p$ kept. Antisymmetric Sommerfeld solution. | **Reference baseline** for overlay plots only (not a real operating point). |
 | `GUMBEL` | Half-Sommerfeld: solve, then clamp $p\!\ge\!p_{cav}$. Non-conservative. | Fast, robust load-capacity estimates. |
-| **`JFO`** | Mass-conserving Jakobsson–Floberg–Olsson via Elrod–Adams film content $\theta$ (§4, §7.2): $p=p_{cav}+\beta\ln\theta$ for $\theta\!\ge\!1$, $\theta<1$ cavitated. | The production model (physical rupture **and** reformation). |
+| **`JFO`** | Mass-conserving Jakobsson–Floberg–Olsson via Elrod–Adams film content $\theta$ (§4, §7.2): $p=p_{cav}+\beta\ln\theta$ for $\theta\!\ge\!1$, $\theta<1$ cavitated. | The production model for thermal / gas-coupled runs (physical rupture **and** reformation). |
+| **`FBNS`** | The same JFO conditions as a complementarity problem in $(p,\theta)$, solved by Fischer–Burmeister–Newton–Schur (§7.3). No bulk modulus, no switch function. | Isothermal, constant-property runs where free-boundary accuracy matters: front error $\le\!1$ cell vs $7$–$13$ for `JFO`, at 4 Newton iterations. |
 
 ### 17.2 Lubricant property fidelity — `fluid_property_model`
 

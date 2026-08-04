@@ -495,7 +495,13 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                      {CavitationModel::JFO, "JFO (Elrod-Adams)",
                       "Mass-conserving Jakobsson-Floberg-Olsson cavitation via the Elrod-Adams "
                       "film-content algorithm: rupture AND reformation are physical. The "
-                      "recommended production model for accurate extent and oil transport."}});
+                      "recommended production model for accurate extent and oil transport."},
+                     {CavitationModel::FBNS, "JFO (FBNS complementarity)",
+                      "The same JFO conditions solved as a complementarity problem in (p, theta) "
+                      "by the Fischer-Burmeister-Newton-Schur algorithm. No artificial bulk "
+                      "modulus and no switch function, so the rupture front is placed far more "
+                      "accurately than Elrod-Adams at the same grid. Phase 1: isothermal, "
+                      "constant fluid properties."}});
                 row("Cavitation threshold", "Pressure the ruptured (cavitated) film is held at.");
                 changed |= enum_combo<CavitationThreshold>(
                     "##cavitation_threshold", config_.cavitation_threshold,

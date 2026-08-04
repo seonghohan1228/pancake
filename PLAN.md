@@ -8,6 +8,21 @@ Fresh validation campaign run from scratch at the user's direction; the earlier
 `VALIDATION_PLAN.md` (root) is retained for history but no longer tracks status.
 Case 00 (grid/dt independence on the Ferron geometry) is running.
 
+Case 00c (JFO solver verification), test #1 — exact 1D benchmark: **CLOSED by a
+new solver.** The Elrod-Adams rupture front is 7–13 *cell widths* upstream of the
+exact solution at n_theta = 120..960 and does not converge relative to the mesh,
+which is a free-boundary-treatment defect, not a conservation defect (test #3
+already ruled that out). `cavitation_model = FBNS` (`src/fbns.{hpp,cpp}`,
+PHYSICS.md §7.3, `tests/test_fbns.cpp`) solves the same JFO conditions as a
+complementarity problem — no bulk modulus, no switch function — and lands the
+rupture front within 1 cell and the reformation front within 0.66 cells at every
+resolution, with p_max/W' errors of 0.5%→0.07%, in 4 grid-independent Newton
+iterations. Runs in `cases/00c_jfo_verification/oneD_n*_fbns/`. Remaining work
+(phase 2): couple the energy equation, the dissolved-gas/two-phase property layer
+and the cross-film Dowson coefficients into the FBNS Jacobian; they are currently
+rejected at config validation. Test #2 (published 2D contours) still waits on
+data.
+
 Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
 field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,
 PHYSICS.md §15.1, `tests/test_mass_residual.cpp`). The 00c converged state is

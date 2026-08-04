@@ -30,6 +30,9 @@ add_pancake_test(test_fluid_properties)
 add_pancake_test(test_gas_transport)
 add_pancake_test(test_diagnostics)
 add_pancake_test(test_mass_residual)
+add_pancake_test(test_fbns)
+add_test(NAME test_fbns_mpi6
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 6 $<TARGET_FILE:test_fbns>)
 add_pancake_test(test_schemes)
 add_test(NAME test_schemes_mpi6
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 6 $<TARGET_FILE:test_schemes>)

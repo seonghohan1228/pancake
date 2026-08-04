@@ -1,0 +1,74 @@
+#pragma once
+
+#include <vector>
+
+#include "config.hpp"
+#include "communicator.hpp"
+#include "field.hpp"
+#include "linear_system.hpp"
+#include "mesh.hpp"
+
+/// Mass-conserving cavitation as a complementarity problem, solved by the
+/// Fischer-Burmeister-Newton-Schur (FBNS) algorithm of Woloszynski, Podsiadlo &
+/// Stachowiak, "Efficient Solution to the Cavitation Problem in Hydrodynamic
+/// Lubrication", Tribology Letters 58:18 (2015).
+///
+/// The unknowns are the pressure p and the liquid film content theta of every
+/// cell. Instead of Elrod's barotropic switch, the JFO conditions are imposed
+/// directly and pointwise:
+///
+///     p - p_cav >= 0,   1 - theta >= 0,   (p - p_cav)(1 - theta) = 0
+///
+/// which is equivalent to the smooth, unconstrained Fischer-Burmeister equation
+/// FB(a, b) = a + b - sqrt(a^2 + b^2) = 0 with a = (p - p_cav)/p_ref and
+/// b = 1 - theta. There is no artificial bulk modulus anywhere in the model, so
+/// `bulk_modulus` is ignored under this path.
+///
+/// Required fields: "pressure", "theta", "h", "rho"; optional "mu",
+/// "rho_liquid_solution", "dh_dt". Theta ghost cells of h, mu and the density
+/// fields must be synced by Communicator before calling; the solver syncs the
+/// unknowns itself.
+///
+/// Phase 1 scope (enforced in SimulationConfig::validate): ISOTHERMAL,
+/// fluid_property_model = CONSTANT, DIRICHLET/NEUMANN axial boundaries.
+namespace FBNS {
+
+    /// Convergence summary of the Newton iteration.
+    /// `residual_history` holds max(|G|, |FB|) evaluated at every iterate,
+    /// starting with the initial guess, so quadratic convergence is visible.
+    struct Stats {
+        int newton_iters = 0;
+        double residual = 0.0;            // final max(|G|, |FB|), scaled
+        double residual_mass = 0.0;       // final max |G| (mass balance, scaled)
+        double residual_complementarity = 0.0;  // final max |FB|
+        double max_theta_change = 0.0;    // max |delta theta| of the last accepted step
+        bool converged = false;
+        std::vector<double> residual_history;
+    };
+
+    /// True when FBNS is the selected cavitation model.
+    bool active(const SimulationConfig& cfg);
+
+    /// Pressure scale p_ref [Pa] used to nondimensionalize (p - p_cav) inside the
+    /// Fischer-Burmeister function. Returns cfg.fbns_pressure_scale when it is
+    /// positive, otherwise the Couette pressure scale 6 mu |omega| R^2 / c^2
+    /// raised to cover any supplied overpressure.
+    double pressure_scale(const SimulationConfig& cfg);
+
+    /// Net liquid mass outflow [kg/s] of one cell under the FBNS operator:
+    /// Poiseuille diffusion of p, upwind Couette transport of theta, and the
+    /// backward-Euler storage of (rho h theta). Interior faces telescope between
+    /// neighbours, so summing over the domain leaves only the axial boundary
+    /// faces and the storage terms. `dt <= 0` drops the storage terms.
+    ///
+    /// This is the residual the Newton iteration drives to zero, and the same
+    /// expression Diagnostics::mass_residual reports per cell.
+    double cell_outflow(const Fields& fields, const Mesh& mesh,
+                        const SimulationConfig& cfg, double dt, int i, int j);
+
+    /// Solve the complementarity problem. Sets "pressure", "theta" and "rho"
+    /// (= rho_liquid * theta) and leaves both unknowns with valid ghost cells.
+    Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
+                const Mesh& mesh, const SimulationConfig& cfg);
+
+}  // namespace FBNS

@@ -129,12 +129,19 @@ bc_z_north_val = 1.5e6
 bc_z_north_thermal = ZERO_GRADIENT
 
 # Cavitation
-# Options: FULL_SOMMERFELD, GUMBEL, JFO
+# Options: FULL_SOMMERFELD, GUMBEL, JFO, FBNS
+# FBNS solves the JFO conditions as a complementarity problem (no bulk modulus,
+# no switch function). Phase 1: ISOTHERMAL + fluid_property_model = CONSTANT.
 cavitation_model = JFO
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6
 log_outer_iters = false
+# FBNS only. fbns_pressure_scale = 0 derives p_ref from the operating point.
+fbns_max_iters = 100
+fbns_tol = 1e-9
+fbns_relaxation = 1.0
+fbns_pressure_scale = 0
 
 # Inlets
 # inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)]

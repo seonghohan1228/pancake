@@ -2,6 +2,111 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-04 - FBNS complementarity cavitation (`cavitation_model = FBNS`)
+
+New module `src/fbns.{hpp,cpp}` implementing the Fischer-Burmeister-Newton-Schur
+algorithm of Woloszynski, Podsiadlo & Stachowiak, *Efficient Solution to the
+Cavitation Problem in Hydrodynamic Lubrication*, Tribol. Lett. **58**:18 (2015).
+Selected with `cavitation_model = FBNS`; the `FULL_SOMMERFELD`, `GUMBEL` and
+`JFO` paths are untouched and verified bit-identical (byte-compare of
+`diagnostics.csv` and every VTK/PVD product of `cases/00c_jfo_verification/
+oneD_n120_b1e9` on 4 ranks, before and after the whole change).
+
+**Why.** `cases/00c_jfo_verification` established that the Elrod-Adams rupture
+front carries a first-order error with a ~7-cell prefactor: at n_theta = 120..960
+the front sits 7-13 *cell widths* upstream of the exact 1D solution, and the
+error does not shrink relative to the mesh. The 2026-08-04 `mass_residual` work
+already ruled out a non-conservative flux or boundary treatment - the converged
+state is per-cell conservative at round-off. What is left is the free-boundary
+treatment itself: Elrod reads the switch through the degenerate `p - p_cav`
+signal, which is `O(beta^-1)` small near the front because `p = p_cav + beta
+ln(theta)`. FBNS removes the mechanism rather than tuning it.
+
+**Formulation** (PHYSICS.md §7.3). Incompressible liquid; unknowns `p` and
+`theta` per cell. The JFO conditions `p - p_cav >= 0`, `1 - theta >= 0`,
+`(p - p_cav)(1 - theta) = 0` are imposed directly through the smooth,
+unconstrained Fischer-Burmeister equation `FB(a,b) = a + b - sqrt(a^2 + b^2)`
+with `a = (p - p_cav)/p_ref` and `b = 1 - theta`, paired with the discrete
+Reynolds mass balance (pressure-driven Poiseuille, first-order upwind Couette
+transport of `theta`, backward-Euler `d(rho h theta)/dt`). Newton's step uses the
+paper's column swap - the unknown with the larger FB derivative goes into the
+first block, bounding `cond(A_F) <= 4 + 2 sqrt(2)` - and the Schur reduction, so
+one 5-point sparse solve per iteration through the existing `LinearSystem`/PETSc
+KSP. **No artificial bulk modulus and no switch function** anywhere: a cavitated
+cell has `p = p_cav`, so its pressure gradient - and hence its Poiseuille flux -
+vanishes on its own, and the reformation jump is carried by the downstream cell's
+pressure gradient.
+
+**Scaling is not optional.** FB weights its two arguments equally; raw pascals
+against a film content in [0,1] make the pressure branch dominate by six orders
+of magnitude, drive `J_F,p -> 0` everywhere, and degenerate the swap. Pressure is
+nondimensionalized by `p_ref` (`fbns_pressure_scale`, 0 = the Couette pressure
+scale `6 mu |omega| R^2 / c^2` raised to cover any supplied overpressure); the
+mass balance is scaled by the largest assembled row sum, which only sets what
+`fbns_tol` means.
+
+**Verified** against `cases/00c_jfo_verification/exact_1d_jfo.py` (exact rupture
+302.766608 deg, reformation 79.006725 deg, p_max 7.597141 MPa, W' 495463.6 N/m)
+in new sibling cases `oneD_n{120,240,480,960}_fbns`, 4 ranks, front reported at
+the face between the last full-film and the first cavitated cell:
+
+| n_theta | cell | FBNS rupture err | cells | JFO rupture err | cells | FBNS reform err | FBNS p_max | FBNS W' |
+|---|---|---|---|---|---|---|---|---|
+| 120 | 3.000 deg | -2.767 deg | -0.92 | -23.77 deg | -7.9 | +1.99 deg (+0.66) | +0.54% | +0.70% |
+| 240 | 1.500 deg | -1.267 deg | -0.84 | -17.77 deg | -11.8 | +0.49 deg (+0.33) | +0.28% | +0.27% |
+| 480 | 0.750 deg | -0.517 deg | -0.69 | -10.27 deg | -13.7 | +0.49 deg (+0.66) | +0.14% | +0.07% |
+| 960 | 0.375 deg | -0.142 deg | -0.38 | -5.02 deg | -13.4 | +0.12 deg (+0.32) | +0.07% | -0.04% |
+
+JFO `p_max` is +50.4% / +39.9% / +24.0% / +12.2% and `W'` +42.0% / +41.0% /
++31.1% / +17.8% on the same grids. FBNS converges in **4 Newton iterations at
+every resolution**; the n = 480 residual history is
+`6.40e-4 -> 6.02e-4 -> 3.93e-5 -> 1.23e-5 -> 3.49e-12`, the last step dropping
+seven orders because once the active set stops changing the remaining system is
+exactly linear and the semismooth Newton step terminates finitely.
+
+**mass_residual.** `Diagnostics::mass_residual` gained an FBNS branch: the FBNS
+face fluxes differ from `solve_elrod`'s (pressure-driven Poiseuille without beta
+or `g(theta)`, always-upwind Couette, plain half-cell axial Dirichlet link), so
+the field mirrors `FBNS::cell_outflow` - the same function the Newton residual
+uses, so there is one operator, not two. No clamp term: the Newton truncations
+act on iterates, not on the converged state. On the converged n = 480 run the
+worst cell is 1.5e-11 kg/s = 3.5e-10 of the peak Couette face flux (the Krylov
+tolerance), and 3e-14 of it on the rupture and reformation cells themselves;
+groove cells are exactly zero, their imbalance being reported as
+`inlet_mass_source`. `liquid_boundary_inflow` gained the matching FBNS branch.
+
+**Boundaries.** Inlet cells replace *both* rows - mass balance becomes
+`p* = p*_supply`, complementarity becomes `alpha = 0` with
+`(J_F,p, J_F,alpha) = (0,1)`. Forcing that pair also forces the swap, which is
+what keeps the Schur complement non-singular on those rows; no penalty
+coefficient is used. Axial `DIRICHLET` is a half-cell Poiseuille link, so a
+cavitated boundary cell re-floods at the physical rate that the Elrod path needs
+`consistent_boundary_flux` to approximate. `NEUMANN` carries no term and needs no
+`theta` boundary condition, because Couette transport is purely circumferential.
+
+**Scope, enforced not assumed.** Phase 1 is `ISOTHERMAL` +
+`fluid_property_model = CONSTANT`, steady or transient, static or moving bearing,
+`DIRICHLET`/`NEUMANN` axial ends, MPI-parallel. The energy equation, the
+dissolved-gas / two-phase layer, `gas_pressure_coupling`, the cross-film Dowson
+coefficients and `INLET_OUTLET` each couple back into the Reynolds operator and
+are **not** in the FBNS Jacobian, so `validate()` rejects them with a message
+pointing at `cavitation_model = JFO`. `theta_convection_scheme` is warned as
+ignored. `cavitated_film_model = STRIATED` now accepts `JFO` or `FBNS` (both
+carry a mass-conserving `theta`).
+
+**New config keys**: `fbns_max_iters` (100), `fbns_tol` (1e-9),
+`fbns_relaxation` (1.0), `fbns_pressure_scale` (0 = auto). `bulk_modulus` is
+unused on this path.
+
+**Tests**: `tests/test_fbns.cpp` (2 and 6 ranks) covers pointwise
+complementarity, per-cell mass conservation, the discrete cavitated-zone flux
+invariant `h_face * theta = const` across rank boundaries (the rank-independence
+check), free-boundary accuracy against the exact benchmark *including* the
+requirement that Elrod be at least 4x worse on the same grid (so the benchmark
+cannot silently stop discriminating), transient backward-Euler storage, Dirichlet
+axial ends with the telescoping identity, and the phase-1 validation gates.
+27/27 tests pass. `tests/test_coupling.cpp` gained the STRIATED + FBNS case.
+
 ### 2026-08-04 - Per-cell mass-residual output field (case 00c test #3)
 
 New optional output field `mass_residual`: the per-cell liquid-continuity

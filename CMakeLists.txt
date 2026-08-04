@@ -87,6 +87,7 @@ set(PANCAKE_HEADERS
     src/diagnostics.hpp
     src/energy.hpp
     src/equation_of_state.hpp
+    src/fbns.hpp
     src/field.hpp
     src/fluid_properties.hpp
     src/film_thickness.hpp
@@ -163,6 +164,7 @@ if(PANCAKE_BUILD_SOLVER)
         src/cross_film.cpp
         src/diagnostics.cpp
         src/energy.cpp
+        src/fbns.cpp
         src/field.cpp
         src/fluid_properties.cpp
         src/film_thickness.cpp

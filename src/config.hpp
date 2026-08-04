@@ -21,7 +21,13 @@
 //   JFO             - mass-conserving Jakobsson-Floberg-Olsson cavitation via the
 //                     Elrod-Adams film-content algorithm. Physical rupture AND
 //                     reformation; the production model.
-enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO };
+//   FBNS            - the same JFO conditions written as a complementarity problem
+//                     in (p, theta) and solved by the Fischer-Burmeister-Newton-Schur
+//                     algorithm of Woloszynski, Podsiadlo & Stachowiak (2015).
+//                     No artificial bulk modulus and no switch function: the free
+//                     boundary is placed by p >= p_cav, theta <= 1, (p-p_cav)(1-theta) = 0.
+//                     Phase 1 scope: ISOTHERMAL + fluid_property_model = CONSTANT.
+enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO, FBNS };
 enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 /// Thermal treatment of fluid entering through a pressure boundary.
 ///   ZERO_GRADIENT - submerged / open end: the entering oil is the same
@@ -245,6 +251,7 @@ inline const char* to_config_value(CavitationModel model) {
         case CavitationModel::FULL_SOMMERFELD: return "FULL_SOMMERFELD";
         case CavitationModel::GUMBEL: return "GUMBEL";
         case CavitationModel::JFO: return "JFO";
+        case CavitationModel::FBNS: return "FBNS";
     }
     return "JFO";
 }
@@ -728,6 +735,19 @@ struct SimulationConfig {
     double theta_min       = 1e-6;  // Minimum film content
     bool   log_outer_iters = true;  // Whether to print outer iteration progress
 
+    // FBNS (cavitation_model = FBNS). The complementarity solve has no artificial
+    // bulk modulus, so bulk_modulus is unused; these replace max_outer_iters /
+    // outer_tol for that path.
+    int    fbns_max_iters = 100;      // Newton iteration limit per solve
+    double fbns_tol       = 1e-9;     // max-norm tolerance on the scaled (G, FB) residuals
+    double fbns_relaxation = 1.0;     // Newton step damping in (0, 1]; 1 = full step
+    // Pressure scale p_ref [Pa] that nondimensionalizes (p - p_cav) inside the
+    // Fischer-Burmeister function. The FB function weights its two arguments
+    // equally, so feeding raw pascals against a film content in [0, 1] destroys
+    // the conditioning. 0 = derive it from the operating point (the Couette
+    // pressure scale 6 mu |omega| R^2 / c^2 and any supplied overpressure).
+    double fbns_pressure_scale = 0.0;
+
     // Outer (Picard) coupling between Reynolds, properties, and energy. In
     // STEADY_STATE the coupled sweep is repeated until the normalized pressure
     // and temperature residuals fall below coupling_tolerance (a real fixed
@@ -934,6 +954,8 @@ struct SimulationConfig {
                 else if (value == "GUMBEL") cavitation_model = CavitationModel::GUMBEL;
                 else if (value == "JFO" || value == "ELROD_ADAMS" || value == "ELROD")
                     cavitation_model = CavitationModel::JFO;
+                else if (value == "FBNS" || value == "COMPLEMENTARITY")
+                    cavitation_model = CavitationModel::FBNS;
             }
             else if (key == "cavitation_threshold") {
                 if (value == "LOCAL_PSAT" || value == "PSAT")
@@ -962,6 +984,10 @@ struct SimulationConfig {
             }
             else if (key == "max_outer_iters") max_outer_iters = std::stoi(value);
             else if (key == "outer_tol") outer_tol = std::stod(value);
+            else if (key == "fbns_max_iters") fbns_max_iters = std::stoi(value);
+            else if (key == "fbns_tol") fbns_tol = std::stod(value);
+            else if (key == "fbns_relaxation") fbns_relaxation = std::stod(value);
+            else if (key == "fbns_pressure_scale") fbns_pressure_scale = std::stod(value);
             else if (key == "theta_min") theta_min = std::stod(value);
             else if (key == "log_outer_iters") {
                 if (is_true(value)) log_outer_iters = true;
@@ -1193,9 +1219,54 @@ struct SimulationConfig {
             warn("GUMBEL is a pressure clamp and is not mass-conserving JFO cavitation.");
         }
 
-        if (output_field_enabled("mass_residual") && cavitation_model != CavitationModel::JFO) {
-            warn("output field mass_residual is the residual of the JFO film-content "
-                 "balance; under the selected cavitation model it is written as zero.");
+        if (output_field_enabled("mass_residual") &&
+            cavitation_model != CavitationModel::JFO &&
+            cavitation_model != CavitationModel::FBNS) {
+            warn("output field mass_residual is the residual of the mass-conserving "
+                 "cavitation balance (JFO or FBNS); under the selected cavitation model "
+                 "it is written as zero.");
+        }
+
+        if (cavitation_model == CavitationModel::FBNS) {
+            // Phase 1 scope. Each of these couples back into the Reynolds operator
+            // (through mu(T), rho(p,T,c), or the free-gas void) and is not yet part
+            // of the FBNS Jacobian, so refuse rather than silently ignore them.
+            if (temperature_model != TemperatureModel::ISOTHERMAL) {
+                error("cavitation_model = FBNS is phase 1 and supports temperature_model = "
+                      "ISOTHERMAL only; the energy equation is not yet coupled into the "
+                      "complementarity Jacobian. Use cavitation_model = JFO for thermal runs.");
+            }
+            if (fluid_property_model != FluidPropertyModel::CONSTANT) {
+                error("cavitation_model = FBNS is phase 1 and supports fluid_property_model = "
+                      "CONSTANT only; dissolved-gas / two-phase property coupling and gas "
+                      "transport are not yet part of the complementarity Jacobian. Use "
+                      "cavitation_model = JFO.");
+            }
+            if (gas_pressure_coupling != GasPressureCoupling::NONE) {
+                error("cavitation_model = FBNS requires gas_pressure_coupling = NONE; the "
+                      "void-coupled plateau closure belongs to the Elrod (JFO) path.");
+            }
+            if (cross_film_thermal_model != CrossFilmModel::NONE) {
+                error("cavitation_model = FBNS requires cross_film_thermal_model = NONE "
+                      "(the generalized Dowson coefficients are not yet in the FBNS operator).");
+            }
+            if (bc_z_south_type == BCType::INLET_OUTLET || bc_z_north_type == BCType::INLET_OUTLET) {
+                error("cavitation_model = FBNS supports DIRICHLET and NEUMANN axial boundaries; "
+                      "INLET_OUTLET switches on the sign of the solution and would break the "
+                      "differentiability the Newton solve relies on.");
+            }
+            if (theta_convection_scheme != ConvectionScheme::UPWIND) {
+                warn("cavitation_model = FBNS transports the film content with first-order "
+                     "upwind (the FBNS discretization); theta_convection_scheme is ignored.");
+            }
+            if (fbns_max_iters <= 0) error("fbns_max_iters must be positive.");
+            if (!finite(fbns_tol) || fbns_tol <= 0.0) error("fbns_tol must be positive.");
+            if (!finite(fbns_relaxation) || fbns_relaxation <= 0.0 || fbns_relaxation > 1.0) {
+                error("fbns_relaxation must lie in (0, 1].");
+            }
+            if (!finite(fbns_pressure_scale) || fbns_pressure_scale < 0.0) {
+                error("fbns_pressure_scale must be >= 0 (0 = derive it from the operating point).");
+            }
         }
 
         if (thermal_convection_scheme == ConvectionScheme::TYPE_DIFFERENCING) {
@@ -1297,9 +1368,10 @@ struct SimulationConfig {
                        density_table, "density_table_file");
 
         if (cavitated_film_model == CavitatedFilmModel::STRIATED &&
-            cavitation_model != CavitationModel::JFO) {
-            error("cavitated_film_model = STRIATED requires cavitation_model = JFO "
-                  "(it weights the cavitated zone by the JFO film content theta).");
+            cavitation_model != CavitationModel::JFO &&
+            cavitation_model != CavitationModel::FBNS) {
+            error("cavitated_film_model = STRIATED requires cavitation_model = JFO or FBNS "
+                  "(it weights the cavitated zone by the mass-conserving film content theta).");
         }
 
         if (gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED) {
@@ -1473,8 +1545,15 @@ struct SimulationConfig {
         return (std::isfinite(p_sat) && p_sat > p_cav) ? p_sat : p_cav;
     }
 
+    /// True when the selected model resolves the JFO free boundary and therefore
+    /// maintains a physical film content theta in [theta_min, 1].
+    bool mass_conserving_cavitation() const {
+        return cavitation_model == CavitationModel::JFO ||
+               cavitation_model == CavitationModel::FBNS;
+    }
+
     double initial_pressure() const {
-        if (cavitation_model == CavitationModel::JFO) {
+        if (mass_conserving_cavitation()) {
             if (bc_z_south_type != BCType::NEUMANN) return elrod_boundary_pressure(bc_z_south_val);
             if (bc_z_north_type != BCType::NEUMANN) return elrod_boundary_pressure(bc_z_north_val);
             return effective_p_cav();
@@ -1749,7 +1828,7 @@ struct SimulationConfig {
             << "bc_z_north_thermal = " << to_config_value(bc_z_north_thermal) << "\n\n";
 
         out << "# Cavitation\n"
-            << "# Options: FULL_SOMMERFELD, GUMBEL, JFO\n"
+            << "# Options: FULL_SOMMERFELD, GUMBEL, JFO, FBNS\n"
             << "cavitation_model = " << to_config_value(cavitation_model) << "\n"
             << "# cavitation_threshold: SCALAR_PCAV (oil p_cav) or LOCAL_PSAT (max of p_cav\n"
             << "# and the dissolved-species bubble point, so the first-released species governs onset)\n"
@@ -1762,7 +1841,13 @@ struct SimulationConfig {
             << "max_outer_iters = " << max_outer_iters << "\n"
             << "outer_tol = " << outer_tol << "\n"
             << "theta_min = " << theta_min << "\n"
-            << "log_outer_iters = " << (log_outer_iters ? "true" : "false") << "\n\n";
+            << "log_outer_iters = " << (log_outer_iters ? "true" : "false") << "\n"
+            << "# FBNS only (cavitation_model = FBNS). bulk_modulus is unused there.\n"
+            << "# fbns_pressure_scale = 0 derives p_ref from the operating point.\n"
+            << "fbns_max_iters = " << fbns_max_iters << "\n"
+            << "fbns_tol = " << fbns_tol << "\n"
+            << "fbns_relaxation = " << fbns_relaxation << "\n"
+            << "fbns_pressure_scale = " << fbns_pressure_scale << "\n\n";
 
         out << "# Inlets\n"
             << "# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]\n"
@@ -1807,7 +1892,7 @@ struct SimulationConfig {
             << "#          external_load_x, external_load_y, external_load_z,\n"
             << "#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,\n"
             << "#          friction_torque,\n"
-            << "#          mass_residual (per-cell continuity residual [kg/s], JFO only).\n"
+            << "#          mass_residual (per-cell continuity residual [kg/s], JFO/FBNS only).\n"
             << "#          Legacy load_x/load_y/load_z requests map to pressure_force_*.\n"
             << "output_dir = " << output_dir << "\n"
             << "filename_prefix = " << filename_prefix << "\n"

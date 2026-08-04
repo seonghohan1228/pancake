@@ -225,6 +225,25 @@ film-content magnitudes. The solver initializes the pressure field uniformly
 from the first non-Neumann outlet pressure, not from supply-groove pressure.
 Supply inlets are still imposed during the solve.
 
+`cavitation_model = FBNS` solves the same JFO conditions as a complementarity
+problem instead of through the Elrod-Adams bulk-modulus formulation. It imposes
+`p - p_cav >= 0`, `1 - theta >= 0` and `(p - p_cav)(1 - theta) = 0` directly via
+the Fischer-Burmeister function and a Newton iteration with a Schur reduction
+(Woloszynski, Podsiadlo & Stachowiak, Tribol. Lett. 58:18, 2015). There is no
+artificial bulk modulus and no switch function, so `bulk_modulus` is unused on
+this path. On the exact 1D benchmark of `cases/00c_jfo_verification` it places
+the rupture front within one cell at every resolution from 120 to 960
+circumferential cells, where `JFO` is 7-13 cells off, and it converges in four
+Newton iterations independent of grid size. Phase 1 scope: `temperature_model =
+ISOTHERMAL`, `fluid_property_model = CONSTANT`, `DIRICHLET`/`NEUMANN` axial
+boundaries; steady or transient, static or moving bearing, MPI-parallel.
+Anything outside that (energy equation, gas transport, cross-film thermal model,
+`INLET_OUTLET`) is rejected at config validation rather than silently ignored -
+use `cavitation_model = JFO` for those. Tuning keys: `fbns_max_iters`,
+`fbns_tol`, `fbns_relaxation`, and `fbns_pressure_scale` (0 = derived from the
+operating point; it conditions the Fischer-Burmeister function and rarely needs
+setting). See PHYSICS.md §7.3.
+
 The inlet editor switches between `GROOVE` and `CIRCULAR`. Saving writes the
 selected inlet as the active config line and keeps the unused inlet form as a
 comment for quick switching later.
@@ -274,14 +293,15 @@ flips; see PHYSICS.md §15). Startup validation also reports laminar-regime
 grid-convergence study harness lives in `validation/grid_convergence/`.
 
 Adding `mass_residual` to `output_fields` writes the per-cell liquid-continuity
-residual of the converged JFO state in `kg/s` (cell-integrated), which localizes
+residual of the converged mass-conserving state in `kg/s` (cell-integrated), which localizes
 in 2D what the global balance can only report as one number: a defect in the
 boundary or groove flux handling shows up as a hot cell, while the global
 residual stays at solver tolerance because neighbouring errors cancel. Away from
 groove cells, clamped cells and the rupture front the field must sit at round-off
 of the barotropic conductance. The field is registered only when selected, so
-runs that omit it are bit-identical. It is defined for `cavitation_model = JFO`;
-validation warns and writes zeros otherwise. See PHYSICS.md §15.1.
+runs that omit it are bit-identical. It is defined for `cavitation_model = JFO`
+and `FBNS` (each mirroring its own solver's face fluxes); validation warns and
+writes zeros otherwise. See PHYSICS.md §15.1.
 
 `solution_mode = STEADY_STATE` runs one pressure/thermal solve at `t=0` and
 skips bearing-motion advancement. This is intended for fast operating-point
@@ -447,6 +467,7 @@ src/
   linear_system.hpp/cpp PETSc sparse system wrapper
   io.hpp/cpp            VTK/PVD writers
   reynolds.hpp/cpp      Reynolds equation assembly and post-processing
+  fbns.hpp/cpp          FBNS complementarity cavitation solver (cavitation_model = FBNS)
   gui/                  ImGui + ImPlot desktop GUI around pancake.exe
                         (see docs/GUI_ARCHITECTURE.md; built per BUILD.md)
 

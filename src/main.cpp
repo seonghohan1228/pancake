@@ -12,6 +12,7 @@
 #include "cross_film.hpp"
 #include "energy.hpp"
 #include "equation_of_state.hpp"
+#include "fbns.hpp"
 #include "field.hpp"
 #include "film_thickness.hpp"
 #include "fluid_properties.hpp"
@@ -176,8 +177,12 @@ int main(int argc, char** argv) {
         // Initialize fields
         Fields fields;
         const double pressure_initial = cfg.initial_pressure();
-        const double theta_initial =
-            std::max(EOS::theta_from_pressure(pressure_initial, cfg.p_cav, cfg.bulk_modulus), cfg.theta_min);
+        // FBNS carries no bulk modulus, so its film content starts at the
+        // full-film value; the solver detects that as a cold start and builds its
+        // own uncavitated initial guess.
+        const double theta_initial = FBNS::active(cfg)
+            ? 1.0
+            : std::max(EOS::theta_from_pressure(pressure_initial, cfg.p_cav, cfg.bulk_modulus), cfg.theta_min);
         fields.add("pressure", mesh).fill(pressure_initial);
         fields.add("theta",    mesh).fill(theta_initial);
         fields.add("h",        mesh).fill(cfg.c);
@@ -308,10 +313,28 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["cross_film_couette_h"]);
                 }
 
-                if (cfg.cavitation_model == CavitationModel::JFO)
+                if (FBNS::active(cfg)) {
+                    // The FBNS Newton stats are reported through the same
+                    // diagnostics columns: outer_iters is the Newton count and
+                    // flag_flips stays 0 (there is no switch function to flip).
+                    const FBNS::Stats fbns_stats =
+                        FBNS::solve(fields, sys, comm, mesh, step_cfg);
+                    elrod_stats.outer_iters = fbns_stats.newton_iters;
+                    elrod_stats.flag_flips = 0;
+                    elrod_stats.max_theta_change = fbns_stats.max_theta_change;
+                    elrod_stats.converged = fbns_stats.converged;
+                    if (!fbns_stats.converged) {
+                        std::ostringstream msg;
+                        msg << "FBNS did not converge in " << fbns_stats.newton_iters
+                            << " Newton iterations: |G|=" << fbns_stats.residual_mass
+                            << " |FB|=" << fbns_stats.residual_complementarity;
+                        Utils::log(msg.str(), Utils::Color::YELLOW, 1);
+                    }
+                } else if (cfg.cavitation_model == CavitationModel::JFO) {
                     elrod_stats = Reynolds::solve_elrod(fields, sys, mesh, step_cfg);
-                else
+                } else {
                     Reynolds::solve(fields, sys, mesh, step_cfg);
+                }
 
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
 
@@ -420,6 +443,8 @@ int main(int argc, char** argv) {
                     if (cfg.cavitation_model == CavitationModel::JFO) {
                         line << " | outer=" << elrod_stats.outer_iters
                              << " flips=" << elrod_stats.flag_flips;
+                    } else if (FBNS::active(cfg)) {
+                        line << " | newton=" << elrod_stats.outer_iters;
                     }
                     if (diagnostics_now) {
                         line << " | r_l=" << balance.liquid_residual;

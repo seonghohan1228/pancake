@@ -7,6 +7,7 @@
 #include <mpi.h>
 
 #include "equation_of_state.hpp"
+#include "fbns.hpp"
 
 namespace Diagnostics {
 namespace {
@@ -184,6 +185,28 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
     const Field& pressure = fields["pressure"];
 
     double inflow = 0.0;
+    if (FBNS::active(cfg)) {
+        // FBNS carries the axial ends as a plain Poiseuille Dirichlet link on the
+        // pressure, with no bulk-modulus conversion and no switch function, so
+        // the boundary flux is read straight off the pressure drop.
+        const Field& h = fields["h"];
+        auto gamma_p = [&](int ii, int jj) {
+            const double h_val = h(ii, jj);
+            return std::max(field_value(fields, "rho_liquid_solution", cfg.rho, ii, jj), 1.0e-30) *
+                h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, ii, jj));
+        };
+        for (int i = 0; i < n_theta; ++i) {
+            if (cfg.bc_z_south_type == BCType::DIRICHLET) {
+                const double cs = gamma_p(i, 0) * R * d_theta / (0.5 * d_z);
+                inflow += cs * (std::max(cfg.bc_z_south_val, cfg.effective_p_cav()) - pressure(i, 0));
+            }
+            if (cfg.bc_z_north_type == BCType::DIRICHLET) {
+                const double cn = gamma_p(i, n_z - 1) * R * d_theta / (0.5 * d_z);
+                inflow += cn * (std::max(cfg.bc_z_north_val, cfg.effective_p_cav()) - pressure(i, n_z - 1));
+            }
+        }
+        return inflow;
+    }
     for (int i = 0; i < n_theta; ++i) {
         if (cfg.cavitation_model == CavitationModel::JFO) {
             const Field& theta = fields["theta"];
@@ -346,10 +369,14 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             balance.clamp_mass_liquid += field_value(fields, "cavitation_clamp_mass", 0.0, i, j);
             balance.clamp_mass_gas += field_value(fields, "gas_clamp_mass", 0.0, i, j);
 
-            if (cfg.cavitation_model == CavitationModel::JFO &&
-                inlet_cell(mesh, cfg, i, j)) {
-                balance.inlet_mass_source +=
-                    elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
+            if (inlet_cell(mesh, cfg, i, j)) {
+                if (FBNS::active(cfg)) {
+                    balance.inlet_mass_source +=
+                        FBNS::cell_outflow(fields, mesh, cfg, dt, i, j);
+                } else if (cfg.cavitation_model == CavitationModel::JFO) {
+                    balance.inlet_mass_source +=
+                        elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
+                }
             }
         }
     }
@@ -395,7 +422,21 @@ void mass_residual(Fields& fields, const Mesh& mesh,
     if (!fields.has("mass_residual")) return;  // not selected: nothing computed
     Field& residual = fields["mass_residual"];
     residual.fill(0.0);
-    if (cfg.cavitation_model != CavitationModel::JFO) return;
+    if (!cfg.mass_conserving_cavitation()) return;
+
+    // FBNS assembles a different operator from solve_elrod (pressure-driven
+    // Poiseuille without the bulk modulus or the switch function), so the
+    // residual mirrors that operator instead. No clamp correction is needed:
+    // the Newton clamps act on iterates, not on the converged state.
+    if (FBNS::active(cfg)) {
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                residual(i, j) = inlet_cell(mesh, cfg, i, j)
+                    ? 0.0 : FBNS::cell_outflow(fields, mesh, cfg, dt, i, j);
+            }
+        }
+        return;
+    }
 
     // Same step normalization mass_balance() uses for the clamp rate, so the two
     // agree term by term.

@@ -99,6 +99,14 @@ int main(int argc, char** argv) {
         errors.clear(); warnings.clear();
         striated.validate(errors, warnings);
         check(!has_substr(errors, "STRIATED requires"), "WP-6: STRIATED + JFO is valid");
+
+        // FBNS resolves the same free boundary, so it carries a film content
+        // STRIATED can weight by. (Its own phase-1 errors are checked in
+        // test_fbns; only the STRIATED gate matters here.)
+        striated.cavitation_model = CavitationModel::FBNS;
+        errors.clear(); warnings.clear();
+        striated.validate(errors, warnings);
+        check(!has_substr(errors, "STRIATED requires"), "WP-6: STRIATED + FBNS is valid");
     }
 
     // --- coupling config round-trip -----------------------------------------
