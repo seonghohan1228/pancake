@@ -229,10 +229,19 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
     // cavity fraction alpha = 1 - theta as the second unknown so both
     // Fischer-Burmeister diagonals come out non-negative. Both blocks are
     // constant through the Newton iteration: the mobility, the face fluxes and
-    // the storage weight depend only on the film geometry and the (constant)
-    // fluid properties, and the upwind direction follows the face flux sign
-    // rather than the solution. The mass balance is therefore linear in
-    // (p, alpha) and every Newton nonlinearity lives in the FB equation.
+    // the storage weight are built once, here, from the film geometry and the
+    // per-cell "mu" / "rho_liquid_solution" fields as the caller last left them,
+    // and the upwind direction follows the face flux sign rather than the
+    // solution. The mass balance is therefore linear in (p, alpha) and every
+    // Newton nonlinearity lives in the FB equation.
+    //
+    // Under a thermal or piezo-viscous run mu varies cell to cell and changes
+    // between calls; freezing it inside one Newton solve is the deliberate
+    // Picard split (see the header). It keeps this Jacobian exactly consistent
+    // with the residual cell_outflow evaluates -- both read the same frozen
+    // gamma -- which is what preserves the quadratic Newton rate. A Jacobian
+    // that carried d(mu)/dT terms while the residual did not would be the
+    // limping case.
     std::array<std::vector<double>, 5> A, B;
     for (auto& slot : A) slot.assign(n_local, 0.0);
     for (auto& slot : B) slot.assign(n_local, 0.0);

@@ -29,8 +29,22 @@
 /// fields must be synced by Communicator before calling; the solver syncs the
 /// unknowns itself.
 ///
-/// Phase 1 scope (enforced in SimulationConfig::validate): ISOTHERMAL,
-/// fluid_property_model = CONSTANT, DIRICHLET/NEUMANN axial boundaries.
+/// Thermal / variable-property coupling is by frozen-coefficient Picard around
+/// the Newton solve, exactly as the Elrod path does it. Every call reads the
+/// current per-cell "mu" and "rho_liquid_solution" fields when it builds the
+/// face mobilities, and holds them fixed for the duration of its own Newton
+/// iteration; d(mu)/dT and d(mu)/dp never enter the Jacobian, so the Jacobian
+/// stays exactly consistent with the residual it is differentiating and Newton
+/// keeps its quadratic local rate. The caller's outer loop (see main.cpp) closes
+/// the mu(T, p) feedback by re-solving until pressure and temperature stop
+/// moving.
+///
+/// Scope (enforced in SimulationConfig::validate): fluid_property_model =
+/// CONSTANT or SINGLE_PHASE, gas_pressure_coupling = NONE,
+/// cross_film_thermal_model = NONE, DIRICHLET/NEUMANN axial boundaries.
+/// TWO_PHASE is refused because free gas replaces the full-film bound
+/// 1 - theta >= 0 with 1 - alpha_gas - theta >= 0, which is a change to the
+/// complementarity constraint rather than to its coefficients.
 namespace FBNS {
 
     /// Convergence summary of the Newton iteration.

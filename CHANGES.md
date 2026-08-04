@@ -2,6 +2,131 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-04 - FBNS phase 2: energy equation and single-phase properties
+
+Lifts the phase-1 scope guards that kept `cavitation_model = FBNS` isothermal and
+constant-property, so the THD validation cases (01-THD, 04) can run on the solver
+that actually resolves the free boundary. `FULL_SOMMERFELD`, `GUMBEL` and `JFO`
+are untouched and verified byte-identical (sha256 of the flat VTK product and
+`diagnostics.csv` on the `grid_G3_fbns` geometry at 120x16, before and after);
+isothermal FBNS is likewise byte-identical to phase 1.
+
+**What was already right.** No new coupling loop was needed: the STEADY_STATE
+outer (Picard) loop in `main.cpp` already ran properties -> cavitation solve ->
+properties -> gas -> velocities -> energy for every model, and `FBNS::solve`
+already built its face mobilities from the per-cell `mu` and
+`rho_liquid_solution` *fields*, not from `cfg.mu`. The guards were the only thing
+stopping a thermal FBNS run. `theta` also carries identical semantics under both
+mass-conserving models, so the D14 liquid-fraction weighting of heat generation,
+stored energy, conduction and convected enthalpy under `cavitated_film_model =
+STRIATED` applies to FBNS through the same code path, unchanged. Full-film FBNS
+cells hold `theta = 1.0` exactly (the Newton update clamps the cavity fraction at
+zero), so the `theta >= 1` full-film test needs no tolerance - checked on the
+converged 120x16 field: 1100 of 1920 cells exactly 1.0, none in `(0.999, 1)`.
+
+**Jacobian / viscosity consistency.** Frozen-coefficient Picard around Newton,
+stated explicitly in `fbns.hpp` and PHYSICS.md §7.3.6. `FBNS::solve` reads `mu`
+and `rho_liquid_solution` once per call, builds `A`/`B` from them and holds them
+fixed for that Newton iteration; no `d(mu)/dT` or `d(mu)/dp` term enters the
+Jacobian, which is exactly what keeps it consistent with the residual
+`cell_outflow` evaluates (both read the same frozen mobility) and preserves the
+quadratic rate and finite termination. The `mu(T,p)` feedback closes in the outer
+loop. This matches what the Elrod path does. Tested exactly rather than by
+inequality: replaying the converged coupled `mu` field through an isothermal FBNS
+solve as a prescribed coefficient reproduces the coupled pressure to
+`1.1e-9 * p_ref` and `theta` to `5.8e-9`, against a `mu` field that the Andrade
+law moved by 41%. A silent fallback to the scalar `cfg.mu` would show up as a
+~40% pressure difference.
+
+**Energy equation, FBNS-specific (`src/energy.cpp`).** Two changes, both gated on
+FBNS so the Elrod path is bit-for-bit unchanged:
+
+- `solved_boundary_pressure` now uses `mass_conserving_cavitation()` instead of
+  testing for JFO. Both models clamp the axial Dirichlet value at `p_cav`; FBNS
+  was previously handed the raw configured value, so the boundary enthalpy flux
+  was computed against a gradient the flow solve never saw.
+- New `poiseuille_face_activity`: under FBNS the Poiseuille enthalpy flux is
+  *not* gated by the full-film switch. Elrod carries a barotropic
+  `p = p_cav + beta ln(theta)` through the ruptured zone, which is not the
+  physical pressure, so it must gate. FBNS pins a ruptured cell at `p = p_cav` by
+  complementarity, so its gradients are physical: between two ruptured cells the
+  flux vanishes on its own, and at a rupture front or an open axial end it is
+  precisely the reformation flux the FBNS mass balance conserved. Gating it left
+  the energy equation convecting enthalpy on a different velocity field from the
+  one carrying mass - the defect `consistent_boundary_flux` patches on the Elrod
+  path, which FBNS gets for free. The switch is deliberately *kept* on the
+  Poiseuille dissipation term (a striated-film modelling claim, not a
+  conservation requirement, reaching only the single front cells), so
+  `heat_generation` output is unchanged for isothermal FBNS runs.
+
+**Config validation (`src/config.hpp`).**
+
+- `TWO_PHASE` is the only `fluid_property_model` still refused under FBNS, with
+  the reason named (the bound moves to `theta <= 1 - alpha_gas`).
+  `gas_pressure_coupling`, `cross_film_thermal_model` and `INLET_OUTLET` remain
+  refused for their original reasons.
+- **Defect fixed:** `SINGLE_PHASE` no longer demands invented gas numbers. A
+  pure-oil THD run has no dissolved species, so `dissolved_gas_henry_coeff = 0`
+  and `solution_viscosity_gas_coeff = 0` are the *correct* inputs, and both were
+  hard errors. They are now errors only when a gas species actually participates
+  (`TWO_PHASE`, `cavitation_threshold = LOCAL_PSAT`, or
+  `dissolved_gas_initial > 0`). `EMPIRICAL` viscosity with all three exponents
+  zero now warns that it is identical to `CONSTANT`, which is the real mistake
+  that check was reaching for.
+
+**Verification** (`tests/test_fbns.cpp`, new tests 8-10; full suite 27/27 on 2 and
+6 ranks). Effectively-1D grid, 720x4, Neumann ends, Andrade `E_mu = 3700` K:
+`SINGLE_PHASE` with zero coefficients reproduces `CONSTANT` bit for bit; FBNS and
+Elrod temperatures agree to 0.44 K over 465 shared full-film cells at
+eccentricity 0.3; Picard counts 10 (FBNS) and 9 (Elrod); load capacity
+1.653e4 N thermal vs 1.807e4 N isothermal.
+
+The **fronts are not compared against Elrod**, and the brief's "fronts within 1
+cell" acceptance line cannot be met by any implementation: Elrod's rupture front
+sits 12-18 deg from the exact 1D solution on this bearing and that gap is its
+barotropic smearing, not a grid error - it stays near 13 deg from n_theta = 240 to
+720, and raising `bulk_modulus` to sharpen the switch makes it *worse* and stops
+the Elrod outer loop converging (200+ iterations at beta = 1e10 against FBNS's
+13). The exact benchmark of PHYSICS.md §7.3.5 is the only front reference worth
+asserting against, and it is untouched. The residual `dT` is that misplaced front
+leaking into Elrod's pressure field and hence into the Poiseuille share of the
+enthalpy transport (~25% here); it scales with the thermal rise (0.24 K at
+eccentricity 0.2, 0.44 at 0.3, 0.70 at 0.4, 1.42 at 0.6), which is why the
+comparison is made at 0.3.
+
+**Acceptance run** (`grid_G3_fbns` geometry, 240x64, `EMPIRICAL` viscosity,
+`viscosity_temperature_coeff = 3700`, `temperature_reference =
+property_reference_temperature = 313.15`, 2 ranks): converges in **9 Picard
+iterations** to `R_p = 0`, `R_T = 2.9e-9`. `T` in [313.15, 325.9] K,
+`W = 8.76 kN` against `9.96 kN` isothermal (-12.1%), friction torque 4.99 Nm
+against 6.34 Nm - both in the sanity direction for thinner oil.
+
+**Instability found, pre-existing, affects both cavitation models.** That run
+requires the groove to be thermally fed. A groove that pins pressure but is left
+thermally transparent (`feeds_fresh_oil = false`, which is what
+`cases/00_grid_dt_independence/grid_G3_fbns/config.txt` has) diverges to
+`T ~ 1e6 K` under a strong Andrade slope, under FBNS *and* under JFO, at every
+`coupling_relaxation` from 1.0 down to 0.15. Mechanism: the Poiseuille
+dissipation `h^3 |grad p|^2 / (12 mu)` scales as `1/mu`, and at the groove edge
+`grad p` is held fixed by the pressure pin, so hotter -> thinner -> hotter is
+unbounded. Giving the groove its supply temperature removes the artefact (a fed
+groove is a reservoir, not a sheared film). Not fixed here: any fix changes the
+Elrod path too and belongs in its own scoped change.
+
+**Gaseous cavitation: memo, not code** (`docs/FBNS_GAS_COUPLING.md`). The design
+question was whether `theta <= 1 - alpha_gas` composes with the Fischer-Burmeister
+function. It does, cleanly: with `alpha_gas` lagged (which the existing
+operator-split gas path already guarantees) the new argument is affine in `theta`
+with the same derivative, so `B`, the column swap, the `cond(A_F)` bound and the
+Schur complement are all unchanged and the whole change is ~20 lines of
+`fbns.cpp`. The blocker is elsewhere: the codebase identifies "full film" by the
+literal test `theta >= 1.0` at 15 sites across `reynolds.cpp`, `energy.cpp`,
+`gas_transport.cpp` and `diagnostics.cpp`. Move the bound and every one of those
+switches turns off at once the moment any gas comes out of solution - a silently
+fully-cavitated bearing with a converged Newton residual. Lifting the guard needs
+a shared `is_full_film` predicate landed first as a byte-identical refactor on its
+own branch; the memo sets that out step by step.
+
 ### 2026-08-04 - FBNS complementarity cavitation (`cavitation_model = FBNS`)
 
 New module `src/fbns.{hpp,cpp}` implementing the Fischer-Burmeister-Newton-Schur

@@ -490,19 +490,113 @@ $1.5\times10^{-11}$ kg/s at worst, $3.5\times10^{-10}$ of the peak Couette face 
 cells themselves. The groove cells are exactly zero (their imbalance is the modelled
 supply, reported separately as `inlet_mass_source`).
 
-#### 7.3.6 Scope and limits
+#### 7.3.6 Thermohydrodynamic coupling
 
-Phase 1 supports `temperature_model = ISOTHERMAL`, `fluid_property_model =
-CONSTANT`, `solution_mode` `STEADY_STATE` and `TRANSIENT` (backward Euler),
-`motion_model` `STATIC` and `MOVING_BEARING`, groove and circular inlets,
-`DIRICHLET`/`NEUMANN` axial boundaries, and MPI decomposition in $\vartheta$.
-The energy equation, the dissolved-gas/two-phase property layer, the cross-film
-Dowson coefficients and `gas_pressure_coupling` are **rejected at config
-validation** rather than silently ignored, because each of them couples back into
-the Reynolds operator and is not yet part of the FBNS Jacobian. Use
-`cavitation_model = JFO` for those. `theta_convection_scheme` is ignored (FBNS uses
-first-order upwind, and a higher-order upwind stencil would add $\vartheta$-second-
-neighbour columns to $B$); `bulk_modulus` is unused.
+The energy equation and the single-phase liquid property layer reach the FBNS
+operator only through its per-cell coefficients — the Poiseuille mobility
+
+$$\Gamma_{i,j} = \frac{\rho_{l,i,j}\, h_{i,j}^{3}}{12\,\mu_{i,j}},$$
+
+which `FBNS::solve` rebuilds at the top of every call from the current `mu` and
+`rho_liquid_solution` fields. They are then **frozen for the duration of that
+Newton iteration**. This is deliberate, and it is the same split the Elrod path
+uses:
+
+- The Jacobian blocks $A$ and $B$ are differentiated from exactly the residual
+  `FBNS::cell_outflow` evaluates, because both read the same frozen $\Gamma$. No
+  $\partial\mu/\partial T$ or $\partial\mu/\partial p$ term appears in either. A
+  Jacobian carrying those terms while the residual did not is what would make
+  Newton limp; freezing both keeps the local quadratic rate and the finite
+  termination of §7.3.5 intact.
+- The $\mu(T,p)$ feedback is closed one level up, by the segregated outer (Picard)
+  loop in `main.cpp`: properties $\to$ FBNS $\to$ properties $\to$ gas $\to$
+  velocities $\to$ energy, repeated until the normalised pressure and temperature
+  changes both fall below `coupling_tolerance`. FBNS warm-starts from the previous
+  outer iterate, so the later Newton solves cost 0–3 iterations.
+
+Consequences for the energy equation itself:
+
+- **Liquid-fraction weighting.** `theta` carries identical semantics under both
+  mass-conserving models, so `cavitated_film_model = STRIATED` weights heat
+  generation, stored energy, conduction and convected enthalpy by
+  $\theta \in [\theta_{min},1]$ for FBNS through exactly the same code path (§13.1).
+  Full-film FBNS cells hold $\theta = 1.0$ *exactly* — the Newton update clamps the
+  cavity fraction at zero — so the `theta >= 1` full-film test needs no tolerance.
+- **Poiseuille faces are never switched off under FBNS.** Elrod carries a
+  barotropic $p = p_{cav} + \beta\ln\theta$ through the ruptured zone, which is not
+  the physical pressure there, so its enthalpy flux is gated by the full-film
+  switch. FBNS pins a ruptured cell at $p = p_{cav}$ by complementarity, so every
+  gradient it produces is physical: between two ruptured cells it vanishes on its
+  own, and at a rupture front or an open axial end it is precisely the reformation
+  flux the FBNS mass balance conserved. Gating it would leave the energy equation
+  convecting enthalpy on a different velocity field from the one carrying mass —
+  the defect `consistent_boundary_flux` exists to patch on the Elrod path, and
+  which FBNS gets for free. The full-film switch is *kept* on the Poiseuille
+  dissipation term, which is a striated-film modelling claim rather than a
+  conservation requirement and can only touch the single front cells.
+
+**Verified** (`tests/test_fbns.cpp`, tests 8–10, effectively-1D grid
+$N_\vartheta = 720$, $N_z = 4$, Neumann ends, Andrade $E_\mu = 3700$ K):
+
+| Check | Result |
+|---|---|
+| SINGLE_PHASE with all property coefficients zero vs CONSTANT | bit-identical $p$, $\theta$ |
+| converged coupled $\mu$ field replayed through an isothermal FBNS solve | $\lvert\Delta p\rvert/p_{ref} = 1.1\times10^{-9}$, $\lvert\Delta\theta\rvert = 5.8\times10^{-9}$, against a $\mu$ that moved 41% |
+| FBNS vs Elrod temperature, shared full-film arc, $\varepsilon = 0.3$ | $\max\lvert\Delta T\rvert = 0.44$ K over 465 cells |
+| Picard iterations to `coupling_tolerance` $=10^{-8}$ | 10 (FBNS), 9 (Elrod) |
+| load capacity, thermal vs isothermal | $1.653\times10^{4}$ N vs $1.807\times10^{4}$ N |
+
+The **fronts** are deliberately not compared against Elrod. Elrod's rupture front
+sits 12–18° from the exact 1-D solution on this bearing (§7.3.5) and that gap is a
+property of its barotropic smearing, not of the grid: it stays near 13° from
+$N_\vartheta = 240$ to $720$, and raising $\beta$ to sharpen the switch makes it
+worse *and* stops the Elrod outer loop converging (200+ iterations at
+$\beta = 10^{10}$ against FBNS's 13). The exact benchmark of §7.3.5 is the only
+front reference that means anything. The residual $\Delta T$ above is Elrod's
+misplaced front leaking into its pressure field and hence into the Poiseuille
+share of the enthalpy transport, which is ~25% of the total here; it scales with
+the thermal rise (0.24 K at $\varepsilon = 0.2$, 0.44 K at 0.3, 0.70 K at 0.4,
+1.42 K at 0.6) and is not a property of the coupling.
+
+**Known instability, both cavitation models.** A groove that pins pressure but is
+left thermally transparent (`feeds_fresh_oil = false`) diverges under a strong
+Andrade slope. The Poiseuille dissipation $h^{3}\lvert\nabla p\rvert^{2}/(12\mu)$
+scales as $1/\mu$, and at the groove edge $\nabla p$ is held fixed by the pressure
+pin, so hotter $\to$ thinner $\to$ hotter is an unbounded positive feedback: on the
+`grid_G3_fbns` geometry with $E_\mu = 3700$ K it reaches $T \sim 10^{6}$ K under
+FBNS *and* under Elrod (JFO), at every under-relaxation from 1.0 down to 0.15.
+Giving the groove its supply temperature (`inlet_groove = 90 18 1.713e5 313.15`)
+removes the artefact — a fed groove is a reservoir, not a sheared film — and the
+same case then converges in 9 Picard iterations. This is a pre-existing property
+of the energy model, unrelated to which cavitation solver is selected.
+
+#### 7.3.7 Scope and limits
+
+Supported: `temperature_model` `ISOTHERMAL` and `ENERGY_EQUATION`,
+`fluid_property_model` `CONSTANT` and `SINGLE_PHASE` (all `density_model` /
+`liquid_viscosity_model` options), `solution_mode` `STEADY_STATE` and `TRANSIENT`
+(backward Euler), `motion_model` `STATIC` and `MOVING_BEARING`, groove and circular
+inlets, `DIRICHLET`/`NEUMANN` axial boundaries, `cavitated_film_model` `FULL_FILM`
+and `STRIATED`, and MPI decomposition in $\vartheta$.
+
+**Rejected at config validation** rather than silently ignored, because each
+changes the complementarity constraint or the operator's stencil rather than its
+coefficients:
+
+- `fluid_property_model = TWO_PHASE`. Free gas replaces the full-film bound
+  $1 - \theta \ge 0$ with $1 - \alpha_{gas} - \theta \ge 0$. The Fischer-Burmeister
+  composition itself is clean — see `docs/FBNS_GAS_COUPLING.md` — but the repo-wide
+  `theta >= 1` full-film test is not, and that is the blocker.
+- `gas_pressure_coupling != NONE` (the void-coupled plateau closure belongs to the
+  Elrod path, and has no free-gas field to read without TWO_PHASE).
+- `cross_film_thermal_model != NONE` (the generalized Dowson $F_0/F_1/F_2$
+  coefficients are not in the FBNS operator).
+- `INLET_OUTLET` axial boundaries (they switch on the sign of the solution and
+  would break the differentiability the Newton step relies on).
+
+`theta_convection_scheme` is ignored (FBNS uses first-order upwind, and a
+higher-order upwind stencil would add $\vartheta$-second-neighbour columns to $B$);
+`bulk_modulus` is unused.
 
 ---
 

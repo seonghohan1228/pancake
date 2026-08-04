@@ -500,8 +500,9 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                       "The same JFO conditions solved as a complementarity problem in (p, theta) "
                       "by the Fischer-Burmeister-Newton-Schur algorithm. No artificial bulk "
                       "modulus and no switch function, so the rupture front is placed far more "
-                      "accurately than Elrod-Adams at the same grid. Phase 1: isothermal, "
-                      "constant fluid properties."}});
+                      "accurately than Elrod-Adams at the same grid. Supports the energy "
+                      "equation and SINGLE_PHASE liquid properties; two-phase free gas, the "
+                      "cross-film thermal model and INLET_OUTLET ends still need JFO."}});
                 row("Cavitation threshold", "Pressure the ruptured (cavitated) film is held at.");
                 changed |= enum_combo<CavitationThreshold>(
                     "##cavitation_threshold", config_.cavitation_threshold,

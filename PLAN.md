@@ -17,11 +17,36 @@ PHYSICS.md §7.3, `tests/test_fbns.cpp`) solves the same JFO conditions as a
 complementarity problem — no bulk modulus, no switch function — and lands the
 rupture front within 1 cell and the reformation front within 0.66 cells at every
 resolution, with p_max/W' errors of 0.5%→0.07%, in 4 grid-independent Newton
-iterations. Runs in `cases/00c_jfo_verification/oneD_n*_fbns/`. Remaining work
-(phase 2): couple the energy equation, the dissolved-gas/two-phase property layer
-and the cross-film Dowson coefficients into the FBNS Jacobian; they are currently
-rejected at config validation. Test #2 (published 2D contours) still waits on
-data.
+iterations. Runs in `cases/00c_jfo_verification/oneD_n*_fbns/`. Test #2 (published
+2D contours) still waits on data.
+
+FBNS **phase 2 — DONE 2026-08-04** (energy equation + `SINGLE_PHASE` properties;
+PHYSICS.md §7.3.6/§7.3.7, `tests/test_fbns.cpp` tests 8–10, 27/27 suite).
+`temperature_model = ENERGY_EQUATION` and `fluid_property_model = SINGLE_PHASE`
+are now supported, so Cases 01-THD and 04 can run on FBNS. Coupling is
+frozen-coefficient Picard around Newton, the same split the Elrod path uses: the
+face mobilities read the per-cell `mu` field, held fixed inside one Newton solve,
+with the `mu(T,p)` feedback closed by the existing outer loop. The `SINGLE_PHASE`
+validation quirk (zero Henry slope and zero log-mixing exponent rejected even with
+no gas species present) is fixed. Elrod/Gumbel byte-identical; isothermal FBNS
+byte-identical to phase 1. Acceptance run on the `grid_G3_fbns` geometry: 9 Picard
+iterations, W 9.96 → 8.76 kN thermal.
+
+Two things came out of it that are **not** FBNS-specific and are still open:
+
+- **Groove thermal runaway (both cavitation models).** A groove that pins pressure
+  but is thermally transparent (`feeds_fresh_oil = false`) diverges to `T ~ 1e6 K`
+  under a strong Andrade slope, because the Poiseuille dissipation scales as
+  `1/mu` while `grad p` is held fixed by the pressure pin. Reproduces identically
+  under JFO. Workaround: give the groove a supply temperature. A fix belongs in
+  `energy.cpp` on its own branch (it changes the Elrod path).
+- **Gaseous cavitation on FBNS — memo, `docs/FBNS_GAS_COUPLING.md`.** The bound
+  `theta <= 1 - alpha_gas` composes cleanly with Fischer-Burmeister (~20 lines in
+  `fbns.cpp`); the blocker is that "full film" is spelled `theta >= 1.0` at 15
+  sites across four files, all of which would switch off at once. Prerequisite: a
+  shared `is_full_film` predicate landed as a byte-identical refactor first. Until
+  then Case 05 stays on `cavitation_model = JFO`. Cross-film Dowson coefficients
+  in the FBNS operator remain unstarted (phase 3).
 
 Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
 field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,

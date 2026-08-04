@@ -1228,19 +1228,17 @@ struct SimulationConfig {
         }
 
         if (cavitation_model == CavitationModel::FBNS) {
-            // Phase 1 scope. Each of these couples back into the Reynolds operator
-            // (through mu(T), rho(p,T,c), or the free-gas void) and is not yet part
-            // of the FBNS Jacobian, so refuse rather than silently ignore them.
-            if (temperature_model != TemperatureModel::ISOTHERMAL) {
-                error("cavitation_model = FBNS is phase 1 and supports temperature_model = "
-                      "ISOTHERMAL only; the energy equation is not yet coupled into the "
-                      "complementarity Jacobian. Use cavitation_model = JFO for thermal runs.");
-            }
-            if (fluid_property_model != FluidPropertyModel::CONSTANT) {
-                error("cavitation_model = FBNS is phase 1 and supports fluid_property_model = "
-                      "CONSTANT only; dissolved-gas / two-phase property coupling and gas "
-                      "transport are not yet part of the complementarity Jacobian. Use "
-                      "cavitation_model = JFO.");
+            // Phase 2 scope. Temperature and the liquid solution properties are in:
+            // they enter the FBNS operator only through the per-cell coefficients
+            // (mu, rho_l), which the outer Picard loop refreshes between Newton
+            // solves. What is still refused couples back into the complementarity
+            // *constraint* or the operator's stencil, not just its coefficients.
+            if (fluid_property_model == FluidPropertyModel::TWO_PHASE) {
+                error("cavitation_model = FBNS supports fluid_property_model = CONSTANT and "
+                      "SINGLE_PHASE; under TWO_PHASE the free gas moves the full-film bound "
+                      "from theta <= 1 to theta <= 1 - alpha_gas, which is not part of the "
+                      "Fischer-Burmeister constraint. Use cavitation_model = JFO for "
+                      "gaseous cavitation.");
             }
             if (gas_pressure_coupling != GasPressureCoupling::NONE) {
                 error("cavitation_model = FBNS requires gas_pressure_coupling = NONE; the "
@@ -1295,6 +1293,20 @@ struct SimulationConfig {
         const bool variable_properties = fluid_property_model != FluidPropertyModel::CONSTANT;
         const bool gas_cavitation = fluid_property_model == FluidPropertyModel::TWO_PHASE;
 
+        // Does a dissolved gas species actually take part in this run?
+        //
+        // The solubility law and the log-mixing viscosity exponent are consulted
+        // only when free gas is released or resorbed (TWO_PHASE), when the
+        // cavitation datum is the local bubble point (LOCAL_PSAT), or when the oil
+        // carries a nonzero dissolved fraction that thins and lightens it. A
+        // SINGLE_PHASE run of pure oil -- the natural configuration for a THD or a
+        // piezo-viscous study -- consults none of them, so zero is the correct
+        // value for both coefficients there and must be legal.
+        const bool gas_species_participates =
+            gas_cavitation ||
+            cavitation_threshold == CavitationThreshold::LOCAL_PSAT ||
+            (finite(dissolved_gas_initial) && dissolved_gas_initial > 0.0);
+
         if (variable_properties) {
             if (!finite(dissolved_gas_initial) || !finite(dissolved_gas_max) ||
                 dissolved_gas_initial < 0.0 || dissolved_gas_max <= 0.0 ||
@@ -1309,8 +1321,13 @@ struct SimulationConfig {
 
             switch (solubility_model) {
                 case SolubilityModel::HENRY:
-                    if (!finite(dissolved_gas_henry_coeff) || dissolved_gas_henry_coeff <= 0.0) {
-                        error("HENRY solubility requires dissolved_gas_henry_coeff > 0.");
+                    if (!finite(dissolved_gas_henry_coeff) || dissolved_gas_henry_coeff < 0.0) {
+                        error("dissolved_gas_henry_coeff must be finite and >= 0.");
+                    } else if (dissolved_gas_henry_coeff == 0.0 && gas_species_participates) {
+                        error("HENRY solubility requires dissolved_gas_henry_coeff > 0 when a "
+                              "dissolved gas species participates (TWO_PHASE, LOCAL_PSAT, or "
+                              "dissolved_gas_initial > 0); with H = 0 the saturation limit is "
+                              "identically zero and all the gas would flash at once.");
                     }
                     break;
                 case SolubilityModel::TABLE:
@@ -1337,8 +1354,23 @@ struct SimulationConfig {
                 case LiquidViscosityModel::CONSTANT:
                     break;
                 case LiquidViscosityModel::EMPIRICAL:
-                    if (!finite(solution_viscosity_gas_coeff) || solution_viscosity_gas_coeff == 0.0) {
-                        error("EMPIRICAL viscosity requires a non-zero solution_viscosity_gas_coeff.");
+                    // mu = mu_oil exp[E_mu(1/T - 1/T_ref)] exp[a_c c_d] exp[alpha_p(p - p_ref)].
+                    // Any subset of the three exponents may legitimately be zero: an
+                    // Andrade-only thermal run carries no dissolved gas, so a_c = 0 is
+                    // the correct input, not a missing one. Only all three at zero is
+                    // certainly a mistake, and only then is the model degenerate.
+                    if (!finite(solution_viscosity_gas_coeff)) {
+                        error("solution_viscosity_gas_coeff must be finite.");
+                    } else if (solution_viscosity_gas_coeff == 0.0 && gas_species_participates) {
+                        warn("EMPIRICAL viscosity with solution_viscosity_gas_coeff = 0 ignores "
+                             "the dissolved gas that is present: the oil will not thin as gas "
+                             "goes into solution.");
+                    }
+                    if (viscosity_temperature_coeff == 0.0 && viscosity_pressure_coeff == 0.0 &&
+                        solution_viscosity_gas_coeff == 0.0) {
+                        warn("EMPIRICAL viscosity with viscosity_temperature_coeff, "
+                             "viscosity_pressure_coeff and solution_viscosity_gas_coeff all zero "
+                             "is identical to liquid_viscosity_model = CONSTANT.");
                     }
                     require_nonnegative(viscosity_temperature_coeff, "viscosity_temperature_coeff");
                     require_nonnegative(viscosity_pressure_coeff, "viscosity_pressure_coeff");

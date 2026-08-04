@@ -234,12 +234,19 @@ artificial bulk modulus and no switch function, so `bulk_modulus` is unused on
 this path. On the exact 1D benchmark of `cases/00c_jfo_verification` it places
 the rupture front within one cell at every resolution from 120 to 960
 circumferential cells, where `JFO` is 7-13 cells off, and it converges in four
-Newton iterations independent of grid size. Phase 1 scope: `temperature_model =
-ISOTHERMAL`, `fluid_property_model = CONSTANT`, `DIRICHLET`/`NEUMANN` axial
-boundaries; steady or transient, static or moving bearing, MPI-parallel.
-Anything outside that (energy equation, gas transport, cross-film thermal model,
-`INLET_OUTLET`) is rejected at config validation rather than silently ignored -
-use `cavitation_model = JFO` for those. Tuning keys: `fbns_max_iters`,
+Newton iterations independent of grid size. Scope: `temperature_model`
+`ISOTHERMAL` or `ENERGY_EQUATION`, `fluid_property_model` `CONSTANT` or
+`SINGLE_PHASE` (so THD runs with temperature- and pressure-dependent oil
+properties are supported), `cavitated_film_model` `FULL_FILM` or `STRIATED`,
+`DIRICHLET`/`NEUMANN` axial boundaries; steady or transient, static or moving
+bearing, MPI-parallel. Temperature reaches the solver through its per-cell
+Poiseuille mobility, which is frozen inside each Newton solve and refreshed by
+the outer Picard loop, exactly as on the Elrod path. Still rejected at config
+validation rather than silently ignored: `fluid_property_model = TWO_PHASE`
+(free gas moves the full-film bound to `theta <= 1 - alpha_gas`; see
+`docs/FBNS_GAS_COUPLING.md`), `gas_pressure_coupling`, the cross-film thermal
+model, and `INLET_OUTLET` axial boundaries - use `cavitation_model = JFO` for
+those. Tuning keys: `fbns_max_iters`,
 `fbns_tol`, `fbns_relaxation`, and `fbns_pressure_scale` (0 = derived from the
 operating point; it conditions the Fischer-Burmeister function and rarely needs
 setting). See PHYSICS.md §7.3.

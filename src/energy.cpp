@@ -53,14 +53,34 @@ bool uses_pressure_boundary(BCType type) {
     return type == BCType::DIRICHLET || type == BCType::INLET_OUTLET;
 }
 
-// Pressure the flow solver actually imposed at an axial boundary. Elrod derives
-// its boundary film content from the configured pressure and bulk modulus, with
-// pressure clamped at p_cav, so thermal fluxes use the same effective pressure.
+// Pressure the flow solver actually imposed at an axial boundary. Both
+// mass-conserving models clamp the configured value at p_cav (Elrod through
+// elrod_boundary_pressure, FBNS through its axial_boundary_pressure), so the
+// thermal fluxes must use the same effective pressure or they will transport
+// enthalpy against a boundary gradient the flow solve never saw.
 double solved_boundary_pressure(const SimulationConfig& cfg, double bc_val) {
-    if (cfg.cavitation_model == CavitationModel::JFO) {
+    if (cfg.mass_conserving_cavitation()) {
         return cfg.elrod_boundary_pressure(bc_val);
     }
     return bc_val;
+}
+
+/// Poiseuille activity of a face for the convected enthalpy.
+///
+/// Elrod carries a barotropic pressure p = p_cav + beta ln(theta) through the
+/// ruptured zone, which is not the physical pressure there, so its Poiseuille
+/// flux is switched off wherever the film is not full (`g_face`).
+///
+/// FBNS pins a ruptured cell at p = p_cav by complementarity, so every pressure
+/// gradient it produces is the physical one and no switch belongs in the flux:
+/// between two ruptured cells the gradient vanishes on its own, and at a rupture
+/// front or an open axial end the flux is exactly the reformation flux the FBNS
+/// mass balance conserved. Switching it off would leave the energy equation
+/// convecting enthalpy on a different velocity field from the one carrying mass
+/// -- the same defect `consistent_boundary_flux` exists to repair on the Elrod
+/// path, which FBNS gets for free.
+double poiseuille_face_activity(const SimulationConfig& cfg, double g_face) {
+    return cfg.cavitation_model == CavitationModel::FBNS ? 1.0 : g_face;
 }
 
 double field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
@@ -126,6 +146,14 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
             // Reynolds/velocity solve. Cavitated faces carry no Poiseuille flow, so
             // their pressure jump is not a cell-centered gradient. Average squared
             // active face gradients; inactive and exterior faces contribute zero.
+            //
+            // The full-film switch is kept here for every cavitation model,
+            // including FBNS. Attributing a depth-integrated h^3|grad p|^2/(12 mu)
+            // to a ruptured cell is a modelling claim about a striated film, not a
+            // conservation requirement the way the convected enthalpy above is; the
+            // only cells it can touch are the single rupture/reformation front cells
+            // (deeper in the cavity FBNS holds p = p_cav, so grad p vanishes), where
+            // Couette shear outweighs it by orders of magnitude in a journal bearing.
             double poiseuille = 0.0;
             if (g > 0.0) {
                 double grad_sq = 0.0;
@@ -237,7 +265,8 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
     if (cfg.is_reformation_boundary(theta(i, 0))) {
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face, 0.5 * d_z, true);
     } else {
-        const double g_face = full_film_switch(theta, i, 0);
+        const double g_face =
+            poiseuille_face_activity(cfg, full_film_switch(theta, i, 0));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_south_val);
         const double dp_dz = (p(i, 0) - p_bc) / (0.5 * d_z);
         u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
@@ -259,7 +288,8 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
     if (cfg.is_reformation_boundary(theta(i, j))) {
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face, 0.5 * d_z, false);
     } else {
-        const double g_face = full_film_switch(theta, i, j);
+        const double g_face =
+            poiseuille_face_activity(cfg, full_film_switch(theta, i, j));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_north_val);
         const double dp_dz = (p_bc - p(i, j)) / (0.5 * d_z);
         u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
@@ -487,6 +517,11 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
         for (int j = 0; j < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i + 1, j)), cfg.min_film_thickness);
             const double g_face = (theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0) ? 1.0 : 0.0;
+            // Separate switches on purpose: `g_flow` decides whether the face
+            // carries Poiseuille flow at all (FBNS always does, see
+            // poiseuille_face_activity), while `g_face` stays the "is this face
+            // full film" test the STRIATED liquid weighting keys on.
+            const double g_flow = poiseuille_face_activity(cfg, g_face);
             const double dp_dtheta = (p(i + 1, j) - p(i, j)) / d_theta;
             const double mu_face = 0.5 * (
                 dynamic_viscosity(fields, cfg, i, j) +
@@ -495,7 +530,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
                 volumetric_heat_capacity(fields, cfg, i, j) +
                 volumetric_heat_capacity(fields, cfg, i + 1, j));
             const double u_theta = 0.5 * cfg.omega * R
-                - g_face * h_face * h_face * dp_dtheta / (12.0 * mu_face * R);
+                - g_flow * h_face * h_face * dp_dtheta / (12.0 * mu_face * R);
             // Enthalpy rides on the liquid that is actually there. Carrying the
             // full film through the cavitated arc overstates the mass flux by
             // 1/theta -- a factor of ~2.5 at the measured theta_min ~ 0.39 --
@@ -511,7 +546,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
                 const double f2_face = 0.5 * (fields["cross_film_f2"](i, j) +
                                               fields["cross_film_f2"](i + 1, j));
                 const double q_face =
-                    0.5 * cfg.omega * R * couette_face - g_face * f2_face * dp_dtheta / R;
+                    0.5 * cfg.omega * R * couette_face - g_flow * f2_face * dp_dtheta / R;
                 flux_theta(i, j) = rho_cp_face * liquid_face * q_face * d_z;
             } else {
                 flux_theta(i, j) = rho_cp_face * liquid_face * h_face * u_theta * d_z;
@@ -524,6 +559,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
         for (int j = 0; j + 1 < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i, j + 1)), cfg.min_film_thickness);
             const double g_face = (theta(i, j) >= 1.0 && theta(i, j + 1) >= 1.0) ? 1.0 : 0.0;
+            const double g_flow = poiseuille_face_activity(cfg, g_face);
             const double dp_dz = (p(i, j + 1) - p(i, j)) / d_z;
             const double mu_face = 0.5 * (
                 dynamic_viscosity(fields, cfg, i, j) +
@@ -531,13 +567,13 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
             const double rho_cp_face = 0.5 * (
                 volumetric_heat_capacity(fields, cfg, i, j) +
                 volumetric_heat_capacity(fields, cfg, i, j + 1));
-            const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+            const double u_z = -g_flow * h_face * h_face * dp_dz / (12.0 * mu_face);
             const double liquid_face =
                 liquid_fraction_face(theta, cfg, g_face, i, j, i, j + 1);
             if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
                 const double f2_face = 0.5 * (fields["cross_film_f2"](i, j) +
                                               fields["cross_film_f2"](i, j + 1));
-                const double q_face = -g_face * f2_face * dp_dz;
+                const double q_face = -g_flow * f2_face * dp_dz;
                 flux_z(i, j) = rho_cp_face * liquid_face * q_face * R * d_theta;
             } else {
                 flux_z(i, j) = rho_cp_face * liquid_face * h_face * u_z * R * d_theta;
