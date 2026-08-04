@@ -2,6 +2,102 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - FBNS phase 3: gaseous cavitation (`FBNS` + `TWO_PHASE`)
+
+`cavitation_model = FBNS` now runs with `fluid_property_model = TWO_PHASE`. This
+is step 2 of `docs/FBNS_GAS_COUPLING.md`, on the shared `FullFilm` predicate that
+landed in 28ac88a.
+
+**The model.** A resolved free-gas phase occupies a fraction `alpha_gas` of the
+gap, so the liquid can only fill what is left and the complementarity bound moves
+from `1 - theta >= 0` to `(1 - alpha_gas) - theta >= 0`. `alpha_gas` is lagged —
+the gas path is operator-split and runs after the flow solve — so within one
+Newton solve it is a coefficient, the bound stays affine in `theta` with the same
+derivative `-1`, and **both Jacobian blocks, the column swap, the
+`cond(A_F) <= 4 + 2 sqrt(2)` bound and the Schur reduction are unchanged**. See
+PHYSICS.md §7.3.7.
+
+**Changed**
+
+- `src/full_film.hpp`: `bound()` returns `max(1 - alpha_gas, 0)`, via two new
+  helpers — `gas_displaces_liquid(cfg)` (the model gate) and
+  `gas_volume_fraction(fields, cfg, i, j)` (the clamped free-gas fraction). Every
+  full-film test in the solver reads it, so the ceiling moved in all seventeen
+  places at once. No call-site edits.
+- `src/fbns.cpp`: the cavity fraction becomes `alpha = theta_full - theta` in the
+  residual, the update and the clamp ceiling; the cold-start fill writes
+  `theta_full` per cell.
+- `src/config.hpp`: `elrod_boundary_outflow` and `is_reformation_boundary` now take
+  the ceiling as an explicit parameter (no default) instead of comparing against a
+  literal `1.0`. These are the two sites the step-1 refactor could not route,
+  because they take film-content values and live in the header `full_film.hpp`
+  includes. Seven call sites in `reynolds.cpp`, `diagnostics.cpp`, `energy.cpp` and
+  `gas_transport.cpp` pass `FullFilm::bound(...)`. A no-op today; correct wiring
+  for whenever the Elrod ceiling merges.
+- `src/fluid_properties.cpp`: `gas_state_relaxation` under-relaxes the free-gas
+  state whenever the gas displaces liquid, not only under `VOID_COUPLED`. Same
+  lever (`void_coupling_relaxation`, default 0.3), same reason — the
+  `alpha_gas <-> theta` feedback limit-cycles without it.
+- `src/main.cpp`: `alpha_gas` ghost cells are synced after the gas update under
+  `TWO_PHASE`, so the energy, velocity and diagnostics passes in the same outer
+  iteration evaluate the ceiling on a current field rather than a stale one.
+
+**Guards lifted**: `fluid_property_model = TWO_PHASE` under FBNS, and the
+converse guard that pinned TWO_PHASE to `cavitation_model = JFO`. Gas transport
+and the gas state machine needed no changes — they were already model-agnostic.
+
+**Guard kept**: `gas_pressure_coupling = VOID_COUPLED` under FBNS. It makes the
+cavitation datum a per-cell field (`p_void`) that is advanced and under-relaxed
+**only** inside `Reynolds::solve_elrod`'s outer flag-update loop. FBNS has no such
+loop, so it would run the plateau frozen at `p_cav` while reporting
+`VOID_COUPLED`. The error message says exactly that. `cross_film_thermal_model`
+and `INLET_OUTLET` stay rejected for their existing, unrelated reasons.
+
+**`p_cav` is not a field on this path, and does not need to be.** Under
+`cavitation_threshold = LOCAL_PSAT` the datum is evaluated at the *feed* state
+(`dissolved_gas_initial`, `temperature_initial` — both config scalars), so it is
+uniform over the domain by construction, deliberately, so that it injects no net
+force. The Fischer-Burmeister argument `a = (p - p_cav)/p_ref` already reads the
+correct local value. `p_void` under `VOID_COUPLED` is the only genuinely per-cell
+cavitation pressure in the codebase, and it is guarded off (above).
+
+**Bug found and fixed while landing this.** The memo's §2 says the cold-start test
+generalizes to `theta >= theta_full`. It must not. That test is a *sentinel*
+comparison against the value `main.cpp` initialises `theta` to, not a full-film
+test: an uncavitated gassy cell sits at `theta = 1 - alpha_gas` by definition, so
+generalizing it declares a cold start on every gassy step, discards the warm start
+and refills `theta` down to the new ceiling in one go. Measured effect before the
+fix: pressure to 2.9e8 Pa on `config_r290_pz68_quick.txt`. The literal `1` is kept
+and the reason is written at the site.
+
+**Tests** (`tests/test_fbns.cpp` 11-13, 27/27 suite green including the `-n 6`
+variants):
+
+| Check | Result |
+|---|---|
+| complementarity vs the moved bound, 5 transient steps on the 00c bearing | `max(-(p-p_cav)/p_ref)`, `max(theta-(1-alpha_gas))`, `max` product all **0 exactly** |
+| per-cell mass residual / peak Couette flux, away from the groove | `5.1e-15` |
+| free gas released, FBNS vs JFO | `alpha_gas` max `2.50e-2` vs `8.44e-2` (same order; asserted within 10x, fronts logged only) |
+| `alpha_gas = 0` vs phase-2 `SINGLE_PHASE`, 3 steps | bit-identical `p` and `theta` |
+| `FullFilm::bound` over 24 model combinations | exactly `1.0` except FBNS + `TWO_PHASE` |
+| Elrod / Gumbel vs 28ac88a, 6 configs | **54/54 output files byte-identical** |
+
+The regression set covers JFO+TWO_PHASE, JFO+VOID_COUPLED+LOCAL_PSAT, JFO
+isothermal, JFO+SINGLE_PHASE+STRIATED, GUMBEL and FBNS+SINGLE_PHASE.
+
+**Known stiffness, reported not hidden.** `config_r290_pz68_quick.txt` with
+`cavitation_model = FBNS` converges every Newton solve (61/61 steps, 2-11
+iterations, mean 6.3, 3.9 s wall) and keeps the gas mass bounded
+(3.99e-5 -> 2.76e-5 kg, monotone out through the axial ends), but its load history
+is transient noise for tens of steps. The feed enters at its bubble point and
+flashes enough propane to fill ~23% of the gap per step; the ceiling drops by that
+much at once and the load swings between 5.8e2 N and 2.4e5 N on alternate steps,
+decaying ~30% per step pair. The swing is **timestep-independent** (identical at
+dt = 5e-6, 5e-8, 5e-9 s) because the released fraction is itself proportional to
+dt, so it is the model's displacement rate, not a resolution artefact. The Elrod
+path with `VOID_COUPLED` does not resolve this case either — it drifts
+monotonically instead of oscillating. Lower `void_coupling_relaxation` to damp it.
+
 ### 2026-08-05 - One shared full-film predicate (`FullFilm`, `src/full_film.hpp`)
 
 Byte-identical refactor. The question "does this cell still hold an unbroken

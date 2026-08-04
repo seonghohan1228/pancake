@@ -36,7 +36,7 @@ double south_boundary_velocity(const Field& p, const Field& h, const Field& thet
     const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
     // Cavitated boundary cell under consistent_boundary_flux: the Elrod solve
     // re-floods it at the physical reformation rate, so convect that same inflow.
-    if (cfg.is_reformation_boundary(theta(i, 0))) {
+    if (cfg.is_reformation_boundary(theta(i, 0), FullFilm::bound(fields, cfg, i, 0))) {
         return cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
                                                  0.5 * mesh.get_d_z(), true);
     }
@@ -54,7 +54,7 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
     const int j = mesh.n_z_local - 1;
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
     const double mu_face = dynamic_viscosity(fields, cfg, i, j);
-    if (cfg.is_reformation_boundary(theta(i, j))) {
+    if (cfg.is_reformation_boundary(theta(i, j), FullFilm::bound(fields, cfg, i, j))) {
         return cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
                                                  0.5 * mesh.get_d_z(), false);
     }
@@ -71,7 +71,7 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
 // modulus cancels, leaving rho_l*h^3/(12 mu) * dp/dz).
 double boundary_liquid_density(const Fields& fields, const SimulationConfig& cfg,
                                const Field& theta, int i, int j) {
-    const char* name = cfg.is_reformation_boundary(theta(i, j)) ? "rho_liquid_solution" : "rho";
+    const char* name = cfg.is_reformation_boundary(theta(i, j), FullFilm::bound(fields, cfg, i, j)) ? "rho_liquid_solution" : "rho";
     return std::max(field_value(fields, name, cfg.rho, i, j), 1.0e-30);
 }
 

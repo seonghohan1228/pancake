@@ -227,7 +227,8 @@ Supply inlets are still imposed during the solve.
 
 `cavitation_model = FBNS` solves the same JFO conditions as a complementarity
 problem instead of through the Elrod-Adams bulk-modulus formulation. It imposes
-`p - p_cav >= 0`, `1 - theta >= 0` and `(p - p_cav)(1 - theta) = 0` directly via
+`p - p_cav >= 0`, `theta_full - theta >= 0` and
+`(p - p_cav)(theta_full - theta) = 0` directly via
 the Fischer-Burmeister function and a Newton iteration with a Schur reduction
 (Woloszynski, Podsiadlo & Stachowiak, Tribol. Lett. 58:18, 2015). There is no
 artificial bulk modulus and no switch function, so `bulk_modulus` is unused on
@@ -235,17 +236,30 @@ this path. On the exact 1D benchmark of `cases/00c_jfo_verification` it places
 the rupture front within one cell at every resolution from 120 to 960
 circumferential cells, where `JFO` is 7-13 cells off, and it converges in four
 Newton iterations independent of grid size. Scope: `temperature_model`
-`ISOTHERMAL` or `ENERGY_EQUATION`, `fluid_property_model` `CONSTANT` or
+`ISOTHERMAL` or `ENERGY_EQUATION`, `fluid_property_model` `CONSTANT`,
 `SINGLE_PHASE` (so THD runs with temperature- and pressure-dependent oil
-properties are supported), `cavitated_film_model` `FULL_FILM` or `STRIATED`,
-`DIRICHLET`/`NEUMANN` axial boundaries; steady or transient, static or moving
-bearing, MPI-parallel. Temperature reaches the solver through its per-cell
+properties are supported) or `TWO_PHASE`, `cavitated_film_model` `FULL_FILM` or
+`STRIATED`, `DIRICHLET`/`NEUMANN` axial boundaries; steady or transient, static or
+moving bearing, MPI-parallel. Temperature reaches the solver through its per-cell
 Poiseuille mobility, which is frozen inside each Newton solve and refreshed by
-the outer Picard loop, exactly as on the Elrod path. Still rejected at config
-validation rather than silently ignored: `fluid_property_model = TWO_PHASE`
-(free gas moves the full-film bound to `theta <= 1 - alpha_gas`; see
-`docs/FBNS_GAS_COUPLING.md`), `gas_pressure_coupling`, the cross-film thermal
-model, and `INLET_OUTLET` axial boundaries - use `cavitation_model = JFO` for
+the outer Picard loop, exactly as on the Elrod path.
+
+Under `TWO_PHASE` the full-film ceiling `theta_full` drops from 1 to
+`1 - alpha_gas`, because the released gas occupies part of the gap and the liquid
+can only fill what is left. `alpha_gas` is lagged (the gas path runs after the
+flow solve), so it is a coefficient of the Newton solve rather than an unknown and
+both Jacobian blocks keep their gas-free forms. The ceiling has one definition,
+`FullFilm::bound` in `src/full_film.hpp`, which every full-film test in the solver
+reads; it returns exactly 1 for every model other than FBNS + `TWO_PHASE`, so the
+Elrod and Gumbel paths are unchanged bit for bit. The `alpha_gas <-> theta`
+feedback this opens takes the same under-relaxation lever the Elrod void-coupled
+path uses, `void_coupling_relaxation` (default 0.3); on a strongly supersaturated
+feed it is worth lowering. See `docs/FBNS_GAS_COUPLING.md` for the limits.
+
+Still rejected at config validation rather than silently ignored:
+`gas_pressure_coupling = VOID_COUPLED` (it makes the cavitation plateau a per-cell
+field that only the Elrod outer loop advances), the cross-film thermal model, and
+`INLET_OUTLET` axial boundaries - use `cavitation_model = JFO` for
 those. Tuning keys: `fbns_max_iters`,
 `fbns_tol`, `fbns_relaxation`, and `fbns_pressure_scale` (0 = derived from the
 operating point; it conditions the Fischer-Burmeister function and rarely needs

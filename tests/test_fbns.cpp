@@ -37,6 +37,17 @@
 //   within 0.5 K wherever both hold a full film, and must not shift the front gap
 //   the two models already have isothermally. The fronts themselves cannot be
 //   asked to agree; see the comment on the test.
+// Test 11 - Gaseous cavitation (phase 3). With a resolved free-gas phase the
+//   complementarity bound moves to theta <= 1 - alpha_gas. FBNS must satisfy it
+//   cell by cell, keep per-cell mass conservation at Krylov precision, and
+//   release gas in the same place and order of magnitude as the JFO path. Fronts
+//   are logged for the record and asserted against nothing.
+// Test 12 - Zero-gas identity. TWO_PHASE with alpha_gas = 0 everywhere must
+//   reproduce the phase-2 SINGLE_PHASE solve bit for bit, so the moved bound
+//   cannot perturb a run that has no free gas in it.
+// Test 13 - The moved ceiling is FBNS-only. FullFilm::bound returns exactly 1 for
+//   every other cavitation model whatever alpha_gas holds, which is what makes the
+//   Elrod and Gumbel paths byte-identical by construction rather than by luck.
 //
 // Run as: mpirun -n <N> ./test_fbns
 
@@ -55,10 +66,13 @@
 #include "config.hpp"
 #include "diagnostics.hpp"
 #include "energy.hpp"
+#include "equation_of_state.hpp"
 #include "fbns.hpp"
 #include "field.hpp"
 #include "film_thickness.hpp"
 #include "fluid_properties.hpp"
+#include "full_film.hpp"
+#include "gas_transport.hpp"
 #include "linear_system.hpp"
 #include "mesh.hpp"
 #include "reynolds.hpp"
@@ -491,14 +505,27 @@ void test_scope_is_enforced() {
     check(rejects(thd_with_gas),
           "dissolved_gas_henry_coeff = 0 must still be rejected when dissolved gas is present");
 
+    // Phase 3: free gas is in scope. It moves the full-film bound to
+    // theta <= 1 - alpha_gas, which is affine in theta with the same derivative,
+    // so the Fischer-Burmeister composition and both Jacobian blocks are intact.
     SimulationConfig gas = base;
+    gas.solution_mode = SolutionMode::TRANSIENT;
+    gas.dt = 1.0e-6;
     gas.fluid_property_model = FluidPropertyModel::TWO_PHASE;
     gas.gas_mass_transfer_rate = 1.0e3;
     gas.dissolved_gas_initial = 1.0e-3;
     gas.dissolved_gas_henry_coeff = 1.2e-9;
-    check(rejects(gas),
-          "FBNS must reject TWO_PHASE: free gas moves the full-film bound to "
-          "theta <= 1 - alpha_gas, which is not in the complementarity constraint");
+    gas.mu_gas = 8.7e-6;
+    check(accepts(gas), "FBNS must accept TWO_PHASE gaseous cavitation in phase 3");
+
+    // ... but the void-coupled plateau closure is not. It makes the cavitation
+    // datum a per-cell field that only solve_elrod's outer loop advances, so FBNS
+    // would run it frozen at its initial value.
+    SimulationConfig void_coupled = gas;
+    void_coupled.gas_pressure_coupling = GasPressureCoupling::VOID_COUPLED;
+    check(rejects(void_coupled),
+          "FBNS must reject gas_pressure_coupling = VOID_COUPLED: the per-cell "
+          "plateau has no update site outside solve_elrod");
 
     SimulationConfig cross = thermal;
     cross.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
@@ -871,6 +898,322 @@ void test_property_coupling_is_inert_when_off() {
 
 }  // namespace
 
+// --- Gaseous cavitation (phase 3) -------------------------------------------
+
+// The 00c bearing with a saturated propane charge: the groove feed sits exactly
+// at its bubble point, so every cell below the supply pressure is supersaturated
+// and outgasses. Transient, because gas transport and release need a time step.
+SimulationConfig outgassing_config(int n_theta, int n_z, CavitationModel model) {
+    SimulationConfig cfg = benchmark_config(n_theta, n_z);
+    cfg.cavitation_model = model;
+    cfg.solution_mode = SolutionMode::TRANSIENT;
+    cfg.dt = 1.0e-5;
+    cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    cfg.dissolved_gas_species = DissolvedGasSpecies::PROPANE;
+    cfg.solubility_model = SolubilityModel::HENRY;
+    cfg.dissolved_gas_initial = 1.0e-3;
+    cfg.dissolved_gas_max = 5.0e-3;
+    // Henry slope calibrated so the groove feed is exactly saturated: any pressure
+    // drop below p_supply releases gas, nothing releases above it.
+    cfg.dissolved_gas_henry_coeff = cfg.dissolved_gas_initial / 1.713e5;
+    cfg.gas_mass_transfer_rate = 1.0e4;
+    cfg.gas_alpha_max = 0.6;
+    cfg.mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
+    cfg.mu_gas = 8.7e-6;
+    cfg.gas_pressure_floor = 1.0e5;
+    cfg.property_reference_pressure = 1.0e6;
+    cfg.property_reference_temperature = 313.15;
+    cfg.temperature_initial = 313.15;
+    return cfg;
+}
+
+// One bearing carrying the full gas field set, advanced through the same
+// segregated sequence main.cpp runs: properties -> flow -> properties -> gas
+// transport -> gas state. Either cavitation model can drive it.
+struct GasCase {
+    SimulationConfig cfg;
+    Mesh mesh;
+    Communicator comm;
+    LinearSystem sys;
+    Fields fields;
+    Field inlet_mask;
+    int newton_iters = 0;
+    bool converged = true;
+
+    explicit GasCase(const SimulationConfig& config)
+        : cfg(config), mesh(cfg), comm(mesh), sys(mesh), inlet_mask("inlet_mask", mesh) {
+        fields.add("pressure", mesh).fill(cfg.initial_pressure());
+        fields.add("theta", mesh).fill(FBNS::active(cfg)
+            ? 1.0
+            : std::max(EOS::theta_from_pressure(cfg.initial_pressure(), cfg.p_cav, cfg.bulk_modulus),
+                       cfg.theta_min));
+        fields.add("h", mesh).fill(cfg.c);
+        fields.add("dh_dt", mesh).fill(0.0);
+        fields.add("rho", mesh).fill(cfg.rho);
+        fields.add("mu", mesh).fill(cfg.mu);
+        fields.add("rho_liquid_solution", mesh).fill(cfg.rho);
+        fields.add("mu_liquid_solution", mesh).fill(cfg.mu);
+        fields.add("temperature", mesh).fill(cfg.temperature_initial);
+        fields.add("dissolved_gas", mesh).fill(cfg.dissolved_gas_initial);
+        fields.add("free_gas_mass", mesh).fill(0.0);
+        fields.add("alpha_gas", mesh).fill(0.0);
+        fields.add("gas_mass_transfer", mesh).fill(0.0);
+        fields.add("rho_gas", mesh).fill(0.0);
+        fields.add("gas_clamp_mass", mesh).fill(0.0);
+        fields.add("cavitation_clamp_mass", mesh).fill(0.0);
+        fields.add("mass_residual", mesh).fill(0.0);
+        FilmThickness::compute_static(fields["h"], mesh, cfg);
+        FilmThickness::compute_inlet_indicator(inlet_mask, mesh, cfg);
+        fields.add("inlet_indicator", mesh);
+        for (int i = -inlet_mask.n_ghost; i < mesh.n_theta_local + inlet_mask.n_ghost; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j)
+                fields["inlet_indicator"](i, j) = inlet_mask(i, j);
+        comm.update_ghosts(inlet_mask);
+        comm.update_ghosts(fields);
+        for (const char* name : {"pressure", "theta", "h", "dissolved_gas", "free_gas_mass"})
+            fields[name].store_old_time();
+    }
+
+    // Establish the developed, cavitated film before any gas is released, so the
+    // transient steps below exercise the moved bound on a bearing that actually
+    // has a rupture front rather than on the first few microseconds of spin-up.
+    void prime_steady() {
+        SimulationConfig steady = cfg;
+        steady.solution_mode = SolutionMode::STEADY_STATE;
+        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        comm.update_ghosts(fields);
+        if (FBNS::active(cfg)) FBNS::solve(fields, sys, comm, mesh, steady);
+        else Reynolds::solve_elrod(fields, sys, mesh, steady);
+        comm.update_ghosts(fields);
+        for (const char* name : {"pressure", "theta", "h", "dissolved_gas", "free_gas_mass"})
+            fields[name].store_old_time();
+    }
+
+    // Flow solve only, leaving the gas state exactly as the previous step left it.
+    // The complementarity assertions have to be made here: after the gas update
+    // alpha_gas has moved and theta has not, so the pair is one lag out of phase
+    // by construction (that lag is what makes alpha_gas a coefficient).
+    void solve_flow() {
+        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        comm.update_ghosts(fields);
+        if (FBNS::active(cfg)) {
+            const FBNS::Stats stats = FBNS::solve(fields, sys, comm, mesh, cfg);
+            newton_iters = stats.newton_iters;
+            converged = stats.converged;
+        } else {
+            const Reynolds::ElrodStats stats = Reynolds::solve_elrod(fields, sys, mesh, cfg);
+            newton_iters = stats.outer_iters;
+            converged = stats.converged;
+        }
+        comm.update_ghosts(fields);
+    }
+
+    void advance_gas() {
+        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        comm.update_ghosts(fields);
+        GasTransport::solve(fields, sys, mesh, cfg, cfg.dt);
+        FluidProperties::update_gas_state(fields, mesh, cfg, cfg.dt);
+        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        comm.update_ghosts(fields);
+        for (const char* name : {"pressure", "theta", "h", "dissolved_gas", "free_gas_mass"})
+            fields[name].store_old_time();
+    }
+
+    double global_max_of(const char* name) const {
+        double local = -1.0e300;
+        for (int i = 0; i < mesh.n_theta_local; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j)
+                local = std::max(local, fields[name](i, j));
+        MPI_Allreduce(MPI_IN_PLACE, &local, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        return local;
+    }
+};
+
+// Test 11 - Gaseous cavitation under FBNS. The invariants asserted are physical
+// ones the solver owns: complementarity against the *moved* bound
+// theta <= 1 - alpha_gas, the film content staying inside [theta_min, bound], and
+// per-cell mass conservation at Krylov precision. The JFO run beside it is a
+// qualitative reference only -- both must release gas in the same place, and the
+// fronts are logged for the record, but nothing is asserted about their equality.
+// Elrod's front on this bearing sits 12-18 deg from the exact 1-D solution (7.3.5),
+// so agreeing with it would be evidence of a defect, not of correctness.
+void test_gaseous_cavitation() {
+    const int n_theta = 240, n_z = 4;
+    const int n_steps = 5;
+    GasCase fbns(outgassing_config(n_theta, n_z, CavitationModel::FBNS));
+    GasCase jfo(outgassing_config(n_theta, n_z, CavitationModel::JFO));
+    fbns.prime_steady();
+    jfo.prime_steady();
+
+    const double p_ref = FBNS::pressure_scale(fbns.cfg);
+    const double scale = flux_scale(fbns.mesh, fbns.cfg);
+    double worst_below_pcav = 0.0, worst_above_bound = 0.0;
+    double worst_product = 0.0, worst_residual = 0.0;
+    int newton_max = 0;
+
+    for (int step = 0; step < n_steps; ++step) {
+        fbns.solve_flow();
+        check(fbns.converged, "FBNS must converge on every gaseous-cavitation step");
+        newton_max = std::max(newton_max, fbns.newton_iters);
+
+        // Complementarity against the gas-adjusted bound, in the same state the
+        // solver left, and per-cell conservation through the same coefficients.
+        Diagnostics::mass_residual(fbns.fields, fbns.mesh, fbns.cfg, fbns.cfg.dt);
+        const Field& p = fbns.fields["pressure"];
+        const Field& theta = fbns.fields["theta"];
+        const Field& residual = fbns.fields["mass_residual"];
+        for (int i = 0; i < fbns.mesh.n_theta_local; ++i) {
+            for (int j = 0; j < fbns.mesh.n_z_local; ++j) {
+                const double bound = FullFilm::bound(fbns.fields, fbns.cfg, i, j);
+                const double a = (p(i, j) - fbns.cfg.effective_p_cav()) / p_ref;
+                const double b = bound - theta(i, j);
+                worst_below_pcav = std::max(worst_below_pcav, -a);
+                worst_above_bound = std::max(worst_above_bound, -b);
+                worst_product = std::max(worst_product, std::abs(a * b));
+                const bool near_inlet = fbns.inlet_mask(i, j) != 0.0 ||
+                    fbns.inlet_mask(i - 1, j) != 0.0 || fbns.inlet_mask(i + 1, j) != 0.0;
+                if (!near_inlet) worst_residual = std::max(worst_residual, std::abs(residual(i, j)));
+            }
+        }
+        fbns.advance_gas();
+
+        jfo.solve_flow();
+        jfo.advance_gas();
+    }
+
+    double vals[4] = {worst_below_pcav, worst_above_bound, worst_product, worst_residual};
+    MPI_Allreduce(MPI_IN_PLACE, vals, 4, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+    const double alpha_fbns = fbns.global_max_of("alpha_gas");
+    const double alpha_jfo = jfo.global_max_of("alpha_gas");
+    const double gas_fbns = fbns.global_max_of("free_gas_mass");
+    const double gas_jfo = jfo.global_max_of("free_gas_mass");
+
+    log_rank0("  gaseous FBNS: max Newton = " + std::to_string(newton_max) +
+              ", max alpha_gas = " + fmt(alpha_fbns) + " (JFO " + fmt(alpha_jfo) + ")");
+    log_rank0("  gaseous FBNS: max free_gas_mass = " + fmt(gas_fbns) +
+              " kg/m^2 (JFO " + fmt(gas_jfo) + ")");
+    log_rank0("  gaseous FBNS: max(-(p-p_cav)/p_ref) = " + fmt(vals[0]) +
+              ", max(theta-(1-alpha_gas)) = " + fmt(vals[1]) +
+              ", max product = " + fmt(vals[2]));
+    log_rank0("  gaseous FBNS: max |r|/flux away from the groove = " + fmt(vals[3] / scale));
+
+    // Both models must actually release gas, in the same order of magnitude. This
+    // is the qualitative agreement the two paths owe each other; the fields
+    // themselves are not comparable because Elrod's gas is volumetrically inert.
+    check(alpha_fbns > 1.0e-3, "FBNS must release free gas on a supersaturated feed");
+    check(alpha_jfo > 1.0e-3, "JFO must release free gas on the same feed");
+    check(alpha_fbns < 10.0 * alpha_jfo && alpha_jfo < 10.0 * alpha_fbns,
+          "the two models must release gas within an order of magnitude of each other");
+
+    // The invariants that are actually asserted.
+    check(vals[0] <= 0.0, "no cell may sit below p_cav");
+    check(vals[1] <= 1.0e-12, "no cell may hold more liquid than 1 - alpha_gas");
+    check(vals[2] < 1.0e-12, "(p - p_cav)((1 - alpha_gas) - theta) must vanish cell by cell");
+    check(vals[3] / scale < 1.0e-6, "per-cell mass conservation must hold at Krylov precision");
+
+    // Fronts: logged, never asserted against each other.
+    std::vector<double> film_fbns = gather_row(fbns.fields["theta"], fbns.mesh, n_z / 2);
+    std::vector<double> film_jfo = gather_row(jfo.fields["theta"], jfo.mesh, n_z / 2);
+    std::vector<double> alpha_row = gather_row(fbns.fields["alpha_gas"], fbns.mesh, n_z / 2);
+    // locate_fronts asks "is this cell below full film", so the FBNS row has to be
+    // normalized by its own moved ceiling first. Feeding it raw theta would call a
+    // gassy but unbroken cell cavitated -- the exact confusion the shared bound
+    // exists to prevent.
+    int cavitated_cells = 0;
+    for (size_t k = 0; k < film_fbns.size(); ++k) {
+        film_fbns[k] /= std::max(1.0 - alpha_row[k], 1.0e-30);
+        if (film_fbns[k] < 1.0 - 1.0e-6) ++cavitated_cells;
+    }
+    double rupture_fbns = 0.0, reform_fbns = 0.0, rupture_jfo = 0.0, reform_jfo = 0.0;
+    locate_fronts(film_fbns, rupture_fbns, reform_fbns);
+    locate_fronts(film_jfo, rupture_jfo, reform_jfo);
+    // locate_fronts reports the first transition pair walking downstream from the
+    // groove, so a single re-flooded cell just past rupture shows up as an early
+    // reformation; the cavitated-cell count is the reliable extent measure.
+    log_rank0("  gaseous fronts (logged, not asserted): FBNS rupture " +
+              std::to_string(rupture_fbns) + " deg reformation " + std::to_string(reform_fbns) +
+              " deg over " + std::to_string(cavitated_cells) + " cavitated cells | JFO rupture " +
+              std::to_string(rupture_jfo) + " deg reformation " + std::to_string(reform_jfo) + " deg");
+}
+
+// Test 12 - The gas path is inert when there is no gas. TWO_PHASE with
+// alpha_gas = 0 everywhere must reproduce the phase-2 (SINGLE_PHASE) FBNS solve
+// bit for bit, over a cold start and two warm ones, so admitting the moved bound
+// cannot perturb a run that has no free gas in it.
+void test_zero_gas_reproduces_phase_two() {
+    SimulationConfig single = benchmark_config(240, 4);
+    single.solution_mode = SolutionMode::TRANSIENT;
+    single.dt = 1.0e-5;
+    single.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+
+    SimulationConfig two_phase = single;
+    two_phase.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+
+    Case a(single);
+    Case b(two_phase);
+    // Both carry an explicit zero free-gas field, so the TWO_PHASE run really does
+    // walk the clamp in FullFilm::gas_volume_fraction rather than short-circuit on
+    // a missing field.
+    a.fields.add("alpha_gas", a.mesh).fill(0.0);
+    b.fields.add("alpha_gas", b.mesh).fill(0.0);
+
+    for (int step = 0; step < 3; ++step) {
+        a.solve();
+        b.solve();
+        int mismatches = 0;
+        for (int i = 0; i < a.mesh.n_theta_local; ++i) {
+            for (int j = 0; j < a.mesh.n_z_local; ++j) {
+                if (a.fields["pressure"](i, j) != b.fields["pressure"](i, j)) ++mismatches;
+                if (a.fields["theta"](i, j) != b.fields["theta"](i, j)) ++mismatches;
+            }
+        }
+        MPI_Allreduce(MPI_IN_PLACE, &mismatches, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        check(mismatches == 0,
+              "TWO_PHASE with alpha_gas = 0 must reproduce the SINGLE_PHASE FBNS solve bit for bit");
+        a.fields["theta"].store_old_time();
+        a.fields["pressure"].store_old_time();
+        b.fields["theta"].store_old_time();
+        b.fields["pressure"].store_old_time();
+    }
+    log_rank0("  zero-gas identity: 3 steps, pressure and theta bit-identical to phase 2");
+}
+
+// Test 13 - The Elrod and Gumbel paths cannot see the moved ceiling. This is the
+// by-construction half of the byte-identity acceptance: FullFilm::bound is the
+// only place the ceiling lives, and it returns exactly 1 for every model except
+// FBNS + TWO_PHASE, whatever the free-gas field holds.
+void test_ceiling_is_fbns_only() {
+    SimulationConfig cfg = benchmark_config(16, 4);
+    Mesh mesh(cfg);
+    Fields fields;
+    fields.add("alpha_gas", mesh).fill(0.25);
+
+    const CavitationModel models[] = {CavitationModel::FULL_SOMMERFELD, CavitationModel::GUMBEL,
+                                      CavitationModel::JFO, CavitationModel::FBNS};
+    const FluidPropertyModel properties[] = {FluidPropertyModel::CONSTANT,
+                                             FluidPropertyModel::SINGLE_PHASE,
+                                             FluidPropertyModel::TWO_PHASE};
+    const GasPressureCoupling couplings[] = {GasPressureCoupling::NONE,
+                                             GasPressureCoupling::VOID_COUPLED};
+    for (CavitationModel model : models) {
+        for (FluidPropertyModel property : properties) {
+            for (GasPressureCoupling coupling : couplings) {
+                SimulationConfig probe = cfg;
+                probe.cavitation_model = model;
+                probe.fluid_property_model = property;
+                probe.gas_pressure_coupling = coupling;
+                const double bound = FullFilm::bound(fields, probe, 0, 0);
+                const bool moved = model == CavitationModel::FBNS &&
+                    property == FluidPropertyModel::TWO_PHASE;
+                check(bound == (moved ? 0.75 : 1.0),
+                      "FullFilm::bound may only move under FBNS + TWO_PHASE");
+            }
+        }
+    }
+    log_rank0("  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)");
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
     int rank = 0;
@@ -886,6 +1229,9 @@ int main(int argc, char** argv) {
     test_property_coupling_is_inert_when_off();
     test_viscosity_reaches_the_operator();
     test_energy_coupling_matches_elrod();
+    test_gaseous_cavitation();
+    test_zero_gas_reproduces_phase_two();
+    test_ceiling_is_fbns_only();
 
     if (rank == 0) std::cout << "PASS: test_fbns\n";
     PetscFinalize();

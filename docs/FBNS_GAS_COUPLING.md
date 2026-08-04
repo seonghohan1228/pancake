@@ -1,12 +1,16 @@
 # FBNS + gaseous cavitation: design memo
 
-Status: **not implemented, deliberately.** `cavitation_model = FBNS` with
-`fluid_property_model = TWO_PHASE` is rejected at config validation. This memo
-records why, what was actually checked, and what it would take to lift the guard.
+Status: **implemented** (2026-08-05, branch `codex/fbns-gas`).
+`cavitation_model = FBNS` with `fluid_property_model = TWO_PHASE` now runs; see
+PHYSICS.md §7.3.7 for the landed model and §8 below for what this memo got right,
+what it got wrong, and what is still guarded. The analysis in §§1-4 is kept as
+written, unamended, so it can be checked against the outcome.
 
-Step 1 of §4, the shared full-film predicate, is **DONE** (2026-08-05, branch
-`codex/full-film-predicate`): `FullFilm` in `src/full_film.hpp`, all fifteen
-sites routed, byte-identical across five regression cases. Steps 2-4 are open.
+- Step 1 of §4, the shared full-film predicate — **DONE** 2026-08-05, branch
+  `codex/full-film-predicate` (28ac88a): `FullFilm` in `src/full_film.hpp`, all
+  fifteen sites routed, byte-identical across five regression cases.
+- Steps 2-4 — **DONE** 2026-08-05, branch `codex/fbns-gas`, except the
+  `VOID_COUPLED` half of step 2, which stays guarded (§8).
 
 Written while landing FBNS phase 2 (energy equation + `SINGLE_PHASE` properties),
 branch `codex/fbns-cavitation`.
@@ -147,3 +151,107 @@ merge onto `FullFilm::bound` in that change rather than diverge further.
 Until then `cavitation_model = JFO` remains the path for gaseous cavitation
 (validation case 05), and FBNS covers cases 00, 00c, 01 (isothermal and THD) and
 02–03.
+
+## 8. Outcome (2026-08-05, branch `codex/fbns-gas`)
+
+### 8.1 What the memo got right
+
+Finding 1 held exactly. With `alpha_gas` lagged the bound is affine in `theta`
+with the same derivative, both Jacobian blocks are untouched, and the landed diff
+in `src/fbns.cpp` is the three substantive changes §2 predicted plus the ceiling
+lambda. The complementarity invariants come out at **0 exactly** on the test case
+(`tests/test_fbns.cpp` test 11) and per-cell mass conservation stays at Krylov
+precision, `5.1e-15` of the peak Couette flux.
+
+Finding 2 held too: `FullFilm::bound` was the whole of the representation work.
+Moving the ceiling was one line there and zero call-site edits, and the Elrod and
+Gumbel paths came out byte-identical across six regression cases / 54 output
+files against 28ac88a, including JFO + TWO_PHASE and JFO + VOID_COUPLED +
+LOCAL_PSAT.
+
+§4.3 held: the outer loop does need under-relaxation. The lever already existed —
+`FluidProperties::gas_state_relaxation` — and now fires whenever the gas displaces
+liquid rather than only under `VOID_COUPLED`.
+
+### 8.2 What the memo got wrong
+
+**The cold start.** §2 says "the cold-start fill becomes `1 - alpha_gas` instead
+of `1`". The *fill* generalizes, but the cold-start **test** must not: it is a
+sentinel comparison against the value `main.cpp` initialises `theta` to, not a
+full-film test. Generalizing it to `theta >= theta_full` declares a cold start on
+every gassy step (an uncavitated gassy cell sits at `theta = 1 - alpha_gas` by
+definition), throws the warm start away, and refills `theta` down to the new
+ceiling in one go — a spurious `d(theta)/dt` sink that drove the pressure to
+`2.9e8` Pa on the R290/PZ68 case. The landed code keeps the literal `1` and says
+why, at length, at the site.
+
+**Two config.hpp helpers were missed.** `elrod_boundary_outflow` and
+`is_reformation_boundary` take film-content *values*, not cell indices, and live in
+`config.hpp`, which `full_film.hpp` includes — so they could not be routed through
+the predicate during step 1. Both now take the ceiling as an explicit parameter
+with no default (a silent `1.0` default would reintroduce exactly the stale-ceiling
+bug the predicate exists to prevent). Seven call sites updated; a no-op today,
+since every caller is on a path where the bound is 1.
+
+**Step 4 was already enforced.** `STEADY_STATE` + `steady_gas_model = FROZEN` was
+already a validation error for any TWO_PHASE run, FBNS included, with an explicit
+`allow_frozen_gas_steady` opt-out. Nothing to add.
+
+**§4.2's "mechanically easy" is optimistic** — see §8.3.
+
+### 8.3 What stays guarded, and why
+
+`gas_pressure_coupling = VOID_COUPLED` is still rejected under FBNS.
+
+The FB-argument side is indeed easy: `a = (p - p_cav)/p_ref` would read a per-cell
+datum, the Poiseuille Jacobian `A` is unchanged because `dp/dp* = p_ref` whatever
+constant offset `p_cav` carries, and the `source = A p* - G` assembly already
+absorbs the extra `grad(p_cav)` term because `G` is evaluated from the real
+pressure field. That is the part §4.2 saw.
+
+What §4.2 missed is that the plateau field has no update site outside the Elrod
+solver. `p_void` is advanced — and under-relaxed — inside
+`Reynolds::solve_elrod`'s outer flag-update loop (`reynolds.cpp`, `if
+(fields.has("p_void") && outer > 0)`), because recomputing the closure on the
+instantaneous `theta` at every assembly makes the `p_void <-> theta` feedback
+limit-cycle. FBNS has no flag-update loop to hang that on. Wiring it in means a new
+update site with its own relaxation schedule and its own validation, on top of a
+feedback loop the Elrod path already needs damping for. Delivered as a documented
+limitation with a specific error message rather than a half-implementation.
+
+Note also that `p_cav` under `cavitation_threshold = LOCAL_PSAT` is **not** a
+field: `effective_p_cav()` evaluates the bubble point at the *feed* state
+(`dissolved_gas_initial`, `temperature_initial`), both config scalars, so it is
+uniform by construction — deliberately, so the datum injects no net force. FBNS's
+scalar already reads the correct local value there. `p_void` is the only genuinely
+per-cell cavitation pressure in the codebase.
+
+### 8.4 The Elrod ceiling merge is still open
+
+§5 recommends merging `Reynolds`'s `VoidParams::theta_full` onto
+`FullFilm::bound`. That did **not** land, on purpose. `FullFilm::bound` moves only
+under FBNS + TWO_PHASE (`FullFilm::gas_displaces_liquid`), because:
+
+- under `gas_pressure_coupling = NONE` the Elrod path's free gas is volumetrically
+  inert *by design* — that is the shipped, validated model of validation case 05,
+  not an oversight to correct in passing;
+- under `VOID_COUPLED` the Elrod operator already carries the moved ceiling in
+  `VoidParams::theta_full`, where it feeds the barotropic EOS and the switch
+  function. Dropping the fifteen Poiseuille gates onto it as well is a second,
+  independent modelling change to a validated path, and it would break the
+  byte-identity that made this change checkable.
+
+Whoever merges them should expect to re-validate case 05, not just re-run it.
+
+### 8.5 Known stiffness
+
+`config_r290_pz68_quick.txt` with `cavitation_model = FBNS` converges every Newton
+solve (61/61 steps, 2–11 iterations, mean 6.3) and keeps the gas mass bounded, but
+its load history is transient noise for tens of steps: the saturated feed flashes
+enough propane to fill ~23% of the gap per step, and the resulting ceiling drop
+swings the load between 5.8e2 N and 2.4e5 N on alternate steps, decaying ~30% per
+step pair. The swing is timestep-independent (identical at dt = 5e-6, 5e-8 and
+5e-9 s), so it is the model's displacement rate, not a temporal-resolution
+artefact. The Elrod path with `VOID_COUPLED` does not resolve this case either —
+it drifts monotonically instead. Lower `void_coupling_relaxation` to damp it.
+Details in PHYSICS.md §7.3.7.

@@ -517,8 +517,9 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
         auto add_boundary_link = [&](double bc_val, int i, int j) {
             if (cfg.consistent_boundary_flux && !FullFilm::is_full_film(fields, cfg, i, j)) {
                 // Cavitated: explicit reformation inflow = -outflow (shared formula).
-                sys.source(i, j) -= cfg.elrod_boundary_outflow(Gamma_base(i, j), theta(i, j),
-                                                               bc_val, R, d_theta, d_z);
+                sys.source(i, j) -= cfg.elrod_boundary_outflow(
+                    Gamma_base(i, j), theta(i, j), FullFilm::bound(fields, cfg, i, j),
+                    bc_val, R, d_theta, d_z);
             } else {
                 // Full-film: implicit barotropic link (effective outflow matches
                 // cfg.elrod_boundary_outflow's full-film branch, used by diagnostics).

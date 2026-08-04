@@ -364,6 +364,13 @@ int main(int argc, char** argv) {
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
                 comm.update_ghosts(fields["rho"]);
                 comm.update_ghosts(fields["mu"]);
+                // The free-gas fraction sets the full-film ceiling (FullFilm::bound)
+                // under TWO_PHASE, and the energy, velocity and diagnostics passes
+                // below evaluate that ceiling on theta ghost cells. Without this the
+                // ceiling would be one gas update stale across every rank boundary.
+                if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE) {
+                    comm.update_ghosts(fields["alpha_gas"]);
+                }
 
                 // Calculate velocities and macroscopic properties
                 Reynolds::calculate_velocities(fields, mesh, step_cfg);

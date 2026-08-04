@@ -8,6 +8,8 @@
 
 #include <mpi.h>
 
+#include "full_film.hpp"
+
 namespace FBNS {
 
 namespace {
@@ -218,11 +220,26 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
     const double p_cav = cfg.effective_p_cav();
     const double p_ref = pressure_scale(cfg);
     const double dt = (cfg.solution_mode == SolutionMode::STEADY_STATE) ? 0.0 : cfg.dt;
-    const double alpha_max = 1.0 - std::clamp(cfg.theta_min, 0.0, 1.0);
+    const double theta_floor = std::clamp(cfg.theta_min, 0.0, 1.0);
     const double relaxation = std::clamp(cfg.fbns_relaxation, 0.0, 1.0);
 
     auto index = [n_z](int i, int j) { return i * n_z + j; };
     auto gamma_p = [&](int ii, int jj) { return poiseuille_gamma(fields, cfg, ii, jj); };
+
+    // Full-film ceiling of a cell: 1 without a resolved gas phase, 1 - alpha_gas
+    // with one. The complementarity variable is the cavity fraction measured from
+    // that ceiling, alpha = theta_full - theta, so the second JFO condition reads
+    // theta_full - theta >= 0 rather than 1 - theta >= 0.
+    //
+    // alpha_gas is a lagged coefficient here: the gas path runs after the flow
+    // solve in the outer loop, so theta_full is constant through this Newton
+    // solve, d(alpha)/d(theta) = -1 as before, and the Jacobian blocks A and B
+    // below are unchanged. With no gas phase every expression collapses to the
+    // literal 1 it replaced, bit for bit.
+    auto theta_full = [&](int ii, int jj) { return FullFilm::bound(fields, cfg, ii, jj); };
+    auto alpha_ceiling = [&](int ii, int jj) {
+        return std::max(theta_full(ii, jj) - theta_floor, 0.0);
+    };
 
     // --- Jacobian blocks -----------------------------------------------------
     // J_G,p = A (Poiseuille) and J_G,alpha = B (Couette + storage), with the
@@ -330,6 +347,16 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
     // Cold start (no cavitation information in theta yet): solve the full-film
     // problem G(p, alpha = 0) = 0 and clamp to p >= p_cav, per Woloszynski et al.
     // A warm start from the previous timestep is kept when it exists.
+    //
+    // The literal 1 here is deliberate and must NOT become FullFilm::bound. It is
+    // a sentinel test against the value main.cpp initializes theta to, not a
+    // full-film test. Under a moved ceiling theta = 1 - alpha_gas is an ordinary
+    // *converged* uncavitated state, so testing theta >= theta_full would declare
+    // a cold start on every gassy step, throw the warm start away, and refill
+    // theta down to the new ceiling in one go -- a spurious d(theta)/dt sink that
+    // drove the pressure to O(10^3) bar on the R290/PZ68 case. Testing against
+    // the sentinel keeps the warm start and leaves the ceiling change to Newton,
+    // where it belongs.
     double theta_min_local = 1.0e300;
     for (int i = 0; i < n_theta; ++i)
         for (int j = 0; j < n_z; ++j)
@@ -349,6 +376,9 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
 
     if (cold_start) {
         theta.fill(1.0);
+        for (int i = 0; i < n_theta; ++i)
+            for (int j = 0; j < n_z; ++j)
+                theta(i, j) = theta_full(i, j);
         comm.update_ghosts(theta);
         comm.update_ghosts(pressure);
         for (int i = -pressure.n_ghost; i < n_theta + pressure.n_ghost; ++i)
@@ -398,7 +428,7 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
             for (int j = 0; j < n_z; ++j) {
                 const int c = index(i, j);
                 const double p_star = (pressure(i, j) - p_cav) / p_ref;
-                const double alpha = 1.0 - theta(i, j);
+                const double alpha = theta_full(i, j) - theta(i, j);
 
                 residual_g[c] = is_inlet[c]
                     ? (p_star - inlet_pstar[c])
@@ -503,14 +533,15 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
                 const double delta_p_star = swapped ? delta_b : delta_a;
                 const double delta_alpha = swapped ? delta_a : delta_b;
 
+                const double tf = theta_full(i, j);
                 const double p_star = (pressure(i, j) - p_cav) / p_ref;
-                const double alpha = 1.0 - theta(i, j);
+                const double alpha = tf - theta(i, j);
                 const double p_star_new = std::max(p_star + relaxation * delta_p_star, 0.0);
                 const double alpha_new =
-                    std::clamp(alpha + relaxation * delta_alpha, 0.0, alpha_max);
+                    std::clamp(alpha + relaxation * delta_alpha, 0.0, alpha_ceiling(i, j));
 
                 pressure(i, j) = p_cav + p_star_new * p_ref;
-                const double theta_new = 1.0 - alpha_new;
+                const double theta_new = tf - alpha_new;
                 max_theta_change = std::max(max_theta_change, std::abs(theta_new - theta(i, j)));
                 theta(i, j) = theta_new;
             }

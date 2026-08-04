@@ -25,8 +25,11 @@
 //                     in (p, theta) and solved by the Fischer-Burmeister-Newton-Schur
 //                     algorithm of Woloszynski, Podsiadlo & Stachowiak (2015).
 //                     No artificial bulk modulus and no switch function: the free
-//                     boundary is placed by p >= p_cav, theta <= 1, (p-p_cav)(1-theta) = 0.
-//                     Phase 1 scope: ISOTHERMAL + fluid_property_model = CONSTANT.
+//                     boundary is placed by p >= p_cav, theta <= theta_full and
+//                     (p-p_cav)(theta_full-theta) = 0, with theta_full = 1 without a
+//                     resolved gas phase and 1 - alpha_gas with one (FullFilm::bound).
+//                     Scope: ISOTHERMAL or ENERGY_EQUATION, fluid_property_model
+//                     CONSTANT / SINGLE_PHASE / TWO_PHASE. See PHYSICS.md 7.3.
 enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO, FBNS };
 enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 /// Thermal treatment of fluid entering through a pressure boundary.
@@ -103,7 +106,12 @@ enum class MixtureViscosityModel { DUKLER, LINEAR, MCADAMS };
 //                 the cavitation extent without injecting a spurious net force.
 enum class CavitationThreshold { SCALAR_PCAV, LOCAL_PSAT };
 // Coupling of released free gas into the film pressure problem (WP-1):
-//   NONE         - released gas is volumetrically inert (default; rho = rho_l*theta).
+//   NONE         - released gas is volumetrically inert (default; rho = rho_l*theta)
+//                  on the Elrod (JFO) path. Note that under cavitation_model = FBNS
+//                  the free gas always displaces liquid: the complementarity bound
+//                  is theta <= 1 - alpha_gas whatever this key says, because that is
+//                  the constraint itself rather than a pressure closure on top of it
+//                  (PHYSICS.md 7.3.7). This key only selects the Elrod closure.
 //   VOID_COUPLED - gas displaces liquid (full-film ceiling theta_full = 1 - alpha_g),
 //                  sets a local plateau p_void, softens the film via a mixture bulk
 //                  modulus beta_bar, and enters the mixture density rho = rho_l*theta
@@ -660,10 +668,15 @@ struct SimulationConfig {
     double gas_pressure_floor = 1.0;             // Ideal-gas pressure floor [Pa]
     MixtureViscosityModel mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     GasPressureCoupling gas_pressure_coupling = GasPressureCoupling::NONE;  // released gas into pressure (WP-1)
-    // Under-relaxation on the VOID_COUPLED plateau p_void. The p_void <-> theta
-    // feedback limit-cycles at w = 1 (the rupture front oscillates with no flag
-    // flips, so the Elrod loop stalls at a finite mass residual). Ignored unless
-    // gas_pressure_coupling = VOID_COUPLED.
+    // Under-relaxation on the free-gas state wherever the released gas is
+    // volumetrically active, i.e. wherever a change in alpha_gas feeds back into
+    // the liquid solve. Two such paths exist:
+    //   - Elrod + VOID_COUPLED, through the plateau p_void. At w = 1 the
+    //     p_void <-> theta feedback limit-cycles (the rupture front oscillates
+    //     with no flag flips, so the Elrod loop stalls at a finite mass residual).
+    //   - FBNS + TWO_PHASE, through the full-film ceiling theta <= 1 - alpha_gas.
+    // The fixed point is unchanged; only the path to it is damped. Ignored when
+    // the free gas is volumetrically inert (every other combination).
     double void_coupling_relaxation = 0.3;
     double mu_gas = 0.0;                         // Free-gas dynamic viscosity [Pa s]; required by DUKLER/MCADAMS/LINEAR models
     double property_reference_pressure = 101325.0;
@@ -1228,21 +1241,20 @@ struct SimulationConfig {
         }
 
         if (cavitation_model == CavitationModel::FBNS) {
-            // Phase 2 scope. Temperature and the liquid solution properties are in:
-            // they enter the FBNS operator only through the per-cell coefficients
-            // (mu, rho_l), which the outer Picard loop refreshes between Newton
-            // solves. What is still refused couples back into the complementarity
-            // *constraint* or the operator's stencil, not just its coefficients.
-            if (fluid_property_model == FluidPropertyModel::TWO_PHASE) {
-                error("cavitation_model = FBNS supports fluid_property_model = CONSTANT and "
-                      "SINGLE_PHASE; under TWO_PHASE the free gas moves the full-film bound "
-                      "from theta <= 1 to theta <= 1 - alpha_gas, which is not part of the "
-                      "Fischer-Burmeister constraint. Use cavitation_model = JFO for "
-                      "gaseous cavitation.");
-            }
+            // Phase 3 scope. Temperature, the liquid solution properties and the
+            // free-gas phase are in: the first two enter the FBNS operator only
+            // through its per-cell coefficients (mu, rho_l), and the third through
+            // the lagged full-film ceiling theta <= 1 - alpha_gas, which is affine
+            // in theta and leaves both Jacobian blocks unchanged. What is still
+            // refused makes the complementarity datum or the operator's stencil
+            // something FBNS has no way to advance.
             if (gas_pressure_coupling != GasPressureCoupling::NONE) {
-                error("cavitation_model = FBNS requires gas_pressure_coupling = NONE; the "
-                      "void-coupled plateau closure belongs to the Elrod (JFO) path.");
+                error("cavitation_model = FBNS requires gas_pressure_coupling = NONE. "
+                      "VOID_COUPLED turns the cavitation plateau into a per-cell field "
+                      "(\"p_void\") that only Reynolds::solve_elrod's outer loop advances "
+                      "and under-relaxes; FBNS has no such loop, so it would run the "
+                      "plateau frozen at its initial value. Use cavitation_model = JFO for "
+                      "the void-coupled plateau closure.");
             }
             if (cross_film_thermal_model != CrossFilmModel::NONE) {
                 error("cavitation_model = FBNS requires cross_film_thermal_model = NONE "
@@ -1418,8 +1430,9 @@ struct SimulationConfig {
         }
 
         if (gas_cavitation) {
-            if (cavitation_model != CavitationModel::JFO) {
-                error("TWO_PHASE currently requires cavitation_model = JFO so gas release is coupled to the JFO liquid-content solve.");
+            if (!mass_conserving_cavitation()) {
+                error("TWO_PHASE requires a mass-conserving cavitation model (JFO or FBNS) "
+                      "so gas release is coupled to the liquid-content solve.");
             }
             if (finite(dissolved_gas_initial) && dissolved_gas_initial <= 0.0) {
                 warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
@@ -1611,10 +1624,16 @@ struct SimulationConfig {
     /// consistent_boundary_flux a cavitated cell re-floods at the physical
     /// Poiseuille rate (an inflow, hence negative outflow). Single source of
     /// truth shared by solve_elrod's assembly and the diagnostics mass balance.
-    double elrod_boundary_outflow(double gamma_base_value, double theta_cell, double bc_val,
-                                  double R, double d_theta, double d_z) const {
+    ///
+    /// `theta_full` is the cell's full-film ceiling, `FullFilm::bound(...)`. It is
+    /// passed in rather than looked up because `FullFilm` includes this header;
+    /// the ceiling still has exactly one definition, callers just carry the value
+    /// across the include boundary. There is no default: a silent 1.0 here is the
+    /// stale-ceiling bug the shared predicate exists to prevent.
+    double elrod_boundary_outflow(double gamma_base_value, double theta_cell, double theta_full,
+                                  double bc_val, double R, double d_theta, double d_z) const {
         const double cs = gamma_base_value * R * d_theta / (0.5 * d_z);
-        if (consistent_boundary_flux && theta_cell < 1.0) {
+        if (consistent_boundary_flux && theta_cell < theta_full) {
             const double p_bc = elrod_boundary_pressure(bc_val);
             return -std::max(0.0, cs * (p_bc - effective_p_cav()) / std::max(bulk_modulus, 1.0e-30));
         }
@@ -1627,9 +1646,12 @@ struct SimulationConfig {
     /// to switch their boundary face from the full-film Poiseuille gate to the
     /// reflood inflow, so the reformation liquid carries reservoir temperature /
     /// composition consistently with the Elrod theta-equation.
-    bool is_reformation_boundary(double theta_cell) const {
+    ///
+    /// `theta_full` is `FullFilm::bound(...)`; see elrod_boundary_outflow for why
+    /// it is a parameter.
+    bool is_reformation_boundary(double theta_cell, double theta_full) const {
         return consistent_boundary_flux &&
-               cavitation_model == CavitationModel::JFO && theta_cell < 1.0;
+               cavitation_model == CavitationModel::JFO && theta_cell < theta_full;
     }
 
     /// +z Poiseuille velocity [m/s] of the reformation reflood at one open axial

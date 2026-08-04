@@ -17,12 +17,19 @@
 /// cell. Instead of Elrod's barotropic switch, the JFO conditions are imposed
 /// directly and pointwise:
 ///
-///     p - p_cav >= 0,   1 - theta >= 0,   (p - p_cav)(1 - theta) = 0
+///     p - p_cav >= 0,   theta_full - theta >= 0,   (p - p_cav)(theta_full - theta) = 0
 ///
 /// which is equivalent to the smooth, unconstrained Fischer-Burmeister equation
 /// FB(a, b) = a + b - sqrt(a^2 + b^2) = 0 with a = (p - p_cav)/p_ref and
-/// b = 1 - theta. There is no artificial bulk modulus anywhere in the model, so
-/// `bulk_modulus` is ignored under this path.
+/// b = theta_full - theta. There is no artificial bulk modulus anywhere in the
+/// model, so `bulk_modulus` is ignored under this path.
+///
+/// theta_full is `FullFilm::bound`: 1 when the liquid may fill the whole gap, and
+/// 1 - alpha_gas when a resolved free-gas phase (TWO_PHASE) occupies part of it.
+/// alpha_gas is lagged -- the operator-split gas path updates it after the flow
+/// solve -- so it is a coefficient of this Newton solve, not an unknown, and both
+/// Jacobian blocks keep the forms they have without gas. See
+/// `docs/FBNS_GAS_COUPLING.md`.
 ///
 /// Required fields: "pressure", "theta", "h", "rho"; optional "mu",
 /// "rho_liquid_solution", "dh_dt". Theta ghost cells of h, mu and the density
@@ -40,11 +47,11 @@
 /// moving.
 ///
 /// Scope (enforced in SimulationConfig::validate): fluid_property_model =
-/// CONSTANT or SINGLE_PHASE, gas_pressure_coupling = NONE,
+/// CONSTANT, SINGLE_PHASE or TWO_PHASE, gas_pressure_coupling = NONE,
 /// cross_film_thermal_model = NONE, DIRICHLET/NEUMANN axial boundaries.
-/// TWO_PHASE is refused because free gas replaces the full-film bound
-/// 1 - theta >= 0 with 1 - alpha_gas - theta >= 0, which is a change to the
-/// complementarity constraint rather than to its coefficients.
+/// gas_pressure_coupling = VOID_COUPLED is still refused: it makes the cavitation
+/// plateau a per-cell field that only `Reynolds::solve_elrod`'s outer loop knows
+/// how to advance, so FBNS would run it frozen at its initial value.
 namespace FBNS {
 
     /// Convergence summary of the Newton iteration.

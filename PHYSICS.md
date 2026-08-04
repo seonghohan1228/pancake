@@ -331,10 +331,15 @@ modulus and no switch function anywhere in the model.
 The liquid is incompressible. The unknowns are the pressure $p$ and the film
 content $\theta$ of every cell, subject to
 
-$$p - p_{cav} \;\ge\; 0, \qquad 1 - \theta \;\ge\; 0, \qquad (p - p_{cav})\,(1 - \theta) \;=\; 0 .$$
+$$p - p_{cav} \;\ge\; 0, \qquad \theta_{full} - \theta \;\ge\; 0, \qquad (p - p_{cav})\,(\theta_{full} - \theta) \;=\; 0 ,$$
 
-A cell is either full ($\theta = 1$, pressure free to rise) or cavitated
-($p = p_{cav}$, content free to fall) — never both, never neither. Mass balance is
+where $\theta_{full}$ is the largest film content the cell can hold. Without a
+resolved gas phase $\theta_{full} = 1$ and this is the classical statement;
+§7.3.7 moves it to $1 - \alpha_{gas}$ and nothing else in this section changes.
+
+A cell is either full ($\theta = \theta_{full}$, pressure free to rise) or
+cavitated ($p = p_{cav}$, content free to fall) — never both, never neither.
+Mass balance is
 the ordinary Reynolds equation with the film content multiplying the Couette flux
 and the storage term, and the pressure driving Poiseuille flow:
 
@@ -354,7 +359,7 @@ difference through its pressure gradient.
 The complementarity triple is equivalent to the single smooth equation
 
 $$\mathrm{FB}(a,b) \;=\; a + b - \sqrt{a^2+b^2} \;=\; 0 ,
-\qquad a = \frac{p - p_{cav}}{p_{ref}}, \qquad b = 1 - \theta ,$$
+\qquad a = \frac{p - p_{cav}}{p_{ref}}, \qquad b = \theta_{full} - \theta ,$$
 
 because $\mathrm{FB}(a,b) = 0 \iff a\ge0,\;b\ge0,\;ab=0$. The system is now
 *unconstrained and continuously differentiable*, so it admits a Newton method — no
@@ -372,7 +377,8 @@ solution.
 
 #### 7.3.3 Newton with a column swap and a Schur reduction
 
-Write $\alpha = 1 - \theta$ (the cavity fraction) so both Fischer–Burmeister
+Write $\alpha = \theta_{full} - \theta$ (the cavity fraction) so both
+Fischer–Burmeister
 derivatives come out non-negative, and let $G$ be the scaled mass-balance residual
 and $F$ the vector of $\mathrm{FB}$ values. Newton's step solves
 
@@ -422,7 +428,7 @@ $B_G$. The linear solve therefore costs what an uncavitated pressure solve costs
 this is the result the paper's title refers to.
 
 **Update.** $p^{*} \leftarrow \max(p^{*} + \omega_N\,\delta p^{*},\,0)$ and
-$\alpha \leftarrow \mathrm{clamp}(\alpha + \omega_N\,\delta\alpha,\;0,\;1-\theta_{min})$
+$\alpha \leftarrow \mathrm{clamp}(\alpha + \omega_N\,\delta\alpha,\;0,\;\theta_{full}-\theta_{min})$
 with $\omega_N =$ `fbns_relaxation` (default $1$, i.e. a full Newton step). The
 truncation is a safeguard, not the model: it snaps each cell exactly onto the
 complementary axis, so $\mathrm{FB} = 0$ holds identically from the first iterate
@@ -461,6 +467,14 @@ mass-conserving solvers can be compared face by face:
 - **Initial guess**: on a cold start (no cavitation information in $\theta$ yet) the
   uncavitated problem $G(p,\alpha{=}0) = 0$ is solved once and clamped to
   $p \ge p_{cav}$. A transient step warm-starts from the previous step instead.
+  The cold-start test is $\theta \ge 1$ everywhere — a *sentinel* comparison
+  against the value `main.cpp` initialises $\theta$ to, deliberately **not** the
+  full-film test $\theta \ge \theta_{full}$. Under a moved ceiling (§7.3.7)
+  $\theta = 1 - \alpha_{gas}$ is an ordinary converged uncavitated state, so
+  testing against $\theta_{full}$ would declare a cold start on every gassy step,
+  discard the warm start and refill $\theta$ down to the new ceiling in one go — a
+  spurious $\partial\theta/\partial t$ sink that drove the pressure to
+  $O(10^3)$ bar on the R290/PZ68 case. The ceiling change belongs to Newton.
 
 #### 7.3.5 Verified behaviour
 
@@ -578,29 +592,125 @@ removes the artefact — a fed groove is a reservoir, not a sheared film — and
 same case then converges in 9 Picard iterations. This is a pre-existing property
 of the energy model, unrelated to which cavitation solver is selected.
 
-#### 7.3.7 Scope and limits
+#### 7.3.7 Gaseous cavitation: the moved full-film ceiling
+
+Under `fluid_property_model = TWO_PHASE` a resolved free-gas phase occupies a
+volume fraction $\alpha_{gas}$ of the gap, so the liquid can only fill what is
+left and the ceiling of §7.3.1 becomes
+
+$$\theta_{full} = 1 - \alpha_{gas}, \qquad b = (1 - \alpha_{gas}) - \theta \ \ge\ 0 .$$
+
+**Why this composes.** $\alpha_{gas}$ is *lagged*: the gas path is operator-split
+and runs after the flow solve (`GasTransport::solve` then
+`FluidProperties::update_gas_state` in the outer loop of `main.cpp`), so within one
+Newton solve it is a coefficient, not an unknown. The new $b$ is therefore affine
+in $\theta$ with the same derivative as before,
+
+$$\frac{\partial b}{\partial \theta} = -1 ,$$
+
+and consequently:
+
+- $J_{G,\alpha} = B$ is **unchanged** — the mass balance only ever used
+  $\partial(\text{outflow})/\partial\alpha = -\partial(\text{outflow})/\partial\theta$;
+- $J_{F,p}$ and $J_{F,\alpha}$ keep their Fischer–Burmeister forms, so the column
+  swap, the bound $\operatorname{cond}(A_F) \le 4 + 2\sqrt2$ and the Schur
+  complement of §7.3.3 are untouched;
+- the Poiseuille mobility needs nothing new: the free gas already reaches it
+  through the mixture viscosity written into the `mu` field (§7.3.6, §13.2.1).
+
+**One definition of the ceiling.** The literal test `theta >= 1.0` used to appear
+at fifteen sites in `reynolds.cpp`, `energy.cpp`, `gas_transport.cpp` and
+`diagnostics.cpp`. Moving a ceiling in fifteen places moves it wrong: the instant
+any gas came out of solution every one of those switches would turn off at once
+and the solver would report a fully cavitated bearing carrying no Poiseuille flow,
+no Poiseuille enthalpy and no dissolved-gas transport — silently, with a converged
+Newton residual. All fifteen therefore read `FullFilm::bound`
+(`src/full_film.hpp`), which is the only place $\theta_{full}$ exists. It returns
+exactly $1$ for every model except FBNS + `TWO_PHASE`, which is what makes the
+Elrod and Gumbel paths byte-identical by construction rather than by inspection.
+
+**Outer-loop damping.** The moved ceiling closes a feedback loop
+$\alpha_{gas} \to \theta_{full} \to \theta \to p \to \alpha_{gas}$ that the
+volumetrically-inert gas model never had. It is the same loop
+`gas_pressure_coupling = VOID_COUPLED` opens on the Elrod path, and it takes the
+same lever: `FluidProperties::update_gas_state` under-relaxes the free-gas state by
+`void_coupling_relaxation` (default $0.3$) whenever the gas displaces liquid. The
+fixed point is unchanged; only the path to it is damped.
+
+**Verified** (`tests/test_fbns.cpp`, tests 11–13, 00c bearing at
+$N_\vartheta = 240$, saturated propane feed, five transient steps from the
+converged steady film):
+
+| Check | Result |
+|---|---|
+| $\max\big(-(p-p_{cav})/p_{ref}\big)$ | $0$ exactly |
+| $\max\big(\theta - (1-\alpha_{gas})\big)$ | $0$ exactly |
+| $\max\big\lvert (p-p_{cav})\,((1-\alpha_{gas})-\theta)\big\rvert$ | $0$ exactly |
+| per-cell $\lvert r\rvert$ / peak Couette flux, away from the groove | $5.1\times10^{-15}$ |
+| free gas released, FBNS vs JFO | $\alpha_{gas}^{max} = 2.50\times10^{-2}$ vs $8.44\times10^{-2}$ |
+| Newton iterations per step | $\le 7$ |
+| $\alpha_{gas} \equiv 0$ vs `SINGLE_PHASE`, three steps | bit-identical $p$, $\theta$ |
+| `FullFilm::bound` over 24 model combinations | exactly $1$ except FBNS + `TWO_PHASE` |
+
+The **fronts are logged and asserted against nothing**, for the reason given in
+§7.3.6: Elrod's rupture front sits 12–18° from the exact 1-D solution on this
+bearing, so agreeing with it would be evidence of a defect. The complementarity
+invariants above are what the solver owns. Note also that the *written output*
+pairs $\theta$ with an $\alpha_{gas}$ that the gas update has already advanced, so
+$\theta \le 1-\alpha_{gas}$ need not hold in a VTK file; it holds at the point the
+FBNS solve returns, which is where the constraint lives.
+
+**Where this is stiff.** On `config_r290_pz68_quick.txt` the feed enters exactly at
+its bubble point and the flash releases enough propane to fill $\sim$23% of the gap
+in one $5\,\mu$s step. The ceiling drops by that much at once, the resulting
+$\partial\theta/\partial t$ sink swings the load between $5.8\times10^{2}$ N and
+$2.4\times10^{5}$ N on alternate steps, and the amplitude decays only $\sim$30% per
+step pair. The swing is **timestep-independent** — identical at
+$\Delta t = 5\times10^{-6}$, $5\times10^{-8}$ and $5\times10^{-9}$ s — because the
+released fraction is itself proportional to $\Delta t$, so this is the model's
+displacement rate rather than a temporal-resolution artefact. Every Newton solve
+still converges (61/61 steps, 2–11 iterations, mean 6.3) and the gas mass stays
+bounded, but the load history over the first tens of steps is transient noise, not
+a converged operating point. `void_coupling_relaxation` is the lever; the Elrod
+path with `VOID_COUPLED` does not resolve this case either (it drifts monotonically
+instead of oscillating), so this is a property of a volumetrically-active gas model
+on a saturated feed, not of FBNS.
+
+#### 7.3.8 Scope and limits
 
 Supported: `temperature_model` `ISOTHERMAL` and `ENERGY_EQUATION`,
-`fluid_property_model` `CONSTANT` and `SINGLE_PHASE` (all `density_model` /
-`liquid_viscosity_model` options), `solution_mode` `STEADY_STATE` and `TRANSIENT`
-(backward Euler), `motion_model` `STATIC` and `MOVING_BEARING`, groove and circular
-inlets, `DIRICHLET`/`NEUMANN` axial boundaries, `cavitated_film_model` `FULL_FILM`
-and `STRIATED`, and MPI decomposition in $\vartheta$.
+`fluid_property_model` `CONSTANT`, `SINGLE_PHASE` and `TWO_PHASE` (all
+`density_model` / `liquid_viscosity_model` options), `solution_mode`
+`STEADY_STATE` and `TRANSIENT` (backward Euler), `motion_model` `STATIC` and
+`MOVING_BEARING`, groove and circular inlets, `DIRICHLET`/`NEUMANN` axial
+boundaries, `cavitated_film_model` `FULL_FILM` and `STRIATED`, and MPI
+decomposition in $\vartheta$.
 
 **Rejected at config validation** rather than silently ignored, because each
-changes the complementarity constraint or the operator's stencil rather than its
+changes the complementarity datum or the operator's stencil rather than its
 coefficients:
 
-- `fluid_property_model = TWO_PHASE`. Free gas replaces the full-film bound
-  $1 - \theta \ge 0$ with $1 - \alpha_{gas} - \theta \ge 0$. The Fischer-Burmeister
-  composition itself is clean — see `docs/FBNS_GAS_COUPLING.md` — but the repo-wide
-  `theta >= 1` full-film test is not, and that is the blocker.
-- `gas_pressure_coupling != NONE` (the void-coupled plateau closure belongs to the
-  Elrod path, and has no free-gas field to read without TWO_PHASE).
+- `gas_pressure_coupling = VOID_COUPLED`. It replaces the scalar cavitation datum
+  $p_{cav}$ with a per-cell plateau field `p_void`, and that field is advanced and
+  under-relaxed **only** inside `Reynolds::solve_elrod`'s outer flag-update loop
+  (`reynolds.cpp`). FBNS has no such loop, so it would run the plateau frozen at
+  its initial value $p_{cav}$ — silently reducing to `NONE` while reporting
+  `VOID_COUPLED`. Making it work needs a plateau update site of its own plus its
+  own validation; see `docs/FBNS_GAS_COUPLING.md` §5.
 - `cross_film_thermal_model != NONE` (the generalized Dowson $F_0/F_1/F_2$
   coefficients are not in the FBNS operator).
 - `INLET_OUTLET` axial boundaries (they switch on the sign of the solution and
   would break the differentiability the Newton step relies on).
+
+**$p_{cav}$ is a scalar on this path, and correctly so.** Under
+`cavitation_threshold = LOCAL_PSAT` the datum is
+$\max\big(p_{cav},\,p_{sat}(c_{d,init},T_{init})\big)$ — evaluated at the *feed*
+state, hence uniform over the domain by construction, so that it acts as a
+pressure datum without injecting a net force (`SimulationConfig::effective_p_cav`).
+The Fischer–Burmeister argument $a = (p - p_{cav})/p_{ref}$ therefore already reads
+the correct local value and needs no per-cell array. The only genuinely per-cell
+cavitation pressure in the codebase is `p_void` under `VOID_COUPLED`, which is
+rejected above.
 
 `theta_convection_scheme` is ignored (FBNS uses first-order upwind, and a
 higher-order upwind stencil would add $\vartheta$-second-neighbour columns to $B$);

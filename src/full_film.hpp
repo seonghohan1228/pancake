@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "config.hpp"
 #include "field.hpp"
 
@@ -14,7 +16,8 @@
 /// that has to move in fifteen places moves wrong: every switch in the domain
 /// would turn off at once the instant any gas came out of solution, and the
 /// solver would report a fully cavitated bearing with a converged residual.
-/// Routing every user through `bound()` makes that a one-line change.
+/// Routing every user through `bound()` made that a one-line change, which is
+/// the change `gas_volume_fraction` now carries.
 /// See `docs/FBNS_GAS_COUPLING.md` sections 3 and 4.
 ///
 /// Usage: prefer `is_full_film` / `is_full_film_face` for branches and
@@ -23,22 +26,59 @@
 /// in hand (a saved iterate) or that need a tolerance band.
 namespace FullFilm {
 
+/// True when the selected models let a resolved free-gas phase displace liquid
+/// from the gap, so the full-film ceiling drops below 1.
+///
+/// Only the FBNS complementarity path. The Elrod (JFO) path is deliberately left
+/// out even under TWO_PHASE:
+///
+/// - With `gas_pressure_coupling = NONE` its free gas is volumetrically inert by
+///   construction (PHYSICS.md 13.2.1) -- that is the shipped, validated model of
+///   validation case 05, not an oversight to be corrected in passing.
+/// - With `VOID_COUPLED` the Elrod operator already carries the moved ceiling in
+///   `Reynolds`'s `VoidParams::theta_full`, where it feeds the barotropic EOS and
+///   the switch function. Dropping the fifteen Poiseuille gates onto it as well
+///   is a second, separate modelling change to a validated path and needs its own
+///   validation; it is not free.
+///
+/// Merging the two ceilings therefore stays open work. When it lands, this
+/// predicate loses its `cavitation_model` term and `VoidParams::theta_full`
+/// becomes a call to `bound`. See `docs/FBNS_GAS_COUPLING.md` section 5.
+inline bool gas_displaces_liquid(const SimulationConfig& cfg) {
+    return cfg.cavitation_model == CavitationModel::FBNS &&
+           cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE;
+}
+
+/// Volume fraction of the gap held by resolved free gas, as the full-film test
+/// sees it. Zero whenever no gas phase displaces liquid, which makes every
+/// non-FBNS path bit-identical to the pre-gas ceiling by construction.
+///
+/// Clamped to the same `[0, gas_alpha_max]` band `FluidProperties::update_gas_state`
+/// writes and `Reynolds::void_params` reads, capped just below 1 so the ceiling
+/// never reaches zero and strands the liquid balance without a film.
+inline double gas_volume_fraction(const Fields& fields, const SimulationConfig& cfg,
+                                  int i, int j) {
+    if (!gas_displaces_liquid(cfg) || !fields.has("alpha_gas")) return 0.0;
+    const double alpha_cap = std::min(std::max(cfg.gas_alpha_max, 0.0), 0.999);
+    return std::clamp(fields["alpha_gas"](i, j), 0.0, alpha_cap);
+}
+
 /// Largest film content a cell can hold, i.e. the theta at and above which the
 /// film is unbroken and the cell carries Poiseuille flow.
 ///
-/// Exactly 1 for every model currently shipped: free gas is volumetrically inert
-/// in the film-content equation, so the liquid may occupy the whole gap.
-/// Admitting a resolved gas volume is the single line
+/// Exactly 1 unless a resolved free-gas phase occupies part of the gap, in which
+/// case the liquid can only fill what is left: theta <= 1 - alpha_gas. Every
+/// full-film test in the solver reads the ceiling from here, so moving it moves
+/// all of them together -- which is the point, since moving it in only some
+/// places reports a fully cavitated bearing with a converged residual
+/// (docs/FBNS_GAS_COUPLING.md section 3).
 ///
-///     return std::max(1.0 - gas_volume_fraction(fields, cfg, i, j), 0.0);
-///
-/// here, with no call-site edits. `Reynolds`'s `VoidParams::theta_full` is the
-/// same ceiling as seen by the Elrod operator under `VOID_COUPLED`; the two
-/// merge when that line lands.
-inline double bound([[maybe_unused]] const Fields& fields,
-                    [[maybe_unused]] const SimulationConfig& cfg,
-                    [[maybe_unused]] int i, [[maybe_unused]] int j) {
-    return 1.0;
+/// alpha_gas is *lagged*: the operator-split gas path (`GasTransport::solve` then
+/// `FluidProperties::update_gas_state`) runs after the flow solve, so within one
+/// Newton solve this is a coefficient, not an unknown. That is what keeps
+/// d(bound)/d(theta) = 0 and leaves the FBNS Jacobian blocks unchanged.
+inline double bound(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    return std::max(1.0 - gas_volume_fraction(fields, cfg, i, j), 0.0);
 }
 
 /// Value-level core test. `tol` widens the bound downwards for callers that must

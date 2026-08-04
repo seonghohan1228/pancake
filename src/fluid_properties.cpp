@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "full_film.hpp"
+
 namespace FluidProperties {
 namespace {
 
@@ -71,10 +73,23 @@ double interpolate_property_table(const std::vector<PropertyTablePoint>& table,
 /// alpha_gas <-> theta_full <-> theta feedback that otherwise limit-cycles under
 /// VOID_COUPLED (the rupture front oscillates with no flag flips, so the Elrod
 /// loop stalls at a finite mass residual). The fixed point is unchanged, so the
-/// converged solution is identical -- only the path to it is damped. Returns 1
-/// (no relaxation) for every other coupling mode.
+/// converged solution is identical -- only the path to it is damped.
+///
+/// FBNS + TWO_PHASE feeds the same loop through the complementarity bound
+/// theta <= 1 - alpha_gas, so it takes the same lever. Measured on
+/// `config_r290_pz68_quick.txt`: the saturated feed releases enough propane in one
+/// 5 us step to fill ~23% of the gap, the ceiling drops by that much at once, and
+/// the resulting d(theta)/dt sink swings the load between 5.8e2 N and 2.4e5 N on
+/// alternate steps. Relaxing alpha_gas spreads the same release over several
+/// steps and the swing goes away.
+///
+/// Returns 1 (no relaxation) whenever the free gas is volumetrically inert, which
+/// is every other combination and keeps them bit-identical.
 double gas_state_relaxation(const SimulationConfig& cfg) {
-    if (cfg.gas_pressure_coupling != GasPressureCoupling::VOID_COUPLED) return 1.0;
+    const bool gas_is_volumetric =
+        cfg.gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED ||
+        FullFilm::gas_displaces_liquid(cfg);
+    if (!gas_is_volumetric) return 1.0;
     return std::clamp(cfg.void_coupling_relaxation, 0.01, 1.0);
 }
 

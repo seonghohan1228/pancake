@@ -147,6 +147,7 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
             (theta(i, j) - theta(i, j + 1));
     } else if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
+                                              FullFilm::bound(fields, cfg, i, j),
                                               cfg.bc_z_north_val, R, d_theta, d_z);
     }
     if (j > 0) {
@@ -154,6 +155,7 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
             (theta(i, j) - theta(i, j - 1));
     } else if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
+                                              FullFilm::bound(fields, cfg, i, j),
                                               cfg.bc_z_south_val, R, d_theta, d_z);
     }
 
@@ -214,10 +216,12 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
             const Field& theta = fields["theta"];
             if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, 0)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, 0), theta(i, 0),
+                                                     FullFilm::bound(fields, cfg, i, 0),
                                                      cfg.bc_z_south_val, R, d_theta, d_z);
             }
             if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, n_z - 1)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, n_z - 1), theta(i, n_z - 1),
+                                                     FullFilm::bound(fields, cfg, i, n_z - 1),
                                                      cfg.bc_z_north_val, R, d_theta, d_z);
             }
         } else {
@@ -268,7 +272,7 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
             const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
             double u_z;
             double rho_face;
-            if (cfg.is_reformation_boundary(theta(i, 0))) {
+            if (cfg.is_reformation_boundary(theta(i, 0), FullFilm::bound(fields, cfg, i, 0))) {
                 // Mirror the gas-transport reflood: full-density reservoir liquid.
                 u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
                                                         0.5 * d_z, true);
@@ -296,7 +300,7 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
             const double mu_face = dynamic_viscosity(fields, cfg, i, j);
             double u_z;
             double rho_face;
-            if (cfg.is_reformation_boundary(theta(i, j))) {
+            if (cfg.is_reformation_boundary(theta(i, j), FullFilm::bound(fields, cfg, i, j))) {
                 u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
                                                         0.5 * d_z, false);
                 rho_face = std::max(field_value(fields, "rho_liquid_solution", cfg.rho, i, j), 1.0e-30);

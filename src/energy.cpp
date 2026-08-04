@@ -255,7 +255,7 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
     // reformation rate; the inflowing reservoir liquid carries temperature_reference
     // (RESERVOIR mode) through add_axial_boundary_convection below.
     double u_z;
-    if (cfg.is_reformation_boundary(theta(i, 0))) {
+    if (cfg.is_reformation_boundary(theta(i, 0), FullFilm::bound(fields, cfg, i, 0))) {
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face, 0.5 * d_z, true);
     } else {
         const double g_face =
@@ -278,7 +278,7 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
     const double mu_face = dynamic_viscosity(fields, cfg, i, j);
     const double rho_cp_face = volumetric_heat_capacity(fields, cfg, i, j);
     double u_z;
-    if (cfg.is_reformation_boundary(theta(i, j))) {
+    if (cfg.is_reformation_boundary(theta(i, j), FullFilm::bound(fields, cfg, i, j))) {
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face, 0.5 * d_z, false);
     } else {
         const double g_face =

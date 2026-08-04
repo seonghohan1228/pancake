@@ -42,19 +42,44 @@ Two things came out of it that are **not** FBNS-specific and are still open:
   `energy.cpp` on its own branch (it changes the Elrod path).
 - **Gaseous cavitation on FBNS — memo, `docs/FBNS_GAS_COUPLING.md`.** The bound
   `theta <= 1 - alpha_gas` composes cleanly with Fischer-Burmeister (~20 lines in
-  `fbns.cpp`); the blocker is that "full film" is spelled `theta >= 1.0` at 15
+  `fbns.cpp`); the blocker was that "full film" is spelled `theta >= 1.0` at 15
   sites across four files, all of which would switch off at once. Prerequisite: a
-  shared `is_full_film` predicate landed as a byte-identical refactor first. Until
-  then Case 05 stays on `cavitation_model = JFO`. Cross-film Dowson coefficients
-  in the FBNS operator remain unstarted (phase 3).
+  shared `is_full_film` predicate landed as a byte-identical refactor first.
 
   Prerequisite **DONE 2026-08-05** (`codex/full-film-predicate`): `FullFilm` in
   `src/full_film.hpp`. One ceiling, `FullFilm::bound`, returning exactly `1.0`
   today; all 15 sites routed through `is_full_film` / `is_full_film_face` /
   `gate` / `face_gate`. Byte-identical across five regression cases (41 output
-  files, 41 sha256 matches) and `ctest` 27/27. Memo steps 2-4 (per-cell `p_cav`
-  in the FBNS operator, outer under-relaxation, the `EQUILIBRIUM` steady-state
-  enforcement) are still open, and are what the guard now waits on.
+  files, 41 sha256 matches) and `ctest` 27/27.
+
+  FBNS **phase 3 — DONE 2026-08-05** (`codex/fbns-gas`; PHYSICS.md §7.3.7,
+  `docs/FBNS_GAS_COUPLING.md` §8, `tests/test_fbns.cpp` tests 11-13, `ctest`
+  27/27). `cavitation_model = FBNS` + `fluid_property_model = TWO_PHASE` runs:
+  the bound is `(1 - alpha_gas) - theta >= 0` with `alpha_gas` lagged, so both
+  Jacobian blocks and the Schur structure are unchanged. Complementarity against
+  the moved bound is satisfied to 0 exactly and the per-cell mass residual is
+  `5.1e-15` of the peak Couette flux. Elrod/Gumbel byte-identical to 28ac88a
+  (54/54 output files over six configs, including JFO+TWO_PHASE and
+  JFO+VOID_COUPLED+LOCAL_PSAT). The `alpha_gas <-> theta` feedback reuses the
+  existing `void_coupling_relaxation` lever. **Case 05 can now be run on FBNS as
+  well as JFO** — worth doing as a cross-model check, since the two treat the gas
+  volume differently by design (inert on Elrod, displacing on FBNS).
+
+  Still open from the memo:
+
+  - `gas_pressure_coupling = VOID_COUPLED` under FBNS stays rejected. The
+    per-cell plateau `p_void` is advanced only inside `Reynolds::solve_elrod`'s
+    outer loop; FBNS would run it frozen. Needs its own update site, its own
+    relaxation schedule and its own validation (memo §8.3).
+  - Merging `Reynolds`'s `VoidParams::theta_full` onto `FullFilm::bound`. Not
+    done on purpose: it changes the validated JFO gaseous path (case 05) and
+    would have broken the byte-identity that made phase 3 checkable (memo §8.4).
+  - `config_r290_pz68_quick.txt` under FBNS is stiff — a timestep-independent
+    load swing from the saturated feed flashing ~23% of the gap per step. Every
+    Newton solve converges and the gas mass stays bounded, but the first tens of
+    steps are transient noise. The Elrod `VOID_COUPLED` path does not resolve it
+    either (memo §8.5).
+  - Cross-film Dowson coefficients in the FBNS operator remain unstarted.
 
 Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
 field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,
