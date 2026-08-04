@@ -1,0 +1,38 @@
+2026-08-04 18:12:12  build: cmake --fresh --preset windows-native-mingw + build preset windows-native-mingw-release -> build-windows-mingw/pancake.exe  OK
+2026-08-04 18:12:12  parameter set frozen (c=1.52e-4, omega=418.879, grid e=9.12e-5, dt-case e=1.52e-5, bearing_mass=10 kg); all earlier results archived as results_stale_*
+2026-08-04 18:12:16  case grid_G1 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:12:16  case grid_G1 FINISHED in 0.00 min (0.1 s)
+2026-08-04 18:12:16  case grid_G2 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:12:16  case grid_G2 FINISHED in 0.00 min (0.1 s)
+2026-08-04 18:12:16  case grid_G3 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:12:17  case grid_G3 FINISHED in 0.01 min (0.3 s)
+2026-08-04 18:12:17  case grid_G4 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:12:18  case grid_G4 FINISHED in 0.01 min (0.8 s)
+2026-08-04 18:12:18  case grid_G5 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:12:20  case grid_G5 FINISHED in 0.05 min (2.8 s)
+2026-08-04 18:12:20  batch complete: grid_G1, grid_G2, grid_G3, grid_G4, grid_G5
+2026-08-04 18:12:21  case grid_G3_thd:config_thd_fixed STARTED  (mpiexec -n 4 pancake.exe --config config_thd_fixed.txt)
+2026-08-04 18:12:24  case grid_G3_thd:config_thd_fixed FINISHED in 0.06 min (3.6 s)
+2026-08-04 18:12:24  case grid_G4_thd:config_thd_fixed STARTED  (mpiexec -n 4 pancake.exe --config config_thd_fixed.txt)
+2026-08-04 18:12:34  case grid_G4_thd:config_thd_fixed FINISHED in 0.16 min (9.5 s)
+2026-08-04 18:12:34  batch complete: grid_G3_thd, grid_G4_thd
+2026-08-04 18:12:38  case dt_T1 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:21:31  case dt_T1 FINISHED in 8.89 min (533.5 s)
+2026-08-04 18:21:31  case dt_T2 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:40:27  case dt_T2 FINISHED in 18.93 min (1135.6 s)
+2026-08-04 18:40:27  case dt_T3 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 18:53:39  end_t changed to 0.15 s for all dt_T*; dt_T1/T2 (and in-flight dt_T3) ran with end_t=0.3 on the same frozen parameters and are truncated to t<=0.15 in analysis; dt_T4/dt_T5 start fresh at end_t=0.15
+2026-08-04 19:11:28  case dt_T3 FINISHED in 31.02 min (1861.3 s)
+2026-08-04 19:11:28  case dt_T4 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 19:14:28  dt_T4 batch runner was killed externally at step 1253; partial output archived as results_partial_killed_*, dt_T4 relaunched
+2026-08-04 19:14:32  case dt_T4 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 19:45:42  case dt_T4 FAILED rc=1 after 31.17 min (see dt_T4/run.log)
+2026-08-04 19:45:42  case dt_T5 STARTED  (mpiexec -n 4 pancake.exe --config config.txt)
+2026-08-04 19:45:42  case dt_T5 FAILED rc=4294967294 after 0.01 min (see dt_T5/run.log)
+2026-08-04 19:45:42  batch complete: dt_T4, dt_T5
+2026-08-04 19:46:02  USER STOP: timestep study halted. dt_T4 killed at step 20890/30000 (t=0.1044 s of 0.15 s); partial output kept as dt_T4/results_partial_stopped_by_user. dt_T5 never ran (launcher aborted immediately; log kept as dt_T5/run_aborted_never_started.log).
+2026-08-04 19:46:02  dt sweep to be redone on a finer grid; dt_T1-dt_T3 results are complete but SUPERSEDED (grid will change).
+2026-08-04 19:46:02  writing SUMMARY.md for 00a (G1-G5 + THD pair) and the superseded dt_T1-T3.
+2026-08-04 19:48:29  SUMMARY.md written. Task complete.
+2026-08-04 19:49:18  NOTE: another worker is running cases concurrently in this same directory (grid_G6/G7/G8, dt_T0, grid_G3_typediff, grid_G3_beta5e9, grid_G5_psupply_amb, grid_G6_*, grid_G7_psupply_amb, plot_gci_00a.py, gci_00a.png). Not created or touched by this runner.
+2026-08-04 19:49:18  WARNING: at 19:46:02 this runner issued an image-wide taskkill /F /IM pancake.exe and /IM mpiexec.exe to stop dt_T4 on user order. That kill is not process-scoped and may have terminated concurrent runs of the other worker (grid_G8/run.log ends at "Starting Simulation..." and was retried as run2.log). Affected cases should be re-checked by that worker.

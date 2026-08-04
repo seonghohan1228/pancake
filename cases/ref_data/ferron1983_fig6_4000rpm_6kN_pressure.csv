@@ -1,0 +1,30 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 6
+# curve: experiment (open circles), mid-plane film pressure, measured through bush holes
+# condition: N = 4000 rpm, W = 6000 N
+# x: theta [deg], from supply groove center, in direction of rotation
+# y: pressure [Pa], gauge
+# note: the figure axis is MPa; values here are converted to Pa
+# note: THETA ORIGIN NOT CONFIRMED AGAINST THE PDF. The paper's nomenclature
+#   defines theta from the maximum film thickness; the groove-referenced reading
+#   used here is inferred from (a) the peak at 202 deg, which is past h_min and
+#   so impossible on an h_max axis, (b) near-zero pressure at 29-60 deg, and
+#   (c) agreement with the groove-referenced digitisation in
+#   validation/journal_bearing/ferron.py (peak at 194 deg from groove).
+#   If this is wrong, every point shifts by the measured attitude angle.
+# source: digitised from cases/ref_data/ferron1983_fig6_4000rpm.png
+29.184409967582965,38392.09887700354
+59.527118756896435,79672.88447068726
+89.62691158641755,218128.12293863448
+120.8675742898813,507073.449701147
+142.14541471414708,808384.4535399537
+157.39901195617756,1118994.930677572
+173.1257325100307,1344974.1490780222
+187.2130426625946,1724529.8319437935
+202.25894494348714,1828240.1402384792
+217.8131915348569,1543244.568078803
+232.47783558289137,938484.2867142626
+248.07964867759878,242831.2357406411
+270.5764261377734,20652.496232807138
+300.2292390771534,18034.119585984823
+331.27128439645213,21709.52964030839

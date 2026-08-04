@@ -1,0 +1,27 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 6
+# curve: experiment (open triangles), bush temperature at the mid-plane
+# condition: N = 4000 rpm, W = 6000 N
+# x: theta [deg], from supply groove center, in direction of rotation
+# y: temperature [degC]
+# note: MEASUREMENT LOCATION. Ferron's thermocouples sit 0.5 mm BELOW the bush
+#   inner surface, not in the film. This is a bush sub-surface temperature and is
+#   not the same quantity as pancake's film-averaged T; any verdict must say so.
+# note: theta origin carries the same caveat as the pressure file for this figure.
+# source: digitised from cases/ref_data/ferron1983_fig6_4000rpm.png
+16.08591510477761,41.98828133841588
+46.41284998542074,42.00511738633171
+75.29512014241074,42.92251223925429
+104.4625845630283,42.97035417612543
+134.29869771937786,43.43747961233818
+150.24225535138675,43.9350617188613
+165.694991259102,44.88293321368134
+179.95853898520375,46.34317577526373
+195.57951554255484,48.315899247337455
+209.253502017796,51.82580582025305
+222.78225511172775,53.938190600838546
+238.11132695218942,56.88916235169433
+252.86857231112543,57.85253179809525
+281.80356745802965,57.91589165813437
+313.012926942603,54.88928750697342
+344.23714528797035,47.87200076690895

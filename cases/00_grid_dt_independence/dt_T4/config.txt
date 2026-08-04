@@ -1,0 +1,119 @@
+# Case 00b: timestep independence. Load step 6 kN, transient to equilibrium.
+# Geometry
+R = 0.05
+c = 1.52e-4
+e = 1.52e-5
+L = 0.08
+attitude_angle_deg = -90.0
+load_angle_deg = 0.0
+tilt_slope_x = 0
+tilt_slope_y = 0
+
+# Grid (update if 00a selects a different grid)
+n_theta_global = 240
+n_z_global = 64
+
+# Time
+end_t = 0.15
+dt = 5e-6
+write_interval = 0.005
+solution_mode = TRANSIENT
+motion_time_method = EULER_IMPLICIT
+
+# Numerics
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+gas_convection_scheme = UPWIND
+diagnostics_interval = 1
+
+# Physics (4000 rpm, Ferron Fig. 6 condition)
+omega = 418.879020479
+omega_ramp_time = 0.001
+mu = 0.0277
+rho = 860
+p_cav = 1.0e5
+bulk_modulus = 1e9
+
+# Energy Equation
+temperature_model = ISOTHERMAL
+temperature_initial = 313.15
+temperature_reference = 313.15
+journal_wall_temperature = 313.15
+bearing_wall_temperature = 313.15
+rho_cp = 1.72e6
+thermal_conductivity = 0.13
+journal_heat_transfer = 1000
+bearing_heat_transfer = 1000
+
+# Fluid Properties
+fluid_property_model = CONSTANT
+dissolved_gas_species = AIR
+solubility_model = HENRY
+density_model = CONSTANT
+liquid_viscosity_model = CONSTANT
+dissolved_gas_initial = 0
+dissolved_gas_max = 1
+dissolved_gas_henry_coeff = 0
+dissolved_gas_henry_temp_coeff = 0
+dissolved_gas_bunsen_coeff = 0
+dissolved_gas_liquid_density = 0
+gas_mass_transfer_rate = 0
+dissolved_gas_diffusivity = 0
+solution_density_gas_coeff = 0
+solution_viscosity_gas_coeff = 0
+viscosity_temperature_coeff = 0
+viscosity_pressure_coeff = 0
+gas_alpha_max = 1
+gas_pressure_floor = 1.0e5
+mixture_viscosity_model = MCADAMS
+mu_gas = 0
+property_reference_pressure = 101325
+property_reference_temperature = 313.15
+
+# Bearing Motion: free under constant external load
+motion_model = MOVING_BEARING
+bearing_initial_from_attitude = true
+bearing_initial_x = 0
+bearing_initial_y = 0
+bearing_initial_z = 0
+bearing_initial_vx = 0
+bearing_initial_vy = 0
+bearing_initial_vz = 0
+bearing_mass = 10
+bearing_stiffness_x = 0
+bearing_stiffness_y = 0
+bearing_stiffness_z = 0
+bearing_damping_x = 0
+bearing_damping_y = 0
+bearing_damping_z = 0
+external_load_x = 0
+external_load_y = 6000
+external_load_z = 0
+min_film_thickness = 1e-09
+stop_on_nonpositive_film = true
+
+# Axial BCs: ambient ends
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 101325
+bc_z_south_thermal = ZERO_GRADIENT
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 101325
+bc_z_north_thermal = ZERO_GRADIENT
+
+# Cavitation
+cavitation_model = JFO
+max_outer_iters = 50
+outer_tol = 1e-6
+theta_min = 1e-6
+log_outer_iters = false
+
+# Inlet
+inlet_groove = 90 18 1.713e5
+
+# Output
+output_dir = results
+filename_prefix = solution
+output_verbosity = SIMPLIFIED
+output_write_3d = false
+output_write_flat = true
+output_fields = pressure, film_content, h, pressure_force_x, pressure_force_y, fluid_force_x, fluid_force_y, bearing_x, bearing_y, bearing_attitude_angle, friction_torque

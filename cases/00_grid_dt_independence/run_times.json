@@ -1,0 +1,62 @@
+{
+  "grid_G1": {
+    "returncode": 0,
+    "wall_s": 0.12557139999989886,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "grid_G2": {
+    "returncode": 0,
+    "wall_s": 0.14648680000391323,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "grid_G3": {
+    "returncode": 0,
+    "wall_s": 0.3135134000040125,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "grid_G4": {
+    "returncode": 0,
+    "wall_s": 0.8275122000050033,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "grid_G5": {
+    "returncode": 0,
+    "wall_s": 2.7827930000057677,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "grid_G3_thd:config_thd_fixed": {
+    "returncode": 0,
+    "wall_s": 3.578052299999399,
+    "config": "config_thd_fixed.txt",
+    "log": "run_config_thd_fixed.log"
+  },
+  "grid_G4_thd:config_thd_fixed": {
+    "returncode": 0,
+    "wall_s": 9.545652300002985,
+    "config": "config_thd_fixed.txt",
+    "log": "run_config_thd_fixed.log"
+  },
+  "dt_T1": {
+    "returncode": 0,
+    "wall_s": 533.4751959999994,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "dt_T2": {
+    "returncode": 0,
+    "wall_s": 1135.6409860999993,
+    "config": "config.txt",
+    "log": "run.log"
+  },
+  "dt_T3": {
+    "returncode": 0,
+    "wall_s": 1861.2643941999995,
+    "config": "config.txt",
+    "log": "run.log"
+  }
+}
