@@ -128,6 +128,20 @@ ECC_ATTITUDE = {
 ECC_DIGITISE_ERR = 0.02
 ATTITUDE_DIGITISE_ERR_DEG = 2.0
 
+# Independent re-digitisation of Fig. 6 by Seongho Han (digiplotter, 2026-08-04),
+# done blind to the values above. Same layout as ECC_ATTITUDE.
+#   Agreement with the polar reading: |d eps| <= 0.013 (mean 0.005), |d phi| <=
+#   1.0 deg -- inside the stated uncertainties at every one of the six points.
+#   The earlier CARTESIAN reading of this polar chart sat ~0.15 lower in eps and
+#   is hereby REFUTED; the polar values stand and the load comparison is
+#   scoreable again. Keep both digitisations: their spread is the measured
+#   reading uncertainty, which no single reading provides.
+ECC_ATTITUDE_INDEPENDENT = {
+    1000.0: [(70e3, 0.7704, 34.26), (210e3, 0.7533, 36.28)],
+    3000.0: [(70e3, 0.5769, 39.05), (210e3, 0.5658, 43.12)],
+    4000.0: [(70e3, 0.5447, 42.58), (210e3, 0.5264, 45.54)],
+}
+
 # Consistency check on the reading, from the paper's own text: "the eccentricity
 # decreases and the attitude angle increases with rises in value of those
 # parameters [feeding pressure and rotational speed]".  The values above satisfy

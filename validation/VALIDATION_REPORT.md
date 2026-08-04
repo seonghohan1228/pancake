@@ -138,7 +138,7 @@ masquerades as grid error.
 | Ferron et al. (1983) | peak temperature | **PASS adiabatic** (−1.62 K); **FAIL** metal bush (−6.10 K) |
 | Ferron et al. (1983) | temperature peak *location* | **FAIL** — 71° out, and **unchanged** by the conjugate wall model (§5.1) |
 | Ferron et al. (1983) | load at measured ε | **OPEN** — +52–68%, shared with the literature (§4) |
-| Brito et al. (2006) | load, via eccentricity-for-load | **NOT SCOREABLE** — the digitisation ambiguity spans the discrepancy (§4.1) |
+| Brito et al. (2006) | load, via eccentricity-for-load | **FAIL / OPEN** — digitisation independently confirmed (§4.1); solver reaches 10 kN at ε 0.12–0.18 below measurement, same direction as Ferron and the literature |
 | Brito et al. (2006) | pressure, flow, interface T | **INCOMPLETE** — 5 of 6 committed runs unconverged; re-run required |
 | Cole & Hughes (1956) | reformation | **NOT SCOREABLE** — not sourced, and not a prediction of this solver in either inlet configuration |
 | Engels et al. (2024) | measured void fraction | **NOT RUN** — the direct Elrod observable; nothing currently tests it |
@@ -197,16 +197,18 @@ Eccentricity carrying the applied 10 kN, `Pf` = 70 kPa gauge, `Tf` = 40 °C:
 
 Three readings, in order of how much they should change your mind:
 
-1. **The digitisation ambiguity is larger than the discrepancy.** `brito.py`
-   records that the earlier *Cartesian* reading of Fig. 6 — a polar chart — gave
-   eccentricities about 0.15 lower than the polar re-digitisation now in use.
-   That puts the Cartesian values near 0.61 / 0.43 / 0.41, and the solver answers
-   0.648 / 0.426 / 0.367. **The solver tracks the Cartesian reading to within
-   ~0.04 at every speed and sits 0.11–0.19 below the polar one.** This does not
-   prove the polar reading wrong — using the solver to pick the digitisation
-   would be circular — but it does mean **the Brito load comparison cannot
-   discriminate until Fig. 6 is re-read from the source.** Report it as
-   unscoreable, not as a 65–106% error.
+1. **The digitisation question is now settled — against the solver.** An
+   independent re-digitisation of Fig. 6 (Seongho Han, digiplotter, 2026-08-04,
+   done blind to the earlier values) agrees with the polar reading to within
+   0.013 in ε and 1.0° in attitude at all six points, and refutes the Cartesian
+   alternative that sat ~0.15 lower. The comparison is scoreable again, and the
+   verdict is: the solver reaches the applied 10 kN at ε = 0.648 / 0.426 / 0.367
+   against measured 0.770 / 0.577 / 0.545 — a deficit of 0.12–0.18 that grows
+   with speed. Equivalently, at the measured eccentricities the predicted load is
+   +65–106% high. This is the same direction and comparable magnitude as the
+   Ferron discrepancy that Ferron's own theory shares, and Brito's ε is likewise
+   probe-displacement-over-assumed-clearance, so the clearance-systematics
+   suspect carries over — but it can no longer be blamed on the digitisation.
 2. **The hot-clearance bracket closes 0.030–0.035**, roughly a quarter of the gap
    at 1000 rpm and a fifth at 4000 rpm. Real, insufficient, and it rests on
    *assumed* metal temperatures (bush ~55 °C, shaft ~60 °C) that Brito did not

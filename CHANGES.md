@@ -113,6 +113,24 @@ identical. The classical branches keep their original floating-point association
 deliberately (see `reynolds_diffusion`'s `prefactor` argument), because
 `rho*(h*h*h/(12*mu))` and `rho*h*h*h/(12*mu)` are not the same double.
 
+### 2026-08-04 - Brito Fig. 6 independently re-digitised: verdict re-scored
+
+Seongho re-read Fig. 6 with digiplotter, blind to the values in `brito.py`. The
+six points agree with the committed polar re-digitisation to |d eps| <= 0.013
+(mean 0.005) and |d phi| <= 1.0 deg -- inside the stated uncertainties at every
+point -- and refute the Cartesian alternative that sat ~0.15 lower. Recorded as
+`ECC_ATTITUDE_INDEPENDENT`; the spread of the two readings is now the measured
+reading uncertainty.
+
+Consequently the load comparison is scoreable again, and it goes from
+NOT SCOREABLE to **FAIL / OPEN**: the solver reaches the applied 10 kN at
+eps = 0.648 / 0.426 / 0.367 (1000 / 3000 / 4000 rpm, c at 20 C) against measured
+0.770 / 0.577 / 0.545 -- a deficit of 0.12-0.18 growing with speed, equivalently
++65-106% load at the measured eccentricities. Same direction and comparable
+size as the Ferron discrepancy that Ferron's own theory shares. Brito's
+eccentricity is likewise probe displacement over an assumed clearance, so the
+clearance-systematics suspect carries over, but the digitisation no longer can.
+
 ### 2026-08-02 - Phase 2.1/2.2: consistent theta-weighting (measured: no steady effect)
 
 Defect D14 fixed. Under `cavitated_film_model = STRIATED` every thermal term that
