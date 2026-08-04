@@ -1077,7 +1077,9 @@ The output-selection parameters only affect persistence:
 
 Disabling a field does not remove it from the simulation state. For example,
 unchecking `velocity` skips the visualization vector, but the solver still
-computes velocities before force and torque post-processing. When enabled,
+computes velocities before force and torque post-processing. The one exception is
+`mass_residual` (§15.1), a pure diagnostic that is registered and evaluated only
+when selected, so an unselected run is bit-identical to one built without it. When enabled,
 `velocity` is written as the active 3-component VTK cell vector `U`. Curved
 output stores Cartesian components on the cylinder; flat output stores
 `(u_theta,u_z,0)` on the unwrapped plane. Force/load/bearing component fields
@@ -1116,6 +1118,46 @@ explicit terms in the balance. The per-step results (masses, fluxes, inlet
 source, clamp masses, residuals, Elrod outer iterations and flag flips) are
 appended to `<output_dir>/diagnostics.csv` every `diagnostics_interval` steps
 and summarized on the DETAILED log line.
+
+### 15.1 Per-cell continuity residual (`mass_residual`)
+
+A global balance that closes to round-off cannot distinguish a cell-by-cell
+conservative scheme from large local errors that cancel on summation. The
+optional output field `mass_residual` (select it in `output_fields`; JFO only)
+exposes the *per-cell* liquid-continuity residual of the converged state, in
+**kg/s, cell-integrated — not area-normalized**, so it carries the same units as
+every rate in the global balance. For cell $P$ with faces $f \in \{e,w,n,s\}$,
+
+$$r_P \;=\; \underbrace{\sum_{f} \Big[ \Gamma_f\,(\theta_P - \theta_{F}) \frac{A_f}{\delta_f} \;+\; F_f\,\theta_f \Big]}_{\text{Poiseuille} \,+\, \text{Couette outflow}}
+\;+\; \underbrace{\rho_l h\,\frac{\theta_P - \theta_P^{\,n}}{\Delta t}\,\Delta A \;+\; \rho_l\,\theta_P^{\,n}\,\frac{\partial h}{\partial t}\,\Delta A}_{\text{storage} \,+\, \text{squeeze (transient only)}}
+\;-\; \frac{m_{clamp,P}}{\Delta t}$$
+
+with exactly the quantities the assembly uses and no re-derived approximation:
+$\Gamma_f = \mathrm{harm}\big(\Gamma_{base}g(\theta)\big)$ on interior faces,
+$F_f = \bar\rho_0\,\omega R\,\bar h\,\Delta z/2$ for the Couette face flux,
+$\theta_f$ from the configured `theta_convection_scheme` (upwind, central,
+Type-differencing on full-film faces, or the van Leer limiter), and
+`SimulationConfig::elrod_boundary_outflow` on an active axial Dirichlet or
+`INLET_OUTLET` face. Interior faces telescope between neighbours, so summing the
+field over the whole domain returns the global closure exactly:
+
+$$\sum_P r_P \;=\; S_{storage} - \Phi_{boundary} - S_{inlet} - \frac{M_{clamp}}{\Delta t}
+\;=\; \frac{r_l\,M_l}{\Delta t}$$
+
+Inlet penalty cells carry only the clamp term. Their flux imbalance *is* the
+modelled supply source, which the global balance already reports separately as
+$S_{inlet}$; leaving it in the field would double-count it in the sum above.
+
+Reading the field: a cell that is not a groove cell, not clamped and not on the
+rupture or reformation front must sit at round-off of its own row — the
+barotropic conductance $\rho_0\beta h^3/(12\mu)\,A_f/\delta_f$, not the Couette
+throughput, is what sets that scale, because it exceeds the throughput by
+$O(\beta/p)$. `tests/test_mass_residual.cpp` measures $7\times10^{-15}$ of the
+row scale on a steady grooved bearing. Anything larger in such a cell is a defect
+in the assembled operator, not a physical source. The same test perturbs one
+converged cell and confirms the global $r_l$ does not move at all while the field
+rises to $2\times10^3$ times the Couette flux in the five affected cells — the
+blindness this field exists to remove.
 
 Two deliberate visibility limits remain (they motivate WP-1/WP-2 of the audit
 plan): variable-property runs refresh $\rho_l$ after the segregated solve, so

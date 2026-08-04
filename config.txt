@@ -155,7 +155,9 @@ inlet_groove = 90 10 1.5e6
 #          fluid_force_x, fluid_force_y, fluid_force_z,
 #          external_load_x, external_load_y, external_load_z,
 #          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,
-#          friction_torque. Legacy load_x/load_y/load_z requests map to pressure_force_*.
+#          friction_torque,
+#          mass_residual (per-cell continuity residual [kg/s], JFO only).
+#          Legacy load_x/load_y/load_z requests map to pressure_force_*.
 output_dir = results
 filename_prefix = solution
 output_verbosity = SIMPLIFIED

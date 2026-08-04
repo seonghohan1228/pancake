@@ -71,22 +71,54 @@ double couette_face_flux(const Fields& fields, const Mesh& mesh,
     return rho_e * cfg.omega * mesh.R * h_e * 0.5 * mesh.get_d_z();
 }
 
-// Face value of theta carried by the Couette flux (upwind; central on full-film
-// faces under TYPE_DIFFERENCING, matching the assembled deferred correction).
+double van_leer(double r) {
+    return (r + std::abs(r)) / (1.0 + std::abs(r));
+}
+
+// Face value of theta carried by the Couette flux at the east face of (i,j),
+// formed exactly as FVM::divergence assembles it: implicit upwind plus the
+// scheme's deferred correction. LINEAR is central on every face,
+// TYPE_DIFFERENCING only on full-film faces, VANLEER reproduces the limiter
+// stencil (including its use of the far-upwind cell for both flux directions).
 double couette_face_theta(const Field& theta, const SimulationConfig& cfg,
                           double flux, int i, int j) {
     const double theta_up = (flux >= 0.0) ? theta(i, j) : theta(i + 1, j);
-    if (cfg.theta_convection_scheme == ConvectionScheme::TYPE_DIFFERENCING &&
-        theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0) {
-        return 0.5 * (theta(i, j) + theta(i + 1, j));
+    switch (cfg.theta_convection_scheme) {
+        case ConvectionScheme::UPWIND:
+            return theta_up;
+        case ConvectionScheme::LINEAR:
+            return 0.5 * (theta(i, j) + theta(i + 1, j));
+        case ConvectionScheme::TYPE_DIFFERENCING:
+            return (theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0)
+                ? 0.5 * (theta(i, j) + theta(i + 1, j)) : theta_up;
+        case ConvectionScheme::VANLEER: {
+            const double denom = theta(i, j) - theta(i - 1, j);
+            const double num = theta(i + 1, j) - theta(i, j);
+            double r = (std::abs(denom) > 1e-14) ? num / denom : 0.0;
+            if (flux < 0.0) r = 1.0 / (r + 1e-14);
+            return theta_up + 0.5 * van_leer(r) * (theta_up - theta(i - 1, j));
+        }
     }
     return theta_up;
 }
 
-// Net liquid mass outflow rate [kg/s] of one Elrod inlet penalty cell,
-// re-evaluating the physical operators the penalty row replaced.
-double elrod_inlet_cell_outflow(const Fields& fields, const Mesh& mesh,
-                                const SimulationConfig& cfg, double dt, int i, int j) {
+// True when solve_elrod adds an axial Dirichlet link on this boundary face:
+// always under DIRICHLET, and under INLET_OUTLET only while the cell sits below
+// the reservoir pressure (inflow). Single predicate so the per-cell outflow and
+// the domain boundary flux cannot disagree about which faces are open.
+bool axial_link_active(const Fields& fields, BCType type, double bc_val, int i, int j) {
+    if (type == BCType::DIRICHLET) return true;
+    if (type != BCType::INLET_OUTLET) return false;
+    return fields["pressure"](i, j) < bc_val;
+}
+
+// Net liquid mass outflow rate [kg/s] of one Elrod cell, evaluating the physical
+// operators solve_elrod assembles. Interior faces telescope between neighbours,
+// so summing this over the domain leaves only the axial boundary faces and the
+// storage terms. Used both for the inlet penalty cells (whose rows the penalty
+// replaced) and for the per-cell mass_residual field.
+double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
+                          const SimulationConfig& cfg, double dt, int i, int j) {
     const Field& theta = fields["theta"];
     const int n_z = mesh.n_z_local;
     const double d_theta = mesh.get_d_theta();
@@ -110,14 +142,14 @@ double elrod_inlet_cell_outflow(const Fields& fields, const Mesh& mesh,
     if (j + 1 < n_z) {
         outflow += harmonic_avg(gamma_g(i, j), gamma_g(i, j + 1)) * ns_scale *
             (theta(i, j) - theta(i, j + 1));
-    } else if (cfg.bc_z_north_type == BCType::DIRICHLET) {
+    } else if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
                                               cfg.bc_z_north_val, R, d_theta, d_z);
     }
     if (j > 0) {
         outflow += harmonic_avg(gamma_g(i, j - 1), gamma_g(i, j)) * ns_scale *
             (theta(i, j) - theta(i, j - 1));
-    } else if (cfg.bc_z_south_type == BCType::DIRICHLET) {
+    } else if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
                                               cfg.bc_z_south_val, R, d_theta, d_z);
     }
@@ -155,17 +187,11 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
     for (int i = 0; i < n_theta; ++i) {
         if (cfg.cavitation_model == CavitationModel::JFO) {
             const Field& theta = fields["theta"];
-            const bool south_active = cfg.bc_z_south_type == BCType::DIRICHLET ||
-                (cfg.bc_z_south_type == BCType::INLET_OUTLET &&
-                 pressure(i, 0) < cfg.bc_z_south_val);
-            if (south_active) {
+            if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, 0)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, 0), theta(i, 0),
                                                      cfg.bc_z_south_val, R, d_theta, d_z);
             }
-            const bool north_active = cfg.bc_z_north_type == BCType::DIRICHLET ||
-                (cfg.bc_z_north_type == BCType::INLET_OUTLET &&
-                 pressure(i, n_z - 1) < cfg.bc_z_north_val);
-            if (north_active) {
+            if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, n_z - 1)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, n_z - 1), theta(i, n_z - 1),
                                                      cfg.bc_z_north_val, R, d_theta, d_z);
             }
@@ -323,7 +349,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             if (cfg.cavitation_model == CavitationModel::JFO &&
                 inlet_cell(mesh, cfg, i, j)) {
                 balance.inlet_mass_source +=
-                    elrod_inlet_cell_outflow(fields, mesh, cfg, dt, i, j);
+                    elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
             }
         }
     }
@@ -362,6 +388,31 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             step / std::max(balance.gas_mass, 1.0e-30);
     }
     return balance;
+}
+
+void mass_residual(Fields& fields, const Mesh& mesh,
+                   const SimulationConfig& cfg, double dt) {
+    if (!fields.has("mass_residual")) return;  // not selected: nothing computed
+    Field& residual = fields["mass_residual"];
+    residual.fill(0.0);
+    if (cfg.cavitation_model != CavitationModel::JFO) return;
+
+    // Same step normalization mass_balance() uses for the clamp rate, so the two
+    // agree term by term.
+    const bool transient = cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0;
+    const double step = transient ? dt : std::max(cfg.dt, 1.0e-30);
+
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            // Inlet penalty cells: their flux imbalance IS the modelled supply
+            // source (mass_balance reports it as inlet_mass_source), so only the
+            // clamp correction is left here.
+            const double outflow = inlet_cell(mesh, cfg, i, j)
+                ? 0.0 : elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
+            residual(i, j) = outflow -
+                field_value(fields, "cavitation_clamp_mass", 0.0, i, j) / step;
+        }
+    }
 }
 
 void append_csv(const std::filesystem::path& path, double time, int step,

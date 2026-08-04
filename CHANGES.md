@@ -2,6 +2,82 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-04 - Per-cell mass-residual output field (case 00c test #3)
+
+New optional output field `mass_residual`: the per-cell liquid-continuity
+residual of the converged JFO state, in kg/s (cell-integrated, not
+area-normalized). Written only when listed in `output_fields`.
+
+**Why.** `diagnostics.cpp` reports one number for the whole domain, and it closes
+at solver tolerance. That is compatible with a genuinely conservative scheme and
+equally compatible with large local errors that cancel on summation — which is
+exactly the failure mode that could produce the grid-divergent rupture front case
+00a found. The field makes the distinction observable in 2D.
+
+**Definition** (PHYSICS.md §15.1). Net liquid mass flux out of the four faces
+(Poiseuille + Couette) plus the transient storage and squeeze terms, minus the
+mass the theta clamp/snap injected this step. Every term is taken from the
+expressions `solve_elrod` assembles rather than re-derived: harmonically averaged
+`Gamma_base * g(theta)` on interior faces, `cfg.elrod_boundary_outflow` on active
+axial Dirichlet / `INLET_OUTLET` faces, and the configured `theta_convection_scheme`
+face value. Inlet penalty cells carry only the clamp term: their flux imbalance is
+the modelled supply source that the global balance already reports as
+`inlet_mass_source`. Interior faces telescope, so the field sums exactly to the
+global closure: `sum(r) == liquid_residual * liquid_mass / step`.
+
+**Factoring.** `Diagnostics::elrod_inlet_cell_outflow` was already the per-cell
+operator; it is now `elrod_cell_outflow` and is shared by the global balance and
+the residual field. Two consistency fixes fell out of that sharing, both of which
+made the assembled operator and the diagnostic agree where they previously did
+not:
+
+- the per-cell outflow only opened an axial boundary face under `DIRICHLET`,
+  while `liquid_boundary_inflow` also opened it under `INLET_OUTLET` on inflow.
+  An inlet cell sitting on an `INLET_OUTLET` axial row therefore had its boundary
+  flux counted in the domain flux but not in its own inlet source. Both now share
+  one `axial_link_active` predicate, matching `solve_elrod`.
+- `couette_face_theta` mirrored only `UPWIND` and `TYPE_DIFFERENCING`; under
+  `LINEAR` or `VANLEER` the diagnostic used upwind where the assembly used the
+  deferred central / limited value. Both branches are now mirrored. (No effect on
+  any shipped case: all of them run `UPWIND` or `TYPE_DIFFERENCING`.)
+
+**Cost when unselected.** `main.cpp` registers the field only if
+`cfg.output_field_enabled("mass_residual")`, and `Diagnostics::mass_residual`
+returns immediately when the field is absent. Verified end to end: running
+`cases/00c_jfo_verification/oneD_n120_b1e9` with and without the field gives
+byte-identical `diagnostics.csv` and byte-identical VTK arrays for every other
+field.
+
+**Test** (`tests/test_mass_residual.cpp`, 2 ranks, joins ctest):
+
+1. Steady grooved bearing (00c geometry): 464 clean full-film cells at
+   7.1e-15 of the row conductance; field sums to the reported `r_l` to 2.7e-17.
+2. Open Dirichlet axial ends, transient: boundary rows close as tightly as the
+   interior (2.0e-14); sum identity holds to 4.3e-20 against a nonzero boundary
+   flux and nonzero storage.
+3. Perturbing one converged cell by 2% raises the field to 2.1e3 times the
+   Couette flux on that cell and its four neighbours, leaves every other cell at
+   its tolerance, and moves the global `r_l` by nothing at all. This is the
+   feature's justification stated as an assertion.
+4. Not registering the field is a no-op that leaves the global balance untouched.
+
+**First result on case 00c** (`oneD_n120_b1e9`, converged steady state). Groove
+cells are zero by construction; the cell immediately upstream of the groove edge
+carries `theta = 0.259` next to a penalty cell pinned at `theta = 1.00007` and
+still balances to 6e-17 of the Couette flux. The rupture and reformation fronts
+sit at 8e-11. The largest value in the domain, 1.1e-7 of the Couette flux
+(3.2e-11 of the row conductance), is a smooth blob over the peak-pressure zone —
+the Krylov residual profile at the default `linear_rtol = 1e-8`, not a flux
+defect. **The JFO assembly is per-cell conservative at this resolution, so the
+grid-divergent front is not caused by a non-conservative flux or boundary
+treatment.** Test #3 of case 00c is closed; the front's grid sensitivity has to
+be explained by the scheme's accuracy or the free-boundary treatment, not by
+conservation.
+
+Files: `src/diagnostics.{hpp,cpp}`, `src/main.cpp`, `src/config.hpp`,
+`tests/test_mass_residual.cpp`, `tests/CMakeLists.txt`, `PHYSICS.md`,
+`README.md`, `cases/00c_jfo_verification/README.md`. Full suite 25/25 green.
+
 ### 2026-08-02 - Phase 2.3/2.4: groove carry-over, cross-film T(y), conjugate
 walls, generalized Reynolds
 

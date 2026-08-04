@@ -225,6 +225,11 @@ int main(int argc, char** argv) {
         fields.add("friction_torque", mesh).fill(0.0);
         fields.add("cavitation_clamp_mass", mesh).fill(0.0);
         fields.add("gas_clamp_mass", mesh).fill(0.0);
+        // Per-cell continuity residual [kg/s]. Registered only when selected, so
+        // an unselected run allocates nothing and takes the original code path.
+        if (cfg.output_field_enabled("mass_residual")) {
+            fields.add("mass_residual", mesh).fill(0.0);
+        }
 
         Utils::log("Starting Simulation...");
 
@@ -375,6 +380,9 @@ int main(int argc, char** argv) {
             // Conservation/convergence diagnostics. Must run before
             // store_old_time so the step's storage terms are still formed
             // against the previous timestep.
+            // No-op unless mass_residual was selected as an output field.
+            Diagnostics::mass_residual(fields, mesh, step_cfg,
+                                       steady_state ? 0.0 : cfg.dt);
             const bool diagnostics_now = cfg.diagnostics_interval > 0 &&
                 step % cfg.diagnostics_interval == 0;
             Diagnostics::MassBalance balance;

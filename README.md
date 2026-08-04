@@ -273,6 +273,16 @@ flips; see PHYSICS.md §15). Startup validation also reports laminar-regime
 (Taylor number) and gas-saturation (`p_sat`) context warnings. A
 grid-convergence study harness lives in `validation/grid_convergence/`.
 
+Adding `mass_residual` to `output_fields` writes the per-cell liquid-continuity
+residual of the converged JFO state in `kg/s` (cell-integrated), which localizes
+in 2D what the global balance can only report as one number: a defect in the
+boundary or groove flux handling shows up as a hot cell, while the global
+residual stays at solver tolerance because neighbouring errors cancel. Away from
+groove cells, clamped cells and the rupture front the field must sit at round-off
+of the barotropic conductance. The field is registered only when selected, so
+runs that omit it are bit-identical. It is defined for `cavitation_model = JFO`;
+validation warns and writes zeros otherwise. See PHYSICS.md §15.1.
+
 `solution_mode = STEADY_STATE` runs one pressure/thermal solve at `t=0` and
 skips bearing-motion advancement. This is intended for fast operating-point
 checks. `TRANSIENT` now starts from the initialized outlet-pressure fields and

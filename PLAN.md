@@ -2,6 +2,20 @@
 
 ## In Progress
 
+### Validation campaign restart (2026-08-04) — see `cases/VALIDATION_PLAN.md`
+
+Fresh validation campaign run from scratch at the user's direction; the earlier
+`VALIDATION_PLAN.md` (root) is retained for history but no longer tracks status.
+Case 00 (grid/dt independence on the Ferron geometry) is running.
+
+Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
+field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,
+PHYSICS.md §15.1, `tests/test_mass_residual.cpp`). The 00c converged state is
+per-cell conservative at round-off away from the groove penalty cells, so the
+grid-divergent rupture front is not a conservation defect. Uncommitted pending
+user review. Test #1 (exact 1D benchmark) still open; test #2 waits on published
+contour data.
+
 ### Validation campaign (2026-08-02) — see `VALIDATION_PLAN.md`
 
 The full diagnosis of the Ferron/Brito temperature and load mismatches, and the

@@ -55,6 +55,7 @@ const char* field_unit(const std::string& name) {
     if (name == "dissolved_gas") return "kg/kg";
     if (name == "gas_mass_transfer") return "kg/(s.m^3)";
     if (name == "friction_torque") return "N.m";
+    if (name == "mass_residual") return "kg/s";
     if (name == "bearing_attitude_angle") return "deg";
     if (name.rfind("F", 0) == 0) return "N";
     if (name.rfind("xB", 0) == 0) return "m";
@@ -79,6 +80,8 @@ const char* field_desc(const std::string& name) {
     if (name == "gas_mass_transfer") return "Gas release (+) / resorption (-) rate.";
     if (name == "inlet_indicator") return "1 inside an inlet/groove region, 0 elsewhere.";
     if (name == "friction_torque") return "Total friction torque on the journal (constant field).";
+    if (name == "mass_residual")
+        return "Per-cell JFO continuity residual; nonzero away from grooves = flux defect.";
     if (name == "bearing_attitude_angle") return "Attitude angle resultant (constant field).";
     if (name.rfind("U.", 0) == 0) return "Mid-film velocity component.";
     if (name.rfind("Fp.", 0) == 0) return "Pressure force resultant component (constant field).";

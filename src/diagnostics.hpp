@@ -48,6 +48,39 @@ struct MassBalance {
 MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
                          const SimulationConfig& cfg, double dt);
 
+/// Per-cell liquid-continuity residual of the converged JFO state, written into
+/// the optional "mass_residual" field. No-op when that field is absent, so a run
+/// that does not select it keeps the original code path exactly.
+///
+/// Units kg/s (cell-integrated, NOT area-normalized), the same units as every
+/// MassBalance rate. For one cell,
+///
+///   r = (Poiseuille + Couette flux out of the four faces)
+///     + d(rho_l h theta)/dt + rho_l theta_old dh/dt        [transient only]
+///     - m_clamp / step,
+///
+/// formed from the same expressions solve_elrod assembles: harmonically averaged
+/// Gamma_g = Gamma_base g(theta) on interior faces, cfg.elrod_boundary_outflow on
+/// active axial Dirichlet / INLET_OUTLET faces, and the scheme's Couette face
+/// value. Inlet penalty cells carry only the clamp term: their flux imbalance is
+/// the deliberately modelled supply source, which mass_balance() reports
+/// separately as inlet_mass_source.
+///
+/// Interior faces telescope, so the residual field reproduces the global closure:
+///   sum over ranks and cells of r == liquid_residual * liquid_mass / step,
+/// with step = dt in transient runs and cfg.dt in steady runs. A cell that is not
+/// an inlet, not clamped and not at the rupture front must sit at the linear
+/// solver tolerance; a larger value is a defect in the assembled operator rather
+/// than a physical source.
+///
+/// JFO only. Under GUMBEL the solved variable is pressure, not the theta balance
+/// this residual describes, so the field is left at zero (validate() warns).
+///
+/// Same placement rule as mass_balance(): call after the step's solves but BEFORE
+/// store_old_time(), so the storage term still sees the previous timestep.
+void mass_residual(Fields& fields, const Mesh& mesh,
+                   const SimulationConfig& cfg, double dt);
+
 /// Rank-0 CSV appender; writes a header row when creating the file.
 void append_csv(const std::filesystem::path& path, double time, int step,
                 const MassBalance& balance, const Reynolds::ElrodStats& stats);

@@ -1193,6 +1193,11 @@ struct SimulationConfig {
             warn("GUMBEL is a pressure clamp and is not mass-conserving JFO cavitation.");
         }
 
+        if (output_field_enabled("mass_residual") && cavitation_model != CavitationModel::JFO) {
+            warn("output field mass_residual is the residual of the JFO film-content "
+                 "balance; under the selected cavitation model it is written as zero.");
+        }
+
         if (thermal_convection_scheme == ConvectionScheme::TYPE_DIFFERENCING) {
             error("TYPE_DIFFERENCING is only available for theta_convection_scheme (it switches on the cavitation flag).");
         }
@@ -1801,7 +1806,9 @@ struct SimulationConfig {
             << "#          fluid_force_x, fluid_force_y, fluid_force_z,\n"
             << "#          external_load_x, external_load_y, external_load_z,\n"
             << "#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,\n"
-            << "#          friction_torque. Legacy load_x/load_y/load_z requests map to pressure_force_*.\n"
+            << "#          friction_torque,\n"
+            << "#          mass_residual (per-cell continuity residual [kg/s], JFO only).\n"
+            << "#          Legacy load_x/load_y/load_z requests map to pressure_force_*.\n"
             << "output_dir = " << output_dir << "\n"
             << "filename_prefix = " << filename_prefix << "\n"
             << "# output_verbosity options: SIMPLIFIED (compact per-step line), DETAILED (per-step diagnostics)\n"
