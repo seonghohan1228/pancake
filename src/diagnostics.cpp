@@ -8,6 +8,7 @@
 
 #include "equation_of_state.hpp"
 #include "fbns.hpp"
+#include "full_film.hpp"
 
 namespace Diagnostics {
 namespace {
@@ -81,8 +82,9 @@ double van_leer(double r) {
 // scheme's deferred correction. LINEAR is central on every face,
 // TYPE_DIFFERENCING only on full-film faces, VANLEER reproduces the limiter
 // stencil (including its use of the far-upwind cell for both flux directions).
-double couette_face_theta(const Field& theta, const SimulationConfig& cfg,
+double couette_face_theta(const Fields& fields, const SimulationConfig& cfg,
                           double flux, int i, int j) {
+    const Field& theta = fields["theta"];
     const double theta_up = (flux >= 0.0) ? theta(i, j) : theta(i + 1, j);
     switch (cfg.theta_convection_scheme) {
         case ConvectionScheme::UPWIND:
@@ -90,7 +92,7 @@ double couette_face_theta(const Field& theta, const SimulationConfig& cfg,
         case ConvectionScheme::LINEAR:
             return 0.5 * (theta(i, j) + theta(i + 1, j));
         case ConvectionScheme::TYPE_DIFFERENCING:
-            return (theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0)
+            return FullFilm::is_full_film_face(fields, cfg, i, j, i + 1, j)
                 ? 0.5 * (theta(i, j) + theta(i + 1, j)) : theta_up;
         case ConvectionScheme::VANLEER: {
             const double denom = theta(i, j) - theta(i - 1, j);
@@ -158,8 +160,8 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
     // Couette convection (theta direction only).
     const double flux_e = couette_face_flux(fields, mesh, cfg, i, j);
     const double flux_w = couette_face_flux(fields, mesh, cfg, i - 1, j);
-    outflow += flux_e * couette_face_theta(theta, cfg, flux_e, i, j);
-    outflow -= flux_w * couette_face_theta(theta, cfg, flux_w, i - 1, j);
+    outflow += flux_e * couette_face_theta(fields, cfg, flux_e, i, j);
+    outflow -= flux_w * couette_face_theta(fields, cfg, flux_w, i - 1, j);
 
     // Liquid-content storage plus the explicit squeeze term, mirroring assembly.
     if (cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0) {
@@ -274,7 +276,7 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
             } else {
                 const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_south_val);
                 const double dp_dz = (pressure(i, 0) - p_bc) / (0.5 * d_z);
-                const double g_face = theta(i, 0) >= 1.0 ? 1.0 : 0.0;
+                const double g_face = FullFilm::gate(fields, cfg, i, 0);
                 u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
                 rho_face = field_value(fields, "rho", cfg.rho, i, 0);
             }
@@ -301,7 +303,7 @@ double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
             } else {
                 const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_north_val);
                 const double dp_dz = (p_bc - pressure(i, j)) / (0.5 * d_z);
-                const double g_face = theta(i, j) >= 1.0 ? 1.0 : 0.0;
+                const double g_face = FullFilm::gate(fields, cfg, i, j);
                 u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
                 rho_face = field_value(fields, "rho", cfg.rho, i, j);
             }
@@ -343,7 +345,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             const double rho_l = base_density(fields, cfg, i, j);
             const double rho_h = rho_l * theta(i, j) * h(i, j);
             balance.liquid_mass += rho_h * cell_area;
-            if (theta(i, j) < 1.0) cavitated_cells += 1.0;
+            if (!FullFilm::is_full_film(fields, cfg, i, j)) cavitated_cells += 1.0;
 
             if (transient) {
                 liquid_storage_rate += rho_l * h(i, j) * cell_area *

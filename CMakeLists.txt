@@ -91,6 +91,7 @@ set(PANCAKE_HEADERS
     src/field.hpp
     src/fluid_properties.hpp
     src/film_thickness.hpp
+    src/full_film.hpp
     src/fvm.hpp
     src/io.hpp
     src/journal_motion.hpp

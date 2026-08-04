@@ -48,6 +48,14 @@ Two things came out of it that are **not** FBNS-specific and are still open:
   then Case 05 stays on `cavitation_model = JFO`. Cross-film Dowson coefficients
   in the FBNS operator remain unstarted (phase 3).
 
+  Prerequisite **DONE 2026-08-05** (`codex/full-film-predicate`): `FullFilm` in
+  `src/full_film.hpp`. One ceiling, `FullFilm::bound`, returning exactly `1.0`
+  today; all 15 sites routed through `is_full_film` / `is_full_film_face` /
+  `gate` / `face_gate`. Byte-identical across five regression cases (41 output
+  files, 41 sha256 matches) and `ctest` 27/27. Memo steps 2-4 (per-cell `p_cav`
+  in the FBNS operator, outer under-relaxation, the `EQUILIBRIUM` steady-state
+  enforcement) are still open, and are what the guard now waits on.
+
 Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
 field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,
 PHYSICS.md §15.1, `tests/test_mass_residual.cpp`). The 00c converged state is

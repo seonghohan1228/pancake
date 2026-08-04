@@ -4,6 +4,10 @@ Status: **not implemented, deliberately.** `cavitation_model = FBNS` with
 `fluid_property_model = TWO_PHASE` is rejected at config validation. This memo
 records why, what was actually checked, and what it would take to lift the guard.
 
+Step 1 of §4, the shared full-film predicate, is **DONE** (2026-08-05, branch
+`codex/full-film-predicate`): `FullFilm` in `src/full_film.hpp`, all fifteen
+sites routed, byte-identical across five regression cases. Steps 2-4 are open.
+
 Written while landing FBNS phase 2 (energy equation + `SINGLE_PHASE` properties),
 branch `codex/fbns-cavitation`.
 
@@ -85,12 +89,20 @@ separates those two meanings for the first time.
 
 In order:
 
-1. **Introduce an explicit rupture indicator.** Either a `full_film` field written
-   by whichever cavitation solver ran, or a single shared predicate
-   `is_full_film(fields, cfg, i, j)` that reads `theta >= 1 - alpha_gas - eps`
+1. **Introduce an explicit rupture indicator.** — **DONE 2026-08-05.** Either a
+   `full_film` field written by whichever cavitation solver ran, or a single shared
+   predicate `is_full_film(fields, cfg, i, j)` that reads `theta >= 1 - alpha_gas - eps`
    under TWO_PHASE and `theta >= 1` otherwise. A predicate is preferable: it is one
    definition, it cannot go stale, and it makes the Elrod path byte-identical by
    construction. Replace all 15 sites.
+
+   Landed as `FullFilm` (`src/full_film.hpp`). The ceiling lives in one function,
+   `FullFilm::bound(fields, cfg, i, j)`, which today returns exactly `1.0`; the
+   TWO_PHASE branch is the single line written out in its docstring. All fifteen
+   sites (plus two adjacent ones in the same files) call
+   `is_full_film` / `is_full_film_face` or their 1/0 `gate` / `face_gate` forms.
+   Verified byte-identical on JFO steady, FBNS steady, JFO+energy, JFO+energy
+   +STRIATED and a transient TWO_PHASE run: 41 output files, 41 sha256 matches.
 2. **Decide the cavity pressure with gas present.** In the vapour cavity FBNS pins
    $p = p_{cav}$. With a released species the plateau is the local bubble point,
    which is what `cavitation_threshold = LOCAL_PSAT` already supplies as a scalar
@@ -123,6 +135,14 @@ refactor on its own branch, with the existing Elrod/Gumbel regression as its
 acceptance test. Steps 2–4 then become a small change confined to `fbns.cpp` plus
 config validation, and the gas guard can be lifted with the 20-line diff sketched
 in §2.
+
+Step 1 is now landed (see the status line). What remains for whoever picks up
+step 2: change `FullFilm::bound` to return `1 - alpha_gas` under TWO_PHASE, make
+`p_cav` a per-cell array in `cell_outflow`, the FBNS residual and
+`axial_boundary_pressure`, and enforce `steady_gas_model = EQUILIBRIUM` for
+`STEADY_STATE` FBNS + TWO_PHASE. Note that the Elrod operator carries its own
+copy of the same ceiling in `Reynolds`'s `VoidParams::theta_full`; the two should
+merge onto `FullFilm::bound` in that change rather than diverge further.
 
 Until then `cavitation_model = JFO` remains the path for gaseous cavitation
 (validation case 05), and FBNS covers cases 00, 00c, 01 (isothermal and THD) and

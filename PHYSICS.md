@@ -302,6 +302,14 @@ $$\underbrace{-\text{div}(\Gamma\,\nabla\theta)\cdot V}_{\text{laplacian}} + \un
 
 **Relationship to Gumbel solver.** Both formulations are equivalent in the full-film ($\theta \ge 1$) limit at small compressibility. Historically the two paths differed by $\approx 1.2\%$ because the Gumbel wedge term was centered while the Elrod path was upwind; since the WP-3 alignment both paths use the configured `theta_convection_scheme` and the matched full-film comparison agrees to $\approx 0.01\%$ (`tests/test_schemes.cpp`). The switch function $g(\theta)$ (Phase A.2) handles the cavitated region.
 
+**The full-film test is one function (`FullFilm`, `src/full_film.hpp`).** A cell holds an unbroken liquid film when its film content reaches the ceiling $\theta_{full}$,
+
+$$g = 1 \iff \theta \ge \theta_{full}, \qquad \theta_{full} = 1 - \alpha_{gas},$$
+
+and a face carries Poiseuille flow only when *both* cells it joins do. Everything that gates on rupture asks this one question: the Poiseuille terms of the momentum, energy and dissolved-gas equations, the shear post-processing, the `consistent_boundary_flux` reflood branch, the Elrod rupture-front flip counter, the TYPE_DIFFERENCING face-centrality mask, and the `cavitated_fraction` diagnostic. `FullFilm::bound` is the single definition of $\theta_{full}$.
+
+Currently $\alpha_{gas} = 0$ in that ceiling for every model: free gas is treated as volumetrically inert in the film-content equation, so the liquid may occupy the whole gap and $\theta_{full} = 1$ exactly, which is the historical test. The reason the ceiling is written as one function rather than fifteen literals is that it is not a local decision — moving it to $1 - \alpha_{gas}$ at a subset of the sites would switch off Poiseuille transport across the whole domain as soon as any gas came out of solution, silently and with a converged residual (`docs/FBNS_GAS_COUPLING.md` §3). The Elrod operator carries the same ceiling separately as `VoidParams::theta_full` (§16), which *is* gas-aware under `gas_pressure_coupling = VOID_COUPLED`; the two merge when the resolved-gas bound lands.
+
 **Weighted time derivative.** The FVM operator `FVM::ddt_weighted(sys, theta, weight, dt, mesh)` discretises the liquid-content storage $\partial(\rho_0\theta h)/\partial t$ with weight $\rho_0 h$. It adds $\rho_0 h\,V/\Delta t$ to $a_P$ and $\rho_0 h\,V\,\theta^n/\Delta t$ to `source`. This capacity term is assembled for **every** transient solve (`solution_mode = TRANSIENT`), fixed or moving bearing — gating it on bearing motion would make a fixed-bearing transient (e.g. an `omega_ramp_time` startup) quasi-steady in $\theta$ with film-history physics silently absent. The explicit squeeze source $-\rho_0\theta^n\,\partial h/\partial t$ is added whenever a `dh_dt` field is present. `STEADY_STATE` mode omits both, giving the quasi-steady operating-point solve.
 
 ### 7.3 FBNS Complementarity Solver (`FBNS::solve`, `cavitation_model = FBNS`)

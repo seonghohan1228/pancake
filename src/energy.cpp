@@ -7,18 +7,11 @@
 #include <mpi.h>
 
 #include "cross_film.hpp"
+#include "full_film.hpp"
 #include "fvm.hpp"
 
 namespace Energy {
 namespace {
-
-double full_film_switch(const Field& theta, int i, int j) {
-    return theta(i, j) >= 1.0 ? 1.0 : 0.0;
-}
-
-double full_film_face_switch(const Field& theta, int i0, int j0, int i1, int j1) {
-    return (theta(i0, j0) >= 1.0 && theta(i1, j1) >= 1.0) ? 1.0 : 0.0;
-}
 
 /// Fraction of the gap occupied by liquid, for weighting the thermal terms.
 ///
@@ -119,7 +112,7 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double h_val = std::max(h(i, j), cfg.min_film_thickness);
-            const double g = full_film_switch(theta, i, j);
+            const double g = FullFilm::gate(fields, cfg, i, j);
             const double mu_val = dynamic_viscosity(fields, cfg, i, j);
             // Only the liquid fraction theta carries Couette shear in a cavitated
             // cell; full-film cells (g=1) are unchanged. Shares one helper with the
@@ -157,8 +150,8 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
             double poiseuille = 0.0;
             if (g > 0.0) {
                 double grad_sq = 0.0;
-                const double g_e = full_film_face_switch(theta, i, j, i + 1, j);
-                const double g_w = full_film_face_switch(theta, i - 1, j, i, j);
+                const double g_e = FullFilm::face_gate(fields, cfg, i, j, i + 1, j);
+                const double g_w = FullFilm::face_gate(fields, cfg, i - 1, j, i, j);
                 if (g_e > 0.0) {
                     const double dp_ds_e = (p(i + 1, j) - p(i, j)) / (d_theta * R);
                     grad_sq += 0.5 * dp_ds_e * dp_ds_e;
@@ -170,20 +163,20 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
 
                 if (n_z > 1) {
                     if (j == 0) {
-                        const double g_n = full_film_face_switch(theta, i, j, i, j + 1);
+                        const double g_n = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
                         if (g_n > 0.0) {
                             const double dp_dz_n = (p(i, j + 1) - p(i, j)) / d_z;
                             grad_sq += dp_dz_n * dp_dz_n;
                         }
                     } else if (j == n_z - 1) {
-                        const double g_s = full_film_face_switch(theta, i, j - 1, i, j);
+                        const double g_s = FullFilm::face_gate(fields, cfg, i, j - 1, i, j);
                         if (g_s > 0.0) {
                             const double dp_dz_s = (p(i, j) - p(i, j - 1)) / d_z;
                             grad_sq += dp_dz_s * dp_dz_s;
                         }
                     } else {
-                        const double g_n = full_film_face_switch(theta, i, j, i, j + 1);
-                        const double g_s = full_film_face_switch(theta, i, j - 1, i, j);
+                        const double g_n = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
+                        const double g_s = FullFilm::face_gate(fields, cfg, i, j - 1, i, j);
                         if (g_n > 0.0) {
                             const double dp_dz_n = (p(i, j + 1) - p(i, j)) / d_z;
                             grad_sq += 0.5 * dp_dz_n * dp_dz_n;
@@ -266,7 +259,7 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face, 0.5 * d_z, true);
     } else {
         const double g_face =
-            poiseuille_face_activity(cfg, full_film_switch(theta, i, 0));
+            poiseuille_face_activity(cfg, FullFilm::gate(fields, cfg, i, 0));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_south_val);
         const double dp_dz = (p(i, 0) - p_bc) / (0.5 * d_z);
         u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
@@ -289,7 +282,7 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
         u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face, 0.5 * d_z, false);
     } else {
         const double g_face =
-            poiseuille_face_activity(cfg, full_film_switch(theta, i, j));
+            poiseuille_face_activity(cfg, FullFilm::gate(fields, cfg, i, j));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_north_val);
         const double dp_dz = (p_bc - p(i, j)) / (0.5 * d_z);
         u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
@@ -503,7 +496,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
             // Liquid depth theta*h, not the full gap: a ruptured cell neither
             // stores nor conducts as though it were solid oil.
             const double liquid_h =
-                h_val * liquid_fraction(theta, cfg, full_film_switch(theta, i, j), i, j);
+                h_val * liquid_fraction(theta, cfg, FullFilm::gate(fields, cfg, i, j), i, j);
             conductivity(i, j) = thermal_conductivity(fields, cfg, i, j) * liquid_h;
             if (i >= 0 && i < n_theta) {
                 capacity(i, j) = volumetric_heat_capacity(fields, cfg, i, j) * liquid_h;
@@ -516,7 +509,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     for (int i = -1; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i + 1, j)), cfg.min_film_thickness);
-            const double g_face = (theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0) ? 1.0 : 0.0;
+            const double g_face = FullFilm::face_gate(fields, cfg, i, j, i + 1, j);
             // Separate switches on purpose: `g_flow` decides whether the face
             // carries Poiseuille flow at all (FBNS always does, see
             // poiseuille_face_activity), while `g_face` stays the "is this face
@@ -558,7 +551,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
         for (int j = 0; j < n_z; ++j) flux_z(i, j) = 0.0;
         for (int j = 0; j + 1 < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i, j + 1)), cfg.min_film_thickness);
-            const double g_face = (theta(i, j) >= 1.0 && theta(i, j + 1) >= 1.0) ? 1.0 : 0.0;
+            const double g_face = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
             const double g_flow = poiseuille_face_activity(cfg, g_face);
             const double dp_dz = (p(i, j + 1) - p(i, j)) / d_z;
             const double mu_face = 0.5 * (

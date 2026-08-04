@@ -8,6 +8,7 @@
 
 #include "cross_film.hpp"
 #include "equation_of_state.hpp"
+#include "full_film.hpp"
 #include "fvm.hpp"
 #include "communicator.hpp"
 #include "fluid_properties.hpp"
@@ -514,7 +515,7 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
         // cs*(p_bc - p_cav)/beta (an explicit inflow, no implicit theta link),
         // which the Gamma_base link overstates by ~beta/(p_bc-p_cav).
         auto add_boundary_link = [&](double bc_val, int i, int j) {
-            if (cfg.consistent_boundary_flux && theta(i, j) < 1.0) {
+            if (cfg.consistent_boundary_flux && !FullFilm::is_full_film(fields, cfg, i, j)) {
                 // Cavitated: explicit reformation inflow = -outflow (shared formula).
                 sys.source(i, j) -= cfg.elrod_boundary_outflow(Gamma_base(i, j), theta(i, j),
                                                                bc_val, R, d_theta, d_z);
@@ -584,7 +585,12 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
                 const double tp = theta_prev[i * n_z + j];
                 const double tn = theta(i, j);
                 max_change = std::max(max_change, std::abs(tn - tp));
-                if ((tp >= 1.0 - snap_tol) != (tn >= 1.0 - snap_tol)) ++n_switched;
+                // Same ceiling the flux switches use, widened by snap_tol so a
+                // near-interface cell does not count as a flip on round-off.
+                const double tf = FullFilm::bound(fields, cfg, i, j);
+                if (FullFilm::holds(tp, tf, snap_tol) != FullFilm::holds(tn, tf, snap_tol)) {
+                    ++n_switched;
+                }
             }
         }
         MPI_Allreduce(MPI_IN_PLACE, &max_change, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -622,7 +628,6 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
 void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
     const Field& p = fields["pressure"];
     const Field& h = fields["h"];
-    const Field& theta = fields["theta"];
     Field& u_theta = fields["velocity_theta"];
     Field& u_z     = fields["velocity_z"];
 
@@ -640,7 +645,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
         for (int j = 0; j < n_z; ++j) {
             // Face values at west face of cell (i, j)
             // Poiseuille term active only if both cells are full film
-            double g_f = (theta(i-1, j) >= 1.0 && theta(i, j) >= 1.0) ? 1.0 : 0.0;
+            double g_f = FullFilm::face_gate(fields, cfg, i - 1, j, i, j);
             double dp_dtheta = (p(i, j) - p(i-1, j)) / d_theta;
 
             if (CrossFilm::active(cfg)) {
@@ -682,7 +687,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                 h_f = h(i, 0);
                 mu_f = dynamic_viscosity(fields, cfg, i, 0);
                 poise_f = poiseuille_coefficient(fields, cfg, i, 0);
-                g_f = (theta(i, 0) >= 1.0) ? 1.0 : 0.0;
+                g_f = FullFilm::gate(fields, cfg, i, 0);
             } else if (j == n_z) { // North boundary face
                 p_prev = p(i, n_z - 1);
                 if (cfg.bc_z_north_type == BCType::DIRICHLET) {
@@ -694,7 +699,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                 h_f = h(i, n_z - 1);
                 mu_f = dynamic_viscosity(fields, cfg, i, n_z - 1);
                 poise_f = poiseuille_coefficient(fields, cfg, i, n_z - 1);
-                g_f = (theta(i, n_z - 1) >= 1.0) ? 1.0 : 0.0;
+                g_f = FullFilm::gate(fields, cfg, i, n_z - 1);
             } else { // Interior face
                 p_prev = p(i, j - 1);
                 p_next = p(i, j);
@@ -704,7 +709,7 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
                     dynamic_viscosity(fields, cfg, i, j));
                 poise_f = 0.5 * (poiseuille_coefficient(fields, cfg, i, j - 1) +
                                  poiseuille_coefficient(fields, cfg, i, j));
-                g_f = (theta(i, j-1) >= 1.0 && theta(i, j) >= 1.0) ? 1.0 : 0.0;
+                g_f = FullFilm::face_gate(fields, cfg, i, j - 1, i, j);
             }
 
             double dp_dz = (p_next - p_prev) / dz_eff;
@@ -777,7 +782,7 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             const double dp_dtheta = (p(i + 1, j) - p(i - 1, j)) / (2.0 * d_theta);
             
             // Poiseuille part is only active when full film
-            double g_f = (theta(i, j) >= 1.0) ? 1.0 : 0.0;
+            double g_f = FullFilm::gate(fields, cfg, i, j);
             const double mu_val = dynamic_viscosity(fields, cfg, i, j);
             // STRIATED: only the liquid fraction theta carries Couette shear in cavitated cells.
             const double shear_w = (cfg.cavitated_film_model == CavitatedFilmModel::STRIATED && g_f <= 0.0)

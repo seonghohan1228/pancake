@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "full_film.hpp"
 #include "fvm.hpp"
 
 namespace GasTransport {
@@ -18,10 +19,6 @@ double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int 
 
 bool uses_pressure_boundary(BCType type) {
     return type == BCType::DIRICHLET || type == BCType::INLET_OUTLET;
-}
-
-double full_film_switch(const Field& theta, int i, int j) {
-    return theta(i, j) >= 1.0 ? 1.0 : 0.0;
 }
 
 // Liquid-solution mass per unit bearing area, rho*h. rho = rho_l * theta is the
@@ -47,7 +44,7 @@ double south_boundary_velocity(const Field& p, const Field& h, const Field& thet
         ? cfg.elrod_boundary_pressure(cfg.bc_z_south_val)
         : cfg.bc_z_south_val;
     const double dp_dz = (p(i, 0) - p_bc) / (0.5 * mesh.get_d_z());
-    return -full_film_switch(theta, i, 0) * h_face * h_face * dp_dz / (12.0 * mu_face);
+    return -FullFilm::gate(fields, cfg, i, 0) * h_face * h_face * dp_dz / (12.0 * mu_face);
 }
 
 double north_boundary_velocity(const Field& p, const Field& h, const Field& theta,
@@ -65,7 +62,7 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
         ? cfg.elrod_boundary_pressure(cfg.bc_z_north_val)
         : cfg.bc_z_north_val;
     const double dp_dz = (p_bc - p(i, j)) / (0.5 * mesh.get_d_z());
-    return -full_film_switch(theta, i, j) * h_face * h_face * dp_dz / (12.0 * mu_face);
+    return -FullFilm::gate(fields, cfg, i, j) * h_face * h_face * dp_dz / (12.0 * mu_face);
 }
 
 // Density convected through an axial boundary face. Full-film faces carry the
@@ -241,7 +238,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
     for (int i = -1; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i + 1, j)), cfg.min_film_thickness);
-            const double g_face = (theta(i, j) >= 1.0 && theta(i + 1, j) >= 1.0) ? 1.0 : 0.0;
+            const double g_face = FullFilm::face_gate(fields, cfg, i, j, i + 1, j);
             const double dp_dtheta = (p(i + 1, j) - p(i, j)) / d_theta;
             const double mu_face = 0.5 * (dynamic_viscosity(fields, cfg, i, j) +
                                           dynamic_viscosity(fields, cfg, i + 1, j));
@@ -260,7 +257,7 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
         }
         for (int j = 0; j + 1 < n_z; ++j) {
             const double h_face = std::max(0.5 * (h(i, j) + h(i, j + 1)), cfg.min_film_thickness);
-            const double g_face = (theta(i, j) >= 1.0 && theta(i, j + 1) >= 1.0) ? 1.0 : 0.0;
+            const double g_face = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
             const double dp_dz = (p(i, j + 1) - p(i, j)) / d_z;
             const double mu_face = 0.5 * (dynamic_viscosity(fields, cfg, i, j) +
                                           dynamic_viscosity(fields, cfg, i, j + 1));

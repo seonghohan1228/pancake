@@ -2,6 +2,63 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - One shared full-film predicate (`FullFilm`, `src/full_film.hpp`)
+
+Byte-identical refactor. The question "does this cell still hold an unbroken
+liquid film?" was spelled as the literal `theta >= 1.0` (and its `< 1.0` and
+face-pair variants) at fifteen sites across `reynolds.cpp`, `energy.cpp`,
+`gas_transport.cpp` and `diagnostics.cpp`. All fifteen now call one predicate.
+
+**Why now.** This is the stated prerequisite of `docs/FBNS_GAS_COUPLING.md` §4,
+step 1. With a resolved free-gas phase the ceiling on the film content drops from
+1 to `1 - alpha_gas`, and a ceiling that has to move in fifteen places moves
+wrong: the instant any gas came out of solution every cell in the domain would
+fail `theta >= 1` and every Poiseuille switch — momentum, enthalpy, dissolved-gas
+transport — would turn off at once, silently, with a converged Newton residual.
+Routing every user through `FullFilm::bound` makes that a one-line change.
+The gas-coupled bound is deliberately *not* part of this change.
+
+**New header `src/full_film.hpp`** (namespace `FullFilm`):
+
+- `bound(fields, cfg, i, j)` — the ceiling. Returns exactly `1.0` today for every
+  model, with the future one-line body written out in the docstring.
+- `holds(theta_value, bound_value, tol = 0)` — value-level core, for callers that
+  hold a film content rather than a cell index, or that need a tolerance band.
+- `is_full_film(fields, cfg, i, j)` and `is_full_film_face(fields, cfg, ...)` —
+  cell and face predicates; a face is full-film only if both cells it joins are.
+- `gate` / `face_gate` — the same tests as the 1/0 switch `g` the flux
+  expressions multiply through.
+
+**Sites routed** (17, the 15 the memo lists plus two adjacent ones in the same
+files): `reynolds.cpp` 7 — the four `calculate_velocities` face switches, the
+`calculate_macroscopic_properties` shear switch, the `consistent_boundary_flux`
+branch in `add_boundary_link`, and the Elrod flag-flip counter (which compared
+against a bare `1.0` while the snap beside it already used
+`VoidParams::theta_full`); `energy.cpp` 4, deleting the file-local
+`full_film_switch` / `full_film_face_switch`; `gas_transport.cpp` 3, deleting its
+own copy of `full_film_switch`; `diagnostics.cpp` 3 — the TYPE_DIFFERENCING face
+test, both axial boundary flux gates, and the `cavitated_fraction` count.
+`calculate_velocities` no longer binds a `theta` reference at all.
+
+**Byte identity.** Five cases, each run on `mpiexec -n 2` from a clean worktree
+build of `94edb45` and from this branch, sha256 over every `.vts`, `.pvts`,
+`.pvd` and `diagnostics.csv`: 41 files, 41 identical. JFO steady
+(`grid_G3`, 240x64, 45% of cells cavitated), FBNS steady (`grid_G3_fbns`), JFO +
+`ENERGY_EQUATION`, JFO + `ENERGY_EQUATION` + `cavitated_film_model = STRIATED`
+(the liquid-fraction weighting), and a transient `TWO_PHASE` JFO + energy run
+(`config_r290_pz68_quick.txt`) — the only path that executes
+`GasTransport::solve`, i.e. the three `gas_transport.cpp` sites. Full `ctest`
+green, 27/27, unchanged from baseline.
+
+**Deliberately left as literals**, none of them a per-cell full-film test:
+`SimulationConfig::elrod_boundary_outflow` and `is_reformation_boundary`
+(`config.hpp`) take a film-content *value*, and `config.hpp` cannot include
+`full_film.hpp` because `full_film.hpp` includes `config.hpp`;
+`FBNS::solve`'s cold-start detection reads a globally reduced minimum, and the
+memo's §2 sketch changes it as part of the FBNS gas work itself; and
+`EOS::dp_dtheta` is a value-level EOS derivative with no live caller in the
+solver.
+
 ### 2026-08-04 - FBNS phase 2: energy equation and single-phase properties
 
 Lifts the phase-1 scope guards that kept `cavitation_model = FBNS` isothermal and
