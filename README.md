@@ -314,7 +314,23 @@ Convection face interpolation is selectable per transported variable with
 `VANLEER` — 2nd-order TVD, bounded; theta additionally accepts `TYPE_DIFFERENCING`
 — central across full-film faces, upwind in cavitation, per Vijayaraghavan & Keith 1989). The Gumbel wedge term
 uses the same scheme, so the two Reynolds paths discretize like-for-like.
-`linear_rtol` controls the inner Krylov tolerance. `diagnostics_interval` sets
+`linear_rtol` controls the inner Krylov tolerance. `linear_ksp_type` (`BCGS`
+default, plus `BCGSL`, `GMRES`, `FGMRES`), `linear_pc_type` (`ASM` default, plus
+`BJACOBI`, `JACOBI`, `NONE`) and `linear_pc_overlap` (default 1) select the
+Krylov method and preconditioner for every inner solve. The defaults are chosen
+for rank-independence, not for the lowest cost per solve: the mesh is decomposed
+in theta only, so every rank boundary cuts the flow direction of the
+convection-dominated operators, and block Jacobi — which discards the coupling
+across exactly those cuts — gets weaker as the rank count rises. Before
+2026-08-05 that made a steady THD or Elrod solve diverge at one rank count while
+the identical configuration converged at another. Additive Schwarz with one cell
+of overlap keeps that coupling; on the Ferron THD force-balance iterate the total
+Krylov iteration count is now flat in rank count (3723/3755/3761/3735 at 1/2/4/6
+ranks, against 3723/4010/diverged/3961 before). `linear_solver_fallbacks`
+(default 2, 0 disables) is the number of escalation rungs a failed solve is
+retried on — a different Krylov path, not merely a tighter one — before the run
+aborts; retries cost nothing on a solve that converges and each one that fires is
+logged. `diagnostics_interval` sets
 the cadence of the per-step global mass-balance / convergence CSV written to
 `<output_dir>/diagnostics.csv` (masses, boundary fluxes, inlet sources,
 clamp-mass accounting, normalized residuals, Elrod outer iterations and flag

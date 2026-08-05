@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
         FluidProperties::update_solution_fields(fields, mesh, cfg);
         comm.update_ghosts(fields);
 
-        LinearSystem sys(mesh);
+        LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
         Field p_outer_prev("p_outer_prev", mesh);  // pre-sweep snapshots for the
         Field T_outer_prev("T_outer_prev", mesh);  // outer (Picard) coupling residual
 

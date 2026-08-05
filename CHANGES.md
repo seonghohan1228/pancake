@@ -2,6 +2,118 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Rank-robust linear solves: ASM preconditioning and a fallback ladder
+
+Linear solves diverged as a function of the MPI rank count. The same
+configuration converged at 1, 2 and 6 ranks and aborted at 4 with
+`DIVERGED_DTOL`; the conjugate-bush campaign lost `outer_robin80` at force-balance
+iterate 6 on 4 ranks and at iterate 3 on 24, and `tests/test_fbns` aborted under
+`mpiexec -n 4` while passing the `-n 2` and `-n 6` variants ctest actually ran.
+
+**Root cause.** The mesh is decomposed in theta only, so every rank boundary cuts
+the flow direction. The two operators that failed are the ones with essentially
+no diffusion to fall back on: in `STEADY_STATE` the energy equation carries no
+time-derivative term, leaving convection against a conduction coefficient
+weighted by the liquid film depth (`k * theta * h ~ 1e-5` against a convective
+flux of order `rho_cp * u * h * dz`), and the Elrod film-content equation is
+hyperbolic by construction. Both therefore have cell Peclet numbers of order
+1e4-1e6, and their inverse is global along theta. `PCBJACOBI` discards the
+coupling across every rank boundary, so the preconditioner truncates exactly the
+direction the solution propagates along, and its quality degrades as the slabs
+get thinner. BiCGStab's non-monotone residual then turns a poor preconditioner
+into a divergence rather than a slowdown. Nothing about this is stochastic: each
+failure is deterministic for a given decomposition, which is why it looked like a
+rank lottery from the outside.
+
+**Fix, part 1 - additive Schwarz.** The default preconditioner is now
+`PCASM` with one cell of overlap and the PETSc default ILU(0) subdomain solves
+(`linear_pc_type`, `linear_pc_overlap`). The overlap restores the theta coupling
+across rank boundaries. Measured on the Ferron THD force-balance iterate
+(`cases/01_ferron_vs_reynsim/diag`, 720 x 192, `ENERGY_EQUATION` + FBNS), total
+Krylov iterations over the whole run:
+
+| ranks | block Jacobi | ASM(1) |
+|-------|--------------|--------|
+| 1     | 3723         | 3723   |
+| 2     | 4010         | 3755   |
+| 4     | **diverged** | 3761   |
+| 6     | 3961         | 3735   |
+
+The iteration count is now flat in rank count instead of drifting upward and
+falling over. On the isothermal steady G3-FBNS case the same measurement goes
+from 416/454/439/452 to 416/409/412/420.
+
+**On one rank ASM is not used.** With a single rank additive Schwarz degenerates
+to one block covering the whole matrix, which *is* block Jacobi — but PETSc
+reaches the subdomain ILU by a different route (`MatCreateSubMatrices` rather
+than the diagonal block) and the resulting ILU(0) factors are not identical. On
+this operator the ASM route is measurably the weaker one: the serial THD iterate
+took 2.8x longer and needed 25 fallback solves. `LinearSystem` therefore selects
+`PCBJACOBI` when `mesh.size == 1`, which also keeps serial runs bit-for-bit on
+the pre-fix Krylov path.
+
+**Fix, part 2 - a fallback ladder.** Removing the rank dependence is necessary
+but not sufficient. Both the FBNS Schur complement and the Elrod film-content
+operator go near-singular whenever a complementarity pivot sits on the fence: a
+last-bit difference flips the pivot and leaves one near-singular row behind, and
+which Krylov path survives that is not predictable from the rank count. A failed
+solve is now retried on `linear_solver_fallbacks` (default 2) escalation rungs -
+BiCGStab(ell) with ASM(2)/ILU(1), then BiCGStab(ell) with block Jacobi/ILU(1) -
+before the run aborts. The rungs are deliberately *different* paths rather than
+tighter versions of one path, because that is what the evidence supports: the
+system that defeated ASM in serial was solved in 15 iterations by block Jacobi,
+and vice versa at 4 ranks. Retries cost nothing on a solve that converges, and
+every retry and recovery is logged on rank 0 so a production log shows when the
+ladder carried a run. `linear_solver_fallbacks = 0` restores abort-on-first-
+failure.
+
+**Verification.**
+
+| case | ranks | before | after |
+|------|-------|--------|-------|
+| `01_ferron_vs_reynsim/diag` | 1 / 2 / 4 / 6 | OK / OK / **diverged** / OK | OK / OK / OK / OK |
+| `01_ferron_conjugate/outer_robin80` fb_iter_03 | 4 | OK | OK |
+| `01_ferron_conjugate/outer_robin80` fb_iter_06 | 4 | **diverged** | OK |
+| `tests/test_fbns` | 1 / 2 / 4 / 6 | OK / OK / **diverged** / OK | OK / OK / OK / OK |
+
+No fallback rung fired in any of these runs after the ASM change: the ladder is a
+safety net, not the mechanism.
+
+**Solutions are unchanged.** Serial output is byte-identical to the previous
+binary. At 2 and 6 ranks every integral metric of the THD iterate - `W`, `Fx`,
+`Fy`, `force_angle_deg`, `p_max`, `T_max`, `T_max_theta_deg`, `cav_frac`,
+`film_content_min`, `h_min`, `mu_min/max`, `friction_torque`, `q_supply` - agrees
+to all printed digits, and the fields agree to one unit in the last digit of the
+six-significant-figure VTK output (1e-3 K on temperature, 10 Pa on pressure,
+1e-6 on film content). Global liquid mass agrees to 1.4e-11 relative. The same
+holds for the conjugate `fb_iter_03` case at 4 ranks. Byte-identity is not
+expected in parallel: the Krylov path changed, so the two solutions differ within
+the solver tolerance, and that is what the numbers show.
+
+**Cost.** Wall time on healthy cases, worst case +12.8%, inside the 20% budget:
+
+| case | ranks | before | after | delta |
+|------|-------|--------|-------|-------|
+| G3-FBNS isothermal | 1 / 2 / 4 / 6 | 1059 / 598 / 465 / 428 ms | 1027 / 606 / 456 / 444 ms | -3.0% / +1.3% / -1.9% / +3.7% |
+| Ferron THD iterate | 1 / 2 / 6 | 54.9 / 32.2 / 17.5 s | 54.1 / 33.8 / 19.6 s | -1.4% / +5.0% / +11.8% |
+| conjugate fb_iter_03 | 4 | 244.8 s | 276.1 s | +12.8% |
+
+ASM needs *fewer* Krylov iterations (40151 against 42329 on the conjugate case)
+but each one costs more - the overlap scatter and the larger subdomain factor.
+That trade is the price of rank-independence.
+
+**Test coverage.** ctest ran the MPI tests only at `-n 2` and `-n 6`, which is
+why a defect that fires at `-n 4` survived several releases. Added `-n 1` and
+`-n 4` variants of `test_fbns`, and `-n 4` variants of `test_schemes`,
+`test_energy` and `test_elrod_a2`. Suite is 34 tests, green.
+
+`test_energy`'s two analytic wall-balance identities asserted 1e-6 K on a 305 K
+field - 3e-9 relative - while asking the solver for `linear_rtol = 1e-8`. How far
+inside its tolerance a solve lands is a property of the preconditioner, so the
+assertion was measuring the Krylov path rather than the balance it names. Both
+now set `linear_rtol = 1e-13`, matching what `test_diagnostics`, `test_fbns` and
+`test_mass_residual` already do for tight identities.
+
 ### 2026-08-05 - Conjugate bush: optional 2-D (r, theta) conduction in the annulus
 
 The conjugate bush closed **locally**: per cell, 1-D radial conduction through

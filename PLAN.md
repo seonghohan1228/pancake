@@ -2,6 +2,26 @@
 
 ## In Progress
 
+### Rank-dependent linear-solve divergence — DONE 2026-08-05
+
+Solves diverged as a function of MPI rank count: the Ferron THD force-balance
+iterate aborted at 4 ranks and converged at 1, 2 and 6; `outer_robin80` lost
+`fb_iter_06` on 4 local ranks and `fb_iter_03` on 24 remote ranks; `test_fbns`
+aborted at `-n 4`, which ctest never ran. Cause was block-Jacobi preconditioning
+of convection-dominated operators on a theta-only decomposition — every rank
+boundary cuts the flow direction, and the steady energy and Elrod equations have
+no diffusion to spare. Default preconditioner is now ASM with one cell of overlap
+(`linear_pc_type`, `linear_pc_overlap`), block Jacobi is kept on a single rank
+where ASM degenerates but takes a worse ILU path, and a failed solve is retried on
+`linear_solver_fallbacks` escalation rungs before aborting. See CHANGES.md
+2026-08-05 for the iteration-count, wall-time and solution-agreement tables.
+ctest now covers `-n 1` and `-n 4`, not only `-n 2` and `-n 6`.
+
+Remaining: the FBNS Schur complement is fragile whenever a complementarity pivot
+sits on its threshold — a last-bit difference flips the pivot and leaves a
+near-singular row. The fallback ladder covers it, but a conditioning fix (row
+scaling, or a regularised pivot near the switch) would remove the need.
+
 ### Validation campaign restart (2026-08-04) — see `cases/VALIDATION_PLAN.md`
 
 Fresh validation campaign run from scratch at the user's direction; the earlier
