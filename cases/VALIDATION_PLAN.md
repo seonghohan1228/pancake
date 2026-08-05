@@ -1,5 +1,10 @@
 # Validation campaign plan (fresh start, 2026-08-04)
 
+> **Where everything is: `cases/INDEX.md`.** That file is the front door - one
+> table of every case directory, its stage, its status, its figures and whether
+> the bulk data is local, on afml-r6 or both. This file is the ladder and the
+> decision gates; the index is the map.
+
 Goal: validate pancake for pressure distribution, load capacity, eccentricity under
 external load (transient till convergence), THD, and gaseous cavitation against
 high-quality reference data. The user judges pass/fail per case; agents run batches
@@ -11,16 +16,54 @@ high-quality reference data. The user judges pass/fail per case; agents run batc
 - No batch runs on unverified parameters: every case gets a parameter table with
   verified/unverified flags and user sign-off before dispatch.
 - All case inputs saved under `cases/<case>/`; results and `run.log` stay in place.
+  One case = one directory with `README.md` (what and why, written before the run)
+  and `SUMMARY.md` (what came out). Every solver call archived as its own
+  subdirectory with the `config.txt` that produced it. Nothing is ever deleted or
+  overwritten - superseded output is renamed, never removed.
 - User-digitized reference curves go in `cases/ref_data/` per `cases/REFERENCE_DATA.md`.
 - Progress visible in `cases/<case>/progress.log`.
+- DEFAULT EXECUTION HOST (user, 08-05): afml-r6 workstation (user@143.248.99.6),
+  24 pinned ranks (OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1). Local Windows only
+  for smoke tests, post-processing, and batches already in flight.
+  Sync verification mandatory both ways: remote HEAD hash must equal the intended
+  local commit (bundle transfer; no shared remote), untracked configs checksummed;
+  results tar'd, sha256-verified across the transfer, extracted to results_remote/
+  with one metric re-derived locally as an end-to-end check. Cross-platform gate
+  on first use of each branch: one steady case must match Windows to 0.01%.
+- Canonical workflow: develop local -> sync code to remote (bundle, hash-verified)
+  + compile -> run remote -> copy results back (checksummed). cases/ additionally
+  mirrored to `afml-r6:~/pancake/cases` via `cases/sync_to_r6.sh` after each batch
+  (manifest-based, append-only, idempotent; it also reports remote-only files,
+  which is how remote run output gets noticed).
+- Solver branches: codex/fbns-cavitation (FBNS + THD) -> codex/full-film-predicate
+  -> codex/fbns-gas (gas/outgassing). Stacked, tested, unmerged pending user.
+
+## Directory layout (consolidated 2026-08-05)
+
+Every case, probe and diagnostic run for this campaign lives under `cases/`.
+Nothing is kept in a home directory, in `/tmp` or in an agent scratch tree; the
+strays that were (`afml-r6:~/cases_run`, `afml-r6:/tmp/ksp_repro`, three loose
+remote run directories) were folded in, and `cases/INDEX.md` records where each
+one came from. Directory prefixes are the campaign stage and match the case
+numbers in the ladder below - `00*` discretisation and solver verification,
+`01*` Ferron family, `02*` static locus, `90*` diagnostics. No directory was
+renamed during the consolidation; the reasoning is stated in the index.
+
+Stage `90_diagnostics/` is new. It holds work that explains or defends solver
+behaviour rather than physics, so a validation case never has to carry a solver
+postmortem: `ksp_rank_robustness/` (the rank-dependent `DIVERGED_DTOL` that cost
+the conjugate campaign a variant, closed by `f0e772d`) and `remote_harness/`
+(reference copies of the loose afml-r6 driver scripts). Nothing in stage 90 gets
+a pass/fail verdict.
 
 ## Case ladder
 
 | Case | Validates | Reference | Status |
 |---|---|---|---|
-| 00 grid/dt independence | discretization only (no physics comparison) | GCI, Celik et al. 2008 | RUNNING (params frozen: 4000 rpm, 6 kN cond., c = 152 um hot, 10 kg test mass for dt) |
-| 01 Ferron benchmark | pressure p(theta) at midplane, eccentricity, attitude, THD temperature | Ferron, Frene & Boncompain 1983 (Fig. 6 = 4000 rpm, 6 kN, user-digitized) | waiting on 00 verdict + ref data |
-| 02 static locus | load capacity vs eccentricity (Sommerfeld sweep) | Someya Databook; Raimondi & Boyd 1958 (L/D = 1, 0.5) | waiting on 00 |
+| 00 grid/dt independence | discretization only (no physics comparison) | GCI, Celik et al. 2008 | **PASSED (user, 08-05). FROZEN: G6 720x192, dt = 2e-5 s for all subsequent cases.** 00a: G6 720x192 (user pick). 00b ladder T1-T4 done (T2-T4 on afml-r6, 24 pinned ranks): mean eps converges +0.235% / +0.0004% / +0.0002% per halving; converged dt = 2e-5 s; T1 "limit cycle" was a 2dt temporal artifact (dies 5 orders on first halving), no defect; T0 = stability ceiling 8e-5. Caution recorded: naive DFT shows fake 33 Hz "half-whirl" (window bin-1 artifact - detrend first) |
+| 00c JFO verification | solver correctness | exact 1D JFO benchmark; mass_residual field | DONE: Elrod front error first-order/~7-cell prefactor -> replaced by FBNS (fd2b0ea): front <=1 cell, no beta. Phase 2 (94edb45) unblocks THD on FBNS (validated: 0.44 K vs Elrod on shared arc, W -12% thermal, sane). Gas on FBNS blocked on is_full_film refactor (docs/FBNS_GAS_COUPLING.md); refactor dispatched 08-05. Finding: thermally-transparent grooves cause thermal runaway under ANY model - THD grooves must be fed (t_supply) |
+| 01 Ferron benchmark | pressure p(theta) at midplane, eccentricity, attitude, THD temperature | Ferron 1983, Figs. 4/5/6 (user-digitized in ref_data/) | PRELIM + THD(2000rpm/4kN) done: pressure peak +0.8%/1.25 deg (THD), eps(W) parallel within clearance ambiguity. THD temperature: CHT (2-D conjugate bush, outer h=10 to 40 C, shaft adiabatic) is verdict-ready - peak location 265 vs 258 deg, mean +0.02 K, rms 1.17 K vs Fig. 4 (01_ferron_wallbc_fields/SUMMARY.md); peak value -2.3 K remains. User verdict pending. ReynSim comparison in 01_ferron_vs_reynsim: This year inside band, Last year -17.6% peak |
+| 02 static locus | load capacity vs eccentricity (Sommerfeld sweep) | R&B Part III / Someya — POSTPONED by user 08-05 (Part I in library is the 120-deg partial bearing; Someya is a book, not in pdfs). Load-capacity validation folded into Case 01 via Ferron Fig. 5 (experimental, same bearing) | solver-side locus curves kept as supporting material |
 | 03 transient to equilibrium | trajectory + converged endpoint under load step | endpoint vs 01/02; no classic transient experiment exists | after 01/02 |
 | 04 THD secondary (optional) | temperature field on a second dataset | Boncompain et al. 1986 / Dowson 1966-67 | on request |
 | 05 gaseous cavitation | cavity extent + pressure in cavitated zone | Etsion & Ludwig 1982; Braun & Hendricks 1984 | after 01 |

@@ -1,5 +1,7 @@
 # Case 00c: JFO solver verification (correctness, not grid independence)
 
+> Stage 00c (solver verification, no experiment). Campaign index: `../INDEX.md`.
+
 Triggered by 00a findings: rupture-front position drifts with grid at beta = 1e9
 while Sommerfeld/Gumbel ladders converge cleanly. Question: is the front placement
 (and BC/flux handling) correct, or only self-consistent? Case 00 grid work is

@@ -2,6 +2,64 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Validation cases consolidated into one place, with an index
+
+Documentation and directory structure only; no solver code, no runs, no results
+changed. Every case, probe and diagnostic run for the validation campaign now
+lives under `cases/`, and `cases/INDEX.md` is the front door: one table of every
+case directory, its campaign stage, its status, its figures, and whether the bulk
+data is local, on afml-r6, or both.
+
+**Strays folded in.** Four run trees lived outside `cases/` on afml-r6, three of
+them in `/tmp` or the home directory - i.e. in the two places most likely to be
+cleaned - while being the evidence for claims made in this file and in case
+summaries. All were moved (never copied-and-deleted, never overwritten):
+
+| was | now |
+|---|---|
+| `~/cases_run/01_ferron_conjugate` (24 ranks, 421 files) | `~/pancake/cases/01_ferron_conjugate/r6_24rank_rerun/` |
+| `/tmp/ksp_repro` (153 files) | `~/pancake/cases/90_diagnostics/ksp_rank_robustness/` |
+| `~/diag_h10` | `~/pancake/cases/01_ferron_conjugate/diag_h10_frozen_geometry/` |
+| `~/gate_fixed313` | `~/pancake/cases/01_ferron_conjugate/gate_fixed313/` |
+| `~/smoke` | `~/pancake/cases/01_ferron_wallbc_fields/smoke_coarse_180x24/` |
+
+The conjugate rerun is **not** a duplicate of the synced 4-rank archive: its
+`outer_fixed313` leg reproduces it to every printed digit (eps = 0.593397,
+psi = -37.5036), which is the rank-independence evidence, and its `outer_robin80`
+leg aborted three force-balance iterates earlier - the failure that started the
+KSP investigation. Both archives are kept whole.
+
+**New stage 90.** `cases/90_diagnostics/` holds work that explains or defends
+solver behaviour rather than physics, so a validation case never has to carry a
+solver postmortem. `ksp_rank_robustness/` is the minimal reproducer behind the
+ASM + fallback-ladder fix below, with the six run configs and full solver logs
+mirrored locally and the 137 MB of VTK left on afml-r6. `remote_harness/` holds
+reference copies of the loose afml-r6 driver and analysis scripts, each mapped to
+the case it drove.
+
+**No directory was renamed.** The existing `00/00c/01/02` prefixes already encode
+the campaign stage and are the vocabulary `PLAN.md`, `VALIDATION_PLAN.md`, this
+file and every case summary already use; about sixty archived `config.txt` and
+`run.log` files name their own case in a header comment, so renaming would leave
+the archives self-inconsistent for no functional gain. The mapping to the
+stage scheme is stated in `cases/INDEX.md` instead. Because nothing moved, the
+inter-case Python references (`02_static_locus` -> `01_ferron_prelim`,
+`01_ferron_vs_reynsim` -> both, `01_ferron_conjugate` ->
+`01_ferron_thd_crossfilm`) are untouched; all 20 analysis and plot scripts under
+`cases/` were run standalone as a check and all 20 exit 0.
+
+Two provenance findings came out of that check, both recorded in the index rather
+than papered over: `00_grid_dt_independence/dt_fbns_analysis.json` records
+`end_t = 0.15` for T2/T3/T4 while the configs now on disk say `0.06` (the JSON is
+the record of the run as executed and was left alone), and
+`01_ferron_conjugate/conjugate_analysis.json` was missing and has been
+regenerated from its own archived run directories.
+
+New documentation: `cases/INDEX.md`; `README.md` for `01_ferron_prelim`,
+`01_ferron_vs_reynsim`, `01_ferron_wallbc_fields`, `02_static_locus` and both
+stage-90 directories; `SUMMARY.md` for `01_ferron_conjugate` (its README ended in
+a dangling pointer to a summary that was never written).
+
 ### 2026-08-05 - Rank-robust linear solves: ASM preconditioning and a fallback ladder
 
 Linear solves diverged as a function of the MPI rank count. The same

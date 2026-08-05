@@ -1,5 +1,7 @@
 # Case 00: Grid and timestep independence
 
+> Stage 00 (discretisation). Campaign index: `../INDEX.md`. Plan and decision gates: `../VALIDATION_PLAN.md`.
+
 First step of the validation campaign. Establishes the grid and dt used by all later
 validation cases (Ferron THD benchmark geometry: R = 50 mm, L = 80 mm, c = 152 um hot clearance
 per the paper (145 um cold + thermal expansion),

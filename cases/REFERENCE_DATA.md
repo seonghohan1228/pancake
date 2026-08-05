@@ -1,60 +1,68 @@
 # Reference data to digitize (user-provided)
 
+> Campaign map: `cases/INDEX.md`. Ladder and decision gates:
+> `cases/VALIDATION_PLAN.md`.
+
 Digitized experimental/numerical curves live in `cases/ref_data/`. A plotting agent
 reads these and overlays solver results, so follow the format exactly.
 
+`ref_data/` is shared by every case and is **not** a case directory - it has no
+stage number, no runs and no verdict. Every case reads it by relative path
+(`CASE_DIR.parent / "ref_data" / ...`), so it must stay where it is. Delivered
+files as of 2026-08-05: Ferron 1983 Fig. 4 (pressure + temperature + source PNG),
+Fig. 5 (eccentricity + PNG), Fig. 6 (pressure + temperature + PNG).
+
 ## File format
 
-- One CSV per curve: `cases/ref_data/case01/ferron1983_fig6_3000rpm_6kN.csv`
-  (paper_figure_condition; lowercase, underscores).
+- One CSV per curve: `cases/ref_data/ferron1983_fig6_4000rpm_6kN_pressure.csv`
+  (paper_figure_condition_quantity; lowercase, underscores).
 - Header lines start with `#`: paper, figure, curve label, axis quantities and UNITS
-  exactly as printed in the paper, operating condition (speed, load), and the
-  abscissa convention (e.g., "theta measured from groove center, direction of rotation").
-- Then two columns `x,y`, no thousands separators, `.` decimal.
-- Keep the paper's axis units; the plotting agent converts (units must be in the header).
-- Contours/boundaries (e.g., cavity extent): same format, columns are the boundary
-  trace (theta, z), one file per boundary.
+  exactly as printed, operating condition, and the abscissa convention (theta origin
+  and direction). Flag any uncertainty in the header - the delivered Fig. 6 files
+  are the model to copy.
+- Two columns `x,y`, `.` decimal, no thousands separators.
+- Keep the paper's axis units; the plotting agent converts.
+- Contours/boundaries: same format, columns are the boundary trace (theta, z).
+- Tables (not figures): one CSV per table, named columns in the header comment.
 
-Example:
+## Status and needs, by priority
 
-```
-# paper: Ferron, Frene, Boncompain 1983, J. Lubr. Technol. 105:422
-# figure: 6
-# curve: experiment, N = 2000 rpm, W = 4000 N
-# x: theta [deg], from supply groove, in rotation direction
-# y: pressure [MPa], gauge
-0.0,0.02
-10.0,0.11
-...
-```
+### DELIVERED
+- ferron1983_fig6_4000rpm_6kN_pressure.csv + _temperature.csv (+ source png). Used
+  by Case 01-prelim; peak location agreed to ~3 deg with the stated theta origin.
 
-## What to provide, by case
+### 1. Case 01-THD - blocks the THD validation run (see 01_ferron_thd/README.md)
 
-### Case 01 — Ferron 1983 (priority 1; verify figure numbers against the PDF, they are from memory)
-
-| # | Quantity | Where in paper | Conditions wanted |
+| # | What | Where in Ferron 1983 | Form |
 |---|---|---|---|
-| 1 | Midplane pressure vs theta, experiment points | pressure-distribution figure (~Fig. 6) | 2+ speed/load combos, note each |
-| 2 | Bush inner-surface midplane temperature vs theta | temperature figure (~Fig. 9) | same combos as #1 |
-| 3 | Eccentricity ratio vs load | eccentricity figure | each speed shown |
-| 4 | Oil flow rate vs speed or load (optional) | flow figure | as available |
+| 1 | Oil viscosity at TWO or more temperatures, or the stated mu(T) law | oil properties / test conditions section (their oil table) | short CSV or just type the numbers in chat |
+| 2 | Thermal boundary treatment used in their theory + any measured shaft/journal temperature | theory section + results text | numbers in chat is fine |
+| 3 | Measured eccentricity ratio and attitude angle at 4000 rpm / 6 kN, if stated | text or eccentricity figure | numbers in chat |
+| 4 | Eccentricity vs load points (each speed) | eccentricity figure | one CSV per speed |
 
-### Case 02 — static locus (priority 2; tables, not figures)
+### 2. Case 02 - solver side done, waiting on reference values
 
-| # | Quantity | Source | Format |
+| # | What | Source | Form |
 |---|---|---|---|
-| 1 | S (Sommerfeld) vs eps, attitude angle, friction var., flow | Someya Databook, plain cylindrical tables (pick L/D nearest 0.5 and 1.0) | one CSV per L/D, columns: S,eps,phi_deg,... (name columns in header) |
-| 2 | Same from Raimondi & Boyd 1958, L/D = 1 and 1/2 | charts/tables | same |
+| 1 | S vs eps, attitude angle (min); friction/flow variables (nice to have) at L/D = 1 and 0.5 | Raimondi & Boyd 1958 tables/charts, and/or Someya Databook cylindrical-bearing tables | one CSV per L/D per source; note the source's cavitation BC (Reynolds/half-Sommerfeld) in the header |
 
-Solver will be run at the table L/D values, not at 0.8.
+Solver curves already produced with a 1-deg ambient groove at h_max (flooded
+framing) - if your table's bearing has a different groove arrangement, say so and
+the sweep is rerun to match.
 
-### Case 05 — gaseous cavitation (priority 3)
+### 3. Case 05 - gaseous cavitation (solver support landed, codex/fbns-gas)
 
-| # | Quantity | Where | Notes |
+| # | What | Where | Form |
 |---|---|---|---|
-| 1 | Pressure profiles inside cavitated zone (axial and/or circumferential) | Etsion & Ludwig 1982, J. Lubr. Technol. 104:157 | one CSV per profile, note theta or z station |
-| 2 | Cavity extent boundary (theta-z trace) | Etsion & Ludwig 1982 photos/sketches | one CSV per condition |
-| 3 | Cavity pressure/temperature maps (optional) | Braun & Hendricks 1984, ASLE Trans. 27:1 | profiles as CSVs |
+| 1 | Pressure profiles inside the cavitated zone | Etsion & Ludwig 1982, J. Lubr. Technol. 104:157 | one CSV per profile, note theta or z station in header |
+| 2 | Cavity extent boundary (theta-z trace) per condition | same paper, photos/sketches | one CSV per condition |
+| 3 | Operating/fluid parameters of their rig (geometry, speed, oil, air content if stated) | same paper | numbers in chat |
+| 4 | (optional) cavity pressure/temperature maps | Braun & Hendricks 1984, ASLE Trans. 27:1 | profiles as CSVs |
 
-Cases 00 (internal) and 03 (endpoint checked against 01/02 data) need no digitization.
-Case 04 (secondary THD) will get its own list if we pursue it.
+### 4. Case 00c #2 - 2D contour verification (optional but recommended)
+
+| # | What | Source | Form |
+|---|---|---|---|
+| 1 | 2D pressure contours + cavitation boundary + midplane profile, grooved journal bearing case | Ausas et al. 2007, ASME J. Tribol. 129:868 (or say "use Woloszynski 2015" - open access, I digitize it myself) | contour traces + profile CSVs |
+
+Cases 00/00b (internal) and 03 (endpoint vs 01/02) need nothing from you.

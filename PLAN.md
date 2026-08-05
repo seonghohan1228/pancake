@@ -25,7 +25,20 @@ sits on its threshold — a last-bit difference flips the pivot and leaves a
 near-singular row. The fallback ladder covers it, but a conditioning fix (row
 scaling, or a regularised pivot near the switch) would remove the need.
 
-### Validation campaign restart (2026-08-04) — see `cases/VALIDATION_PLAN.md`
+### Validation campaign restart (2026-08-04) — see `cases/INDEX.md` first
+
+**Front door: `cases/INDEX.md`** — one table of every case directory, its campaign
+stage, its status, its figures, and whether the bulk data is local, on afml-r6 or
+both. `cases/VALIDATION_PLAN.md` holds the ladder and the decision gates;
+`cases/REFERENCE_DATA.md` holds the digitisation format and what is still owed by
+the user.
+
+Consolidated 2026-08-05: every case, probe and diagnostic run now lives under
+`cases/`, numbered by stage (`00*` discretisation and solver verification, `01*`
+Ferron family, `02*` static locus, `90*` diagnostics). Strays that used to live
+on the remote host (`~/cases_run`, `/tmp/ksp_repro`, three loose run directories)
+were folded in; the repo-root `validation/` tree is a separate, pre-campaign
+analytical benchmark harness (WP-7) and stays where it is.
 
 Fresh validation campaign run from scratch at the user's direction; the earlier
 `VALIDATION_PLAN.md` (root) is retained for history but no longer tracks status.
