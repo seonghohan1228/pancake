@@ -1,5 +1,50 @@
 # Development Plan
 
+## Roadmap — refined 2026-08-05 (post-campaign consolidation)
+
+Inputs: `cases/INDEX.md` (campaign map), `docs/UNFINISHED_BUSINESS.md`
+(validation gaps, prioritized), `docs/CODE_AUDIT_2026-08.md` (code/GUI audit).
+Old-plan reconciliation: the 2026-08-02 campaign's Phase 1 (reference-data
+verification) closed via user-verified parameters (c_hot = 152 um et al.);
+Phase 3 (grid/dt independence) PASSED but on FBNS, which made its beta-scaling
+caveat obsolete (Elrod's beta-entangled front was root-caused and replaced,
+00c); Phase 4 (validation matrix) is partially hit: Ferron pressure (+0.8%),
+eccentricity (parallel within clearance ambiguity), THD temperature
+(CHT shape reproduced, -2.3 K peak residual, verdict pending). The WP-1b
+VOID_COUPLED convergence items and the five deferred modelling gaps
+(2026-07-31) remain open and are now tracked in UNFINISHED_BUSINESS.
+
+Priority queue (user gates in brackets):
+
+1. **Picard cap correctness** - the conjugate loop returns iterate 200 where
+   iterate ~51 was better (|G| rises then oscillates); return-best + relaxation
+   tuning, then re-run CHT variants and re-issue the Fig. 4 temperature plot.
+   Blocks trusting the -2.3 K residual. [then user re-verdicts temperature]
+2. **Audit quick wins** - unknown-config-key hard error (the campaign shipped
+   a live example of the silent-drop failure); VANLEER reclassified live and
+   fixed/fenced; GUI anisotropic-stiffness load bug; config.txt default ->
+   FBNS; energy/gas coefficient unification onto ReynoldsCoeff + A/B rerun.
+3. **Load-capacity adjudication** - currently reads FAIL at measured
+   eccentricities (Ferron +52-68%, old Brito data concurs). S-eps collapse
+   analysis now; R&B Part III / Someya tables when available. [user data]
+4. **Case 05 gaseous cavitation, split scope** - extent comparison vs
+   Etsion & Ludwig Table 2 (fully parameterized, runnable now; FBNS and JFO
+   cross-model); cavity-pressure comparison BLOCKED on VOID_COUPLED
+   reformulation (no converged path predicts spatially varying cavity
+   pressure; LOCAL_PSAT is Tier-0 feed-state, stated openly). Supplements:
+   Ochiai 2019 (meshable geometry), Reinke 2022 (gas-release rate constants),
+   Engels 2024 (void fraction). [user picks scope]
+5. **Case 03 transient-to-equilibrium** - nearly free (retarget dt_T3 config,
+   2/4/6 kN), cross-checks moving-bearing vs static force balance.
+6. **Ferron temperature residual** - after (1): STRIATED cavitated-thermal A/B
+   (never run on Ferron), shaft-Robin variant, groove-mixing sensitivity.
+7. **Merge decision** - main is 31 commits behind 9 stacked codex/* branches;
+   the validated solver lives entirely on unmerged work. [user merge order]
+8. **Structural** (audit S-items): GUI exposure of FBNS/cross-film/bush/KSP
+   keys; test gaps (transient THD, MOVING_BEARING+FBNS, gas+cross-film,
+   CONDUCTION_2D+FBNS); FBNS Schur conditioning near complementarity switch;
+   VOID_COUPLED-under-FBNS p_void update site.
+
 ## In Progress
 
 ### Rank-dependent linear-solve divergence — DONE 2026-08-05
