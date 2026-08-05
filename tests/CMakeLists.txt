@@ -60,6 +60,9 @@ add_pancake_test(test_cross_film)
 # -n 4 covers the all-reduce/redistribute path of the 2-D bush on an odd split.
 add_test(NAME test_cross_film_mpi4
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_cross_film>)
+add_pancake_test(test_config_keys)
+target_compile_definitions(test_config_keys PRIVATE
+    PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_pancake_test(test_coupling)
 add_pancake_test(test_gas_coupling)
 # Aborts by design: passes only when the KSP guard prints its own diagnosis.

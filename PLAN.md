@@ -47,6 +47,16 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
+
+| Item | Audit ref | Status |
+|---|---|---|
+| Unknown-config-key hard error, with typo suggestion | Q1 | **DONE 2026-08-05** — `tests/test_config_keys.cpp`; 105 case configs corrected |
+| VANLEER far-upwind cell for negative face flux | C / F4 | TODO |
+| GUI anisotropic-stiffness data loss on load | 3.5 / S9 | TODO |
+| `config.txt` cavitation default -> FBNS | Q5 | TODO |
+| Coefficient unification: energy axial BCs + gas transport | A / S1 | TODO |
+
 ### Rank-dependent linear-solve divergence — DONE 2026-08-05
 
 Solves diverged as a function of MPI rank count: the Ferron THD force-balance

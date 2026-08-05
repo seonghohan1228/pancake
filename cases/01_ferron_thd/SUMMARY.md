@@ -32,7 +32,7 @@ Common to every run. Base config `cases/00_grid_dt_independence/grid_G6_fbns/con
 | groove mixing | `groove_mixing_model = FLOW_WEIGHTED` | protocol; see the Q_supply note below |
 | bush wall | `bearing_heat_transfer` = 7200 W/(m^2 K), `bearing_wall_temperature` = 313.15 K | Tier 1, user-signed: h_b = K_b / (R1 ln(R2/R1)) with K_b = 250 W/(m K), R1 = 0.05 m, R2 = 0.10 m -> 7213, rounded to 7200 |
 | journal wall | TWO variants bracketing the shaft: **J-adiabatic** `journal_heat_transfer = 0`; **J-iso40** `journal_heat_transfer = 10000`, `journal_wall_temperature = 313.15 K` | Tier 1, user-signed |
-| cross-film | `cross_film_model = NONE` (default) | protocol did not enable it; consequences stated under the T figure |
+| cross-film | `cross_film_thermal_model = NONE` (default) | protocol did not enable it; consequences stated under the T figure |
 | axial ends | Dirichlet 101325 Pa, thermal `ZERO_GRADIENT` | protocol |
 | Picard coupling | `coupling_max_iters = 200`, `coupling_tolerance = 1e-6`, `coupling_relaxation = 1.0` | numerics only |
 | ranks | `mpiexec -n 4` | local machine |
@@ -146,10 +146,10 @@ they are not the same thing:
 
 - The experiment is a **bush temperature measured 0.5 mm below the bush inner
   surface**, not a film temperature.
-- With `cross_film_model = NONE` the solver has **no cross-film profile at all**:
+- With `cross_film_thermal_model = NONE` the solver has **no cross-film profile at all**:
   the plotted curve is the depth-averaged film temperature. There is no
   "bush-side of the film" value to plot in this configuration. Producing one
-  would require `cross_film_model = POLYNOMIAL`, which is a model change outside
+  would require `cross_film_thermal_model = POLYNOMIAL`, which is a model change outside
   the signed-off protocol and brings its own unverified conjugate-wall
   parameters, so it was not enabled.
 
@@ -313,7 +313,7 @@ Reading:
    self-consistently from each point's own steady mass balance (see Deviation 1).
    Not fitted, but not independently verified against the paper either.
 2. **No bush-side film temperature exists in this configuration.**
-   `cross_film_model = NONE`, so Figure 2 plots the depth-averaged film
+   `cross_film_thermal_model = NONE`, so Figure 2 plots the depth-averaged film
    temperature. The comparison to a 0.5 mm sub-surface bush thermocouple is
    therefore doubly indirect.
 3. **The temperature comparison fails in the wrong direction.** Model is 5-7 K

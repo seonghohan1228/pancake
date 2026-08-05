@@ -48,7 +48,7 @@ rho_cp = 1.72e6
 thermal_conductivity = 0.13
 journal_heat_transfer = 0.0
 bearing_heat_transfer = 1442.6950408889636
-cross_film_model = NONE
+cross_film_thermal_model = NONE
 
 # Fluid Properties (pure oil; Ferron polynomial mu(T))
 fluid_property_model = SINGLE_PHASE

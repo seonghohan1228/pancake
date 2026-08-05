@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -936,6 +937,11 @@ struct SimulationConfig {
     // Non-fatal notes produced while parsing (e.g. ignored legacy keys).
     std::vector<std::string> parse_warnings;
 
+    // Fatal parse problems (currently: unrecognized keys). `validate()` promotes
+    // these into its error list, so every caller that already refuses to run on a
+    // validation error refuses to run on a misspelled key too.
+    std::vector<std::string> parse_errors;
+
     void load_from_file(const std::filesystem::path& path) {
         std::ifstream file(path);
         if (!file.is_open()) {
@@ -956,6 +962,7 @@ struct SimulationConfig {
     void load_from_stream(std::istream& input) {
         inlets.clear();
         parse_warnings.clear();
+        parse_errors.clear();
 
         std::string line;
         while (std::getline(input, line)) {
@@ -1205,6 +1212,14 @@ struct SimulationConfig {
                 if (ss >> token) inlet.supply_flow_rate = token;
                 inlets.push_back(inlet);
             }
+            // Terminal branch: an unrecognized key is a hard error, not silence.
+            // Without it a misspelling parses as a no-op and the run proceeds with
+            // the default -- which is how `cross_film_model = NONE` sat in the
+            // Ferron THD case templates through a whole validation campaign while
+            // the parser only ever knew `cross_film_thermal_model`.
+            else {
+                parse_errors.push_back(unknown_key_message(key));
+            }
         }
     }
 
@@ -1219,6 +1234,11 @@ struct SimulationConfig {
     void validate(std::vector<std::string>& errors, std::vector<std::string>& warnings) const {
         errors.clear();
         warnings.clear();
+
+        // A key the parser did not recognize was never applied, so everything
+        // below it is validating defaults the user never asked for. Report it
+        // first and let the caller's existing error path stop the run.
+        errors.insert(errors.end(), parse_errors.begin(), parse_errors.end());
 
         auto finite = [](double value) { return std::isfinite(value); };
         auto error = [&](const std::string& message) { errors.push_back(message); };
@@ -2250,6 +2270,145 @@ struct SimulationConfig {
             << "output_fields = " << output_fields_text() << "\n";
 
         return out.str();
+    }
+
+    /// Every key `load_from_stream` accepts, including the deliberate legacy
+    /// aliases (`viscosity_model`, `oil_gas_solution_model`, ...) and the
+    /// warn-and-drop branches for removed models (`pressure_time_method`,
+    /// `dissolved_gas_bunsen_coeff`). This is the manifest the unknown-key error
+    /// suggests from; a new parser branch must be added here too, and a missing
+    /// entry is loud rather than silent because the key then fails to parse.
+    static const std::vector<std::string>& known_config_keys() {
+        static const std::vector<std::string> keys = {
+            "R", "c", "e", "L", "attitude_angle_deg", "load_angle_deg",
+            "n_theta_global", "n_z_global", "end_t", "dt", "write_interval",
+            "solution_mode", "pressure_time_method", "temperature_time_method",
+            "motion_time_method", "theta_convection_scheme",
+            "thermal_convection_scheme", "gas_convection_scheme", "linear_rtol",
+            "linear_ksp_type", "linear_pc_type", "linear_pc_overlap",
+            "linear_solver_fallbacks", "omega", "omega_ramp_time", "mu", "rho",
+            "p_cav", "bulk_modulus", "tilt_slope_x", "tilt_slope_y",
+            "temperature_model", "temperature_initial", "temperature_reference",
+            "journal_wall_temperature", "bearing_wall_temperature", "rho_cp",
+            "thermal_conductivity", "journal_heat_transfer",
+            "bearing_heat_transfer", "cross_film_thermal_model",
+            "cross_film_profile_order", "cross_film_quadrature_points",
+            "cross_film_relaxation", "shaft_ambient_heat_transfer",
+            "shaft_ambient_area_ratio", "thermal_ambient_temperature",
+            "bush_thermal_conductivity", "bush_outer_radius",
+            "bush_outer_heat_transfer", "bush_thermal_model", "bush_radial_cells",
+            "bush_outer_boundary", "groove_mixing_model", "fluid_property_model",
+            "dissolved_gas_species", "solubility_model", "oil_gas_solution_model",
+            "density_model", "liquid_viscosity_model", "viscosity_model",
+            "dissolved_gas_initial", "dissolved_gas_max",
+            "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
+            "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
+            "gas_mass_transfer_rate", "dissolved_gas_diffusivity",
+            "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
+            "viscosity_temperature_coeff", "viscosity_pressure_coeff",
+            "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",
+            "gas_alpha_max", "gas_pressure_floor", "mixture_viscosity_model",
+            "gas_mixture_viscosity_model", "gas_pressure_coupling",
+            "void_coupling_relaxation", "mu_gas", "diagnostics_interval",
+            "property_reference_pressure", "property_reference_temperature",
+            "solubility_table", "density_table", "viscosity_table",
+            "solubility_table_file", "viscosity_table_file", "density_table_file",
+            "motion_model", "bearing_initial_from_attitude", "bearing_initial_x",
+            "bearing_initial_y", "bearing_initial_z", "bearing_initial_vx",
+            "bearing_initial_vy", "bearing_initial_vz", "bearing_mass",
+            "bearing_stiffness_x", "bearing_stiffness_y", "bearing_stiffness_z",
+            "bearing_damping_x", "bearing_damping_y", "bearing_damping_z",
+            "external_load_x", "external_load_y", "external_load_z",
+            "min_film_thickness", "stop_on_nonpositive_film", "bc_z_south_type",
+            "bc_z_south_val", "bc_z_south_theta", "bc_z_south_thermal",
+            "bc_z_north_type", "bc_z_north_val", "bc_z_north_theta",
+            "bc_z_north_thermal", "cavitation_model", "cavitation_threshold",
+            "cavitated_film_model", "consistent_boundary_flux",
+            "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
+            "steady_gas_model",
+            "allow_frozen_gas_steady", "max_outer_iters", "outer_tol",
+            "fbns_max_iters", "fbns_tol", "fbns_relaxation",
+            "fbns_pressure_scale", "theta_min", "log_outer_iters", "output_dir",
+            "filename_prefix", "output_verbosity", "output_write_3d",
+            "output_write_flat", "output_fields", "inlet_circular", "inlet_groove",
+        };
+        return keys;
+    }
+
+    /// Levenshtein edit distance, used only to name the likely intended key.
+    static int key_edit_distance(const std::string& a, const std::string& b) {
+        const size_t n = b.size();
+        std::vector<int> previous(n + 1), current(n + 1);
+        for (size_t j = 0; j <= n; ++j) previous[j] = static_cast<int>(j);
+        for (size_t i = 1; i <= a.size(); ++i) {
+            current[0] = static_cast<int>(i);
+            for (size_t j = 1; j <= n; ++j) {
+                const int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+                current[j] = std::min({previous[j] + 1, current[j - 1] + 1,
+                                       previous[j - 1] + cost});
+            }
+            previous = current;
+        }
+        return previous[n];
+    }
+
+    /// Underscore-separated words of a config key, for the suggestion heuristic.
+    static std::vector<std::string> key_tokens(const std::string& key) {
+        std::vector<std::string> tokens;
+        std::string current;
+        for (char ch : key) {
+            if (ch == '_') {
+                if (!current.empty()) tokens.push_back(current);
+                current.clear();
+            } else {
+                current.push_back(ch);
+            }
+        }
+        if (!current.empty()) tokens.push_back(current);
+        return tokens;
+    }
+
+    /// Known key closest to `key`, or "" when nothing is close enough to be a
+    /// plausible mistake.
+    ///
+    /// Two signals, because character distance alone is not enough. A typo
+    /// (`bush_outer_radus`) is one or two edits away, so a length-scaled edit
+    /// distance catches it. A *wrong name* for the right knob (`cross_film_model`
+    /// for `cross_film_thermal_model`) is eight edits away but shares every one
+    /// of its underscore-separated words, which is the case that actually shipped.
+    static std::string closest_config_key(const std::string& key) {
+        const std::vector<std::string> tokens = key_tokens(key);
+        std::string best;
+        int best_distance = std::numeric_limits<int>::max();
+        size_t best_shared = 0;
+        for (const std::string& candidate : known_config_keys()) {
+            const int distance = key_edit_distance(key, candidate);
+            const std::vector<std::string> candidate_tokens = key_tokens(candidate);
+            size_t shared = 0;
+            for (const std::string& token : tokens) {
+                if (std::find(candidate_tokens.begin(), candidate_tokens.end(), token) !=
+                    candidate_tokens.end()) {
+                    ++shared;
+                }
+            }
+            // More shared words wins; equal words fall back to fewer edits.
+            if (shared > best_shared || (shared == best_shared && distance < best_distance)) {
+                best_shared = shared;
+                best_distance = distance;
+                best = candidate;
+            }
+        }
+        const int distance_limit = std::max(2, static_cast<int>(key.size()) / 3);
+        const size_t shared_limit = std::max<size_t>(2, (tokens.size() + 1) / 2);
+        if (best_distance <= distance_limit || best_shared >= shared_limit) return best;
+        return std::string();
+    }
+
+    static std::string unknown_key_message(const std::string& key) {
+        std::string message = "unrecognized config key '" + key + "'";
+        const std::string suggestion = closest_config_key(key);
+        if (!suggestion.empty()) message += "; did you mean '" + suggestion + "'?";
+        return message;
     }
 
 private:

@@ -2,6 +2,59 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - An unrecognized config key is now a hard error (audit Q1)
+
+`SimulationConfig::load_from_stream` had no terminal `else`: any key the parser
+did not recognize was silently discarded and the run continued on the default the
+user never asked for. It now records the key in a new `parse_errors` list, which
+`validate()` promotes into its error list, so every caller that already refuses to
+run on a validation error - the solver's `main`, the GUI's config check - refuses
+to run on a misspelled key too.
+
+**This was not hypothetical.** `cases/01_ferron_thd/config_template.txt` set
+`cross_film_model = NONE` while the parser has only ever known
+`cross_film_thermal_model`. That line was dropped on every run of the Ferron THD
+case and was replicated into 105 generated `fb_iter_*/config.txt` files across
+`fig4_*`, `fig5_*` and the rest. It happened to be harmless - `NONE` is the
+default - but nothing in the toolchain could have told anyone that. All 105 files
+and the four mentions in `cases/01_ferron_thd/SUMMARY.md` now use the real key.
+
+The error names the offending key and suggests the closest known one, using two
+signals rather than one:
+
+- **Edit distance**, length-scaled (`max(2, len/3)`), for ordinary typos:
+  `bush_outer_radus` -> `bush_outer_radius`.
+- **Shared underscore-separated words**, for the wrong *name* of the right knob.
+  `cross_film_model` is eight edits from `cross_film_thermal_model` - far outside
+  any sane distance threshold - but shares all three of its words. This is the
+  case that actually shipped, and distance alone would have missed it.
+
+An unrelated token (`totally_made_up_key`) matches neither and is reported with no
+suggestion rather than a misleading one.
+
+The deliberate legacy branches are untouched and pinned by test: the key aliases
+(`viscosity_model`, `oil_gas_solution_model`, `gas_mixture_viscosity_model`), the
+value aliases (`ELROD_ADAMS` -> `JFO`), and the warn-and-drop keys for removed
+models (`pressure_time_method`, `temperature_time_method`,
+`dissolved_gas_bunsen_coeff`) still parse as warnings, not errors.
+
+New `tests/test_config_keys.cpp` (35 ctest cases now, was 34):
+
+1. The shipped `cross_film_model = NONE` line, verbatim, must produce exactly one
+   parse error naming the key and suggesting `cross_film_thermal_model`.
+2. Every legacy branch still parses with no error and the expected warning count.
+3. Every key in the new `known_config_keys()` manifest is accepted by the parser -
+   this is what keeps the suggestion list from drifting away from the chain.
+4. `to_config_text()` output re-parses with no unknown key, so the writer and the
+   reader cannot diverge.
+5. Every `config*.txt` in the repo root and under `cases/` parses with no unknown
+   key. `*_template.txt` files are included, with their `{placeholder}` values
+   substituted, because the templates are exactly where the dropped line lived.
+
+Known limitation, unchanged by this work: a *recognized* key with a malformed
+value still throws `std::invalid_argument` out of `std::stod` rather than being
+reported. That is a separate defect and is not addressed here.
+
 ### 2026-08-05 - Validation cases consolidated into one place, with an index
 
 Documentation and directory structure only; no solver code, no runs, no results
