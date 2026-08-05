@@ -5,6 +5,7 @@
 
 #include "full_film.hpp"
 #include "fvm.hpp"
+#include "reynolds_coefficients.hpp"
 
 namespace GasTransport {
 namespace {
@@ -44,7 +45,9 @@ double south_boundary_velocity(const Field& p, const Field& h, const Field& thet
         ? cfg.elrod_boundary_pressure(cfg.bc_z_south_val)
         : cfg.bc_z_south_val;
     const double dp_dz = (p(i, 0) - p_bc) / (0.5 * mesh.get_d_z());
-    return -FullFilm::gate(fields, cfg, i, 0) * h_face * h_face * dp_dz / (12.0 * mu_face);
+    return ReynoldsCoeff::poiseuille_face_velocity(
+        fields, cfg, FullFilm::gate(fields, cfg, i, 0), dp_dz, h_face, mu_face, 1.0,
+        i, 0, i, 0);
 }
 
 double north_boundary_velocity(const Field& p, const Field& h, const Field& theta,
@@ -62,7 +65,9 @@ double north_boundary_velocity(const Field& p, const Field& h, const Field& thet
         ? cfg.elrod_boundary_pressure(cfg.bc_z_north_val)
         : cfg.bc_z_north_val;
     const double dp_dz = (p_bc - p(i, j)) / (0.5 * mesh.get_d_z());
-    return -FullFilm::gate(fields, cfg, i, j) * h_face * h_face * dp_dz / (12.0 * mu_face);
+    return ReynoldsCoeff::poiseuille_face_velocity(
+        fields, cfg, FullFilm::gate(fields, cfg, i, j), dp_dz, h_face, mu_face, 1.0,
+        i, j, i, j);
 }
 
 // Density convected through an axial boundary face. Full-film faces carry the
@@ -244,8 +249,15 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                                           dynamic_viscosity(fields, cfg, i + 1, j));
             const double rho_face = 0.5 * (field_value(fields, "rho", cfg.rho, i, j) +
                                            field_value(fields, "rho", cfg.rho, i + 1, j));
-            const double u_theta = 0.5 * cfg.omega * R
-                - g_face * h_face * h_face * dp_dtheta / (12.0 * mu_face * R);
+            // Both terms come from the same header the Reynolds and FBNS
+            // assemblies use, so gas rides on the velocity field that produced the
+            // pressure rather than on a second, classically-approximated one.
+            const double u_theta =
+                ReynoldsCoeff::couette_face_velocity(fields, cfg, R, h_face,
+                                                     i, j, i + 1, j) +
+                ReynoldsCoeff::poiseuille_face_velocity(fields, cfg, g_face, dp_dtheta,
+                                                        h_face, mu_face, R,
+                                                        i, j, i + 1, j);
             flux_theta(i, j) = rho_face * h_face * u_theta * d_z;
             free_gas_flux_theta(i, j) = u_theta * d_z;
         }
@@ -263,7 +275,10 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                                           dynamic_viscosity(fields, cfg, i, j + 1));
             const double rho_face = 0.5 * (field_value(fields, "rho", cfg.rho, i, j) +
                                            field_value(fields, "rho", cfg.rho, i, j + 1));
-            const double u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+            const double u_z =
+                ReynoldsCoeff::poiseuille_face_velocity(fields, cfg, g_face, dp_dz,
+                                                        h_face, mu_face, 1.0,
+                                                        i, j, i, j + 1);
             flux_z(i, j) = rho_face * h_face * u_z * R * d_theta;
             free_gas_flux_z(i, j) = u_z * R * d_theta;
         }

@@ -2,6 +2,83 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Energy axial boundaries and gas transport routed through ReynoldsCoeff (audit A / S1)
+
+`src/reynolds_coefficients.hpp` exists so the three assemblies of the Reynolds
+equation cannot drift apart. Two files never honoured it:
+
+- **`energy.cpp`** branched correctly on cross-film for its interior faces and its
+  dissipation term, but `south_boundary_flux` and `north_boundary_flux` hand-rolled
+  `u_z = -g h^2 dp_dz / (12 mu)` with no cross-film branch at all. So with
+  `cross_film_thermal_model = POLYNOMIAL` the energy equation transported heat
+  through its interior faces with Dowson's `F2` and out through its axial ends
+  with the classical law. The Ferron cross-film case has Dirichlet axial ends, so
+  those are its oil outflow faces.
+- **`gas_transport.cpp`** had zero references to cross-film anywhere: neither the
+  Couette thickness `2 F1/F0` nor the Poiseuille mobility `F2` reached its face
+  velocities, so gas was advected on a velocity field inconsistent with the
+  pressure solve that produced it.
+
+Both now call two new helpers:
+
+- `ReynoldsCoeff::couette_face_velocity` - `U/2`, or `U (F1/F0)/h` generalized.
+- `ReynoldsCoeff::poiseuille_face_velocity` - `-g h^2 (dp/ds)/(12 mu L)`, or
+  `-g F2 (dp/ds)/(h L)` generalized, so that `h` times the velocity is exactly the
+  `-g F2 grad p` the Reynolds solve conserved.
+
+Both return the classical expression with its **original floating-point
+association** when the model is off. That is not a claim: the full 35-case suite
+was captured verbatim before and after and the only line that differs is
+`test_ksp_guard`'s nondeterministic MPI abort text.
+
+**A/B on a real cross-film point.** `cases/01_ferron_wallbc_fields/rerun_xf_adiabatic/fb_iter_13`
+(Ferron 1983 Fig. 4, 2000 rpm / 4 kN, 720x192, FBNS + ENERGY_EQUATION +
+`cross_film_thermal_model = POLYNOMIAL`, `bush_thermal_model = LOCAL`, Dirichlet
+axial ends, the converged force-balance iterate) was rerun locally on 4 ranks with
+the pre-change and post-change binaries. The old binary reproduces the archived
+24-rank numbers (`p_max` 1.41105e6, `T_max` 321.768 K, `friction_torque` 2.59609,
+`W` 4000.06 N), so the comparison is against the real archived point.
+
+VTK output carries 6 significant digits, which is the resolution floor of this
+table. Over 138 240 cells:
+
+| field | scale | max abs diff | max rel diff | reading |
+|---|---|---|---|---|
+| `p` | 1.41105e6 Pa | 10 Pa | 7.1e-6 | one printed digit |
+| `Fp` (load) | 4000.06 N | 0.01 N | 2.5e-6 | one printed digit |
+| `T` | 321.768 K | 0.001 K | 3.1e-6 | one printed digit |
+| `T_bearing` / `cross_film_t_bush` | 323.953 K | 0.001 K | 3.1e-6 | one printed digit |
+| `friction_torque` | 2.59609 N m | 1e-5 | 3.9e-6 | one printed digit |
+| `mu` | 0.0272947 Pa s | 2e-7 | 7.3e-6 | one printed digit |
+| **`cross_film_core_rise`** | 1.06394 K | 5.6e-5 K | **5.3e-5** | above the floor |
+| **`q_journal`** | 14467.1 W/m^2 | 0.6 | **4.1e-5** | above the floor |
+| `film_content` | 1 | 3e-5 | 3.0e-5 | one front cell |
+| `h`, `T_journal`, `cross_film_t_shaft` | - | 0 | 0 | unchanged |
+| `mass_residual`, `q_bearing` | ~1e-10, ~3e-9 | - | >1 | noise about zero (adiabatic case) |
+
+Printed summary: `T_shaft` 318.279 K and `T_bush_mean` 316.974 K unchanged;
+`core_rise_max` 1.06394 -> 1.06395 K; the steady coupling loop converged in **15**
+outer iterations instead of 16, both inside `coupling_tolerance = 1e-6`. Global
+liquid mass moved in the 9th significant digit
+(2.96795788e-3 -> 2.96795780e-3 kg).
+
+**Reading.** Exactly what the audit predicted: small and boundary-driven. Nothing
+in the load-capacity or peak-temperature comparison moves at the precision the
+validation figures are drawn at, so no archived verdict changes. The two
+quantities that do move beyond the print floor - the cross-film core temperature
+rise and the journal-surface heat flux - are the two that are computed *from* the
+wall/boundary energy balance, which is precisely the balance that was being closed
+with two inconsistent mobilities.
+
+**Not done here.** `energy.cpp`'s interior faces keep their own (already
+cross-film-aware) expressions rather than being re-routed, because their
+cross-film branch computes the volumetric flux `q` directly instead of `h*u` and
+re-routing would perturb cross-film results for no correctness gain. And
+`cfg.reformation_boundary_velocity`, the Elrod cavitated-end reflood closure,
+still takes `(h_face, mu_face)` with no cross-film branch; it is only reachable on
+the Elrod path with `consistent_boundary_flux`, and is recorded in
+`docs/reports/QUICKWINS_2026-08.md` rather than changed unreviewed.
+
 ### 2026-08-05 - Shipped `config.txt` now defaults to FBNS (audit Q5)
 
 `config.txt` is the file a new user starts from and it pointed at the superseded

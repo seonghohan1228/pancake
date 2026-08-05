@@ -80,6 +80,61 @@ inline double poiseuille_coefficient(const Fields& fields, const SimulationConfi
     return poiseuille(fields, cfg, 1.0, i, j);
 }
 
+/// True when the assembled fluxes must use the generalized cross-film
+/// coefficients (Dowson F0/F1/F2) instead of the classical uniform-viscosity
+/// h^3/(12 mu) and h/2.
+inline bool generalized(const Fields& fields, const SimulationConfig& cfg) {
+    return CrossFilm::active(cfg) && fields.has("cross_film_f2");
+}
+
+/// Face average of a per-cell cross-film coefficient. Passing the same cell
+/// twice returns that cell's value exactly, which is what an axial boundary
+/// face wants (there is no second cell to average with).
+inline double cross_film_face_average(const Fields& fields, const char* name,
+                                      int i0, int j0, int i1, int j1) {
+    return 0.5 * (positive_field_value(fields, name, 0.0, i0, j0) +
+                  positive_field_value(fields, name, 0.0, i1, j1));
+}
+
+/// Depth-averaged Couette velocity through a circumferential face [m/s].
+///
+/// Classical: U/2. Generalized: U (F1/F0) / h, i.e. the same 2 F1/F0 Couette
+/// thickness the Reynolds operator transports, divided by the film thickness the
+/// caller multiplies back in. Returns the classical expression verbatim when the
+/// model is off, so those runs stay bit-identical.
+inline double couette_face_velocity(const Fields& fields, const SimulationConfig& cfg,
+                                    double R, double h_face,
+                                    int i0, int j0, int i1, int j1) {
+    if (generalized(fields, cfg)) {
+        return 0.5 * cfg.omega * R *
+               cross_film_face_average(fields, "cross_film_couette_h", i0, j0, i1, j1) / h_face;
+    }
+    return 0.5 * cfg.omega * R;
+}
+
+/// Depth-averaged Poiseuille velocity through a face [m/s].
+///
+/// Classical: -g h^2 (dp/ds) / (12 mu L). Generalized: -g F2 (dp/ds) / (h L), so
+/// that h times this velocity is the generalized volumetric flux -g F2 grad p
+/// that the Reynolds solve conserved. `length_scale` is the metric factor the
+/// caller carries in the denominator (R for a theta face, 1 for a z face); it is
+/// an argument rather than applied outside so the classical branch keeps its
+/// original floating-point association.
+///
+/// `gate` is the caller's Poiseuille activity switch, which differs by equation
+/// (the Elrod full-film gate, or 1 everywhere under FBNS), so it is passed in
+/// rather than decided here.
+inline double poiseuille_face_velocity(const Fields& fields, const SimulationConfig& cfg,
+                                       double gate, double dp_ds, double h_face,
+                                       double mu_face, double length_scale,
+                                       int i0, int j0, int i1, int j1) {
+    if (generalized(fields, cfg)) {
+        return -gate * cross_film_face_average(fields, "cross_film_f2", i0, j0, i1, j1) *
+               dp_ds / (h_face * length_scale);
+    }
+    return -gate * h_face * h_face * dp_ds / (12.0 * mu_face * length_scale);
+}
+
 /// Film thickness that carries the Couette flux. The generalized Reynolds
 /// equation transports U * F1/F0 rather than U * h/2, so this returns 2 F1/F0,
 /// which equals h under uniform viscosity and lets every Couette expression keep

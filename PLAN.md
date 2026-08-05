@@ -55,7 +55,7 @@ Priority queue (user gates in brackets):
 | VANLEER far-upwind cell for negative face flux | C / F4 | **DONE 2026-08-05** (theta faces; z-face TVD still open, F4 stays partial) |
 | GUI anisotropic-stiffness data loss on load | 3.5 / S9 | **DONE 2026-08-05** - normalize on new-case and on support edits only; load/save preserve |
 | `config.txt` cavitation default -> FBNS | Q5 | **DONE 2026-08-05** - struct default stays JFO until the 11 default-reliant tests pin their model |
-| Coefficient unification: energy axial BCs + gas transport | A / S1 | TODO |
+| Coefficient unification: energy axial BCs + gas transport | A / S1 | **DONE 2026-08-05** - A/B on the archived Ferron cross-film point: load/pressure/temperature move at the 6-digit output floor, `cross_film_core_rise` and `q_journal` by ~5e-5 relative |
 
 ### Rank-dependent linear-solve divergence — DONE 2026-08-05
 

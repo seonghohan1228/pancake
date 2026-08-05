@@ -1799,7 +1799,19 @@ steady state. Inlet cells are zeroed for the same reason as above.
 the assembled operator, so every coefficient in it — $\Gamma_{base}$, the switch
 function's full-film ceiling, the Couette face flux, the FBNS mobility — is taken
 from `src/reynolds_coefficients.hpp`, the same header `Reynolds::solve_elrod` and
-`FBNS::solve` assemble from. Local copies had drifted: the diagnostics still used
+`FBNS::solve` assemble from. The transport equations draw the *same* face
+velocities from that header: the energy equation's axial boundary faces and every
+face of the dissolved-gas and free-gas transport now call
+`ReynoldsCoeff::couette_face_velocity` and
+`ReynoldsCoeff::poiseuille_face_velocity`, so under the cross-film model they
+carry $-g F_2\,\partial p/\partial s$ and $U F_1/F_0$ rather than the classical
+$-g h^3/(12\mu)\,\partial p/\partial s$ and $U h/2$. Before that, the energy
+equation transported heat through its *interior* faces with $F_2$ and out through
+its *axial ends* with $h^3/12\mu$ — on a case with Dirichlet axial ends, which is
+the Ferron cross-film geometry, those mismatched faces are the oil outflow. Both
+helpers return the classical expression verbatim (same floating-point
+association) when the cross-film model is off, so non-cross-film runs are
+bit-identical. Local copies had drifted: the diagnostics still used
 $\rho_0\beta h^3/12\mu$ with the *scalar* `bulk_modulus` and $h$ in the Couette
 flux after the assembly had moved to $\rho_0\bar\beta F_2$ and $2F_1/F_0$, so on
 exactly the cross-film and `VOID_COUPLED` runs this field exists to police it

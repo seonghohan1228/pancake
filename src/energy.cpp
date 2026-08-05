@@ -9,6 +9,7 @@
 #include "cross_film.hpp"
 #include "full_film.hpp"
 #include "fvm.hpp"
+#include "reynolds_coefficients.hpp"
 
 namespace Energy {
 namespace {
@@ -262,7 +263,13 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
             poiseuille_face_activity(cfg, FullFilm::gate(fields, cfg, i, 0));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_south_val);
         const double dp_dz = (p(i, 0) - p_bc) / (0.5 * d_z);
-        u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+        // Same generalized mobility as the interior faces and the Reynolds solve.
+        // Hand-rolling h^3/(12 mu) here left the energy equation transporting heat
+        // through its interior faces with Dowson's F2 and out through its axial
+        // ends with the classical law -- on the Ferron cross-film case, which has
+        // Dirichlet axial ends, those are the oil outflow faces.
+        u_z = ReynoldsCoeff::poiseuille_face_velocity(fields, cfg, g_face, dp_dz,
+                                                      h_face, mu_face, 1.0, i, 0, i, 0);
     }
     return rho_cp_face * h_face * u_z * face_length;
 }
@@ -285,7 +292,8 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
             poiseuille_face_activity(cfg, FullFilm::gate(fields, cfg, i, j));
         const double p_bc = solved_boundary_pressure(cfg, cfg.bc_z_north_val);
         const double dp_dz = (p_bc - p(i, j)) / (0.5 * d_z);
-        u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
+        u_z = ReynoldsCoeff::poiseuille_face_velocity(fields, cfg, g_face, dp_dz,
+                                                      h_face, mu_face, 1.0, i, j, i, j);
     }
     return rho_cp_face * h_face * u_z * face_length;
 }
