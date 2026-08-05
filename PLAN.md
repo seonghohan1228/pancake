@@ -49,6 +49,9 @@ Priority queue (user gates in brackets):
 
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
 
+Complete 2026-08-05. Evidence and the deliberate exclusions are in
+`docs/reports/QUICKWINS_2026-08.md`; per-item rationale in `CHANGES.md`.
+
 | Item | Audit ref | Status |
 |---|---|---|
 | Unknown-config-key hard error, with typo suggestion | Q1 | **DONE 2026-08-05** — `tests/test_config_keys.cpp`; 105 case configs corrected |
