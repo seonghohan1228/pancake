@@ -386,6 +386,25 @@ are bit-identical to the model-free solver. The equations as implemented, and
 the two stated approximations inside the order-4 collocation, are in PHYSICS.md
 sections 13.1.2 and 13.1.3.
 
+`bush_thermal_model` selects how the bush closes that flux, and is read only when
+the cross-film model is active:
+
+| value | bush model |
+| --- | --- |
+| `LOCAL` (default) | per-cell 1-D radial conduction in series with the outer surface. Every watt entering the bore leaves through the wall underneath it, so the bush surface can only peak where the film is hottest. |
+| `CONDUCTION_2D` | steady 2-D `(r, theta)` conduction in the bush annulus `[R, bush_outer_radius]`, Ferron's own bush model. Heat picked up in the loaded arc can leave at a different angular position. |
+
+`CONDUCTION_2D` adds `bush_radial_cells` (default 16). Both models share
+`bush_outer_boundary`, which is `CONVECTION` (Robin with
+`bush_outer_heat_transfer` to `thermal_ambient_temperature`; `0` is an adiabatic
+outer surface) or `FIXED_TEMPERATURE` (that surface held at
+`thermal_ambient_temperature` — the large-HTC limit, expressed exactly). The 2-D
+bush is z-collapsed as Ferron's is: it consumes the z-averaged film flux and
+returns one bore temperature per theta, and the axial end faces of the bush are
+not modelled. Its linear system is solved directly once per outer iteration and
+costs about 10^7 flops at 720 x 16. `LOCAL` with `CONVECTION` is bit-identical to
+the solver before the option existed. See PHYSICS.md §13.1.2.1.
+
 While the model is active, four optional output fields expose the film surfaces
 the depth-averaged `temperature` cannot show. Select them in `output_fields`:
 

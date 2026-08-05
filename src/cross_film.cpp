@@ -5,8 +5,10 @@
 #include <mpi.h>
 #include <vector>
 
+#include "bush_conduction.hpp"
 #include "fluid_properties.hpp"
 #include "output_naming.hpp"
+#include "utils.hpp"
 
 namespace CrossFilm {
 namespace {
@@ -65,12 +67,21 @@ double field_or(const Fields& fields, const char* name, double fallback, int i, 
 /// [m^2 K / W]: radial conduction through the bush in series with outer-surface
 /// convection. Returns the conductance 1/R; zero means an adiabatic bush.
 double bush_conductance(const SimulationConfig& cfg) {
-    if (cfg.bush_outer_heat_transfer <= 0.0) return 0.0;
     const double r_i = cfg.R;
     const double r_o = cfg.bush_outer_radius > r_i ? cfg.bush_outer_radius : 1.1 * r_i;
-    const double resistance = r_i * std::log(r_o / r_i) / cfg.bush_thermal_conductivity +
-                              r_i / (r_o * cfg.bush_outer_heat_transfer);
+    const double wall = r_i * std::log(r_o / r_i) / cfg.bush_thermal_conductivity;
+    // FIXED_TEMPERATURE is the h_out -> infinity limit of the same series
+    // resistance, so the two outer conditions share one expression.
+    if (cfg.bush_outer_boundary == BushOuterBoundary::FIXED_TEMPERATURE) {
+        return wall > 0.0 ? 1.0 / wall : 0.0;
+    }
+    if (cfg.bush_outer_heat_transfer <= 0.0) return 0.0;
+    const double resistance = wall + r_i / (r_o * cfg.bush_outer_heat_transfer);
     return resistance > 0.0 ? 1.0 / resistance : 0.0;
+}
+
+bool bush_is_2d(const SimulationConfig& cfg) {
+    return cfg.bush_thermal_model == BushThermalModel::CONDUCTION_2D;
 }
 
 }  // namespace
@@ -276,8 +287,11 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // zero, so heat entering the shaft in the loaded arc leaves it again
     // upstream. That is the mechanism the constant-T_wall closure lacks.
     //
-    // Bush: per-cell 1-D radial conduction to an outer convection boundary,
-    //   q_bush = (T_b - T_amb) * G,  G = bush conductance referred to the bore.
+    // Bush (LOCAL, the default): per-cell 1-D radial conduction to the outer
+    // boundary, q_bush = (T_b - T_amb) * G, G referred to the bore. With
+    // bush_thermal_model = CONDUCTION_2D the same T_b = alpha + beta T_s comes
+    // instead from the annulus solve of step 2a; everything downstream is
+    // unchanged, which is why only the alpha/beta assignment below is branched.
     //
     // With the profile fluxes q_shaft = (k/h)(a + b) and q_bush = (k/h)(b - a),
     // a = T_b - T_s and b = 6(T_bar - (T_s+T_b)/2) - c/5, the bush relation is
@@ -294,6 +308,84 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     double sums[4] = {0.0, 0.0, 0.0, 0.0};  // K, P, Q_alpha, Q_beta
     std::vector<double> alpha(static_cast<size_t>(n_theta) * n_z, 0.0);
     std::vector<double> beta(static_cast<size_t>(n_theta) * n_z, 0.0);
+
+    // ---------------------------------------------------------------------
+    // Step 2a (CONDUCTION_2D only): the bush annulus.
+    //
+    // The film-side flux is linear in the bore temperature,
+    //   q_bush = A0 + A1 T_s - B T_b,
+    //   A0 = kh (b_const + b_slope T_bar),  A1 = kh (1 - b_slope/2),
+    //   B  = kh (1 + b_slope/2),
+    // which is exactly the relation the LOCAL closure inverts against
+    // q_bush = G (T_b - T_amb). Here it becomes a Robin condition on the bore of
+    // a steady 2-D (r, theta) conduction problem instead (PHYSICS.md 13.1.2).
+    //
+    // Two modelling choices, both stated rather than hidden:
+    //  * the bush is z-collapsed, as Ferron's bush equation is, so the coupling
+    //    uses the z-AVERAGE of the film-side flux law at each theta and returns
+    //    one bore temperature per theta;
+    //  * the lateral (axial end face) free convection of the paper is neglected;
+    //    at h = 80 W/(m^2 K) over the two end faces it is a ~1% term.
+    //
+    // Both right-hand sides are solved, so T_b(theta) = alpha + beta T_s stays
+    // exact and the shaft balance below closes in one step exactly as before.
+    // The solve is serial and deterministic: the three coupling arrays are
+    // all-reduced onto the global theta grid and every rank then runs the same
+    // arithmetic on the same input, which removes the broadcast and any rank-0
+    // asymmetry for a few hundred thousand flops per outer iteration.
+    // ---------------------------------------------------------------------
+    if (bush_is_2d(cfg)) {
+        const int n_theta_global = mesh.n_theta_global;
+        BushConduction::Coupling coupling;
+        coupling.a0.assign(n_theta_global, 0.0);
+        coupling.a1.assign(n_theta_global, 0.0);
+        coupling.slope.assign(n_theta_global, 0.0);
+        const double inv_nz = 1.0 / static_cast<double>(n_z);
+        for (int i = 0; i < n_theta; ++i) {
+            const int gi = mesh.offset_theta + i;
+            double a0 = 0.0, a1 = 0.0, slope = 0.0;
+            for (int j = 0; j < n_z; ++j) {
+                const double h_val = std::max(h(i, j), cfg.min_film_thickness);
+                const double k_th = std::max(field_or(fields, "k_liquid_solution",
+                                                      cfg.thermal_conductivity, i, j), 1.0e-30);
+                const double kh = k_th / h_val;
+                const double X = x_collocation[static_cast<size_t>(i) * n_z + j];
+                const double b_const = quartic ? (X / 3.0) : 0.0;
+                const double b_slope = quartic ? 10.0 : 6.0;
+                a0 += kh * (b_const + b_slope * temperature(i, j));
+                a1 += kh * (1.0 - 0.5 * b_slope);
+                slope += kh * (1.0 + 0.5 * b_slope);
+            }
+            coupling.a0[gi] = a0 * inv_nz;
+            coupling.a1[gi] = a1 * inv_nz;
+            coupling.slope[gi] = slope * inv_nz;
+        }
+        MPI_Allreduce(MPI_IN_PLACE, coupling.a0.data(), n_theta_global, MPI_DOUBLE, MPI_SUM,
+                      MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, coupling.a1.data(), n_theta_global, MPI_DOUBLE, MPI_SUM,
+                      MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, coupling.slope.data(), n_theta_global, MPI_DOUBLE, MPI_SUM,
+                      MPI_COMM_WORLD);
+
+        const BushConduction::Solution bush =
+            BushConduction::solve(coupling, n_theta_global, R, cfg);
+        if (!bush.converged) {
+            Utils::log("WARNING: the 2-D bush conduction solve left a relative residual of " +
+                           std::to_string(bush.residual),
+                       Utils::Color::YELLOW);
+        }
+        state.bush_2d_solved = true;
+        state.bush_residual = bush.residual;
+        for (int i = 0; i < n_theta; ++i) {
+            const int gi = mesh.offset_theta + i;
+            for (int j = 0; j < n_z; ++j) {
+                const size_t idx = static_cast<size_t>(i) * n_z + j;
+                alpha[idx] = bush.alpha[gi];
+                beta[idx] = bush.beta[gi];
+            }
+        }
+    }
+
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double h_val = std::max(h(i, j), cfg.min_film_thickness);
@@ -317,10 +409,12 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             // with T_m = (T_s + T_b)/2:
             //   kh [b_const + b_slope T_bar - (b_slope/2)(T_s + T_b) - T_b + T_s] = (T_b - T_amb) G
             //   T_b [kh (b_slope/2 + 1) + G] = kh [b_const + b_slope T_bar + T_s (1 - b_slope/2)] + G T_amb
-            const double denom = kh * (0.5 * b_slope + 1.0) + bush_g;
             const size_t idx = static_cast<size_t>(i) * n_z + j;
-            alpha[idx] = (kh * (b_const + b_slope * t_bar) + bush_g * t_amb) / denom;
-            beta[idx] = kh * (1.0 - 0.5 * b_slope) / denom;
+            if (!bush_is_2d(cfg)) {
+                const double denom = kh * (0.5 * b_slope + 1.0) + bush_g;
+                alpha[idx] = (kh * (b_const + b_slope * t_bar) + bush_g * t_amb) / denom;
+                beta[idx] = kh * (1.0 - 0.5 * b_slope) / denom;
+            }  // CONDUCTION_2D filled alpha/beta from the annulus solve in step 2a
             // q_shaft = kh (a + b) = kh [T_b - T_s + b_const + b_slope (T_bar - T_m)]
             //         = kh [b_const + b_slope T_bar + T_b (1 - b_slope/2) - T_s (1 + b_slope/2)]
             sums[0] += kh * area * (1.0 + 0.5 * b_slope);                    // coefficient of T_s
@@ -432,8 +526,28 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             // would use, and is what keeps the adiabatic-bush limit from being
             // over-damped.
             const double b_slope = quartic ? 10.0 : 6.0;
+            // dT_b/dT_bar for the Newton linearisation only; the converged answer
+            // always uses the solved T_b.
+            //
+            // LOCAL: the closed form of the per-cell bush relation.
+            //
+            // CONDUCTION_2D: the bush is taken as FROZEN, dT_b/dT_bar = 0, which
+            // is the fully-sunk-wall value 2 (k/h) b_slope. That is very nearly
+            // true here -- one film cell barely moves a bush its neighbours also
+            // feed -- and it is the only choice that is both stable and free of
+            // the bush mesh. Two alternatives were implemented and rejected:
+            //   * the bore admittance with the neighbouring bush cells frozen
+            //     reproduces this number to 5% (measured dT_b/dT_bar = 0.053 on
+            //     the Ferron rig) but diverges as bush_radial_cells is refined,
+            //     so the damping of the film energy equation would depend on the
+            //     bush mesh;
+            //   * the series-to-ambient conductance bush_g is mesh-free but far
+            //     too small: on a nearly adiabatic bush it drives the whole
+            //     bracket negative, the clamp below zeroes the wall coefficient,
+            //     and with the wall term fully explicit the temperature KSP
+            //     diverged outright on the Ferron rig at 720 x 192.
             const double denom = kh * (0.5 * b_slope + 1.0) + bush_g;
-            const double dTb_dTbar = kh * b_slope / denom;
+            const double dTb_dTbar = bush_is_2d(cfg) ? 0.0 : kh * b_slope / denom;
             const double q_wall = 2.0 * kh * b_val;
             wall_flux_f(i, j) = q_wall;
             wall_coeff_f(i, j) = std::max(

@@ -1186,7 +1186,12 @@ $$q_{bush} = G\,(T_b - T_\infty), \qquad
   \frac1G = \frac{R\ln(r_o/R)}{k_{bush}} + \frac{R}{r_o\,h_{out}},$$
 
 which is linear in $T_b$ and solves in closed form. `bush_outer_heat_transfer = 0`
-makes $G = 0$, an adiabatic bush. The shaft is treated as **circumferentially
+makes $G = 0$, an adiabatic bush; `bush_outer_boundary = FIXED_TEMPERATURE` is the
+$h_{out}\to\infty$ limit of the same series resistance, $G = k_{bush}/(R\ln(r_o/R))$.
+This is `bush_thermal_model = LOCAL`, the default. **Every watt that enters the
+bore leaves through the wall directly underneath it**, so the bush surface
+temperature can only peak where the film is hottest — on the Ferron rig, at the
+groove. §13.1.2.1 replaces it. The shaft is treated as **circumferentially
 isothermal**, its single temperature $T_s$ set by the global film-to-shaft
 balance
 
@@ -1199,9 +1204,7 @@ loaded arc leaves it again upstream. **That is the transport path the
 constant-$T_{wall}$ Newton closure has no representation of**, and it is why no
 value of `journal_heat_transfer` could move the predicted temperature peak.
 Substituting the bush relation $T_b = \alpha + \beta T_s$ into the shaft balance
-closes $T_s$ in one step; only four scalars need reducing across ranks. Full 2-D
-bush conduction (circumferential spreading in the bush itself) remains out of
-scope.
+closes $T_s$ in one step; only four scalars need reducing across ranks.
 
 The net wall term entering the depth-averaged equation is
 $Q_w = q_{shaft} + q_{bush} = 2(k/h)\,b$, applied with the consistent Newton
@@ -1218,6 +1221,118 @@ by a factor of four. When this closure is active, `journal_heat_transfer`,
 `bearing_heat_transfer`, `journal_wall_temperature` and
 `bearing_wall_temperature` are ignored, and the config validator emits a warning
 saying so.
+
+#### 13.1.2.1 Conjugate Bush: 2-D (r, theta) Conduction
+
+`bush_thermal_model = CONDUCTION_2D` replaces the local closure by steady heat
+conduction in the bush annulus itself. This is Ferron, Frene & Boncompain's own
+bush model, and it supplies the one transport path the local closure cannot have:
+**circumferential redistribution inside the bush**. Heat picked up under the
+loaded arc can leave the bush at a different angular position, which is what
+turns the measured bush temperature down before the groove. With the local
+closure the bush surface necessarily peaks where the film is hottest — near the
+groove, at about $348^\circ$ on the Ferron rig, against a measured $258^\circ$.
+
+**Governing equation.** In the annulus $R \le r \le r_o$, $\theta$ periodic,
+
+$$\frac1r\frac{\partial}{\partial r}\!\left(r\,k_{bush}\frac{\partial T}{\partial r}\right)
+  + \frac{1}{r^2}\frac{\partial}{\partial\theta}\!\left(k_{bush}\frac{\partial T}{\partial\theta}\right) = 0 .$$
+
+The bush is **$z$-collapsed**, exactly as Ferron's bush equation is: one
+temperature per $\theta$, no axial dependence. The axial end faces of the bush are
+therefore not modelled either; at the paper's $h = 80\ \mathrm{W/(m^2K)}$ over the
+two end rings that is of order 1 % of the heat, and it is stated rather than
+absorbed into a fitted coefficient.
+
+**Inner boundary: flux continuity with the film.** The cross-film profile makes
+the film-side flux *linear* in the bore temperature. Writing $b$ from §13.1.2 and
+eliminating $T_m = (T_s + T_b)/2$,
+
+$$q_{bush} = A_0 + A_1 T_s - B\,T_b, \qquad
+  A_0 = \frac{k}{h}\!\left(b_{const} + b_{slope}\bar T\right), \quad
+  A_1 = \frac{k}{h}\!\left(1 - \tfrac{b_{slope}}{2}\right), \quad
+  B = \frac{k}{h}\!\left(1 + \tfrac{b_{slope}}{2}\right) > 0,$$
+
+which is the same relation the local closure inverts against $q = G(T_b-T_\infty)$.
+Here it is imposed as a **Robin condition on the bore**, so the bush problem stays
+linear and needs no iteration. Because the bush is $z$-collapsed, the coupling
+uses the **$z$-average** of $A_0$, $A_1$ and $B$ at each $\theta$, and returns one
+$T_b(\theta)$ that the cross-film profile then uses at every $z$ of that column.
+
+**Outer boundary.** `bush_outer_boundary = CONVECTION` gives
+$-k_{bush}\partial T/\partial r = h_{out}(T - T_\infty)$ at $r = r_o$
+(`bush_outer_heat_transfer`; $h_{out} = 0$ is an adiabatic outer surface, leaving
+the bush a pure circumferential redistributor). `FIXED_TEMPERATURE` holds
+$T(r_o) = T_\infty$, the $h_{out}\to\infty$ limit of the same expression.
+
+**Discretisation.** Finite volume, uniform in $\theta$ on the solver's own theta
+grid, uniform in $r$ with `bush_radial_cells` (default 16) cells. Every radial
+face uses the **exact logarithmic shell conductance**
+$G_r = k_{bush}\,\Delta\theta/\ln(r_2/r_1)$, including the two half cells at the
+boundaries, so a purely radial problem is reproduced to round-off at any radial
+resolution (asserted in `tests/test_bush_conduction.cpp`). Circumferential faces
+use $G_\theta = k_{bush}\,\Delta r/(r_c\Delta\theta)$. The bore condition is put in
+series with the bore-to-first-node half cell, which eliminates $T_b$ from the
+linear system without losing accuracy:
+
+$$Q_{\to\text{cell }0} = \lambda\,S\,(A - B\,T_0), \qquad
+  \lambda = \frac{C_{1/2}}{C_{1/2} + S B}, \qquad
+  T_b = T_0 + \frac{Q}{C_{1/2}},$$
+
+with $S = R\Delta\theta$ the bore face length and $C_{1/2}$ the half-cell
+conductance. Setting $B$ from the film and $A$ to zero recovers a pure Neumann
+bore; setting $\Delta\theta$-uniform data recovers the local closure exactly.
+
+**Linear solve.** Direct, not iterative. The system is block tridiagonal in
+$\theta$ with $n_r \times n_r$ blocks plus one periodic wrap, so blocks
+$0\ldots n_\theta-2$ are swept with block Thomas carrying $n_r$ extra right-hand
+side columns ($X_i = Y_i + Z_i X_{n_\theta-1}$), and one dense $n_r \times n_r$
+Schur solve closes the wrap. Cost is $O(n_\theta n_r^3)$, about $10^7$ flops at
+$720\times16$ — negligible beside one film pressure solve, with no tolerance to
+tune. Line relaxation was tried first and rejected: the bush grid is close to
+isotropic, which is exactly where it stalls.
+
+**Coupling to the shaft.** Because $q_{bush}$ is affine in $T_s$, the annulus is
+solved for *both* right-hand sides on one factorisation, giving
+$T_b(\theta) = \alpha(\theta) + \beta(\theta)\,T_s$ exactly. The global shaft
+balance then closes $T_s$ in one step, unchanged from the local closure. The
+solve is serial and deterministic: the three coupling arrays are all-reduced onto
+the global $\theta$ grid and every rank runs the same arithmetic on the same
+input, which removes the broadcast and any rank-0 asymmetry.
+
+**Newton linearisation.** Under `CONDUCTION_2D` the exact
+$\partial T_b/\partial\bar T$ is nonlocal — one film cell barely moves a bush its
+neighbours also feed — so the bush is taken as **frozen**,
+$\partial T_b/\partial\bar T = 0$, giving the fully-sunk-wall coefficient
+$2(k/h)\,b_{slope}$. Two alternatives were implemented and rejected:
+
+* the bore admittance with the neighbouring bush cells frozen reproduces the
+  frozen-bush number to 5 % (measured $\partial T_b/\partial\bar T = 0.053$ on
+  the Ferron rig) but grows without bound as `bush_radial_cells` is refined, so
+  the damping of the film energy equation would depend on the bush mesh;
+* the series-to-ambient conductance $G$ is mesh-free but far too small: on a
+  nearly adiabatic bush it drives the bracket negative, the clamp zeroes the wall
+  coefficient, and with the wall term fully explicit the temperature KSP diverged
+  outright on the Ferron rig at 720 x 192.
+
+This affects only the path to the fixed point; the converged answer always uses
+the solved $T_b$.
+
+**Coupled-loop convergence (measured, Ferron rig, 720 x 192).** With a
+`FIXED_TEMPERATURE` outer surface the Picard loop converges normally (21–27 outer
+iterations). With `CONVECTION` at $h = 80\ \mathrm{W/(m^2K)}$ — a bush that is
+almost globally adiabatic, so the film's temperature level is set by a very weak
+global balance — the loop **limit-cycles** instead of reaching
+`coupling_tolerance`: $R_p = 1.06\times10^{-3}$, $9.83\times10^{-4}$,
+$9.73\times10^{-4}$ at 100, 200 and 400 iterations, about 100 Pa and 8 mK of
+ripple. The solution underneath is settled — load, peak pressure, peak
+temperature, peak location and torque are identical to six significant figures at
+100, 200 and 400 iterations — and at 360 x 96 both variants converge normally, so
+this is a grid-dependent property of the segregated loop, not of the bush model.
+It is reported rather than tuned away.
+
+The shaft stays globally isothermal in both bush models; that is Ferron's
+assumption too.
 
 ### 13.1.3 Generalized (Dowson) Reynolds Equation
 

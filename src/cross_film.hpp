@@ -43,6 +43,8 @@ struct WallState {
     double q_shaft_net = 0.0;  ///< Net film -> shaft heat flow [W] (0 when adiabatic)
     double q_bush_net = 0.0;   ///< Net film -> bush heat flow [W]
     double core_rise_max = 0.0;///< Largest midplane-minus-mean temperature [K]
+    bool bush_2d_solved = false;///< True when the 2-D bush annulus was solved this call
+    double bush_residual = 0.0; ///< Relative residual of that solve (round-off; it is direct)
 };
 
 /// Rebuild the cross-film profile, the conjugate wall temperatures, the wall

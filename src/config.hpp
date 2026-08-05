@@ -141,6 +141,24 @@ enum class CavitatedFilmModel { FULL_FILM, STRIATED };
 // NONE nothing in the cross-film module runs and the results are bit-identical
 // to the pre-model solver.
 enum class CrossFilmModel { NONE, POLYNOMIAL };
+// How the bush closes the film-to-bush heat flux (only read when the cross-film
+// model is active):
+//   LOCAL        - per-cell 1-D radial conduction through the wall in series with
+//                  outer-surface convection (historical default). Every watt that
+//                  enters the bore leaves through the wall directly underneath it,
+//                  so the bush surface can only peak where the film is hottest.
+//   CONDUCTION_2D- steady 2-D (r, theta) conduction in the bush annulus, Ferron's
+//                  own bush model. Heat picked up in the loaded arc can leave at a
+//                  different angular position, which is the circumferential
+//                  redistribution a local closure has no representation of.
+enum class BushThermalModel { LOCAL, CONDUCTION_2D };
+// Outer-surface boundary condition of the 2-D bush (also selects the outer limit
+// of the LOCAL closure's series resistance):
+//   CONVECTION        - Robin, bush_outer_heat_transfer to thermal_ambient_temperature
+//                       (h = 0 is an adiabatic outer surface). Historical default.
+//   FIXED_TEMPERATURE - the h -> infinity limit, outer surface held at
+//                       thermal_ambient_temperature.
+enum class BushOuterBoundary { CONVECTION, FIXED_TEMPERATURE };
 // Thermal condition imposed on the cells of a fed inlet groove:
 //   PINNED        - groove cells are held at t_supply (historical default).
 //   FIXED_LAMBDA  - T = lambda*t_supply + (1-lambda)*T_upstream, lambda per inlet.
@@ -332,6 +350,22 @@ inline const char* to_config_value(CrossFilmModel model) {
     return "NONE";
 }
 
+inline const char* to_config_value(BushThermalModel model) {
+    switch (model) {
+        case BushThermalModel::LOCAL: return "LOCAL";
+        case BushThermalModel::CONDUCTION_2D: return "CONDUCTION_2D";
+    }
+    return "LOCAL";
+}
+
+inline const char* to_config_value(BushOuterBoundary boundary) {
+    switch (boundary) {
+        case BushOuterBoundary::CONVECTION: return "CONVECTION";
+        case BushOuterBoundary::FIXED_TEMPERATURE: return "FIXED_TEMPERATURE";
+    }
+    return "CONVECTION";
+}
+
 inline const char* to_config_value(GrooveMixingModel model) {
     switch (model) {
         case GrooveMixingModel::PINNED: return "PINNED";
@@ -481,6 +515,24 @@ inline CrossFilmModel cross_film_model_from_config(std::string value) {
         return CrossFilmModel::POLYNOMIAL;
     }
     return CrossFilmModel::NONE;  // NONE, OFF, FALSE, UNIFORM, DEPTH_AVERAGED
+}
+
+inline BushThermalModel bush_thermal_model_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "CONDUCTION_2D" || value == "CONDUCTION2D" || value == "2D" ||
+        value == "FERRON" || value == "ANNULUS") {
+        return BushThermalModel::CONDUCTION_2D;
+    }
+    return BushThermalModel::LOCAL;  // LOCAL, 1D, RADIAL
+}
+
+inline BushOuterBoundary bush_outer_boundary_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "FIXED_TEMPERATURE" || value == "FIXED" || value == "DIRICHLET" ||
+        value == "ISOTHERMAL") {
+        return BushOuterBoundary::FIXED_TEMPERATURE;
+    }
+    return BushOuterBoundary::CONVECTION;  // CONVECTION, ROBIN, HTC
 }
 
 inline GrooveMixingModel groove_mixing_model_from_config(std::string value) {
@@ -652,6 +704,17 @@ struct SimulationConfig {
     double bush_thermal_conductivity = 50.0;    // [W/(m K)] bush material
     double bush_outer_radius = 0.0;             // [m]; <=0 means R + 0.1*R
     double bush_outer_heat_transfer = 0.0;      // [W/(m^2 K)] bush outer surface to ambient
+    // CONDUCTION_2D replaces the local radial closure above by a steady 2-D
+    // (r, theta) conduction solve in the annulus [R, bush_outer_radius], which is
+    // what lets the bush move heat circumferentially. LOCAL (default) is
+    // bit-identical to the solver before the option existed.
+    BushThermalModel bush_thermal_model = BushThermalModel::LOCAL;
+    // Radial cells of the 2-D bush mesh. The radial profile is logarithmic and the
+    // discretisation is exact for it, so this only resolves the (weak) radial
+    // variation of the circumferential spreading; 16 is ample.
+    int bush_radial_cells = 16;
+    // Outer-surface condition of the bush, for both closures.
+    BushOuterBoundary bush_outer_boundary = BushOuterBoundary::CONVECTION;
 
     // Hot-oil carry-over at fed grooves. PINNED (default) reproduces the historical
     // hard pin of groove cells to t_supply.
@@ -902,6 +965,9 @@ struct SimulationConfig {
             else if (key == "bush_thermal_conductivity") bush_thermal_conductivity = std::stod(value);
             else if (key == "bush_outer_radius") bush_outer_radius = std::stod(value);
             else if (key == "bush_outer_heat_transfer") bush_outer_heat_transfer = std::stod(value);
+            else if (key == "bush_thermal_model") bush_thermal_model = bush_thermal_model_from_config(value);
+            else if (key == "bush_radial_cells") bush_radial_cells = std::stoi(value);
+            else if (key == "bush_outer_boundary") bush_outer_boundary = bush_outer_boundary_from_config(value);
             else if (key == "groove_mixing_model") groove_mixing_model = groove_mixing_model_from_config(value);
             else if (key == "fluid_property_model") fluid_property_model = fluid_property_model_from_config(value);
             else if (key == "dissolved_gas_species") dissolved_gas_species = dissolved_gas_species_from_config(value);
@@ -1200,6 +1266,33 @@ struct SimulationConfig {
             if (bush_outer_radius > 0.0 && bush_outer_radius <= R) {
                 error("bush_outer_radius must exceed R.");
             }
+            if (bush_thermal_model == BushThermalModel::CONDUCTION_2D) {
+                if (bush_radial_cells < 1 || bush_radial_cells > 512) {
+                    error("bush_radial_cells must be between 1 and 512.");
+                }
+                if (bush_outer_radius <= 0.0) {
+                    warn("bush_thermal_model = CONDUCTION_2D with no bush_outer_radius: "
+                         "the annulus falls back to 1.1*R, which is almost certainly not "
+                         "the bush you meant. Set bush_outer_radius explicitly.");
+                }
+                if (bush_outer_boundary == BushOuterBoundary::CONVECTION &&
+                    bush_outer_heat_transfer <= 0.0) {
+                    warn("bush_thermal_model = CONDUCTION_2D with bush_outer_heat_transfer = 0 "
+                         "and a CONVECTION outer boundary: the bush is globally adiabatic and "
+                         "only redistributes heat circumferentially.");
+                }
+            }
+            if (bush_outer_boundary == BushOuterBoundary::FIXED_TEMPERATURE &&
+                bush_outer_heat_transfer > 0.0) {
+                warn("bush_outer_boundary = FIXED_TEMPERATURE: the outer surface is held at "
+                     "thermal_ambient_temperature and bush_outer_heat_transfer is IGNORED.");
+            }
+        }
+        if (bush_thermal_model == BushThermalModel::CONDUCTION_2D &&
+            cross_film_thermal_model == CrossFilmModel::NONE) {
+            error("bush_thermal_model = CONDUCTION_2D requires "
+                  "cross_film_thermal_model = POLYNOMIAL; the conjugate bush only exists "
+                  "inside the cross-film closure.");
         }
         if (groove_mixing_model != GrooveMixingModel::PINNED) {
             if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
@@ -1889,6 +1982,12 @@ struct SimulationConfig {
             << "bush_thermal_conductivity = " << bush_thermal_conductivity << "\n"
             << "bush_outer_radius = " << bush_outer_radius << "\n"
             << "bush_outer_heat_transfer = " << bush_outer_heat_transfer << "\n"
+            << "# bush_thermal_model options: LOCAL (per-cell 1-D radial closure),\n"
+            << "# CONDUCTION_2D (steady (r, theta) conduction in the bush annulus).\n"
+            << "bush_thermal_model = " << to_config_value(bush_thermal_model) << "\n"
+            << "bush_radial_cells = " << bush_radial_cells << "\n"
+            << "# bush_outer_boundary options: CONVECTION (Robin), FIXED_TEMPERATURE\n"
+            << "bush_outer_boundary = " << to_config_value(bush_outer_boundary) << "\n"
             << "# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED\n"
             << "groove_mixing_model = " << to_config_value(groove_mixing_model) << "\n\n";
 

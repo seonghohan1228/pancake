@@ -15,7 +15,13 @@
 //      the two walls (temperatures) and the conduction slope there (fluxes,
 //      positive INTO the fluid), they cost nothing and change nothing when they
 //      are not selected, and selecting them without the model is a config error
-//      rather than a field of zeros.
+//      rather than a field of zeros;
+//   6. bush_thermal_model = CONDUCTION_2D reaches the film through the MPI
+//      all-reduce: the bore temperature is z-collapsed, cuts and smooths the
+//      film's hot spot against the LOCAL closure on identical input, carries
+//      zero NET heat with nonzero LOCAL flux when its outer surface is
+//      adiabatic, and leaves every field byte-identical under LOCAL. The bush
+//      operator itself is tested in tests/test_bush_conduction.cpp.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -64,6 +70,9 @@ static const char* kKeys =
     "bush_thermal_conductivity = 46.5\n"
     "bush_outer_radius = 0.075\n"
     "bush_outer_heat_transfer = 82.5\n"
+    "bush_thermal_model = CONDUCTION_2D\n"
+    "bush_radial_cells = 24\n"
+    "bush_outer_boundary = FIXED_TEMPERATURE\n"
     "groove_mixing_model = FLOW_WEIGHTED\n"
     "inlet_groove = 12.0 18.0 2e5 313.15 0.4 1.5e-4\n";
 
@@ -87,6 +96,11 @@ static void assert_keys_present(const SimulationConfig& cfg, const char* where) 
           (w + ": bush_outer_radius").c_str());
     check(std::abs(cfg.bush_outer_heat_transfer - 82.5) < 1e-12,
           (w + ": bush_outer_heat_transfer").c_str());
+    check(cfg.bush_thermal_model == BushThermalModel::CONDUCTION_2D,
+          (w + ": bush_thermal_model").c_str());
+    check(cfg.bush_radial_cells == 24, (w + ": bush_radial_cells").c_str());
+    check(cfg.bush_outer_boundary == BushOuterBoundary::FIXED_TEMPERATURE,
+          (w + ": bush_outer_boundary").c_str());
     check(cfg.groove_mixing_model == GrooveMixingModel::FLOW_WEIGHTED,
           (w + ": groove_mixing_model").c_str());
     check(cfg.inlets.size() == 1, (w + ": inlet count").c_str());
@@ -125,6 +139,10 @@ static void test_config_round_trip() {
     SimulationConfig defaults;
     check(defaults.cross_film_thermal_model == CrossFilmModel::NONE,
           "cross_film_thermal_model must default to NONE");
+    check(defaults.bush_thermal_model == BushThermalModel::LOCAL,
+          "bush_thermal_model must default to LOCAL");
+    check(defaults.bush_outer_boundary == BushOuterBoundary::CONVECTION,
+          "bush_outer_boundary must default to CONVECTION");
     check(defaults.groove_mixing_model == GrooveMixingModel::PINNED,
           "groove_mixing_model must default to PINNED");
 
@@ -507,6 +525,161 @@ static void test_surface_field_selection_is_validated() {
           "the surface fields must validate cleanly with the cross-film model on");
 }
 
+// -------------------------------------------------------------------------
+// Conjugate bush, CONDUCTION_2D (PHYSICS.md 13.1.2).
+// -------------------------------------------------------------------------
+
+static SimulationConfig bush_2d_config() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 72;
+    cfg.n_z_global = 5;
+    cfg.omega = 1000.0;
+    cfg.R = 0.05;
+    cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
+    cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+    cfg.temperature_initial = 330.0;
+    cfg.temperature_reference = 330.0;
+    cfg.thermal_ambient_temperature = 313.15;
+    cfg.bush_thermal_conductivity = 250.0;
+    cfg.bush_outer_radius = 0.10;
+    return cfg;
+}
+
+// A hot spot over a 30 deg arc plus a z ramp, so the z-average the bush model
+// takes is a real average and not a copy of a single plane.
+static void hot_spot_temperature(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        const int gi = mesh.offset_theta + i;
+        const bool hot = gi >= 30 && gi < 36;
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            fields["temperature"](i, j) = 330.0 + (hot ? 25.0 : 0.0) + 0.4 * j;
+        }
+    }
+}
+
+// Collect the bush temperature on the global theta grid from the z = 0 plane.
+// The all-reduce is also the check that the theta decomposition is covered:
+// this test runs at -n 2 and -n 4, and 72 cells split unevenly at neither.
+static std::vector<double> gather_t_bush(const Fields& fields, const Mesh& mesh) {
+    std::vector<double> global(mesh.n_theta_global, 0.0);
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        global[mesh.offset_theta + i] = fields["cross_film_t_bush"](i, 0);
+    }
+    MPI_Allreduce(MPI_IN_PLACE, global.data(), mesh.n_theta_global, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+    return global;
+}
+
+static CrossFilm::WallState run_bush(const SimulationConfig& cfg, Fields& fields, Mesh& mesh) {
+    Communicator comm(mesh);
+    build_fields(fields, mesh, cfg);
+    hot_spot_temperature(fields, mesh, cfg);
+    comm.update_ghosts(fields);
+    return CrossFilm::update(fields, mesh, cfg);
+}
+
+// The bush equation is z-collapsed by construction (Ferron's is too), so the
+// bore temperature it returns must be one value per theta. A z-dependent result
+// would mean the z-average never happened.
+static void test_bush_2d_is_z_uniform_and_smooths() {
+    SimulationConfig local_cfg = bush_2d_config();
+    local_cfg.bush_outer_heat_transfer = 80.0;
+    SimulationConfig two_d = local_cfg;
+    two_d.bush_thermal_model = BushThermalModel::CONDUCTION_2D;
+
+    Mesh mesh(local_cfg);
+    Fields f_local, f_2d;
+    run_bush(local_cfg, f_local, mesh);
+    const CrossFilm::WallState state = run_bush(two_d, f_2d, mesh);
+
+    double z_spread = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 1; j < mesh.n_z_local; ++j) {
+            z_spread = std::max(z_spread, std::abs(f_2d["cross_film_t_bush"](i, j) -
+                                                   f_2d["cross_film_t_bush"](i, 0)));
+        }
+    }
+    check(global_max_abs(z_spread) < 1e-12,
+          "the 2-D bush is z-collapsed: its bore temperature must not vary with z");
+    check(state.bush_2d_solved && state.bush_residual <= 1e-9,
+          "the 2-D bush solve must run and leave only round-off behind");
+
+    const std::vector<double> t_local = gather_t_bush(f_local, mesh);
+    const std::vector<double> t_2d = gather_t_bush(f_2d, mesh);
+    auto spread = [](const std::vector<double>& t) {
+        return *std::max_element(t.begin(), t.end()) - *std::min_element(t.begin(), t.end());
+    };
+    // Largest cell-to-cell step: the LOCAL closure copies the step in the film
+    // temperature straight onto the bore, a conducting bush cannot.
+    auto max_jump = [](const std::vector<double>& t) {
+        double worst = 0.0;
+        for (size_t i = 0; i < t.size(); ++i) {
+            worst = std::max(worst, std::abs(t[(i + 1) % t.size()] - t[i]));
+        }
+        return worst;
+    };
+    check(spread(t_local) > 1.0, "the LOCAL reference must show a real hot spot");
+    check(spread(t_2d) < 0.9 * spread(t_local),
+          "2-D bush conduction must cut the bore temperature peak of a hot spot");
+    check(max_jump(t_2d) < 0.5 * max_jump(t_local),
+          "2-D bush conduction must smooth the bore temperature the film steps");
+    // The detailed broadening of the response is asserted against the LOCAL
+    // closure on identical input in tests/test_bush_conduction.cpp; here the
+    // point is that the coupled path through the MPI all-reduce delivers it.
+}
+
+// With no path to ambient the bush becomes a pure circumferential redistributor:
+// zero NET heat, nonzero LOCAL flux. That is the bush-side twin of the adiabatic
+// shaft check, and it exercises the whole chain through the MPI all-reduce.
+static void test_bush_2d_adiabatic_outer_is_a_redistributor() {
+    SimulationConfig cfg = bush_2d_config();
+    cfg.bush_thermal_model = BushThermalModel::CONDUCTION_2D;
+    cfg.bush_outer_heat_transfer = 0.0;
+    for (const char* name : OutputNaming::surface_fields()) cfg.output_fields.push_back(name);
+
+    Mesh mesh(cfg);
+    Fields fields;
+    const CrossFilm::WallState state = run_bush(cfg, fields, mesh);
+
+    double max_flux = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            max_flux = std::max(max_flux, std::abs(fields["heat_flux_bearing"](i, j)));
+        }
+    }
+    const double scale = global_max_abs(max_flux) * 2.0 * M_PI * mesh.R * mesh.L;
+    check(global_max_abs(max_flux) > 1.0,
+          "an adiabatic 2-D bush must still exchange heat locally");
+    check(std::abs(state.q_bush_net) < 1e-9 * scale,
+          "an adiabatic 2-D bush must carry zero net heat");
+
+    const std::vector<double> t_bush = gather_t_bush(fields, mesh);
+    const double lo = *std::min_element(t_bush.begin(), t_bush.end());
+    const double hi = *std::max_element(t_bush.begin(), t_bush.end());
+    check(hi - lo > 0.1,
+          "a redistributing bush must still be circumferentially non-uniform");
+}
+
+// LOCAL must be untouched by the option existing: same config, same fields, and
+// every field byte-for-byte what the LOCAL path produced before.
+static void test_local_bush_is_unaffected_by_the_option() {
+    SimulationConfig cfg = bush_2d_config();
+    cfg.bush_outer_heat_transfer = 80.0;
+    Mesh mesh(cfg);
+    Fields a, b;
+    run_bush(cfg, a, mesh);
+    SimulationConfig explicit_local = cfg;
+    explicit_local.bush_thermal_model = BushThermalModel::LOCAL;
+    run_bush(explicit_local, b, mesh);
+    int compared = 0;
+    for (auto& [name, field] : a) {
+        check(field->data == b[name].data, (name + " must be byte-identical under LOCAL").c_str());
+        ++compared;
+    }
+    check(compared > 5, "the LOCAL byte-identity check must actually compare fields");
+}
+
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     PetscInitialize(&argc, &argv, nullptr, nullptr);
@@ -519,6 +692,9 @@ int main(int argc, char** argv) {
     test_surface_fields_match_the_profile();
     test_surface_fields_are_opt_in();
     test_surface_field_selection_is_validated();
+    test_bush_2d_is_z_uniform_and_smooths();
+    test_bush_2d_adiabatic_outer_is_a_redistributor();
+    test_local_bush_is_unaffected_by_the_option();
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);

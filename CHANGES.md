@@ -2,6 +2,91 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Conjugate bush: optional 2-D (r, theta) conduction in the annulus
+
+The conjugate bush closed **locally**: per cell, 1-D radial conduction through
+the wall in series with the outer surface, `q_bush = G (T_b - T_amb)`. Every watt
+entering the bore therefore left through the wall directly underneath it, so the
+bush surface temperature could only peak where the film was hottest. On the
+Ferron rig that put the predicted bush peak at 347.7 deg from the groove against
+a measured 258.2 deg, and case 01-THD-crossfilm identified the missing mechanism
+by name: circumferential redistribution inside the bush.
+
+`bush_thermal_model = CONDUCTION_2D` (default `LOCAL`) now solves Ferron's own
+bush equation instead — steady `div(k_b grad T) = 0` in the annulus
+`[R, bush_outer_radius] x [0, 2pi)`, z-collapsed exactly as the paper's is.
+
+**The coupling stays linear and non-iterative.** The cross-film profile makes the
+film-side flux affine in the bore temperature,
+`q_bush = A0 + A1 T_shaft - B T_bush` with `B = (k/h)(1 + b_slope/2) > 0`, which
+is the same relation the local closure inverts against `G (T_b - T_amb)`. Here it
+is imposed as a Robin condition on the bore, so the annulus is a linear system;
+it is solved for both right-hand sides on one factorisation, giving
+`T_b(theta) = alpha + beta T_shaft` exactly, and the global shaft balance closes
+`T_shaft` in one step exactly as before.
+
+**New module `src/bush_conduction.{hpp,cpp}`.** Deliberately free of MPI and of
+`Fields`: it takes the z-averaged flux law on the global theta grid and returns
+the bore temperature there, which makes it unit-testable on its own.
+
+- Finite volume, uniform in theta on the solver's own grid, `bush_radial_cells`
+  (default 16) cells in r. Every radial face uses the **exact logarithmic shell
+  conductance**, so a purely radial problem is reproduced to round-off at *any*
+  radial resolution — measured 3e-13 relative at n_r = 1, 4, 16 and 64.
+- The bore condition is put in series with the bore-to-first-node half cell,
+  which removes `T_b` from the linear system without losing accuracy.
+- **Direct solve, no tolerance to tune.** Block tridiagonal in theta with
+  n_r x n_r blocks and one periodic wrap: block Thomas on blocks 0..n-2 carrying
+  n_r extra RHS columns, then one dense n_r x n_r Schur solve closes the wrap.
+  About 10^7 flops at 720 x 16. An alternating line-relaxation solver was written
+  first and **rejected**: the bush grid is near-isotropic (radial and
+  circumferential face spacings within a factor of a few), and it stalled at
+  1.5e-5 relative residual after 500 sweeps on the very first coupled test.
+- Serial and deterministic. The three coupling arrays are all-reduced onto the
+  global theta grid and every rank then runs the same arithmetic on the same
+  input, so there is no broadcast and no rank-0 asymmetry to get wrong. Covered
+  at `-n 2` and `-n 4`.
+
+**Outer boundary, for both bush models.** `bush_outer_boundary = CONVECTION`
+(default) is the Robin condition with `bush_outer_heat_transfer`, with `0` an
+adiabatic outer surface; `FIXED_TEMPERATURE` holds that surface at
+`thermal_ambient_temperature`. The second is the `h -> infinity` limit of the
+same series resistance and is written as such in both closures, so a fixed-wall
+study no longer has to be expressed as a large-HTC limit.
+
+**The Newton linearisation of the film energy equation takes the bush as
+frozen.** `dT_b/dT_bar` is nonlocal under `CONDUCTION_2D` — one film cell barely
+moves a bush its neighbours also feed — so `dT_b/dT_bar = 0`, the fully-sunk-wall
+coefficient. Two alternatives were written and measured before settling on it:
+the bore admittance with neighbours frozen reproduces the same number to 5 %
+(`dT_b/dT_bar = 0.053` on the Ferron rig) but **grows without bound as
+`bush_radial_cells` is refined**, which would make the film's damping depend on
+the bush mesh; and the series-to-ambient conductance is mesh-free but so small on
+a nearly adiabatic bush that the clamp zeroes the wall coefficient entirely, and
+with the wall term fully explicit **the temperature KSP diverged** on the Ferron
+rig at 720 x 192. Only the path to the fixed point is affected; the converged
+answer always uses the solved `T_b`.
+
+**`LOCAL` is untouched.** Verified, not asserted: `b74db94` and this commit were
+both built and run on the same two cross-film configs (adiabatic walls, and the
+fixed-wall limit), and the complete `results/` trees — flat VTK and
+`diagnostics.csv` — are byte-identical.
+
+Tests: new `tests/test_bush_conduction.cpp` (analytic annulus at four radial
+resolutions and both outer conditions; exact reduction to the LOCAL closure when
+nothing varies with theta; mirror symmetry; a localised hot patch spread
+circumferentially — peak cut to 28 %, effective support widened 2.5x, bore
+temperature smooth where the flux is a step; zero net heat with nonzero local
+flux at an adiabatic outer surface; exactness of the `alpha + beta T_shaft`
+split). `tests/test_cross_film.cpp` gains the end-to-end coupled checks
+(z-uniformity of the bore temperature, the direct solve's residual, peak cut and
+step smoothing against `LOCAL` on identical input, zero net bush heat when the
+outer surface is adiabatic, and byte-identity of every field under `LOCAL`) and
+now also runs at `-n 4`. 30/30 green.
+
+Docs: PHYSICS.md §13.1.2.1 (equations, boundary conditions, discretisation,
+solver, MPI, the z-collapse and the neglected end faces), README.md.
+
 ### 2026-08-05 - Film-surface temperatures and wall heat fluxes as optional output fields
 
 The written `temperature` field is the depth average `T_bar`. Under

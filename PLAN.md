@@ -133,6 +133,23 @@ byte-identical), and a selection under `cross_film_thermal_model = NONE` is a
 validation error rather than a silent field of zeros. The fluxes are positive
 INTO the fluid, the negative of the module's internal `q_shaft` / `q_bush`.
 
+Conjugate bush, 2-D (r, theta) conduction — **DONE 2026-08-05**
+(`codex/conjugate-bush`; `src/bush_conduction.{hpp,cpp}`, PHYSICS.md §13.1.2.1,
+README.md, CHANGES.md, `tests/test_bush_conduction.cpp`, `ctest` 30/30).
+`bush_thermal_model = CONDUCTION_2D` (default `LOCAL`) replaces the per-cell 1-D
+radial bush closure with steady conduction in the bush annulus, which is Ferron's
+own bush model and supplies the mechanism the wall-BC study of case
+01-THD-crossfilm proved missing: circumferential redistribution inside the bush.
+The film-side flux is affine in the bore temperature, so it enters as a Robin
+condition and the annulus stays a linear system; it is solved directly (block
+Thomas in theta plus one dense Schur solve for the periodic wrap, ~10^7 flops at
+720 x 16) for both right-hand sides at once, so `T_b = alpha + beta T_shaft`
+remains exact and the shaft balance still closes in one step. The bush is
+z-collapsed as the paper's is, and the axial end faces are not modelled (~1 %).
+`bush_outer_boundary` now expresses a fixed outer surface directly instead of as
+a large-HTC limit, for both bush models. `LOCAL` verified byte-identical to
+`b74db94` on two cross-film configs, whole `results/` tree.
+
 Ferron polynomial viscosity — **DONE 2026-08-05** (`codex/viscosity-polynomial`;
 PHYSICS.md §13.2.1 and §17.5, README.md, CHANGES.md, `ctest` 27/27).
 `liquid_viscosity_model = POLYNOMIAL` selects
