@@ -31,6 +31,7 @@ Usage: python force_balance.py [variant ...]   (default: both)
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -40,6 +41,18 @@ import solver_io as S
 CASE_DIR = Path(__file__).resolve().parent
 PROGRESS = CASE_DIR / "progress.log"
 TEMPLATE = (CASE_DIR / "config_template.txt").read_text()
+
+# Outer (Picard) coupling schedule. The defaults ARE the frozen protocol
+# (200 sweeps, no under-relaxation); the environment overrides exist so the
+# same driver can reproduce the relaxation study in
+# cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md without forking it.
+COUPLING_MAX_ITERS = int(os.environ.get("PANCAKE_COUPLING_MAX_ITERS", "200"))
+COUPLING_RELAXATION = float(os.environ.get("PANCAKE_COUPLING_RELAXATION", "1.0"))
+# Extra config lines appended verbatim to every generated config, ";"-separated
+# (e.g. PANCAKE_COUPLING_EXTRA="coupling_relaxation_mode = ADAPTIVE;coupling_relaxation_min = 0.1").
+# Empty by default, so an unset environment writes a byte-identical config.
+_extra = [t.strip() for t in os.environ.get("PANCAKE_COUPLING_EXTRA", "").split(";") if t.strip()]
+COUPLING_EXTRA = ("\n" + "\n".join(_extra) + "\n") if _extra else ""
 
 CLEARANCE = 1.52e-4
 N_THETA, N_Z = 720, 192
@@ -100,7 +113,8 @@ def evaluate(group, log, cfgkeys, eps, psi, tag):
         bush_htc=repr(cfgkeys["bush_htc"]),
         q_supply=repr(cfgkeys["q_supply"]),
         groove_mixing_model=cfgkeys["groove_mixing_model"],
-        coupling_max_iters=200, coupling_relaxation=repr(1.0)))
+        coupling_max_iters=COUPLING_MAX_ITERS,
+        coupling_relaxation=repr(COUPLING_RELAXATION)) + COUPLING_EXTRA)
     rc, wall = S.run_case(run_dir)
     m = S.frame_metrics(run_dir) if rc == 0 else None
     rec = {"dir": f"{group}/{run_dir.name}", "cfgkey": key, "eps": eps, "psi": psi,
