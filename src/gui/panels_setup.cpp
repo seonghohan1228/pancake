@@ -395,6 +395,9 @@ void GuiApp::draw_form_tab() {
                 if (ImGui::InputDouble((std::string("##") + spec.key).c_str(), &display_value,
                                        0.0, 0.0, "%g")) {
                     config_.*(spec.member) = unit_to_stored(unit, display_value);
+                    // The support stiffness/damping rows stand for all three
+                    // directions; mirror on the edit rather than on load or save.
+                    mirror_isotropic_support(spec.key);
                     dirty_ = true;
                 }
                 help_tooltip(spec.help, options.size() == 1 ? spec.unit : nullptr);

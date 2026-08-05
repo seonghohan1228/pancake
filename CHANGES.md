@@ -2,6 +2,42 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - The GUI no longer rewrites motion settings on load (audit 3.5 / S9)
+
+`GuiApp::normalize_motion_config()` ran on **load** and again on **save**. Opening
+an externally authored config overwrote `bearing_stiffness_y/z` and
+`bearing_damping_y/z` with the x value, forced `bearing_initial_from_attitude =
+true`, and zeroed all six `bearing_initial_*`. Saving then wrote the mutilated
+version back. A config with `kx = 1e6, ky = 2e6` loaded and saved in the GUI came
+back isotropic with no warning - silent data loss on a file the user did not
+author in the GUI.
+
+The isotropy contract itself is a legitimate design choice: the editor exposes one
+support-stiffness and one support-damping row for all three directions. The defect
+was applying it destructively to data that came from elsewhere. It is now applied
+where it belongs:
+
+| when | before | now |
+|---|---|---|
+| New case | normalize | normalize (unchanged - the GUI authors this config) |
+| Load | normalize | preserve, and log what the editor cannot represent |
+| Edit support row | - | mirror x onto y/z (`GuiApp::mirror_isotropic_support`) |
+| Save | normalize | write what is in the config |
+
+So a GUI-built case is still isotropic by construction, and an anisotropic or
+explicitly initialised config now round-trips through load/save unchanged. On load
+the user gets a log note naming what the editor will not show them, rather than
+finding out from a diff. The same loop now also surfaces `parse_errors` from the
+Q1 change in the GUI log.
+
+Documentation updated to match: the stale "the GUI mirrors it onto the x/y/z
+config members at save" comment in `schema.cpp`, and the motion sentence in
+`docs/GUI_ARCHITECTURE.md`.
+
+Not covered by ctest: `GuiApp` links Win32/ImGui and has no test target, so this
+was verified by inspection and a clean GUI build, not by an automated test. That
+gap is real and is recorded in the batch report.
+
 ### 2026-08-05 - van Leer far-upwind cell now follows the flux sign (D1 / F4)
 
 `FVM::divergence` hard-coded the far-upwind cell regardless of the face flux

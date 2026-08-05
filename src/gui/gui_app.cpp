@@ -530,6 +530,40 @@ void GuiApp::normalize_motion_config() {
     config_.bearing_damping_y = config_.bearing_damping_z = config_.bearing_damping_x;
 }
 
+void GuiApp::mirror_isotropic_support(const std::string& edited_key) {
+    if (edited_key == "bearing_stiffness_x") {
+        config_.bearing_stiffness_y = config_.bearing_stiffness_z = config_.bearing_stiffness_x;
+    } else if (edited_key == "bearing_damping_x") {
+        config_.bearing_damping_y = config_.bearing_damping_z = config_.bearing_damping_x;
+    }
+}
+
+void GuiApp::warn_unrepresentable_motion_config() {
+    const auto note = [&](const std::string& text) {
+        log_.push_back({"Config note: " + text, IM_COL32(160, 110, 10, 255)});
+    };
+    const bool anisotropic_stiffness =
+        config_.bearing_stiffness_y != config_.bearing_stiffness_x ||
+        config_.bearing_stiffness_z != config_.bearing_stiffness_x;
+    const bool anisotropic_damping =
+        config_.bearing_damping_y != config_.bearing_damping_x ||
+        config_.bearing_damping_z != config_.bearing_damping_x;
+    if (anisotropic_stiffness || anisotropic_damping) {
+        note("this config has anisotropic support; the editor shows only the x "
+             "component. The y/z values are kept as loaded unless you edit the "
+             "support field, which re-applies the GUI's isotropic contract.");
+    }
+    const bool explicit_initial =
+        !config_.bearing_initial_from_attitude ||
+        config_.bearing_initial_x != 0.0 || config_.bearing_initial_y != 0.0 ||
+        config_.bearing_initial_z != 0.0 || config_.bearing_initial_vx != 0.0 ||
+        config_.bearing_initial_vy != 0.0 || config_.bearing_initial_vz != 0.0;
+    if (explicit_initial) {
+        note("this config sets the bearing initial position/velocity explicitly; "
+             "the editor has no control for it and leaves it untouched.");
+    }
+}
+
 void GuiApp::reload_property_tables() {
     // Resolve relative *_table_file paths against the saved config's directory
     // first (matching the solver), then the CWD; the loader handles absolutes.
@@ -559,7 +593,10 @@ void GuiApp::load_config_from(const fs::path& path) {
     SimulationConfig fresh;
     fresh.load_from_file(path);
     config_ = std::move(fresh);
-    normalize_motion_config();
+    // No normalization here. Normalizing on load overwrote anisotropic support
+    // with the x value and zeroed every initial condition, and the subsequent
+    // save persisted the mutilated version -- silent data loss on any config the
+    // GUI did not author. The GUI contract is applied to GUI edits instead.
     config_path_ = path;
     reload_property_tables();
     dirty_ = false;
@@ -567,6 +604,10 @@ void GuiApp::load_config_from(const fs::path& path) {
     for (const std::string& warning : config_.parse_warnings) {
         log_.push_back({"Config warning: " + warning, IM_COL32(160, 110, 10, 255)});
     }
+    for (const std::string& error : config_.parse_errors) {
+        log_.push_back({"Config error: " + error, IM_COL32(200, 60, 60, 255)});
+    }
+    warn_unrepresentable_motion_config();
     set_status("Loaded " + winutil::path_to_utf8(path));
 }
 
@@ -576,7 +617,10 @@ bool GuiApp::save_config(bool save_as) {
         target = exports::save_file_dialog(hwnd, kConfigFilter, L"txt", L"config.txt");
         if (target.empty()) return false;
     }
-    normalize_motion_config();  // persist the isotropic / attitude-derived motion contract
+    // Save what is in the config, not what the GUI would have authored. The
+    // isotropy contract is applied when the support field is edited, so a
+    // GUI-built case is already isotropic here and an externally authored one
+    // keeps the values it was loaded with.
     try {
         config_.save_to_file(target);
     } catch (const std::exception& ex) {

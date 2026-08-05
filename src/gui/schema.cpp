@@ -241,10 +241,13 @@ const std::vector<DoubleSpec>& double_specs() {
          &SC::external_load_z, ParamGroup::Motion, true, -kInf, kInf, false},
         {"bearing_mass", "Bearing mass", "kg", "Moving bearing mass (MOVING_BEARING model).",
          &SC::bearing_mass, ParamGroup::Motion, true, 0.0, kInf, true},
-        // Isotropic support: one value applied to every direction (the GUI mirrors
-        // it onto the x/y/z config members at save). The initial position comes
-        // from the bearing geometry (eccentricity + attitude angle) and the
-        // initial velocity is zero, so neither is exposed here.
+        // Isotropic support: one value applied to every direction. The GUI mirrors
+        // it onto the y/z config members when this row is *edited*, never on load
+        // or save, so an externally authored anisotropic config survives a
+        // load/save cycle intact (it is flagged in the log instead). The initial
+        // position comes from the bearing geometry (eccentricity + attitude angle)
+        // and the initial velocity is zero, so neither is exposed here; a config
+        // that sets them explicitly is likewise left alone.
         {"bearing_stiffness_x", "Support stiffness", "N/m",
          "Isotropic support spring stiffness (same in all directions).",
          &SC::bearing_stiffness_x, ParamGroup::Motion, true, 0.0, kInf, false, kStiffness},

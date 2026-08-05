@@ -147,7 +147,19 @@ private:
     /// Enforce the GUI motion contract: position comes from the bearing geometry
     /// (attitude angle), initial velocity is zero, and support stiffness/damping
     /// are isotropic (the single edited value mirrored onto the x/y/z members).
+    ///
+    /// Only for configs the GUI itself authors (new_case). It must never run on
+    /// load or save: an externally authored anisotropic or non-attitude-derived
+    /// config would come back mutilated with no warning.
     void normalize_motion_config();
+    /// Mirror the single edited support value onto y/z. Called from the parameter
+    /// editor when bearing_stiffness_x or bearing_damping_x changes, so the
+    /// isotropy contract is applied to GUI-originated edits only.
+    void mirror_isotropic_support(const std::string& edited_key);
+    /// Log what the GUI cannot represent in a config it just loaded, instead of
+    /// silently overwriting it. Anisotropic support and explicit initial
+    /// conditions are preserved on disk and round-trip through save.
+    void warn_unrepresentable_motion_config();
     /// Ingest the configured *_table_file CSVs into config_'s 2-D property tables
     /// (the same loader the solver uses), so TABLE models validate and the user
     /// gets an immediate load check. Errors land in property_table_errors_.
