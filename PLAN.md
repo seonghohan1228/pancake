@@ -54,7 +54,7 @@ Priority queue (user gates in brackets):
 | Unknown-config-key hard error, with typo suggestion | Q1 | **DONE 2026-08-05** — `tests/test_config_keys.cpp`; 105 case configs corrected |
 | VANLEER far-upwind cell for negative face flux | C / F4 | **DONE 2026-08-05** (theta faces; z-face TVD still open, F4 stays partial) |
 | GUI anisotropic-stiffness data loss on load | 3.5 / S9 | **DONE 2026-08-05** - normalize on new-case and on support edits only; load/save preserve |
-| `config.txt` cavitation default -> FBNS | Q5 | TODO |
+| `config.txt` cavitation default -> FBNS | Q5 | **DONE 2026-08-05** - struct default stays JFO until the 11 default-reliant tests pin their model |
 | Coefficient unification: energy axial BCs + gas transport | A / S1 | TODO |
 
 ### Rank-dependent linear-solve divergence — DONE 2026-08-05

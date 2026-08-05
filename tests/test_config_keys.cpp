@@ -149,6 +149,16 @@ void test_shipped_configs_parse() {
         }
     }
     check(checked > 0, "no shipped config files were found to check");
+
+    // config.txt is the new user's starting point: it must not merely parse, it
+    // must be a case the solver agrees to run. This is what pins the shipped
+    // cavitation default against the FBNS scope rules in validate().
+    SimulationConfig shipped;
+    shipped.load_from_file(root / "config.txt");
+    std::vector<std::string> errors, warnings;
+    shipped.validate(errors, warnings);
+    check(errors.empty(), "config.txt must pass validate(): " +
+                              (errors.empty() ? std::string() : errors[0]));
 #endif
 }
 

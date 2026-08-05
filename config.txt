@@ -138,9 +138,16 @@ bc_z_north_thermal = ZERO_GRADIENT
 
 # Cavitation
 # Options: FULL_SOMMERFELD, GUMBEL, JFO, FBNS
-# FBNS solves the JFO conditions as a complementarity problem (no bulk modulus,
-# no switch function). Phase 1: ISOTHERMAL + fluid_property_model = CONSTANT.
-cavitation_model = JFO
+# FBNS solves the same JFO (mass-conserving) conditions as a complementarity
+# problem: no artificial bulk modulus, no switch function, no outer flag loop.
+# It supports ISOTHERMAL and ENERGY_EQUATION with CONSTANT / SINGLE_PHASE /
+# TWO_PHASE properties, and the cross-film thermal model. It refuses
+# gas_pressure_coupling = VOID_COUPLED and INLET_OUTLET axial boundaries; use
+# JFO (Elrod-Adams) for those. FBNS is the model 289 of the project's 338
+# validation-case configs run, and it is the shipped default here.
+cavitation_model = FBNS
+# max_outer_iters / outer_tol drive the Elrod-Adams flag loop and are NOT used
+# on the FBNS path (see fbns_max_iters / fbns_tol below).
 max_outer_iters = 50
 outer_tol = 1e-6
 theta_min = 1e-6

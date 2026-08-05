@@ -2,6 +2,39 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Shipped `config.txt` now defaults to FBNS (audit Q5)
+
+`config.txt` is the file a new user starts from and it pointed at the superseded
+Elrod-Adams path. Of the 338 case configs under `cases/`, 289 run `FBNS` and 41
+run `JFO`; every one of the 338 sets the key explicitly, so this changes no case.
+
+`cavitation_model = JFO` -> `FBNS`, and the surrounding comments were wrong in two
+ways:
+
+- They described the FBNS scope as *"Phase 1: ISOTHERMAL + fluid_property_model =
+  CONSTANT"*. `validate()` has supported `ENERGY_EQUATION` with `CONSTANT`,
+  `SINGLE_PHASE` and `TWO_PHASE`, plus the cross-film thermal model, for two
+  phases now. The comment now states the real scope *and* what FBNS refuses
+  (`gas_pressure_coupling = VOID_COUPLED`, `INLET_OUTLET` axial boundaries).
+- `max_outer_iters` and `outer_tol` sat directly under the cavitation model with
+  nothing saying they are Elrod-only. They are now labelled as not used on the
+  FBNS path, which is the single most confusing thing about switching models.
+
+**The struct default stays `JFO`.** Eleven test files never set
+`cavitation_model` and would silently change solver path if it flipped:
+`test_bush_conduction`, `test_cross_film`, `test_eos`, `test_fvm`,
+`test_gas_transport`, `test_io`, `test_journal_motion`, `test_ksp_guard`,
+`test_linear_system`, `test_property_tables`, `test_velocity`. Pinning their model
+explicitly is a separate change with its own review; splitting it this way keeps
+the test-path change auditable instead of implicit.
+
+`test_config_keys` now also requires `config.txt` to pass `validate()`, not just
+to parse - that is what holds the new default against the FBNS scope rules.
+
+Left alone: the three `config_r290_*.txt` still run `JFO`. Those are gaseous
+cavitation cases and the R290 work is where `VOID_COUPLED` lives, which FBNS
+refuses; flipping them is a modelling decision, not a default cleanup.
+
 ### 2026-08-05 - The GUI no longer rewrites motion settings on load (audit 3.5 / S9)
 
 `GuiApp::normalize_motion_config()` ran on **load** and again on **save**. Opening
