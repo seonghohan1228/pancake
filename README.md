@@ -386,6 +386,27 @@ are bit-identical to the model-free solver. The equations as implemented, and
 the two stated approximations inside the order-4 collocation, are in PHYSICS.md
 sections 13.1.2 and 13.1.3.
 
+While the model is active, four optional output fields expose the film surfaces
+the depth-averaged `temperature` cannot show. Select them in `output_fields`:
+
+| field | meaning | unit |
+| --- | --- | --- |
+| `temperature_journal` | `T(eta=0)`, shaft-side film surface temperature | K |
+| `temperature_bearing` | `T(eta=1)`, bush-side film surface temperature | K |
+| `heat_flux_journal` | wall heat flux at the shaft-side surface | W/m^2 |
+| `heat_flux_bearing` | wall heat flux at the bush-side surface | W/m^2 |
+
+Both fluxes are **positive into the fluid**, the opposite sign to the internal
+`q_shaft`/`q_bush` of PHYSICS.md §13.1.2, which are positive for heat leaving the
+film: a cooled bush therefore gives a negative `heat_flux_bearing`, and an
+adiabatic wall gives an identically zero field. `temperature` is unchanged by
+this — it stays the depth-averaged `T_bar`, in absolute kelvin like every
+temperature in the solver. The fields are evaluations of the same profile the
+`F`-integrals integrate, are allocated only when selected (so an unselected run
+is byte-identical), and selecting one with `cross_film_thermal_model = NONE` is a
+config error rather than a field of zeros. VTK writes them as `T_journal`,
+`T_bearing`, `q_journal`, `q_bearing`.
+
 `groove_mixing_model` (default `PINNED`) controls hot-oil carry-over at fed
 inlets. `PINNED` holds groove cells at `t_supply`, the historical behaviour.
 `FIXED_LAMBDA` and `FLOW_WEIGHTED` instead impose

@@ -171,7 +171,11 @@ inlet_groove = 90 10 1.5e6
 #          external_load_x, external_load_y, external_load_z,
 #          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,
 #          friction_torque,
-#          mass_residual (per-cell continuity residual [kg/s], JFO only).
+#          mass_residual (per-cell continuity residual [kg/s], JFO/FBNS only),
+#          temperature_journal, temperature_bearing (film surface temperatures
+#          [K] at eta = 0 / 1), heat_flux_journal, heat_flux_bearing (wall heat
+#          flux [W/m^2], positive INTO the fluid). The last four require
+#          cross_film_thermal_model = POLYNOMIAL.
 #          Legacy load_x/load_y/load_z requests map to pressure_force_*.
 output_dir = results
 filename_prefix = solution

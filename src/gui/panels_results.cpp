@@ -47,7 +47,8 @@ GridStats compute_stats(const ResultGrid& grid, const std::string& field_name) {
 const char* field_unit(const std::string& name) {
     if (name == "p") return "Pa";
     if (name == "h") return "m";
-    if (name == "T") return "K";
+    if (name == "T" || name == "T_journal" || name == "T_bearing") return "K";
+    if (name == "q_journal" || name == "q_bearing") return "W/m^2";
     if (name == "rho" || name == "rho_liquid_solution") return "kg/m^3";
     if (name == "mu" || name == "mu_liquid_solution") return "Pa.s";
     if (name == "film_content" || name == "alpha_gas" || name == "inlet_indicator") return "-";
@@ -69,7 +70,15 @@ const char* field_desc(const std::string& name) {
     if (name == "h") return "Local film thickness between journal and bearing.";
     if (name == "film_content")
         return "Elrod liquid fraction (theta): 1 = full film, < 1 = cavitated.";
-    if (name == "T") return "Film temperature (energy equation).";
+    if (name == "T") return "Film temperature (energy equation), depth-averaged across the gap.";
+    if (name == "T_journal")
+        return "Shaft-side film surface temperature T(eta=0) (cross-film model).";
+    if (name == "T_bearing")
+        return "Bush-side film surface temperature T(eta=1) (cross-film model).";
+    if (name == "q_journal")
+        return "Wall heat flux at the shaft-side film surface; positive = into the fluid.";
+    if (name == "q_bearing")
+        return "Wall heat flux at the bush-side film surface; positive = into the fluid.";
     if (name == "rho") return "Effective mixture density (liquid + free gas).";
     if (name == "mu") return "Effective mixture dynamic viscosity.";
     if (name == "rho_liquid_solution") return "Pure-liquid (oil + dissolved gas) density.";

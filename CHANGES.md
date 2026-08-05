@@ -2,6 +2,54 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Film-surface temperatures and wall heat fluxes as optional output fields
+
+The written `temperature` field is the depth average `T_bar`. Under
+`cross_film_thermal_model = POLYNOMIAL` that is the mean of a profile whose two
+ends differ, so it is not the quantity a wall thermocouple measures, and nothing
+in the output exposed the wall heat flux at all. Four optional fields now do,
+selected in `output_fields`:
+
+| key | VTK name | definition | unit |
+| --- | --- | --- | --- |
+| `temperature_journal` | `T_journal` | `T(eta=0)`, shaft-side film surface | K |
+| `temperature_bearing` | `T_bearing` | `T(eta=1)`, bush-side film surface | K |
+| `heat_flux_journal` | `q_journal` | wall heat flux at `eta=0` | W/m^2 |
+| `heat_flux_bearing` | `q_bearing` | wall heat flux at `eta=1` | W/m^2 |
+
+`temperature` is unchanged — still `T_bar`, still absolute kelvin, as are the two
+new temperatures.
+
+**The fluxes are positive INTO the fluid.** That is the negative of the module's
+internal `q_shaft = (k/h)(a+b)` and `q_bush = (k/h)(b-a)`, which are positive for
+heat *leaving* the film (PHYSICS.md §13.1.2). A field named after a surface
+should be positive into the fluid it belongs to, so the flip happens once, at the
+write, and is stated in the field docs, PHYSICS.md §15.2, the config comment and
+the GUI tooltip.
+
+**Zero cost when unused.** The fields are allocated only when the model is active
+*and* the key appears in `output_fields`; `CrossFilm::update` skips the stores
+otherwise. A run that does not ask for them is byte-identical, which
+`tests/test_cross_film.cpp` checks on the raw field storage, ghosts included.
+
+**Asking for them without the model is an error, not zeros.** Under
+`cross_film_thermal_model = NONE` there is no profile to evaluate, so
+`SimulationConfig::validate` rejects the selection by name instead of writing a
+plausible-looking field of zeros.
+
+The temperatures are the profile evaluated at the walls rather than a copy of the
+conjugate wall temperatures, so a future change to the shape functions cannot
+leave the two disagreeing; the test asserts both the closed-form equality and the
+agreement with `cross_film_t_shaft` / `cross_film_t_bush`. The flux check
+compares against `-k dT/dy` taken by a 5-point stencil on the profile (exact for
+a quartic), so the sign convention is verified independently of the expression
+that produces it. Two limit cases pin the physics: an adiabatic bush gives an
+identically zero `heat_flux_bearing` cell by cell, while an adiabatic shaft gives
+a locally nonzero `heat_flux_journal` whose area integral vanishes — the upstream
+heat path the conjugate shaft exists for.
+
+`ctest` 27/27.
+
 ### 2026-08-05 - Cross-film generalized coefficients under FBNS, and one definition of the Reynolds coefficients
 
 Two changes on one branch, because the second is what makes the first checkable.

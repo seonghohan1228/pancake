@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+#include "output_naming.hpp"
+
 // Cavitation / film-rupture model, ordered simplest -> most physical:
 //   FULL_SOMMERFELD - no cavitation; sub-cavity (tensile) pressures are kept.
 //                     A reference baseline for verification / overlay plots only.
@@ -1264,6 +1266,20 @@ struct SimulationConfig {
                  "it is written as zero.");
         }
 
+        // The film-surface outputs are evaluations of the cross-film profile.
+        // Without that model there is no profile to evaluate, and writing zeros
+        // (or the depth-averaged value twice) would look like a physical result.
+        if (cross_film_thermal_model == CrossFilmModel::NONE) {
+            for (const char* name : OutputNaming::surface_fields()) {
+                if (!output_field_enabled(name)) continue;
+                error(std::string("output field ") + name + " is an evaluation of the "
+                      "cross-film temperature profile at a film surface and only exists "
+                      "under cross_film_thermal_model = POLYNOMIAL. Enable the cross-film "
+                      "model, or remove the field from output_fields (the depth-averaged "
+                      "field `temperature` is unaffected either way).");
+            }
+        }
+
         if (cavitation_model == CavitationModel::FBNS) {
             // Phase 3 scope. Temperature, the liquid solution properties and the
             // free-gas phase are in: the first two enter the FBNS operator only
@@ -2024,7 +2040,11 @@ struct SimulationConfig {
             << "#          external_load_x, external_load_y, external_load_z,\n"
             << "#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,\n"
             << "#          friction_torque,\n"
-            << "#          mass_residual (per-cell continuity residual [kg/s], JFO/FBNS only).\n"
+            << "#          mass_residual (per-cell continuity residual [kg/s], JFO/FBNS only),\n"
+            << "#          temperature_journal, temperature_bearing (film surface temperatures\n"
+            << "#          [K] at eta = 0 / 1), heat_flux_journal, heat_flux_bearing (wall heat\n"
+            << "#          flux [W/m^2], positive INTO the fluid). The last four require\n"
+            << "#          cross_film_thermal_model = POLYNOMIAL.\n"
             << "#          Legacy load_x/load_y/load_z requests map to pressure_force_*.\n"
             << "output_dir = " << output_dir << "\n"
             << "filename_prefix = " << filename_prefix << "\n"

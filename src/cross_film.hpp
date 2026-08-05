@@ -19,7 +19,21 @@
 namespace CrossFilm {
 
 /// Names of every field this module writes, so the caller can allocate them.
-/// Allocation is unconditional and harmless; only `update()` is gated.
+/// Allocation of the internal `cross_film_*` fields is unconditional and
+/// harmless; only `update()` is gated.
+///
+/// The four optional film-surface outputs (`OutputNaming::surface_fields()`) are
+/// the exception: they are allocated only when the model is active AND the user
+/// selected them in `output_fields`, so an unselected run costs nothing and
+/// writes byte-identical files. They are
+///
+///   temperature_journal  T(eta=0), the shaft-side film surface temperature [K]
+///   temperature_bearing  T(eta=1), the bush-side film surface temperature [K]
+///   heat_flux_journal    wall heat flux at eta=0, positive INTO the film [W/m^2]
+///   heat_flux_bearing    wall heat flux at eta=1, positive INTO the film [W/m^2]
+///
+/// The flux sign is the negative of the module's internal q_shaft / q_bush,
+/// which are positive for heat leaving the film.
 void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
 /// Result of one conjugate-wall solve, for logging and diagnostics.

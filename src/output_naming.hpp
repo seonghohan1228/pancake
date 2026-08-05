@@ -14,10 +14,31 @@ namespace OutputNaming {
 // written unchanged (rho, mu, h, heat_generation, ...). theta is the Elrod liquid
 // fraction; it is exposed as film_content (could also be 'alpha' in OpenFOAM terms).
 inline std::string scalar(const std::string& internal) {
-    if (internal == "pressure")    return "p";
-    if (internal == "temperature") return "T";
-    if (internal == "theta")       return "film_content";
+    if (internal == "pressure")             return "p";
+    if (internal == "temperature")          return "T";
+    if (internal == "theta")                return "film_content";
+    if (internal == "temperature_journal")  return "T_journal";
+    if (internal == "temperature_bearing")  return "T_bearing";
+    if (internal == "heat_flux_journal")    return "q_journal";
+    if (internal == "heat_flux_bearing")    return "q_bearing";
     return internal;
+}
+
+// Optional film-surface fields of the cross-film thermal model: the two film
+// surface temperatures T(eta=0), T(eta=1) [K] and the wall heat fluxes there
+// [W/m^2], the latter positive INTO the fluid. They exist only when
+// cross_film_thermal_model != NONE and the user selected them in output_fields.
+// Listed here, next to their output names, so the config validator
+// (SimulationConfig::validate), the module that writes them (CrossFilm) and the
+// GUI reader all work from one set of selection keys.
+inline const std::array<const char*, 4>& surface_fields() {
+    static const std::array<const char*, 4> names = {{
+        "temperature_journal",
+        "temperature_bearing",
+        "heat_flux_journal",
+        "heat_flux_bearing",
+    }};
+    return names;
 }
 
 inline const char* velocity_name() { return "U"; }  // Cartesian velocity vector

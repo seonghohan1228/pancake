@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "fluid_properties.hpp"
+#include "output_naming.hpp"
 
 namespace CrossFilm {
 namespace {
@@ -75,7 +76,6 @@ double bush_conductance(const SimulationConfig& cfg) {
 }  // namespace
 
 void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
-    (void)cfg;
     // Profile coefficients of T(eta) = T_bar + a psi1 + b psi2 + c psi4 [K].
     fields.add("cross_film_a", mesh).fill(0.0);
     fields.add("cross_film_b", mesh).fill(0.0);
@@ -98,6 +98,17 @@ void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& c
     fields.add("cross_film_t_bush", mesh).fill(0.0);
     // Diagnostic: midplane temperature minus the depth-averaged temperature [K].
     fields.add("cross_film_core_rise", mesh).fill(0.0);
+
+    // Optional film-surface outputs. Allocated only when the user selected them
+    // AND the model that defines them is on, so an unselected run allocates
+    // nothing, `update()` skips the stores, and the written files are unchanged.
+    // The config validator rejects a selection made under NONE, so an absent
+    // field here is always a deliberate non-selection and never a silent zero.
+    if (active(cfg)) {
+        for (const char* name : OutputNaming::surface_fields()) {
+            if (cfg.output_field_enabled(name)) fields.add(name, mesh).fill(0.0);
+        }
+    }
 }
 
 WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
@@ -120,6 +131,11 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     Field& t_shaft_f = fields["cross_film_t_shaft"];
     Field& t_bush_f = fields["cross_film_t_bush"];
     Field& core_rise_f = fields["cross_film_core_rise"];
+    // Optional film-surface outputs; null unless selected (see register_fields).
+    Field* t_journal_f = fields.has("temperature_journal") ? &fields["temperature_journal"] : nullptr;
+    Field* t_bearing_f = fields.has("temperature_bearing") ? &fields["temperature_bearing"] : nullptr;
+    Field* q_journal_f = fields.has("heat_flux_journal") ? &fields["heat_flux_journal"] : nullptr;
+    Field* q_bearing_f = fields.has("heat_flux_bearing") ? &fields["heat_flux_bearing"] : nullptr;
 
     const int n_theta = mesh.n_theta_local;
     const int n_z = mesh.n_z_local;
@@ -355,6 +371,27 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             t_bush_f(i, j) = t_bush;
             t_shaft_f(i, j) = t_shaft;
             core_rise_f(i, j) = a_val * psi1(0.5) + b_val * psi2(0.5) + c_val * psi4(0.5);
+
+            // Film-surface outputs, evaluated from the same profile the
+            // F-integrals below integrate. T(0) and T(1) reproduce the conjugate
+            // wall temperatures because the wall values are what closes a and b;
+            // they are written from the profile rather than copied so a future
+            // change to the shape functions cannot leave the two disagreeing.
+            //
+            // The fluxes flip the module's internal sign convention: q_shaft and
+            // q_bush are positive for heat LEAVING the film (PHYSICS.md 13.1.2),
+            // while the output fields are positive INTO the fluid, which is the
+            // convention a reader expects of a field named after the surface.
+            if (t_journal_f) {
+                (*t_journal_f)(i, j) =
+                    t_bar + a_val * psi1(0.0) + b_val * psi2(0.0) + c_val * psi4(0.0);
+            }
+            if (t_bearing_f) {
+                (*t_bearing_f)(i, j) =
+                    t_bar + a_val * psi1(1.0) + b_val * psi2(1.0) + c_val * psi4(1.0);
+            }
+            if (q_journal_f) (*q_journal_f)(i, j) = -kh * (a_val + b_val);
+            if (q_bearing_f) (*q_bearing_f)(i, j) = -kh * (b_val - a_val);
 
             // F-integrals with mu(T(eta)). The cell's own mu field already carries
             // the pressure, dissolved-gas and mixture corrections, so only the

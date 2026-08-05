@@ -1176,7 +1176,9 @@ fluxes and the Reynolds coefficients all still use the full pressure field.
 
 $$q_{shaft} = \frac{k}{h}(a + b), \qquad q_{bush} = \frac{k}{h}(b - a),$$
 
-positive meaning heat leaving the film. The bush closes locally through 1-D
+positive meaning heat leaving the film. (The optional `heat_flux_journal` /
+`heat_flux_bearing` output fields of §15.2 are these with the sign flipped, so
+that a field named after a surface is positive *into* the fluid.) The bush closes locally through 1-D
 radial conduction in series with outer-surface convection, referred to the bore
 area,
 
@@ -1710,6 +1712,45 @@ Startup regime guards in `SimulationConfig::validate()`:
   releases gas on any pressure drop. For the shipped R290/PZ68 constants
   $p_{sat} = 0.2175/2.175\times10^{-7} = 1.0\ \mathrm{MPa}$, exactly the 10 bar
   feed pressure.
+
+### 15.2 Film-surface outputs (`temperature_journal`, `heat_flux_journal`, …)
+
+The written `temperature` field is $\bar T$, the depth average of §13.1 — under
+the cross-film model it is the *mean* of a profile whose two ends can differ by
+several kelvin, so it alone cannot be compared against a wall thermocouple. Four
+optional output fields expose the ends of that profile. They require
+`cross_film_thermal_model = POLYNOMIAL`; selecting one under `NONE` is a
+validation **error**, because there is no profile to evaluate and a field of
+zeros would read as a result.
+
+| `output_fields` key | VTK name | definition | unit |
+| --- | --- | --- | --- |
+| `temperature_journal` | `T_journal` | $T(\eta = 0)$ | K |
+| `temperature_bearing` | `T_bearing` | $T(\eta = 1)$ | K |
+| `heat_flux_journal` | `q_journal` | $-\dfrac{k}{h}\left.\dfrac{\partial T}{\partial\eta}\right|_{\eta=0} = -q_{shaft}$ | W/m² |
+| `heat_flux_bearing` | `q_bearing` | $+\dfrac{k}{h}\left.\dfrac{\partial T}{\partial\eta}\right|_{\eta=1} = -q_{bush}$ | W/m² |
+
+The temperatures are the profile of §13.1.2 evaluated at the two walls, and
+therefore reproduce the conjugate wall temperatures $T_s$ and $T_b$ exactly —
+they are written from the profile rather than copied from the wall solve so the
+two can never disagree. The temperatures are absolute kelvin, like every
+temperature in the solver.
+
+**Sign convention: the fluxes are positive INTO the fluid.** This is the
+*opposite* sign to the internal $q_{shaft} = (k/h)(a+b)$ and
+$q_{bush} = (k/h)(b-a)$ of §13.1.2, which are positive for heat *leaving* the
+film; the output fields are their negatives. The opposite signs on the same
+$\partial T/\partial\eta$ in the table are geometric: at $\eta = 0$ the fluid
+lies at larger $\eta$, at $\eta = 1$ at smaller $\eta$. Consequences worth
+checking a result against: a wall colder than the film gives a **negative**
+into-fluid flux there, an adiabatic wall ($h_{out} = 0$ for the bush) gives an
+**identically zero** field cell by cell, and an adiabatic *shaft*
+($h_{shaft} = 0$) gives a locally nonzero `heat_flux_journal` whose area
+integral is zero — that upstream heat path is the whole point of the conjugate
+shaft. `tests/test_cross_film.cpp` asserts all of it, including the equality
+with the closed-form profile and the fact that an unselected run is
+byte-identical: the fields are allocated only when selected, so they cost
+nothing and change nothing when they are not.
 
 ---
 

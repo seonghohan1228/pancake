@@ -122,6 +122,17 @@ Still open on this branch's topic:
     degenerates towards a fixed flattened shape rather than resolving the wall
     layers.
 
+Film-surface output fields — **DONE 2026-08-05** (`codex/fbns-crossfilm`;
+PHYSICS.md §13.1.2 and the new §15.2, README.md, CHANGES.md, `ctest` 27/27).
+`temperature_journal`, `temperature_bearing`, `heat_flux_journal` and
+`heat_flux_bearing` expose the two ends of the cross-film profile next to the
+depth-averaged `temperature`, which is what a wall thermocouple or a bush
+heat-flux measurement can actually be compared against. Opt-in through
+`output_fields`, allocated only when selected (unselected runs stay
+byte-identical), and a selection under `cross_film_thermal_model = NONE` is a
+validation error rather than a silent field of zeros. The fluxes are positive
+INTO the fluid, the negative of the module's internal `q_shaft` / `q_bush`.
+
 Ferron polynomial viscosity — **DONE 2026-08-05** (`codex/viscosity-polynomial`;
 PHYSICS.md §13.2.1 and §17.5, README.md, CHANGES.md, `ctest` 27/27).
 `liquid_viscosity_model = POLYNOMIAL` selects
