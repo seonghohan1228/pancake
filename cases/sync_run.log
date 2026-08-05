@@ -1,0 +1,7 @@
+[sync] building manifests
+join: /tmp/r6_manifest.txt:130: is not sorted: 7652 cases/00c_jfo_verification/__pycache__/extract_front.cpython-313.pyc
+join: input is not in sorted order
+[sync] 11240 files to ship
+[sync] after ship: 5 local files still unmatched remotely (want 0)
+[sync] remote-only files (exist on afml-r6, not local): 9817 -> /tmp/remote_only.txt
+[sync] done 2026-08-05 15:41:10

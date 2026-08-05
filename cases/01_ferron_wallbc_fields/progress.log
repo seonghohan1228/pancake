@@ -1,0 +1,72 @@
+2026-08-05 17:06:25  rerun_xf_adiabatic: warm start from eps=0.608595 psi=-37.5462
+2026-08-05 17:06:31  rerun_xf_adiabatic/fb_iter_00 [pinned/x0] eps=0.608595 psi=-37.5462 -> W=4232.42 N angle=-90.0237 deg Tmax=47.42 C picard=11 (5 s)
+2026-08-05 17:06:31  rerun_xf_adiabatic/pinned iter 0: eps=0.608595 psi=-37.5462 W=4232.42 (dW=+232.42 N) dAngle=-0.0237 deg
+2026-08-05 17:06:37  rerun_xf_adiabatic/fb_iter_01 [pinned/J_eps] eps=0.613595 psi=-37.5462 -> W=4321.23 N angle=-89.6584 deg Tmax=47.51 C picard=11 (5 s)
+2026-08-05 17:06:43  rerun_xf_adiabatic/fb_iter_02 [pinned/J_psi] eps=0.608595 psi=-37.0462 -> W=4233.20 N angle=-89.4889 deg Tmax=47.42 C picard=11 (6 s)
+2026-08-05 17:06:49  rerun_xf_adiabatic/fb_iter_03 [pinned/x1] eps=0.595433 psi=-36.6075 -> W=4010.09 N angle=-89.9774 deg Tmax=47.20 C picard=11 (6 s)
+2026-08-05 17:06:49  rerun_xf_adiabatic/pinned iter 1: eps=0.595433 psi=-36.6075 W=4010.09 (dW=+10.09 N) dAngle=+0.0226 deg
+2026-08-05 17:06:56  rerun_xf_adiabatic/fb_iter_04 [pinned/J_eps] eps=0.600433 psi=-36.6075 -> W=4093.45 N angle=-89.6135 deg Tmax=47.28 C picard=11 (6 s)
+2026-08-05 17:07:02  rerun_xf_adiabatic/fb_iter_05 [pinned/J_psi] eps=0.595433 psi=-36.1075 -> W=4010.89 N angle=-89.4403 deg Tmax=47.19 C picard=11 (6 s)
+2026-08-05 17:07:08  rerun_xf_adiabatic/fb_iter_06 [pinned/x2] eps=0.594826 psi=-36.5864 -> W=4000.13 N angle=-89.9990 deg Tmax=47.19 C picard=11 (6 s)
+2026-08-05 17:07:08  rerun_xf_adiabatic/pinned iter 2: eps=0.594826 psi=-36.5864 W=4000.13 (dW=+0.13 N) dAngle=+0.0010 deg
+2026-08-05 17:07:08  rerun_xf_adiabatic/pinned CONVERGED eps=0.594826 psi=-36.5864
+2026-08-05 17:07:08  rerun_xf_adiabatic: derived Q_supply = 3.571619e-04 m^3/s (21.43 L/min) from the PINNED steady mass balance
+2026-08-05 17:07:15  rerun_xf_adiabatic/fb_iter_07 [flow/x0] eps=0.594826 psi=-36.5864 -> W=3788.12 N angle=-89.9799 deg Tmax=48.36 C picard=15 (7 s)
+2026-08-05 17:07:15  rerun_xf_adiabatic/flow iter 0: eps=0.594826 psi=-36.5864 W=3788.12 (dW=-211.88 N) dAngle=+0.0201 deg
+2026-08-05 17:07:23  rerun_xf_adiabatic/fb_iter_08 [flow/J_eps] eps=0.599826 psi=-36.5864 -> W=3864.62 N angle=-89.6133 deg Tmax=48.45 C picard=15 (7 s)
+2026-08-05 17:07:30  rerun_xf_adiabatic/fb_iter_09 [flow/J_psi] eps=0.594826 psi=-36.0864 -> W=3789.67 N angle=-89.4413 deg Tmax=48.35 C picard=15 (7 s)
+2026-08-05 17:07:38  rerun_xf_adiabatic/fb_iter_10 [flow/x1] eps=0.608869 psi=-37.5810 -> W=4004.26 N angle=-90.0167 deg Tmax=48.62 C picard=16 (7 s)
+2026-08-05 17:07:38  rerun_xf_adiabatic/flow iter 1: eps=0.608869 psi=-37.5810 W=4004.26 (dW=+4.26 N) dAngle=-0.0167 deg
+2026-08-05 17:07:45  rerun_xf_adiabatic/fb_iter_11 [flow/J_eps] eps=0.613869 psi=-37.5810 -> W=4085.79 N angle=-89.6486 deg Tmax=48.72 C picard=16 (7 s)
+2026-08-05 17:07:52  rerun_xf_adiabatic/fb_iter_12 [flow/J_psi] eps=0.608869 psi=-37.0810 -> W=4005.88 N angle=-89.4807 deg Tmax=48.61 C picard=15 (7 s)
+2026-08-05 17:08:00  rerun_xf_adiabatic/fb_iter_13 [flow/x2] eps=0.608601 psi=-37.5466 -> W=4000.07 N angle=-89.9996 deg Tmax=48.62 C picard=15 (7 s)
+2026-08-05 17:08:00  rerun_xf_adiabatic/flow iter 2: eps=0.608601 psi=-37.5466 W=4000.07 (dW=+0.07 N) dAngle=+0.0004 deg
+2026-08-05 17:08:00  rerun_xf_adiabatic/flow CONVERGED eps=0.608601 psi=-37.5466
+2026-08-05 17:08:00  rerun_xf_bush40_J40: warm start from eps=0.564609 psi=-36.1411
+2026-08-05 17:08:05  rerun_xf_bush40_J40/fb_iter_00 [pinned/x0] eps=0.564609 psi=-36.1411 -> W=4011.67 N angle=-90.0482 deg Tmax=41.87 C picard=12 (5 s)
+2026-08-05 17:08:05  rerun_xf_bush40_J40/pinned iter 0: eps=0.564609 psi=-36.1411 W=4011.67 (dW=+11.67 N) dAngle=-0.0482 deg
+2026-08-05 17:08:10  rerun_xf_bush40_J40/fb_iter_01 [pinned/J_eps] eps=0.569609 psi=-36.1411 -> W=4099.92 N angle=-89.6741 deg Tmax=41.88 C picard=12 (5 s)
+2026-08-05 17:08:15  rerun_xf_bush40_J40/fb_iter_02 [pinned/J_psi] eps=0.564609 psi=-35.6411 -> W=4012.06 N angle=-89.5125 deg Tmax=41.87 C picard=12 (5 s)
+2026-08-05 17:08:21  rerun_xf_bush40_J40/fb_iter_03 [pinned/x1] eps=0.563945 psi=-36.0488 -> W=4000.19 N angle=-89.9991 deg Tmax=41.87 C picard=12 (5 s)
+2026-08-05 17:08:21  rerun_xf_bush40_J40/pinned iter 1: eps=0.563945 psi=-36.0488 W=4000.19 (dW=+0.19 N) dAngle=+0.0009 deg
+2026-08-05 17:08:21  rerun_xf_bush40_J40/pinned CONVERGED eps=0.563945 psi=-36.0488
+2026-08-05 17:08:21  rerun_xf_bush40_J40: derived Q_supply = 3.420620e-04 m^3/s (20.52 L/min) from the PINNED steady mass balance
+2026-08-05 17:08:26  rerun_xf_bush40_J40/fb_iter_04 [flow/x0] eps=0.563945 psi=-36.0488 -> W=3988.41 N angle=-89.9520 deg Tmax=41.88 C picard=12 (5 s)
+2026-08-05 17:08:26  rerun_xf_bush40_J40/flow iter 0: eps=0.563945 psi=-36.0488 W=3988.41 (dW=-11.59 N) dAngle=+0.0480 deg
+2026-08-05 17:08:32  rerun_xf_bush40_J40/fb_iter_05 [flow/J_eps] eps=0.568945 psi=-36.0488 -> W=4076.14 N angle=-89.5778 deg Tmax=41.88 C picard=12 (5 s)
+2026-08-05 17:08:37  rerun_xf_bush40_J40/fb_iter_06 [flow/J_psi] eps=0.563945 psi=-35.5488 -> W=3988.86 N angle=-89.4164 deg Tmax=41.88 C picard=12 (5 s)
+2026-08-05 17:08:42  rerun_xf_bush40_J40/fb_iter_07 [flow/x1] eps=0.564609 psi=-36.1412 -> W=3999.86 N angle=-90.0011 deg Tmax=41.88 C picard=12 (5 s)
+2026-08-05 17:08:42  rerun_xf_bush40_J40/flow iter 1: eps=0.564609 psi=-36.1412 W=3999.86 (dW=-0.14 N) dAngle=-0.0011 deg
+2026-08-05 17:08:42  rerun_xf_bush40_J40/flow CONVERGED eps=0.564609 psi=-36.1412
+2026-08-05 17:08:42  favg_walls40: warm start from eps=0.567497 psi=-36.1187
+2026-08-05 17:08:46  favg_walls40/fb_iter_00 [pinned/x0] eps=0.567497 psi=-36.1187 -> W=4010.21 N angle=-90.0455 deg Tmax=42.19 C picard=6 (3 s)
+2026-08-05 17:08:46  favg_walls40/pinned iter 0: eps=0.567497 psi=-36.1187 W=4010.21 (dW=+10.21 N) dAngle=-0.0455 deg
+2026-08-05 17:08:49  favg_walls40/fb_iter_01 [pinned/J_eps] eps=0.572497 psi=-36.1187 -> W=4097.64 N angle=-89.6758 deg Tmax=42.22 C picard=6 (3 s)
+2026-08-05 17:08:52  favg_walls40/fb_iter_02 [pinned/J_psi] eps=0.567497 psi=-35.6187 -> W=4010.62 N angle=-89.5099 deg Tmax=42.19 C picard=6 (3 s)
+2026-08-05 17:08:56  favg_walls40/fb_iter_03 [pinned/x1] eps=0.566910 psi=-36.0350 -> W=4000.16 N angle=-89.9992 deg Tmax=42.19 C picard=6 (3 s)
+2026-08-05 17:08:56  favg_walls40/pinned iter 1: eps=0.566910 psi=-36.0350 W=4000.16 (dW=+0.16 N) dAngle=+0.0008 deg
+2026-08-05 17:08:56  favg_walls40/pinned CONVERGED eps=0.566910 psi=-36.0350
+2026-08-05 17:08:56  favg_walls40: derived Q_supply = 3.457665e-04 m^3/s (20.75 L/min) from the PINNED steady mass balance
+2026-08-05 17:08:59  favg_walls40/fb_iter_04 [flow/x0] eps=0.566910 psi=-36.0350 -> W=3989.86 N angle=-89.9547 deg Tmax=42.20 C picard=6 (3 s)
+2026-08-05 17:08:59  favg_walls40/flow iter 0: eps=0.566910 psi=-36.0350 W=3989.86 (dW=-10.14 N) dAngle=+0.0453 deg
+2026-08-05 17:09:02  favg_walls40/fb_iter_05 [flow/J_eps] eps=0.571910 psi=-36.0350 -> W=4076.80 N angle=-89.5849 deg Tmax=42.22 C picard=6 (3 s)
+2026-08-05 17:09:06  favg_walls40/fb_iter_06 [flow/J_psi] eps=0.566910 psi=-35.5350 -> W=3990.33 N angle=-89.4192 deg Tmax=42.20 C picard=6 (3 s)
+2026-08-05 17:09:09  favg_walls40/fb_iter_07 [flow/x1] eps=0.567497 psi=-36.1188 -> W=3999.87 N angle=-90.0010 deg Tmax=42.20 C picard=6 (3 s)
+2026-08-05 17:09:09  favg_walls40/flow iter 1: eps=0.567497 psi=-36.1188 W=3999.87 (dW=-0.13 N) dAngle=-0.0010 deg
+2026-08-05 17:09:09  favg_walls40/flow CONVERGED eps=0.567497 psi=-36.1188
+2026-08-05 17:09:09  rerun_cht_robin10: warm start from eps=0.593400 psi=-37.5036
+2026-08-05 17:10:01  rerun_cht_robin10/fb_iter_00 [pinned/x0] eps=0.593400 psi=-37.5036 -> W=4015.72 N angle=-90.5236 deg Tmax=45.89 C picard=200 (51 s)
+2026-08-05 17:10:01  rerun_cht_robin10/pinned iter 0: eps=0.593400 psi=-37.5036 W=4015.72 (dW=+15.72 N) dAngle=-0.5236 deg
+2026-08-05 17:10:53  rerun_cht_robin10/fb_iter_01 [pinned/J_eps] eps=0.598400 psi=-37.5036 -> W=4100.53 N angle=-90.1507 deg Tmax=45.95 C picard=200 (52 s)
+2026-08-05 17:11:45  rerun_cht_robin10/fb_iter_02 [pinned/J_psi] eps=0.593400 psi=-37.0036 -> W=4016.56 N angle=-89.9853 deg Tmax=45.89 C picard=200 (52 s)
+2026-08-05 17:12:37  rerun_cht_robin10/fb_iter_03 [pinned/x1] eps=0.592419 psi=-36.9499 -> W=4000.26 N angle=-90.0004 deg Tmax=45.88 C picard=200 (51 s)
+2026-08-05 17:12:37  rerun_cht_robin10/pinned iter 1: eps=0.592419 psi=-36.9499 W=4000.26 (dW=+0.26 N) dAngle=-0.0004 deg
+2026-08-05 17:12:37  rerun_cht_robin10/pinned CONVERGED eps=0.592419 psi=-36.9499
+2026-08-05 17:12:37  rerun_cht_robin10: derived Q_supply = 3.673461e-04 m^3/s (22.04 L/min) from the PINNED steady mass balance
+2026-08-05 17:13:30  rerun_cht_robin10/fb_iter_04 [flow/x0] eps=0.592419 psi=-36.9499 -> W=3829.40 N angle=-90.0014 deg Tmax=46.85 C picard=200 (52 s)
+2026-08-05 17:13:30  rerun_cht_robin10/flow iter 0: eps=0.592419 psi=-36.9499 W=3829.40 (dW=-170.60 N) dAngle=-0.0014 deg
+2026-08-05 17:14:23  rerun_cht_robin10/fb_iter_05 [flow/J_eps] eps=0.597419 psi=-36.9499 -> W=3908.77 N angle=-89.6276 deg Tmax=46.91 C picard=200 (53 s)
+2026-08-05 17:15:17  rerun_cht_robin10/fb_iter_06 [flow/J_psi] eps=0.592419 psi=-36.4499 -> W=3830.98 N angle=-89.4616 deg Tmax=46.84 C picard=200 (53 s)
+2026-08-05 17:16:09  rerun_cht_robin10/fb_iter_07 [flow/x1] eps=0.603314 psi=-37.7183 -> W=4002.37 N angle=-90.0133 deg Tmax=47.00 C picard=200 (52 s)
+2026-08-05 17:16:09  rerun_cht_robin10/flow iter 1: eps=0.603314 psi=-37.7183 W=4002.37 (dW=+2.37 N) dAngle=-0.0133 deg
+2026-08-05 17:16:09  rerun_cht_robin10/flow CONVERGED eps=0.603314 psi=-37.7183

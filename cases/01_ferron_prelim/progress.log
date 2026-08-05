@@ -1,0 +1,28 @@
+2026-08-04 23:15:28  case 01 START: sign convention from dt_T1_fbns final frame Fp=(-1001.1,-3046.1) N (angle -108.19 deg) under external_load_y=+6000 -> STATIC target Fp=(0,-6000) N, angle -90 deg
+2026-08-04 23:15:28  probe run eps=0.60 psi=-90 mu=0.0277 -> W=9995.6 N angle=-140.21 deg (11.5 s, n=2 ranks)
+2026-08-04 23:15:43  fb_iter_00 [mu40/x0] mu=0.0277 eps=0.500000 psi=-45.0000 -> W=6440.87 N angle=-103.1718 deg (15 s)
+2026-08-04 23:15:43  mu40 iter 0: eps=0.500000 psi=-45.0000 W=6440.87 (dW=+440.87 N) dAngle=-13.1718 deg
+2026-08-04 23:15:57  fb_iter_01 [mu40/J_eps] mu=0.0277 eps=0.505000 psi=-45.0000 -> W=6573.85 N angle=-102.8092 deg (13 s)
+2026-08-04 23:16:12  fb_iter_02 [mu40/J_psi] mu=0.0277 eps=0.500000 psi=-44.5000 -> W=6440.61 N angle=-102.6513 deg (15 s)
+2026-08-04 23:16:24  fb_iter_03 [mu40/x1] mu=0.0277 eps=0.477990 psi=-31.7510 -> W=5909.17 N angle=-90.7543 deg (11 s)
+2026-08-04 23:16:24  mu40 iter 1: eps=0.477990 psi=-31.7510 W=5909.17 (dW=-90.83 N) dAngle=-0.7543 deg
+2026-08-04 23:16:35  fb_iter_04 [mu40/J_eps] mu=0.0277 eps=0.482990 psi=-31.7510 -> W=6030.18 N angle=-90.4069 deg (11 s)
+2026-08-04 23:16:47  fb_iter_05 [mu40/J_psi] mu=0.0277 eps=0.477990 psi=-31.2510 -> W=5911.19 N angle=-90.2194 deg (11 s)
+2026-08-04 23:16:58  fb_iter_06 [mu40/x2] mu=0.0277 eps=0.481656 psi=-31.2782 -> W=5999.56 N angle=-89.9944 deg (11 s)
+2026-08-04 23:16:58  mu40 iter 2: eps=0.481656 psi=-31.2782 W=5999.56 (dW=-0.44 N) dAngle=+0.0056 deg
+2026-08-04 23:16:58  mu40 CONVERGED at eps=0.481656 psi=-31.2782
+2026-08-04 23:17:17  fb_iter_07 [mu55/x0] mu=0.0166 eps=0.620000 psi=-40.0000 -> W=6386.46 N angle=-89.5519 deg (11 s)
+2026-08-04 23:17:17  mu55 iter 0: eps=0.620000 psi=-40.0000 W=6386.46 (dW=+386.46 N) dAngle=+0.4481 deg
+2026-08-04 23:17:28  fb_iter_08 [mu55/J_eps] mu=0.0166 eps=0.625000 psi=-40.0000 -> W=6536.45 N angle=-89.1773 deg (11 s)
+2026-08-04 23:17:39  fb_iter_09 [mu55/J_psi] mu=0.0166 eps=0.620000 psi=-39.5000 -> W=6386.82 N angle=-89.0307 deg (11 s)
+2026-08-04 23:17:50  fb_iter_10 [mu55/x1] mu=0.0166 eps=0.607096 psi=-39.4547 -> W=6019.91 N angle=-89.9466 deg (11 s)
+2026-08-04 23:17:50  mu55 iter 1: eps=0.607096 psi=-39.4547 W=6019.91 (dW=+19.91 N) dAngle=+0.0534 deg
+2026-08-04 23:18:01  fb_iter_11 [mu55/J_eps] mu=0.0166 eps=0.612096 psi=-39.4547 -> W=6158.77 N angle=-89.5737 deg (11 s)
+2026-08-04 23:18:12  fb_iter_12 [mu55/J_psi] mu=0.0166 eps=0.607096 psi=-38.9547 -> W=6020.31 N angle=-89.4237 deg (11 s)
+2026-08-04 23:18:23  fb_iter_13 [mu55/x2] mu=0.0166 eps=0.606378 psi=-39.4532 -> W=6000.31 N angle=-89.9986 deg (10 s)
+2026-08-04 23:18:23  mu55 iter 2: eps=0.606378 psi=-39.4532 W=6000.31 (dW=+0.31 N) dAngle=+0.0014 deg
+2026-08-04 23:18:23  mu55 CONVERGED at eps=0.606378 psi=-39.4532
+2026-08-04 23:38:21  mu40 EQUILIBRIUM fb_iter_06: eps=0.481656 psi=-31.2782 deg, W=5999.56 N (-0.007%), angle=-89.9944 deg (0.006 deg off), p_max=1.8381 MPa abs, phi_classical=58.72 deg
+2026-08-04 23:38:21  mu55 EQUILIBRIUM fb_iter_13: eps=0.606378 psi=-39.4532 deg, W=6000.31 N (+0.005%), angle=-89.9986 deg (0.001 deg off), p_max=2.0563 MPa abs, phi_classical=50.55 deg
+2026-08-04 23:38:21  plot ferron_midplane_pressure.png written; peak 1.737/1.955 MPa gauge at 199.25/199.75 deg from groove vs experiment 1.828 MPa at 202.3 deg; mapping solver_theta=(90+x)%360 applied unshifted
+2026-08-04 23:38:21  SUMMARY.md written; case 01 COMPLETE

@@ -1,0 +1,30 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 5 ("Eccentricity ratio versus load at 2000 rpm")
+# curve: experiment, C = 145 um
+# condition: N = 2000 rpm, load swept 2-10 kN
+# x: load [N]
+# y: eccentricity ratio [-]
+# note: the figure axis is LOAD, 10^3 N; values here are converted to N
+# note: the figure plots THREE experiment symbols per load (filled circle, open
+#   circle, triangle) all labelled C = 145 um, spanning about 0.02 in eps. This
+#   trace reads the cluster centre, so treat +-0.01 as scatter on top of the
+#   digitising error.
+# note: the figure's second dashed curve is labelled "EXPERIMENTS ... C = 152 um"
+#   in the legend but is drawn as a smooth line through no symbols; whether it is
+#   a re-reduction of the same experiment at a larger clearance or a second theory
+#   curve is not resolvable from the figure alone. It is NOT digitised here.
+# note: CLEARANCE DEPENDENCE. eps is not measured directly. It is a proximity-probe
+#   displacement divided by an assumed clearance, so the assumed C enters the
+#   "measurement" itself; that is exactly what the 145/152 um pair in this figure
+#   shows. Later work (Lubricants 11(7) 308, 2023) reduces the published eps by
+#   0.10 on this argument, corresponding to C_eff ~ 171 um.
+# source: digitised from cases/ref_data/ferron1983_fig5_2000rpm_eccentricity.png
+2018.3076478185085,0.49206769529848343
+3006.0606611162334,0.5967814755431203
+3966.4854373047838,0.6610061636151398
+5025.2540163424355,0.716115559835213
+6058.019134308065,0.7513966924505936
+7016.536233003122,0.7858697873848016
+8015.795872452074,0.8128947643336984
+9047.395187505012,0.8299943678093049
+10062.718682672989,0.8504037917361227

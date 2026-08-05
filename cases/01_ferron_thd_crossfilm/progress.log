@@ -1,0 +1,62 @@
+2026-08-05 10:49:55  walls_adiabatic/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4082.03 N angle=-93.2783 deg Tmax=47.30 C picard=11 (28 s)
+2026-08-05 10:49:55  walls_adiabatic/pinned iter 0: eps=0.600000 psi=-40.0000 W=4082.03 (dW=+82.03 N) dAngle=-3.2783 deg
+2026-08-05 10:50:23  walls_adiabatic/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4167.01 N angle=-92.9097 deg Tmax=47.39 C picard=11 (28 s)
+2026-08-05 10:50:51  walls_adiabatic/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4082.47 N angle=-92.7436 deg Tmax=47.30 C picard=11 (28 s)
+2026-08-05 10:51:20  walls_adiabatic/fb_iter_03 [pinned/x1] eps=0.594679 psi=-36.6234 -> W=3997.66 N angle=-90.0495 deg Tmax=47.18 C picard=11 (28 s)
+2026-08-05 10:51:20  walls_adiabatic/pinned iter 1: eps=0.594679 psi=-36.6234 W=3997.66 (dW=-2.34 N) dAngle=-0.0495 deg
+2026-08-05 10:51:20  walls_adiabatic/pinned CONVERGED eps=0.594679 psi=-36.6234
+2026-08-05 10:51:20  walls_adiabatic: derived Q_supply = 3.572928e-04 m^3/s (21.44 L/min) from the PINNED steady mass balance
+2026-08-05 10:51:55  walls_adiabatic/fb_iter_04 [flow/x0] eps=0.594679 psi=-36.6234 -> W=3785.85 N angle=-90.0305 deg Tmax=48.36 C picard=15 (35 s)
+2026-08-05 10:51:55  walls_adiabatic/flow iter 0: eps=0.594679 psi=-36.6234 W=3785.85 (dW=-214.15 N) dAngle=-0.0305 deg
+2026-08-05 10:52:44  walls_adiabatic/fb_iter_05 [flow/J_eps] eps=0.599679 psi=-36.6234 -> W=3862.30 N angle=-89.6639 deg Tmax=48.45 C picard=15 (48 s)
+2026-08-05 10:53:26  walls_adiabatic/fb_iter_06 [flow/J_psi] eps=0.594679 psi=-36.1234 -> W=3787.40 N angle=-89.4919 deg Tmax=48.35 C picard=15 (42 s)
+2026-08-05 10:54:07  walls_adiabatic/fb_iter_07 [flow/x1] eps=0.608873 psi=-37.5789 -> W=4004.43 N angle=-90.0142 deg Tmax=48.62 C picard=15 (41 s)
+2026-08-05 10:54:07  walls_adiabatic/flow iter 1: eps=0.608873 psi=-37.5789 W=4004.43 (dW=+4.43 N) dAngle=-0.0142 deg
+2026-08-05 10:54:50  walls_adiabatic/fb_iter_08 [flow/J_eps] eps=0.613873 psi=-37.5789 -> W=4085.95 N angle=-89.6461 deg Tmax=48.72 C picard=16 (42 s)
+2026-08-05 10:55:33  walls_adiabatic/fb_iter_09 [flow/J_psi] eps=0.608873 psi=-37.0789 -> W=4006.04 N angle=-89.4782 deg Tmax=48.61 C picard=15 (42 s)
+2026-08-05 10:56:57  walls_adiabatic/fb_iter_10 [flow/x2] eps=0.608595 psi=-37.5462 -> W=4000.06 N angle=-89.9996 deg Tmax=48.62 C picard=15 (84 s)
+2026-08-05 10:56:57  walls_adiabatic/flow iter 2: eps=0.608595 psi=-37.5462 W=4000.06 (dW=+0.06 N) dAngle=+0.0004 deg
+2026-08-05 10:56:57  walls_adiabatic/flow CONVERGED eps=0.608595 psi=-37.5462
+2026-08-05 10:58:04  bush40_Jadiabatic/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4340.25 N angle=-91.7971 deg Tmax=43.49 C picard=21 (67 s)
+2026-08-05 10:58:04  bush40_Jadiabatic/pinned iter 0: eps=0.600000 psi=-40.0000 W=4340.25 (dW=+340.25 N) dAngle=-1.7971 deg
+2026-08-05 10:59:15  bush40_Jadiabatic/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4436.61 N angle=-91.4166 deg Tmax=43.50 C picard=21 (70 s)
+2026-08-05 11:00:08  bush40_Jadiabatic/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4340.59 N angle=-91.2656 deg Tmax=43.49 C picard=21 (53 s)
+2026-08-05 11:01:24  bush40_Jadiabatic/fb_iter_03 [pinned/x1] eps=0.582179 psi=-37.1383 -> W=4019.65 N angle=-90.0927 deg Tmax=43.42 C picard=21 (76 s)
+2026-08-05 11:01:24  bush40_Jadiabatic/pinned iter 1: eps=0.582179 psi=-37.1383 W=4019.65 (dW=+19.65 N) dAngle=-0.0927 deg
+2026-08-05 11:02:42  bush40_Jadiabatic/fb_iter_04 [pinned/J_eps] eps=0.587179 psi=-37.1383 -> W=4107.27 N angle=-89.7165 deg Tmax=43.44 C picard=21 (77 s)
+2026-08-05 11:03:33  bush40_Jadiabatic/fb_iter_05 [pinned/J_psi] eps=0.582179 psi=-36.6383 -> W=4020.23 N angle=-89.5570 deg Tmax=43.42 C picard=21 (51 s)
+2026-08-05 11:04:23  bush40_Jadiabatic/fb_iter_06 [pinned/x2] eps=0.581049 psi=-36.9711 -> W=4000.33 N angle=-89.9986 deg Tmax=43.42 C picard=23 (50 s)
+2026-08-05 11:04:23  bush40_Jadiabatic/pinned iter 2: eps=0.581049 psi=-36.9711 W=4000.33 (dW=+0.33 N) dAngle=+0.0014 deg
+2026-08-05 11:04:23  bush40_Jadiabatic/pinned CONVERGED eps=0.581049 psi=-36.9711
+2026-08-05 11:04:23  bush40_Jadiabatic: derived Q_supply = 3.596548e-04 m^3/s (21.58 L/min) from the PINNED steady mass balance
+2026-08-05 11:07:48  bush40_Jadiabatic/pinned iter 0: eps=0.600000 psi=-40.0000 W=4340.25 (dW=+340.25 N) dAngle=-1.7971 deg
+2026-08-05 11:07:48  bush40_Jadiabatic/pinned iter 1: eps=0.582179 psi=-37.1383 W=4019.65 (dW=+19.65 N) dAngle=-0.0927 deg
+2026-08-05 11:07:48  bush40_Jadiabatic/pinned iter 2: eps=0.581049 psi=-36.9711 W=4000.33 (dW=+0.33 N) dAngle=+0.0014 deg
+2026-08-05 11:07:48  bush40_Jadiabatic/pinned CONVERGED eps=0.581049 psi=-36.9711
+2026-08-05 11:07:48  bush40_Jadiabatic: derived Q_supply = 3.596548e-04 m^3/s (21.58 L/min) from the PINNED steady mass balance
+2026-08-05 11:08:38  bush40_Jadiabatic/fb_iter_07 [flow/x0] eps=0.581049 psi=-36.9711 -> W=3916.48 N angle=-89.9660 deg Tmax=43.74 C picard=24 (49 s)
+2026-08-05 11:08:38  bush40_Jadiabatic/flow iter 0: eps=0.581049 psi=-36.9711 W=3916.48 (dW=-83.52 N) dAngle=+0.0340 deg
+2026-08-05 11:09:29  bush40_Jadiabatic/fb_iter_08 [flow/J_eps] eps=0.586049 psi=-36.9711 -> W=4001.66 N angle=-89.5890 deg Tmax=43.76 C picard=24 (51 s)
+2026-08-05 11:10:17  bush40_Jadiabatic/fb_iter_09 [flow/J_psi] eps=0.581049 psi=-36.4711 -> W=3917.33 N angle=-89.4300 deg Tmax=43.74 C picard=24 (48 s)
+2026-08-05 11:11:20  bush40_Jadiabatic/fb_iter_10 [flow/x1] eps=0.585987 psi=-37.3583 -> W=3999.95 N angle=-90.0080 deg Tmax=43.76 C picard=24 (63 s)
+2026-08-05 11:11:20  bush40_Jadiabatic/flow iter 1: eps=0.585987 psi=-37.3583 W=3999.95 (dW=-0.05 N) dAngle=-0.0080 deg
+2026-08-05 11:11:20  bush40_Jadiabatic/flow CONVERGED eps=0.585987 psi=-37.3583
+2026-08-05 11:11:54  bush40_J40/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4689.02 N angle=-91.4856 deg Tmax=41.88 C picard=13 (33 s)
+2026-08-05 11:11:54  bush40_J40/pinned iter 0: eps=0.600000 psi=-40.0000 W=4689.02 (dW=+689.02 N) dAngle=-1.4856 deg
+2026-08-05 11:12:22  bush40_J40/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4796.08 N angle=-91.1059 deg Tmax=41.88 C picard=11 (27 s)
+2026-08-05 11:12:52  bush40_J40/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4689.04 N angle=-90.9571 deg Tmax=41.87 C picard=11 (30 s)
+2026-08-05 11:13:16  bush40_J40/fb_iter_03 [pinned/x1] eps=0.567786 psi=-36.4338 -> W=4067.27 N angle=-90.1238 deg Tmax=41.88 C picard=12 (24 s)
+2026-08-05 11:13:16  bush40_J40/pinned iter 1: eps=0.567786 psi=-36.4338 W=4067.27 (dW=+67.27 N) dAngle=-0.1238 deg
+2026-08-05 11:13:40  bush40_J40/fb_iter_04 [pinned/J_eps] eps=0.572786 psi=-36.4338 -> W=4156.99 N angle=-89.7493 deg Tmax=41.88 C picard=12 (24 s)
+2026-08-05 11:14:04  bush40_J40/fb_iter_05 [pinned/J_psi] eps=0.567786 psi=-35.9338 -> W=4067.62 N angle=-89.5888 deg Tmax=41.87 C picard=12 (24 s)
+2026-08-05 11:14:29  bush40_J40/fb_iter_06 [pinned/x2] eps=0.564025 psi=-36.0511 -> W=4001.58 N angle=-89.9955 deg Tmax=41.87 C picard=12 (24 s)
+2026-08-05 11:14:29  bush40_J40/pinned iter 2: eps=0.564025 psi=-36.0511 W=4001.58 (dW=+1.58 N) dAngle=+0.0045 deg
+2026-08-05 11:14:29  bush40_J40/pinned CONVERGED eps=0.564025 psi=-36.0511
+2026-08-05 11:14:29  bush40_J40: derived Q_supply = 3.421125e-04 m^3/s (20.53 L/min) from the PINNED steady mass balance
+2026-08-05 11:14:54  bush40_J40/fb_iter_07 [flow/x0] eps=0.564025 psi=-36.0511 -> W=3989.80 N angle=-89.9483 deg Tmax=41.88 C picard=12 (25 s)
+2026-08-05 11:14:54  bush40_J40/flow iter 0: eps=0.564025 psi=-36.0511 W=3989.80 (dW=-10.20 N) dAngle=+0.0517 deg
+2026-08-05 11:15:21  bush40_J40/fb_iter_08 [flow/J_eps] eps=0.569025 psi=-36.0511 -> W=4077.56 N angle=-89.5741 deg Tmax=41.88 C picard=12 (27 s)
+2026-08-05 11:15:52  bush40_J40/fb_iter_09 [flow/J_psi] eps=0.564025 psi=-35.5511 -> W=3990.25 N angle=-89.4128 deg Tmax=41.88 C picard=12 (30 s)
+2026-08-05 11:16:23  bush40_J40/fb_iter_10 [flow/x1] eps=0.564609 psi=-36.1411 -> W=3999.87 N angle=-90.0010 deg Tmax=41.88 C picard=12 (31 s)
+2026-08-05 11:16:23  bush40_J40/flow iter 1: eps=0.564609 psi=-36.1411 W=3999.87 (dW=-0.13 N) dAngle=-0.0010 deg
+2026-08-05 11:16:23  bush40_J40/flow CONVERGED eps=0.564609 psi=-36.1411

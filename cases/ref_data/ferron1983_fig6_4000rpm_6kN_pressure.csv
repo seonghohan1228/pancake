@@ -11,7 +11,9 @@
 #   so impossible on an h_max axis, (b) near-zero pressure at 29-60 deg, and
 #   (c) agreement with the groove-referenced digitisation in
 #   validation/journal_bearing/ferron.py (peak at 194 deg from groove).
-#   If this is wrong, every point shifts by the measured attitude angle.
+#   The Fig. 4 file in this directory strengthens (c): at 2000 rpm / 4 kN, the
+#   condition ferron.py digitised independently, the two readings agree to
+#   0.03 MPa and 7 deg. If this is wrong, every point shifts by the attitude angle.
 # source: digitised from cases/ref_data/ferron1983_fig6_4000rpm.png
 29.184409967582965,38392.09887700354
 59.527118756896435,79672.88447068726

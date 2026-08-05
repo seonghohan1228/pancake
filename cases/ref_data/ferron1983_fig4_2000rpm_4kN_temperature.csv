@@ -1,0 +1,36 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 4
+# curve: experiment, bush temperature at the mid-plane
+# condition: N = 2000 rpm, W = 4000 N
+# note: the figure plots three temperature symbol sets (open up, open down,
+#   filled triangles) with no legend distinction beyond "EXPERIMENTS". This trace
+#   reads the cluster centre; local scatter is ~1 K across the 220-290 deg plateau.
+# x: theta [deg], from supply groove center, in direction of rotation
+# y: temperature [degC]
+# note: MEASUREMENT LOCATION. Ferron's thermocouples sit 0.5 mm BELOW the bush
+#   inner surface, not in the film. This is a bush sub-surface temperature and is
+#   not the same quantity as pancake's film-averaged T; any verdict must say so.
+# note: theta origin carries the same caveat as the pressure file for this figure.
+# note: the independent digitisation in validation/journal_bearing/ferron.py
+#   (Alakhramsing 2015 Fig. 9c, same 2000 rpm / 4 kN point) agrees on the inlet
+#   level (40.5 degC) and the peak value (49.1 degC) but places the peak at
+#   279 deg against 258 deg here. That ~20 deg spread is the known disagreement
+#   between open reproductions over where the plateau maximum sits; it bounds how
+#   precisely peak LOCATION can be scored against this curve.
+# source: digitised from cases/ref_data/ferron1983_fig4_2000rpm_4kN.png
+13.252626329252408,40.48655464212745
+43.37038884151932,40.507408420341385
+76.76909216686242,40.93508180633537
+107.34873469650412,40.94039077205232
+134.4476262488135,40.88259544072459
+154.23317620939847,41.901655432037195
+169.15523094000866,42.93549606653904
+179.40346530671343,43.53102527389437
+200.62098811113435,45.00345887160347
+209.74275647935133,45.94254251194518
+224.67060280892545,47.03888415193295
+239.58831384031274,48.02584903232034
+258.2155440081082,49.04470792644669
+284.54415289821264,48.17427886549012
+315.8969738895414,46.52347206357889
+346.14939107772,42.997474219340724

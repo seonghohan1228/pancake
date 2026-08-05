@@ -1,0 +1,15 @@
+[0mLoaded configuration from: config10.txt[0m
+[33m  Config warning: dissolved_gas_bunsen_coeff is ignored: the BUNSEN solubility model was removed (use solubility_model = HENRY or TABLE).[0m
+[0mStarting Simulation...[0m
+[32m  Step 0 t=0.000000  [saved][0m
+[32m  Step 1 t=0.000020[0m
+[32m  Step 2 t=0.000040[0m
+[32m  Step 3 t=0.000060[0m
+[32m  Step 4 t=0.000080[0m
+[32m  Step 5 t=0.000100[0m
+[32m  Step 6 t=0.000120[0m
+[32m  Step 7 t=0.000140[0m
+[32m  Step 8 t=0.000160[0m
+[32m  Step 9 t=0.000180[0m
+[32m  Step 10 t=0.000200[0m
+[0mSimulation finished successfully.[0m

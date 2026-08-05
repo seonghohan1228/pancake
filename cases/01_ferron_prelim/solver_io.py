@@ -1,0 +1,135 @@
+"""Run one pancake steady case and read its final-frame integral metrics.
+
+Shared by the case-01 force-balance driver and the case-02 locus sweep.
+Everything runs with `mpiexec -n 2` so the 4-rank dt sweep keeps its cores.
+"""
+
+import math
+import os
+import subprocess
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+EXE = Path(r"C:\Dev\pancake\build-windows-mingw\pancake.exe")
+MINGW_BIN = r"C:\msys64\mingw64\bin"
+NPROC = 2
+
+
+def progress(progress_file, message):
+    """Append one timestamped line to a case progress.log and echo it."""
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{stamp}  {message}"
+    with open(progress_file, "a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+    print(line, flush=True)
+
+
+def run_case(work_dir, cfg="config.txt", log_name="run.log"):
+    """Run the solver in work_dir. Returns (returncode, wall_seconds)."""
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["PATH"] = MINGW_BIN + os.pathsep + env["PATH"]
+    t0 = time.perf_counter()
+    with open(work_dir / log_name, "w", encoding="utf-8", errors="replace") as log:
+        proc = subprocess.run(
+            ["mpiexec", "-n", str(NPROC), str(EXE), "--config", cfg],
+            cwd=str(work_dir), stdout=log, stderr=subprocess.STDOUT,
+            env=env, text=True, encoding="utf-8", errors="replace",
+        )
+    return proc.returncode, time.perf_counter() - t0
+
+
+def _piece_arrays(vts_path):
+    root = ET.parse(vts_path).getroot()
+    out = {}
+    for cd in root.iter("CellData"):
+        for da in cd.findall("DataArray"):
+            ncomp = int(da.get("NumberOfComponents", "1"))
+            out[da.get("Name")] = ([float(v) for v in (da.text or "").split()], ncomp)
+    return out
+
+
+def _read_pvts(pvts_path):
+    """Merge every rank piece of a .pvts, in the piece order written by IO."""
+    root = ET.parse(pvts_path).getroot()
+    merged = {}
+    for piece in root.iter("Piece"):
+        src = pvts_path.parent / piece.get("Source")
+        for name, (vals, ncomp) in _piece_arrays(src).items():
+            merged.setdefault(name, ([], ncomp))[0].extend(vals)
+    return merged
+
+
+def final_pvts(run_dir):
+    """Path of the last flat .pvts frame, or None."""
+    pvd = Path(run_dir) / "results" / "flat" / "results.pvd"
+    if not pvd.exists():
+        return None
+    root = ET.parse(pvd).getroot()
+    items = [(float(ds.get("timestep")), pvd.parent / ds.get("file"))
+             for ds in root.iter("DataSet")]
+    if not items:
+        return None
+    items.sort(key=lambda x: x[0])
+    return items[-1][1]
+
+
+def frame_metrics(run_dir):
+    """Integral metrics of the final frame: forces, p_max, torque, cavitation."""
+    path = final_pvts(run_dir)
+    if path is None:
+        return None
+    a = _read_pvts(path)
+    m = {}
+    if "Fp" in a:
+        fx, fy = a["Fp"][0][0], a["Fp"][0][1]
+        m["Fx"], m["Fy"] = fx, fy
+        m["W"] = math.hypot(fx, fy)
+        m["force_angle_deg"] = math.degrees(math.atan2(fy, fx))
+    if "p" in a:
+        m["p_max"] = max(a["p"][0])
+        m["p_min"] = min(a["p"][0])
+    if "film_content" in a:
+        fc = a["film_content"][0]
+        m["cav_frac"] = sum(1 for v in fc if v < 0.999) / len(fc)
+        m["film_content_min"] = min(fc)
+    if "friction_torque" in a:
+        m["friction_torque"] = a["friction_torque"][0][0]
+    if "h" in a:
+        m["h_min"] = min(a["h"][0])
+    return m
+
+
+def midplane_pressure(run_dir):
+    """Final-frame mid-span p(theta): (theta_deg list, p list), theta-sorted.
+
+    Uses the solver's own theta_rad / z_m cell fields rather than assuming a
+    piece ordering: pieces are theta-blocked but cells inside a piece run
+    theta-fastest, so a naive reshape of the concatenation is wrong.
+    """
+    path = final_pvts(run_dir)
+    if path is None:
+        return None
+    a = _read_pvts(path)
+    theta = a["theta_rad"][0]
+    z = a["z_m"][0]
+    p = a["p"][0]
+    z_sorted = sorted(set(z))
+    z_mid = z_sorted[len(z_sorted) // 2]
+    rows = [(math.degrees(t) % 360.0, pv)
+            for t, zv, pv in zip(theta, z, p) if zv == z_mid]
+    rows.sort()
+    return [r[0] for r in rows], [r[1] for r in rows]
+
+
+def diagnostics_tail(run_dir):
+    """Last row of results/diagnostics.csv as a dict of strings."""
+    csv_path = Path(run_dir) / "results" / "diagnostics.csv"
+    if not csv_path.exists():
+        return {}
+    lines = [l for l in csv_path.read_text().splitlines() if l.strip()]
+    if len(lines) < 2:
+        return {}
+    return dict(zip(lines[0].split(","), lines[-1].split(",")))

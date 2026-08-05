@@ -1,0 +1,639 @@
+{
+  "fig4_Jadiabatic": {
+    "pinned": {
+      "group": "fig4_Jadiabatic",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 4000.0,
+      "eps": 0.5709004165644542,
+      "psi": -36.02983294533228,
+      "dir": "fig4_Jadiabatic/fb_iter_06",
+      "metrics": {
+        "dir": "fig4_Jadiabatic/fb_iter_06",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.5709004165644542,
+        "psi": -36.02983294533228,
+        "tag": "pinned/x2",
+        "rc": 0,
+        "wall_s": 14.3,
+        "ok": true,
+        "Fx": 0.149031,
+        "Fy": -4000.86,
+        "W": 4000.8600027756834,
+        "force_angle_deg": -89.99786574703622,
+        "p_max": 1366650.0,
+        "h_min": 6.52238e-05,
+        "cav_frac": 0.25710358796296295,
+        "friction_torque": 2.83133,
+        "T_max": 316.951,
+        "T_min": 313.15,
+        "T_max_theta_deg": 281.7499892794249,
+        "mu_min": 0.0239195,
+        "mu_max": 0.0277,
+        "q_supply": 0.00034788200658153023,
+        "liquid_residual": 8.11143107727793e-16,
+        "coupling": {
+          "iters": 7,
+          "R_p": 7.76902e-07,
+          "R_T": 2.39477e-07
+        }
+      },
+      "newton_steps": 2
+    },
+    "flow": {
+      "group": "fig4_Jadiabatic",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.00034788200658153023
+      },
+      "W_target": 4000.0,
+      "eps": 0.5738030720305524,
+      "psi": -36.32370169904824,
+      "dir": "fig4_Jadiabatic/fb_iter_10",
+      "metrics": {
+        "dir": "fig4_Jadiabatic/fb_iter_10",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.00034788200658153023}",
+        "eps": 0.5738030720305524,
+        "psi": -36.32370169904824,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 14.8,
+        "ok": true,
+        "Fx": -0.369492,
+        "Fy": -3999.7,
+        "W": 3999.700017066822,
+        "force_angle_deg": -90.00529297999941,
+        "p_max": 1371530.0,
+        "h_min": 6.4782e-05,
+        "cav_frac": 0.2579282407407407,
+        "friction_torque": 2.80835,
+        "T_max": 317.072,
+        "T_min": 313.41,
+        "T_max_theta_deg": 279.7500227997412,
+        "mu_min": 0.0238061,
+        "mu_max": 0.0274285,
+        "q_supply": 0.0003538971464276,
+        "liquid_residual": 1.96999099950457e-11,
+        "coupling": {
+          "iters": 8,
+          "R_p": 0.0,
+          "R_T": 1.42095e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.00034788200658153023
+  },
+  "fig4_Jiso40": {
+    "pinned": {
+      "group": "fig4_Jiso40",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 10000.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 4000.0,
+      "eps": 0.5669713731864487,
+      "psi": -36.037008553806984,
+      "dir": "fig4_Jiso40/fb_iter_06",
+      "metrics": {
+        "dir": "fig4_Jiso40/fb_iter_06",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 10000.0, \"q_supply\": 0.0001}",
+        "eps": 0.5669713731864487,
+        "psi": -36.037008553806984,
+        "tag": "pinned/x2",
+        "rc": 0,
+        "wall_s": 11.7,
+        "ok": true,
+        "Fx": 0.219883,
+        "Fy": -4001.21,
+        "W": 4001.2100060417392,
+        "force_angle_deg": -89.99685136049496,
+        "p_max": 1365580.0,
+        "h_min": 6.58209e-05,
+        "cav_frac": 0.2584346064814815,
+        "friction_torque": 2.90582,
+        "T_max": 315.341,
+        "T_min": 313.15,
+        "T_max_theta_deg": 257.25023906375753,
+        "mu_min": 0.0254732,
+        "mu_max": 0.0277,
+        "q_supply": 0.0003458072665777186,
+        "liquid_residual": -4.93646814509848e-11,
+        "coupling": {
+          "iters": 6,
+          "R_p": 0.0,
+          "R_T": 2.88778e-07
+        }
+      },
+      "newton_steps": 2
+    },
+    "flow": {
+      "group": "fig4_Jiso40",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 10000.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.0003458072665777186
+      },
+      "W_target": 4000.0,
+      "eps": 0.5674971348436232,
+      "psi": -36.11870083288354,
+      "dir": "fig4_Jiso40/fb_iter_10",
+      "metrics": {
+        "dir": "fig4_Jiso40/fb_iter_10",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 10000.0, \"q_supply\": 0.0003458072665777186}",
+        "eps": 0.5674971348436232,
+        "psi": -36.11870083288354,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 11.7,
+        "ok": true,
+        "Fx": -0.0624404,
+        "Fy": -3999.88,
+        "W": 3999.880000487365,
+        "force_angle_deg": -90.0008944196803,
+        "p_max": 1366580.0,
+        "h_min": 6.57407e-05,
+        "cav_frac": 0.25870949074074073,
+        "friction_torque": 2.8997,
+        "T_max": 315.351,
+        "T_min": 313.285,
+        "T_max_theta_deg": 256.7500469086083,
+        "mu_min": 0.0254634,
+        "mu_max": 0.0275587,
+        "q_supply": 0.00034801125946115,
+        "liquid_residual": -1.52297095932223e-10,
+        "coupling": {
+          "iters": 6,
+          "R_p": 0.0,
+          "R_T": 6.47781e-08
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.0003458072665777186
+  },
+  "fig5_W2000": {
+    "pinned": {
+      "group": "fig5_W2000",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 2000.0,
+      "eps": 0.4027405191287099,
+      "psi": -24.98001440197094,
+      "dir": "fig5_W2000/fb_iter_09",
+      "metrics": {
+        "dir": "fig5_W2000/fb_iter_09",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.4027405191287099,
+        "psi": -24.98001440197094,
+        "tag": "pinned/x3",
+        "rc": 0,
+        "wall_s": 13.5,
+        "ok": true,
+        "Fx": -0.0106888,
+        "Fy": -1999.97,
+        "W": 1999.9700000285632,
+        "force_angle_deg": -90.00030621615728,
+        "p_max": 670412.0,
+        "h_min": 9.07839e-05,
+        "cav_frac": 0.21721643518518519,
+        "friction_torque": 2.52384,
+        "T_max": 315.958,
+        "T_min": 313.15,
+        "T_max_theta_deg": 314.75000915200025,
+        "mu_min": 0.0248694,
+        "mu_max": 0.0277,
+        "q_supply": 0.00023375105757921858,
+        "liquid_residual": 1.85859134045612e-11,
+        "coupling": {
+          "iters": 7,
+          "R_p": 0.0,
+          "R_T": 8.64891e-08
+        }
+      },
+      "newton_steps": 3
+    },
+    "flow": {
+      "group": "fig5_W2000",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.00023375105757921858
+      },
+      "W_target": 2000.0,
+      "eps": 0.4060766998329109,
+      "psi": -25.257992201788525,
+      "dir": "fig5_W2000/fb_iter_13",
+      "metrics": {
+        "dir": "fig5_W2000/fb_iter_13",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.00023375105757921858}",
+        "eps": 0.4060766998329109,
+        "psi": -25.257992201788525,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 13.6,
+        "ok": true,
+        "Fx": -0.176103,
+        "Fy": -1999.9,
+        "W": 1999.9000077534545,
+        "force_angle_deg": -90.00504523157834,
+        "p_max": 672670.0,
+        "h_min": 9.02763e-05,
+        "cav_frac": 0.2181568287037037,
+        "friction_torque": 2.49835,
+        "T_max": 316.081,
+        "T_min": 313.578,
+        "T_max_theta_deg": 309.25001538920094,
+        "mu_min": 0.0247505,
+        "mu_max": 0.0272544,
+        "q_supply": 0.00023896093089926745,
+        "liquid_residual": -5.93687055559414e-11,
+        "coupling": {
+          "iters": 7,
+          "R_p": 0.0,
+          "R_T": 4.54964e-08
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.00023375105757921858
+  },
+  "fig5_W3000": {
+    "pinned": {
+      "group": "fig5_W3000",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 3000.0,
+      "eps": 0.501986107538417,
+      "psi": -31.395881915836455,
+      "dir": "fig5_W3000/fb_iter_06",
+      "metrics": {
+        "dir": "fig5_W3000/fb_iter_06",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.501986107538417,
+        "psi": -31.395881915836455,
+        "tag": "pinned/x2",
+        "rc": 0,
+        "wall_s": 13.9,
+        "ok": true,
+        "Fx": -0.697602,
+        "Fy": -3000.63,
+        "W": 3000.6300810910616,
+        "force_angle_deg": -90.01332041926521,
+        "p_max": 1004550.0,
+        "h_min": 7.56984e-05,
+        "cav_frac": 0.24042245370370371,
+        "friction_torque": 2.68236,
+        "T_max": 316.448,
+        "T_min": 313.15,
+        "T_max_theta_deg": 294.75000058048664,
+        "mu_min": 0.0243973,
+        "mu_max": 0.0277,
+        "q_supply": 0.0002943915876316302,
+        "liquid_residual": 3.79071483882625e-11,
+        "coupling": {
+          "iters": 7,
+          "R_p": 0.0,
+          "R_T": 8.56591e-08
+        }
+      },
+      "newton_steps": 2
+    },
+    "flow": {
+      "group": "fig5_W3000",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.0002943915876316302
+      },
+      "W_target": 3000.0,
+      "eps": 0.5051092640575711,
+      "psi": -31.674902903832276,
+      "dir": "fig5_W3000/fb_iter_10",
+      "metrics": {
+        "dir": "fig5_W3000/fb_iter_10",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.0002943915876316302}",
+        "eps": 0.5051092640575711,
+        "psi": -31.674902903832276,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 13.7,
+        "ok": true,
+        "Fx": -0.268071,
+        "Fy": -2999.81,
+        "W": 2999.8100119777687,
+        "force_angle_deg": -90.00512010322953,
+        "p_max": 1007960.0,
+        "h_min": 7.52235e-05,
+        "cav_frac": 0.2413773148148148,
+        "friction_torque": 2.65836,
+        "T_max": 316.57,
+        "T_min": 313.487,
+        "T_max_theta_deg": 290.7500103253399,
+        "mu_min": 0.0242809,
+        "mu_max": 0.0273495,
+        "q_supply": 0.00030014763455299415,
+        "liquid_residual": -1.14949309672304e-10,
+        "coupling": {
+          "iters": 7,
+          "R_p": 0.0,
+          "R_T": 1.74793e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.0002943915876316302
+  },
+  "fig5_W6000": {
+    "pinned": {
+      "group": "fig5_W6000",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 6000.0,
+      "eps": 0.6610372391100671,
+      "psi": -42.377055628635325,
+      "dir": "fig5_W6000/fb_iter_09",
+      "metrics": {
+        "dir": "fig5_W6000/fb_iter_09",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.6610372391100671,
+        "psi": -42.377055628635325,
+        "tag": "pinned/x3",
+        "rc": 0,
+        "wall_s": 17.1,
+        "ok": true,
+        "Fx": -0.0480005,
+        "Fy": -5999.84,
+        "W": 5999.840000192009,
+        "force_angle_deg": -90.0004583832343,
+        "p_max": 2156020.0,
+        "h_min": 5.15226e-05,
+        "cav_frac": 0.27999131944444444,
+        "friction_torque": 3.09762,
+        "T_max": 317.947,
+        "T_min": 313.15,
+        "T_max_theta_deg": 264.2500644468708,
+        "mu_min": 0.0229933,
+        "mu_max": 0.0277,
+        "q_supply": 0.00043500214733027676,
+        "liquid_residual": -3.54688274891689e-11,
+        "coupling": {
+          "iters": 10,
+          "R_p": 0.0,
+          "R_T": 8.69801e-08
+        }
+      },
+      "newton_steps": 3
+    },
+    "flow": {
+      "group": "fig5_W6000",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.00043500214733027676
+      },
+      "W_target": 6000.0,
+      "eps": 0.6636069536388457,
+      "psi": -42.66461567776791,
+      "dir": "fig5_W6000/fb_iter_13",
+      "metrics": {
+        "dir": "fig5_W6000/fb_iter_13",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.00043500214733027676}",
+        "eps": 0.6636069536388457,
+        "psi": -42.66461567776791,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 16.1,
+        "ok": true,
+        "Fx": -0.594337,
+        "Fy": -5999.38,
+        "W": 5999.380029439415,
+        "force_angle_deg": -90.00567608679515,
+        "p_max": 2164920.0,
+        "h_min": 5.11319e-05,
+        "cav_frac": 0.28100405092592595,
+        "friction_torque": 3.07498,
+        "T_max": 318.066,
+        "T_min": 313.291,
+        "T_max_theta_deg": 263.2502530943675,
+        "mu_min": 0.0228849,
+        "mu_max": 0.0275531,
+        "q_supply": 0.00044068307332860933,
+        "liquid_residual": -2.80807020115315e-11,
+        "coupling": {
+          "iters": 9,
+          "R_p": 0.0,
+          "R_T": 1.7159e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.00043500214733027676
+  },
+  "fig5_W8000": {
+    "pinned": {
+      "group": "fig5_W8000",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 8000.0,
+      "eps": 0.7183706467625522,
+      "psi": -46.60644719230928,
+      "dir": "fig5_W8000/fb_iter_09",
+      "metrics": {
+        "dir": "fig5_W8000/fb_iter_09",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.7183706467625522,
+        "psi": -46.60644719230928,
+        "tag": "pinned/x3",
+        "rc": 0,
+        "wall_s": 17.3,
+        "ok": true,
+        "Fx": -0.588195,
+        "Fy": -7999.04,
+        "W": 7999.0400216259295,
+        "force_angle_deg": -90.00421314194828,
+        "p_max": 3016820.0,
+        "h_min": 4.2808e-05,
+        "cav_frac": 0.2950520833333333,
+        "friction_torque": 3.32745,
+        "T_max": 318.914,
+        "T_min": 313.15,
+        "T_max_theta_deg": 254.25023204845252,
+        "mu_min": 0.0221201,
+        "mu_max": 0.0277,
+        "q_supply": 0.0005020401549797104,
+        "liquid_residual": 6.81822734619847e-17,
+        "coupling": {
+          "iters": 10,
+          "R_p": 6.48767e-07,
+          "R_T": 1.90037e-07
+        }
+      },
+      "newton_steps": 3
+    },
+    "flow": {
+      "group": "fig5_W8000",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.0005020401549797104
+      },
+      "W_target": 8000.0,
+      "eps": 0.7206554885158715,
+      "psi": -46.88323029463585,
+      "dir": "fig5_W8000/fb_iter_13",
+      "metrics": {
+        "dir": "fig5_W8000/fb_iter_13",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.0005020401549797104}",
+        "eps": 0.7206554885158715,
+        "psi": -46.88323029463585,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 17.5,
+        "ok": true,
+        "Fx": -0.828727,
+        "Fy": -7998.95,
+        "W": 7998.950042929911,
+        "force_angle_deg": -90.00593609902533,
+        "p_max": 3030440.0,
+        "h_min": 4.24607e-05,
+        "cav_frac": 0.29606481481481484,
+        "friction_torque": 3.30482,
+        "T_max": 319.03,
+        "T_min": 313.227,
+        "T_max_theta_deg": 251.74984423050165,
+        "mu_min": 0.0220161,
+        "mu_max": 0.02762,
+        "q_supply": 0.0005072540680471593,
+        "liquid_residual": -2.33722777459484e-11,
+        "coupling": {
+          "iters": 10,
+          "R_p": 0.0,
+          "R_T": 3.04536e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.0005020401549797104
+  },
+  "fig5_W10000": {
+    "pinned": {
+      "group": "fig5_W10000",
+      "label": "pinned",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 10000.0,
+      "eps": 0.7586255134035342,
+      "psi": -49.69802150371646,
+      "dir": "fig5_W10000/fb_iter_09",
+      "metrics": {
+        "dir": "fig5_W10000/fb_iter_09",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"journal_htc\": 0.0, \"q_supply\": 0.0001}",
+        "eps": 0.7586255134035342,
+        "psi": -49.69802150371646,
+        "tag": "pinned/x3",
+        "rc": 0,
+        "wall_s": 24.3,
+        "ok": true,
+        "Fx": -1.86139,
+        "Fy": -9998.05,
+        "W": 9998.050173272422,
+        "force_angle_deg": -90.01066705905609,
+        "p_max": 3937130.0,
+        "h_min": 3.6689e-05,
+        "cav_frac": 0.3057725694444444,
+        "friction_torque": 3.53005,
+        "T_max": 319.847,
+        "T_min": 313.15,
+        "T_max_theta_deg": 245.74983019989162,
+        "mu_min": 0.0213003,
+        "mu_max": 0.0277,
+        "q_supply": 0.0005552082947610454,
+        "liquid_residual": -4.0776706639536e-11,
+        "coupling": {
+          "iters": 15,
+          "R_p": 0.0,
+          "R_T": 2.26639e-07
+        }
+      },
+      "newton_steps": 3
+    },
+    "flow": {
+      "group": "fig5_W10000",
+      "label": "flow",
+      "cfg": {
+        "journal_htc": 0.0,
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.0005552082947610454
+      },
+      "W_target": 10000.0,
+      "eps": 0.760683972445854,
+      "psi": -49.96237407278695,
+      "dir": "fig5_W10000/fb_iter_13",
+      "metrics": {
+        "dir": "fig5_W10000/fb_iter_13",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"journal_htc\": 0.0, \"q_supply\": 0.0005552082947610454}",
+        "eps": 0.760683972445854,
+        "psi": -49.96237407278695,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 18.2,
+        "ok": true,
+        "Fx": -1.08753,
+        "Fy": -9998.52,
+        "W": 9998.520059144828,
+        "force_angle_deg": -90.00623201022232,
+        "p_max": 3956030.0,
+        "h_min": 3.63768e-05,
+        "cav_frac": 0.3060040509259259,
+        "friction_torque": 3.50818,
+        "T_max": 319.963,
+        "T_min": 313.189,
+        "T_max_theta_deg": 244.24982669223914,
+        "mu_min": 0.0212002,
+        "mu_max": 0.0276596,
+        "q_supply": 0.0005599531058215093,
+        "liquid_residual": 1.00032156843238e-10,
+        "coupling": {
+          "iters": 10,
+          "R_p": 0.0,
+          "R_T": 1.30283e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.0005552082947610454
+  }
+}

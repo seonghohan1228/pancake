@@ -1,0 +1,5 @@
+2026-08-05 11:39:05  fig6_Jadiabatic/fb_iter_00 [pinned/x0] eps=0.550000 psi=-36.0000 -> W=6991.90 N angle=-91.9662 deg Tmax=48.73 C picard=9 (28 s)
+2026-08-05 11:39:05  fig6_Jadiabatic/pinned iter 0: eps=0.550000 psi=-36.0000 W=6991.90 (dW=+991.90 N) dAngle=-1.9662 deg
+2026-08-05 11:39:35  fig6_Jadiabatic/fb_iter_01 [pinned/J_eps] eps=0.555000 psi=-36.0000 -> W=7134.12 N angle=-91.6233 deg Tmax=48.82 C picard=9 (29 s)
+2026-08-05 11:40:03  fig6_Jadiabatic/fb_iter_02 [pinned/J_psi] eps=0.550000 psi=-35.5000 -> W=6992.09 N angle=-91.4393 deg Tmax=48.73 C picard=9 (28 s)
+2026-08-05 11:40:13  fig6_Jadiabatic/fb_iter_03 [pinned/x1] FAILED rc=1

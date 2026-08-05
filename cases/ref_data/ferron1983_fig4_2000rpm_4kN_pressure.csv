@@ -1,0 +1,35 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 4
+# curve: experiment, mid-plane film pressure, measured through bush holes
+# condition: N = 2000 rpm, W = 4000 N
+# note: the figure plots three pressure symbol sets (open, half-filled, filled
+#   circles) with no legend distinction beyond "EXPERIMENTS". This trace reads the
+#   cluster centre; local scatter is up to ~0.1 MPa near the peak and in the
+#   240-250 deg rupture region.
+# x: theta [deg], from supply groove center, in direction of rotation
+# y: pressure [Pa], gauge
+# note: the figure axis is MPa; values here are converted to Pa
+# note: THETA ORIGIN NOT CONFIRMED AGAINST THE PDF. The paper's nomenclature
+#   defines theta from the maximum film thickness; the groove-referenced reading
+#   used here is inferred from the peak position and the near-zero pressure at
+#   the low-theta end. This condition corroborates it: the independent
+#   groove-referenced digitisation in validation/journal_bearing/ferron.py
+#   (Alakhramsing 2015 Fig. 9b, same 2000 rpm / 4 kN point) peaks at 1.29 MPa at
+#   194 deg against 1.26 MPa at 201 deg here, inside the stated digitising error.
+#   If the origin is nevertheless wrong, every point shifts by the attitude angle.
+# source: digitised from cases/ref_data/ferron1983_fig4_2000rpm_4kN.png
+27.52074726064307,55158.37375007502
+57.13095024250045,73281.0410554263
+87.65151787318123,156605.39289064548
+118.6132566912161,333089.83494002407
+141.70432908209088,528343.6121589532
+155.54014729656907,726862.6629143968
+171.22902820190404,916032.9720775207
+184.58918627627088,1170460.8506476667
+200.9951499910185,1260239.9057940652
+214.68439015627803,1092301.8581721666
+229.13885396084066,616897.1917849237
+245.44494341656187,138354.98872323075
+269.529728758757,38560.56523561545
+299.61271780132927,13196.814562003612
+328.99299443147123,25112.268726424303

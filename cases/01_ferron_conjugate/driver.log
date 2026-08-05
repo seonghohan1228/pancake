@@ -1,0 +1,50 @@
+﻿2026-08-05 14:21:40  outer_fixed313/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4231.30 N angle=-92.2183 deg Tmax=44.54 C picard=26 (51 s)
+2026-08-05 14:21:40  outer_fixed313/pinned iter 0: eps=0.600000 psi=-40.0000 W=4231.30 (dW=+231.30 N) dAngle=-2.2183 deg
+2026-08-05 14:22:32  outer_fixed313/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4323.04 N angle=-91.8407 deg Tmax=44.58 C picard=27 (51 s)
+2026-08-05 14:23:25  outer_fixed313/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4231.76 N angle=-91.6853 deg Tmax=44.54 C picard=27 (52 s)
+2026-08-05 14:24:16  outer_fixed313/fb_iter_03 [pinned/x1] eps=0.587130 psi=-37.1020 -> W=4008.98 N angle=-90.0864 deg Tmax=44.44 C picard=26 (51 s)
+2026-08-05 14:24:16  outer_fixed313/pinned iter 1: eps=0.587130 psi=-37.1020 W=4008.98 (dW=+8.98 N) dAngle=-0.0864 deg
+2026-08-05 14:25:09  outer_fixed313/fb_iter_04 [pinned/J_eps] eps=0.592130 psi=-37.1020 -> W=4094.95 N angle=-89.7130 deg Tmax=44.47 C picard=26 (53 s)
+2026-08-05 14:26:00  outer_fixed313/fb_iter_05 [pinned/J_psi] eps=0.587130 psi=-36.6020 -> W=4009.71 N angle=-89.5500 deg Tmax=44.44 C picard=26 (50 s)
+2026-08-05 14:26:51  outer_fixed313/fb_iter_06 [pinned/x2] eps=0.586599 psi=-36.9839 -> W=4000.15 N angle=-89.9994 deg Tmax=44.43 C picard=26 (50 s)
+2026-08-05 14:26:51  outer_fixed313/pinned iter 2: eps=0.586599 psi=-36.9839 W=4000.15 (dW=+0.15 N) dAngle=+0.0006 deg
+2026-08-05 14:26:51  outer_fixed313/pinned CONVERGED eps=0.586599 psi=-36.9839
+2026-08-05 14:26:51  outer_fixed313: derived Q_supply = 3.616297e-04 m^3/s (21.70 L/min) from the PINNED steady mass balance
+2026-08-05 14:27:49  outer_fixed313/fb_iter_07 [flow/x0] eps=0.586599 psi=-36.9839 -> W=3888.49 N angle=-89.9630 deg Tmax=44.91 C picard=31 (58 s)
+2026-08-05 14:27:49  outer_fixed313/flow iter 0: eps=0.586599 psi=-36.9839 W=3888.49 (dW=-111.51 N) dAngle=+0.0370 deg
+2026-08-05 14:28:48  outer_fixed313/fb_iter_08 [flow/J_eps] eps=0.591599 psi=-36.9839 -> W=3971.30 N angle=-89.5884 deg Tmax=44.95 C picard=31 (59 s)
+2026-08-05 14:29:47  outer_fixed313/fb_iter_09 [flow/J_psi] eps=0.586599 psi=-36.4839 -> W=3889.60 N angle=-89.4261 deg Tmax=44.91 C picard=31 (58 s)
+2026-08-05 14:30:47  outer_fixed313/fb_iter_10 [flow/x1] eps=0.593397 psi=-37.5036 -> W=4000.48 N angle=-90.0104 deg Tmax=44.97 C picard=31 (60 s)
+2026-08-05 14:30:47  outer_fixed313/flow iter 1: eps=0.593397 psi=-37.5036 W=4000.48 (dW=+0.48 N) dAngle=-0.0104 deg
+2026-08-05 14:30:47  outer_fixed313/flow CONVERGED eps=0.593397 psi=-37.5036
+2026-08-05 14:35:24  outer_robin80/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4129.20 N angle=-92.6876 deg Tmax=45.92 C picard=200 (276 s)
+2026-08-05 14:35:24  outer_robin80/pinned iter 0: eps=0.600000 psi=-40.0000 W=4129.20 (dW=+129.20 N) dAngle=-2.6876 deg
+2026-08-05 14:40:01  outer_robin80/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4216.88 N angle=-92.3110 deg Tmax=45.98 C picard=200 (277 s)
+2026-08-05 14:44:56  outer_robin80/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4129.80 N angle=-92.1519 deg Tmax=45.92 C picard=200 (295 s)
+2026-08-05 14:49:21  outer_robin80/fb_iter_03 [pinned/x1] eps=0.592230 psi=-37.0135 -> W=4001.36 N angle=-90.0619 deg Tmax=45.80 C picard=190 (264 s)
+2026-08-05 14:49:21  outer_robin80/pinned iter 1: eps=0.592230 psi=-37.0135 W=4001.36 (dW=+1.36 N) dAngle=-0.0619 deg
+2026-08-05 14:54:40  outer_robin80/fb_iter_04 [pinned/J_eps] eps=0.597230 psi=-37.0135 -> W=4085.89 N angle=-89.6897 deg Tmax=45.86 C picard=200 (319 s)
+2026-08-05 15:00:07  outer_robin80/fb_iter_05 [pinned/J_psi] eps=0.592230 psi=-36.5135 -> W=4002.25 N angle=-89.5233 deg Tmax=45.80 C picard=187 (326 s)
+2026-08-05 15:03:55  outer_robin80/fb_iter_06 [pinned/x2] FAILED rc=1
+python : Traceback (most recent call last):
+At line:1 char:392
++ ... ncake\cases\01_ferron_conjugate; python force_balance.py 2>&1 | Out-F ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Dev\pancake\cases\01_ferron_conjugate\force_balance.py", line 200, in <module>
+    main()
+    ~~~~^^
+  File "C:\Dev\pancake\cases\01_ferron_conjugate\force_balance.py", line 192, in main
+    results[variant] = solve_point(variant, WALLS[variant], W_TARGET, 0.60, -40.0)
+                       ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Dev\pancake\cases\01_ferron_conjugate\force_balance.py", line 169, in solve_point
+    a = newton(group, "pinned", pinned, w_target, eps0, psi0)
+  File "C:\Dev\pancake\cases\01_ferron_conjugate\force_balance.py", line 137, in newton
+    ok, d_ang = converged(rec, w_target)
+                ~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Dev\pancake\cases\01_ferron_conjugate\force_balance.py", line 126, in converged
+    d_ang = (rec["force_angle_deg"] - ANGLE_TARGET + 180.0) % 360.0 - 180.0
+             ~~~^^^^^^^^^^^^^^^^^^^
+KeyError: 'force_angle_deg'

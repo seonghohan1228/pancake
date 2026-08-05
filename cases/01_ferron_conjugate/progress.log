@@ -1,0 +1,47 @@
+2026-08-05 14:20:00  Case 01-CONJUGATE start. Solver: codex/conjugate-bush, bush_thermal_model = CONDUCTION_2D.
+2026-08-05 14:20:00  Pre-run findings, measured before the campaign and NOT worked around:
+2026-08-05 14:20:00  (1) Newton linearisation of the wall term. Three choices for dT_b/dT_bar were
+2026-08-05 14:20:00      implemented and measured at 720 x 192. The bore admittance with neighbouring
+2026-08-05 14:20:00      bush cells frozen gives dT_b/dT_bar = 0.053 but scales with bush_radial_cells;
+2026-08-05 14:20:00      the series-to-ambient conductance zeroes the wall coefficient and the
+2026-08-05 14:20:00      temperature KSP DIVERGED at eps=0.60 psi=-40 (outer_robin80); a frozen bush
+2026-08-05 14:20:00      (dT_b/dT_bar = 0) is mesh-free, matches the admittance answer to 5%, and runs.
+2026-08-05 14:20:00      The frozen-bush form is what this campaign uses.
+2026-08-05 14:20:00  (2) At 720 x 192 the outer_robin80 Picard loop LIMIT-CYCLES instead of meeting
+2026-08-05 14:20:00      coupling_tolerance = 1e-6. R_p = 1.06e-3 / 9.83e-4 / 9.73e-4 at 100 / 200 / 400
+2026-08-05 14:20:00      outer iterations (flat), i.e. ~100 Pa and ~8 mK of ripple per iteration.
+2026-08-05 14:20:00      The SOLUTION is settled: W = 4013.431 N, p_max = 1.293835 MPa, T_max = 45.818 C,
+2026-08-05 14:20:00      T_bearing peak 45.398 C @ 265.8 deg, torque 2.71739 N m -- identical to 6
+2026-08-05 14:20:00      significant figures at 100, 200 and 400 iterations (eps 0.593, psi -37.5, PINNED).
+2026-08-05 14:20:00      outer_fixed313 converges normally (20-27 iterations). At 360 x 96 BOTH converge
+2026-08-05 14:20:00      (27 and 36 iterations), so the limit cycle is grid-dependent, not model-dependent.
+2026-08-05 14:20:00      The frozen protocol (coupling_max_iters = 200, coupling_tolerance = 1e-6) is kept
+2026-08-05 14:20:00      unchanged; the robin runs therefore report picard = 200 with R_p ~ 3e-4.
+2026-08-05 14:21:40  outer_fixed313/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4231.30 N angle=-92.2183 deg Tmax=44.54 C picard=26 (51 s)
+2026-08-05 14:21:40  outer_fixed313/pinned iter 0: eps=0.600000 psi=-40.0000 W=4231.30 (dW=+231.30 N) dAngle=-2.2183 deg
+2026-08-05 14:22:32  outer_fixed313/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4323.04 N angle=-91.8407 deg Tmax=44.58 C picard=27 (51 s)
+2026-08-05 14:23:25  outer_fixed313/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4231.76 N angle=-91.6853 deg Tmax=44.54 C picard=27 (52 s)
+2026-08-05 14:24:16  outer_fixed313/fb_iter_03 [pinned/x1] eps=0.587130 psi=-37.1020 -> W=4008.98 N angle=-90.0864 deg Tmax=44.44 C picard=26 (51 s)
+2026-08-05 14:24:16  outer_fixed313/pinned iter 1: eps=0.587130 psi=-37.1020 W=4008.98 (dW=+8.98 N) dAngle=-0.0864 deg
+2026-08-05 14:25:09  outer_fixed313/fb_iter_04 [pinned/J_eps] eps=0.592130 psi=-37.1020 -> W=4094.95 N angle=-89.7130 deg Tmax=44.47 C picard=26 (53 s)
+2026-08-05 14:26:00  outer_fixed313/fb_iter_05 [pinned/J_psi] eps=0.587130 psi=-36.6020 -> W=4009.71 N angle=-89.5500 deg Tmax=44.44 C picard=26 (50 s)
+2026-08-05 14:26:51  outer_fixed313/fb_iter_06 [pinned/x2] eps=0.586599 psi=-36.9839 -> W=4000.15 N angle=-89.9994 deg Tmax=44.43 C picard=26 (50 s)
+2026-08-05 14:26:51  outer_fixed313/pinned iter 2: eps=0.586599 psi=-36.9839 W=4000.15 (dW=+0.15 N) dAngle=+0.0006 deg
+2026-08-05 14:26:51  outer_fixed313/pinned CONVERGED eps=0.586599 psi=-36.9839
+2026-08-05 14:26:51  outer_fixed313: derived Q_supply = 3.616297e-04 m^3/s (21.70 L/min) from the PINNED steady mass balance
+2026-08-05 14:27:49  outer_fixed313/fb_iter_07 [flow/x0] eps=0.586599 psi=-36.9839 -> W=3888.49 N angle=-89.9630 deg Tmax=44.91 C picard=31 (58 s)
+2026-08-05 14:27:49  outer_fixed313/flow iter 0: eps=0.586599 psi=-36.9839 W=3888.49 (dW=-111.51 N) dAngle=+0.0370 deg
+2026-08-05 14:28:48  outer_fixed313/fb_iter_08 [flow/J_eps] eps=0.591599 psi=-36.9839 -> W=3971.30 N angle=-89.5884 deg Tmax=44.95 C picard=31 (59 s)
+2026-08-05 14:29:47  outer_fixed313/fb_iter_09 [flow/J_psi] eps=0.586599 psi=-36.4839 -> W=3889.60 N angle=-89.4261 deg Tmax=44.91 C picard=31 (58 s)
+2026-08-05 14:30:47  outer_fixed313/fb_iter_10 [flow/x1] eps=0.593397 psi=-37.5036 -> W=4000.48 N angle=-90.0104 deg Tmax=44.97 C picard=31 (60 s)
+2026-08-05 14:30:47  outer_fixed313/flow iter 1: eps=0.593397 psi=-37.5036 W=4000.48 (dW=+0.48 N) dAngle=-0.0104 deg
+2026-08-05 14:30:47  outer_fixed313/flow CONVERGED eps=0.593397 psi=-37.5036
+2026-08-05 14:35:24  outer_robin80/fb_iter_00 [pinned/x0] eps=0.600000 psi=-40.0000 -> W=4129.20 N angle=-92.6876 deg Tmax=45.92 C picard=200 (276 s)
+2026-08-05 14:35:24  outer_robin80/pinned iter 0: eps=0.600000 psi=-40.0000 W=4129.20 (dW=+129.20 N) dAngle=-2.6876 deg
+2026-08-05 14:40:01  outer_robin80/fb_iter_01 [pinned/J_eps] eps=0.605000 psi=-40.0000 -> W=4216.88 N angle=-92.3110 deg Tmax=45.98 C picard=200 (277 s)
+2026-08-05 14:44:56  outer_robin80/fb_iter_02 [pinned/J_psi] eps=0.600000 psi=-39.5000 -> W=4129.80 N angle=-92.1519 deg Tmax=45.92 C picard=200 (295 s)
+2026-08-05 14:49:21  outer_robin80/fb_iter_03 [pinned/x1] eps=0.592230 psi=-37.0135 -> W=4001.36 N angle=-90.0619 deg Tmax=45.80 C picard=190 (264 s)
+2026-08-05 14:49:21  outer_robin80/pinned iter 1: eps=0.592230 psi=-37.0135 W=4001.36 (dW=+1.36 N) dAngle=-0.0619 deg
+2026-08-05 14:54:40  outer_robin80/fb_iter_04 [pinned/J_eps] eps=0.597230 psi=-37.0135 -> W=4085.89 N angle=-89.6897 deg Tmax=45.86 C picard=200 (319 s)
+2026-08-05 15:00:07  outer_robin80/fb_iter_05 [pinned/J_psi] eps=0.592230 psi=-36.5135 -> W=4002.25 N angle=-89.5233 deg Tmax=45.80 C picard=187 (326 s)
+2026-08-05 15:03:55  outer_robin80/fb_iter_06 [pinned/x2] FAILED rc=1

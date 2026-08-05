@@ -1,0 +1,54 @@
+{
+  "experiment": {
+    "source": "Ferron 1983 Fig. 6, digitised (cases/ref_data)",
+    "p_peak_MPa_gauge": 1.8282401402384791,
+    "p_peak_theta_deg": 202.25894494348714,
+    "note": "peak is the largest of 15 digitised points, not a curve maximum",
+    "eps": null,
+    "attitude_deg": null
+  },
+  "reynsim": {
+    "source": "reynsim_data/pressure_distribution_4000rpm_6000N.csv",
+    "p_peak_MPa_gauge": 1.5074861842166931,
+    "p_peak_MPa_absolute": 1.608811184216693,
+    "p_peak_theta_deg": 204.2880107563113,
+    "p_raw_max_Pa": 1608700.0,
+    "p_raw_min_Pa": 100.0,
+    "groove_cell_Pa": 171320.0,
+    "n_theta": 283,
+    "locus_unverified": {
+      "x_m": 8.2693e-05,
+      "y_m": -5.1176e-05,
+      "e_m": 9.724770035841465e-05,
+      "eps_at_C_152um": 0.6397875023579911,
+      "angle_from_plus_x_deg": -31.75201348777907,
+      "note": "KSME/journal_center_locus.csv; operating point NOT stated anywhere"
+    }
+  },
+  "pancake_mu40": {
+    "source": "cases/01_ferron_prelim/fb_iter_06 (FBNS, ISOTHERMAL)",
+    "mu_Pa_s": 0.0277,
+    "p_peak_midplane_MPa_gauge": 1.7367869597430265,
+    "p_peak_theta_deg": 199.38229573672297,
+    "p_max_field_MPa_gauge": 1.736775,
+    "eps": 0.4816560947000834,
+    "attitude_deg": -31.27819171146394,
+    "h_min_um": 78.78829999999999,
+    "W_N": 5999.560028908571,
+    "cav_area_frac": 0.2482060185185185,
+    "friction_torque_Nm": 5.6567
+  },
+  "pancake_mu55": {
+    "source": "cases/01_ferron_prelim/fb_iter_13 (FBNS, ISOTHERMAL)",
+    "mu_Pa_s": 0.0166,
+    "p_peak_midplane_MPa_gauge": 1.9549845127635226,
+    "p_peak_theta_deg": 199.52525103965107,
+    "p_max_field_MPa_gauge": 1.954925,
+    "eps": 0.6063783002391172,
+    "attitude_deg": -39.453163286952524,
+    "h_min_um": 59.8311,
+    "W_N": 6000.31000188617,
+    "cav_area_frac": 0.2732349537037037,
+    "friction_torque_Nm": 3.82624
+  }
+}
