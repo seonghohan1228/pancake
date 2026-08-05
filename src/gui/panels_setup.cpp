@@ -650,6 +650,12 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                           "mu_oil * Andrade(T) * exp(a_c c_d) * Barus(p): exponential thinning "
                           "with dissolved gas plus temperature and pressure terms. Set the T/p "
                           "coefficients to 0 for pure gas-thinning (log mixing)."},
+                         {LiquidViscosityModel::POLYNOMIAL, "Polynomial (Ferron)",
+                          "mu_oil * (k0 - k1*Tbar + k2*Tbar^2) with Tbar the ratio of "
+                          "CELSIUS temperatures T/T_ref (Ferron, Frene & Boncompain 1983). "
+                          "Pure temperature law - no pressure or dissolved-gas term. "
+                          "Their VG32 set is k0=3.287, k1=3.064, k2=0.777 with mu=0.0277 "
+                          "Pa.s and the reference temperature at 313.15 K (40 C)."},
                          {LiquidViscosityModel::TABLE, "Table",
                           "Measured kinematic nu(p,T), converted to dynamic per cell."}});
                     row("Mixture viscosity", "Effective viscosity once free gas appears.");

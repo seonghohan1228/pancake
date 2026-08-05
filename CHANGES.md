@@ -2,6 +2,78 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Ferron polynomial viscosity (`liquid_viscosity_model = POLYNOMIAL`)
+
+A third selectable liquid-viscosity law, the quadratic used by Ferron, Frene &
+Boncompain, *ASME J. Lubr. Technol.* **105** (1983) 422:
+
+```
+mu(T) = mu * (k0 - k1*Tbar + k2*Tbar^2),   Tbar = T[degC] / T_ref[degC]
+```
+
+Motivation: the shipped benchmark bearing in `tests/test_fbns.cpp` already *is*
+Ferron's (R = 50 mm, L = 80 mm, c = 152 um, mu = 0.0277 Pa s, rho = 860), and
+comparing against that paper's THD results needs that paper's viscosity law, not
+an Andrade fit to it.
+
+**The units question, settled from the paper text.** `Tbar` is a ratio of
+**CELSIUS** temperatures. The paper's nomenclature reads "T = temperature degC"
+and "Tbar = T/T_0 nondimensional temperature", and its Table 1 coefficients only
+work that way:
+
+| reading | mubar(40 C) | mubar(80 C) | mu(80 C) |
+|---|---|---|---|
+| Celsius ratio (correct) | `3.287 - 3.064 + 0.777 = 1.000` | `0.267` | 7.4 mPa s (measured VG32) |
+| Kelvin ratio | 1.000 (trivially) | `0.820` | 22.7 mPa s (not an oil) |
+
+`property_reference_temperature` stays in Kelvin like every other temperature in
+the config; the conversion is explicit inside the law
+(`SimulationConfig::polynomial_reference_temperature_celsius`), so there is
+exactly one place where 273.15 appears.
+
+**Changed**
+
+- `src/config.hpp`: `LiquidViscosityModel::POLYNOMIAL` (tokens `POLYNOMIAL`,
+  `POLY`, `FERRON`); new keys `viscosity_poly_k0` / `k1` / `k2`, defaults
+  `1, 0, 0` (the identity `mu(T) = mu`, so the model is inert unless configured);
+  `polynomial_reference_temperature_celsius()`; config writer emits the three
+  keys with the Celsius caveat in a comment.
+- `src/fluid_properties.cpp`: the `POLYNOMIAL` branch of
+  `liquid_solution_viscosity`. A **pure temperature law** — it deliberately
+  applies neither the Barus pressure factor nor the dissolved-gas factor, which
+  belong to `EMPIRICAL`. `mu` is floored at `1e-3 * mu` with a single
+  rank-0 warning per run, because a polynomial extrapolated past its fit crosses
+  zero (a `k2 = 0` set always does) and a negative `mu` makes the Reynolds
+  operator indefinite.
+- `src/gui/schema.cpp`, `src/gui/panels_setup.cpp`: the three coefficients and
+  the new model entry, with the Celsius convention in the tooltip.
+
+**Validation** (`validate()`): errors if
+`property_reference_temperature <= 273.15 K` (the Celsius ratio has no usable
+normalisation at or below 0 degC) or if any coefficient is non-finite. Warns —
+does not error — if `k0 - k1 + k2` deviates from 1 by more than 5 %, since `mu`
+is defined *at* the reference temperature and the polynomial should return 1
+there; and warns if `k1 = k2 = 0`, which is `CONSTANT` by another name.
+
+**Tests**
+
+- `tests/test_fluid_properties.cpp`: `test_ferron_polynomial_viscosity` pins
+  `mu(40 C) = 0.0277` and `mu(80 C) = 0.0074` on Ferron's coefficients, asserts
+  the Kelvin reading is *not* what the code produces, checks monotone thinning
+  40 -> 80 C, checks that pressure and dissolved gas do not move the result, and
+  checks the negative-viscosity floor. `test_ferron_polynomial_validation`
+  covers the four validation paths plus the config round-trip.
+- `tests/test_fbns.cpp`: `test_polynomial_viscosity_couples` runs the coupled
+  FBNS+`ENERGY_EQUATION` and Elrod+`ENERGY_EQUATION` Picard loops on Ferron's own
+  bearing and coefficients. Both converge; the polynomial moves `mu` by 44 %
+  (FBNS) and 48 % (Elrod) of `mu_ref`, and the pressure moves away from the same
+  run with `mu` frozen by 2.2e-1 and 1.3e0 of `p_ref` respectively — i.e. the
+  `mu` field reaches the Reynolds operator on both paths. `POLYNOMIAL` and
+  `EMPIRICAL` differ by 3.0e-2 `mu_ref` and 1.2e-2 `p_ref`, so they are not the
+  same model in disguise.
+
+Full suite: 27/27 green (MSYS2 MinGW Release, MS-MPI, `-n 2` and `-n 6`).
+
 ### 2026-08-05 - FBNS phase 3: gaseous cavitation (`FBNS` + `TWO_PHASE`)
 
 `cavitation_model = FBNS` now runs with `fluid_property_model = TWO_PHASE`. This

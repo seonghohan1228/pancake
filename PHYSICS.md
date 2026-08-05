@@ -1315,6 +1315,56 @@ $$\mu_l =
 \text{linear table}(c_d), & \text{TABLE}
 \end{cases}$$
 
+#### Polynomial (Ferron) viscosity — `liquid_viscosity_model = POLYNOMIAL`
+
+Ferron, Frene & Boncompain (*ASME J. Lubr. Technol.* **105** (1983) 422) close
+their THD journal-bearing model with a nondimensional quadratic viscosity law,
+
+$$\bar\mu = \frac{\mu}{\mu_i} = k_0 - k_1\bar T + k_2\bar T^2 ,
+\qquad \bar T = \frac{T}{T_i},$$
+
+so that in this solver
+
+$$\mu_\ell(T) = \mu\,\left(k_0 - k_1\bar T + k_2\bar T^2\right).$$
+
+**Unit convention — $\bar T$ is a ratio of temperatures in degrees Celsius, not
+Kelvin.** This is not a stylistic choice; the coefficients only work one way.
+The paper's nomenclature reads "$T$ = temperature °C" and "$\bar T = T/T_0$
+nondimensional temperature", with $T_0$ the inlet film temperature in °C, and
+its Table 1 gives the ISO VG32 set
+
+$$k_0 = 3.287,\quad k_1 = 3.064,\quad k_2 = 0.777,
+\qquad \mu_i = 0.0277\ \mathrm{Pa\,s\ at\ } T_i = 40\ ^\circ\mathrm{C}.$$
+
+Read as a Celsius ratio these reproduce the oil: at $40\ ^\circ$C, $\bar T = 1$
+and $k_0 - k_1 + k_2 = 1.000$ exactly; at $80\ ^\circ$C, $\bar T = 2$ and
+$\bar\mu = 0.267$, i.e. $\mu = 7.4$ mPa·s, which is the measured VG32 drop over
+that span. Read as a Kelvin ratio the same coefficients give
+$\bar T = 353.15/313.15 = 1.128$ and $\bar\mu = 0.82$ — a 18 % drop across
+40 K, which is not an oil at all.
+
+`property_reference_temperature` stays in **Kelvin**, like every other
+temperature in the configuration; the conversion
+$T[^\circ\mathrm{C}] = T[\mathrm{K}] - 273.15$ is applied inside the viscosity
+law (`SimulationConfig::polynomial_reference_temperature_celsius`). A reference
+at or below $0\ ^\circ$C is rejected by `validate()`, since the Celsius ratio
+has no usable normalisation there.
+
+Two further properties of the law follow from it being a *fit*, not a
+constitutive relation:
+
+- **It is a pure temperature law.** No Barus pressure term and no dissolved-gas
+  term are applied, even if `viscosity_pressure_coeff` or
+  `solution_viscosity_gas_coeff` are set — those belong to `EMPIRICAL`.
+- **It is only valid inside its fitted range.** Ferron's own quadratic has a
+  minimum at $\bar T = k_1/2k_2 = 1.97$ ($\approx 79\ ^\circ$C) and turns
+  *upward* beyond it, and a set with $k_2 = 0$ crosses zero and goes negative.
+  The implementation floors $\mu_\ell$ at $10^{-3}\mu$ so the Reynolds mobility
+  stays positive-definite, and logs one warning per run when the floor is hit.
+
+Because $\mu$ is defined *at* the reference temperature, $k_0 - k_1 + k_2$
+should equal 1. `validate()` warns when it deviates by more than 5 %.
+
 The field written as `mu_liquid_solution` is this liquid-solution viscosity.
 For `TWO_PHASE`, the effective film viscosity written as `mu` is selected by
 `mixture_viscosity_model` (all satisfy $\bar\mu(\alpha_g{=}0)=\mu_l$; mass quality
@@ -1817,6 +1867,7 @@ mechanism (gaseous outgassing at $p_{sat}$) needs `TWO_PHASE` + `gas_pressure_co
 |---|---|
 | **`CONSTANT`** | $\mu_{oil}$. |
 | `EMPIRICAL` | $\mu_{oil}\,e^{E_\mu(1/T-1/T_{ref})}\,e^{a_c c_d}\,e^{\alpha_p(p-p_{ref})}$ (Andrade × dissolved-gas thinning × Barus). Set $E_\mu=\alpha_p=0$ for pure gas-thinning (the old log-mixing law). |
+| `POLYNOMIAL` | $\mu_{oil}\,(k_0-k_1\bar T+k_2\bar T^2)$, Ferron, Frene & Boncompain (1983), with $\bar T=T[^\circ\mathrm{C}]/T_{ref}[^\circ\mathrm{C}]$ — a **Celsius** ratio. Pure temperature law: no pressure or dissolved-gas term. Coefficients `viscosity_poly_k0/k1/k2` (default 1, 0, 0 = identity); their VG32 set is 3.287, 3.064, 0.777 with $\mu=0.0277$ Pa·s and `property_reference_temperature = 313.15`. See §13.2.1. |
 | `TABLE` | Measured kinematic $\nu(p,T)$, converted to dynamic per cell with $\rho_\ell$. |
 
 ### 17.6 Mixture (free-gas) viscosity — `mixture_viscosity_model`

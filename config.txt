@@ -67,7 +67,7 @@ dissolved_gas_species = PROPANE
 solubility_model = HENRY
 # density_model options: CONSTANT, MIXTURE, TABLE
 density_model = CONSTANT
-# liquid_viscosity_model options: CONSTANT, EMPIRICAL, TABLE
+# liquid_viscosity_model options: CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE
 liquid_viscosity_model = CONSTANT
 dissolved_gas_initial = 0
 dissolved_gas_max = 1
@@ -81,6 +81,14 @@ solution_density_gas_coeff = 0
 solution_viscosity_gas_coeff = 0
 viscosity_temperature_coeff = 0
 viscosity_pressure_coeff = 0
+# POLYNOMIAL (Ferron 1983): mu(T) = mu * (k0 - k1*Tbar + k2*Tbar^2) with
+# Tbar = T[degC] / property_reference_temperature[degC]. The ratio is in CELSIUS
+# (a Kelvin ratio does not reproduce the paper's numbers); the config key stays in
+# Kelvin. Ferron's ISO VG32 set is 3.287 / 3.064 / 0.777 with mu = 0.0277 and
+# property_reference_temperature = 313.15. Defaults 1/0/0 are mu(T) = mu.
+viscosity_poly_k0 = 1
+viscosity_poly_k1 = 0
+viscosity_poly_k2 = 0
 gas_alpha_max = 1
 gas_pressure_floor = 1.0e5
 # mixture_viscosity_model options: DUKLER, LINEAR, MCADAMS

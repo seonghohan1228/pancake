@@ -2,13 +2,37 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 #include "full_film.hpp"
+#include "utils.hpp"
 
 namespace FluidProperties {
 namespace {
 
 constexpr double kMinPositive = 1.0e-30;
+constexpr double kKelvinOffset = 273.15;
+/// Lower bound on the POLYNOMIAL viscosity, as a fraction of the reference mu.
+/// The polynomial is a fit, not a physical law: extrapolated far enough it
+/// crosses zero and turns negative, which would make the Reynolds operator
+/// indefinite. 1e-3 mu is far below any oil yet still strictly positive.
+constexpr double kPolynomialViscosityFloor = 1.0e-3;
+
+/// One-shot notice that the POLYNOMIAL law has been clamped. Per rank-0 process,
+/// not per cell: a clamped run touches thousands of cells per timestep and the
+/// message is about the model being extrapolated, not about any one cell.
+void warn_polynomial_viscosity_floor(double T_C, double mu_bar) {
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    Utils::log("WARNING: POLYNOMIAL viscosity fell to mubar = " + std::to_string(mu_bar) +
+                   " at T = " + std::to_string(T_C) + " degC and was floored at " +
+                   std::to_string(kPolynomialViscosityFloor) +
+                   " mu. The polynomial is being extrapolated outside its fitted "
+                   "temperature range; check viscosity_poly_k0/k1/k2 and the film "
+                   "temperatures. Reported once per run.",
+               Utils::Color::YELLOW);
+}
 
 double clamp_mass_fraction(double value, const SimulationConfig& cfg) {
     const double upper = std::max(0.0, cfg.dissolved_gas_max);
@@ -181,6 +205,37 @@ double liquid_solution_viscosity(double dissolved_gas,
             mu_solution = mu_oil_T
                 * std::exp(cfg.solution_viscosity_gas_coeff * c_g)
                 * std::exp(cfg.viscosity_pressure_coeff * (pressure - p_ref));
+            break;
+        }
+        case LiquidViscosityModel::POLYNOMIAL: {
+            // Ferron, Frene & Boncompain (1983), nondimensional viscosity:
+            //   mubar = mu/mu_i = k0 - k1 Tbar + k2 Tbar^2,   Tbar = T/T_i,
+            // where the paper's T and T_i are in DEGREES CELSIUS (its nomenclature
+            // reads "T = temperature degC" and "Tbar = T/T_0"). Their VG32 set
+            // (3.287, 3.064, 0.777, mu_i = 0.0277 Pa s at T_i = 40 degC) returns
+            // exactly 1 at 40 degC and 0.267 at 80 degC; the same coefficients fed a
+            // Kelvin ratio return 0.82 at 80 degC, which is not the measured oil.
+            // Solver temperatures are Kelvin, so the conversion is explicit here.
+            // This is a pure temperature law: no Barus and no dissolved-gas factor.
+            const double T_ref_C = cfg.polynomial_reference_temperature_celsius();
+            if (!(T_ref_C > 0.0)) {
+                mu_solution = cfg.mu;  // validate() rejects this; stay finite anyway
+                break;
+            }
+            const double T_C = bounded_temperature(temperature, cfg) - kKelvinOffset;
+            const double T_bar = T_C / T_ref_C;
+            const double mu_bar = cfg.viscosity_poly_k0
+                - cfg.viscosity_poly_k1 * T_bar
+                + cfg.viscosity_poly_k2 * T_bar * T_bar;
+            mu_solution = cfg.mu * mu_bar;
+            // A quadratic with a real root goes negative past it, and a linear-only
+            // set always does. Floor the film at a small positive fraction of mu so
+            // the Reynolds mobility stays positive-definite, and say so once.
+            const double mu_floor = kPolynomialViscosityFloor * std::max(cfg.mu, kMinPositive);
+            if (mu_solution < mu_floor) {
+                warn_polynomial_viscosity_floor(T_C, mu_bar);
+                mu_solution = mu_floor;
+            }
             break;
         }
         case LiquidViscosityModel::TABLE:

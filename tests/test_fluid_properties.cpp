@@ -228,6 +228,119 @@ void test_r290_pz68_reference_point() {
           "positive Henry temperature coefficient should reduce propane solubility at higher temperature");
 }
 
+// Ferron, Frene & Boncompain, ASME J. Lubr. Technol. 105 (1983) 422, Table 1:
+// ISO VG32, mu_i = 0.0277 Pa s at T_i = 40 degC, k0 = 3.287, k1 = 3.064,
+// k2 = 0.777. The paper's Tbar = T/T_0 is a ratio of CELSIUS temperatures (its
+// nomenclature gives "T = temperature degC"), and only the Celsius reading
+// reproduces the oil: at 40 degC, k0 - k1 + k2 = 1.000 exactly, and at 80 degC
+// (Tbar = 2) the polynomial gives 0.267, the measured VG32 drop. Read as a
+// Kelvin ratio the same coefficients give 0.82 at 80 degC, which is not an oil.
+// This test pins BOTH: the value, and the fact that Kelvin is wrong.
+void test_ferron_polynomial_viscosity() {
+    SimulationConfig cfg;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::POLYNOMIAL;
+    cfg.mu = 0.0277;
+    cfg.viscosity_poly_k0 = 3.287;
+    cfg.viscosity_poly_k1 = 3.064;
+    cfg.viscosity_poly_k2 = 0.777;
+    cfg.property_reference_temperature = 313.15;  // 40 degC, in Kelvin as always
+
+    const double mu_40 = FluidProperties::liquid_solution_viscosity(0.0, 1.0e5, 313.15, cfg);
+    check(std::abs(mu_40 - 0.0277) < 1.0e-6,
+          "Ferron coefficients must return mu = 0.0277 Pa s at the 40 C reference point");
+
+    const double mu_80 = FluidProperties::liquid_solution_viscosity(0.0, 1.0e5, 353.15, cfg);
+    check(std::abs(mu_80 - 0.0074) < 1.0e-4,
+          "Ferron coefficients must return mu ~ 0.0074 Pa s at 80 C (mubar = 0.267)");
+
+    // The Kelvin misreading, computed explicitly: it must NOT be what we produce.
+    const double t_bar_kelvin = 353.15 / 313.15;
+    const double mu_bar_kelvin = cfg.viscosity_poly_k0 - cfg.viscosity_poly_k1 * t_bar_kelvin +
+                                 cfg.viscosity_poly_k2 * t_bar_kelvin * t_bar_kelvin;
+    check(std::abs(mu_80 - cfg.mu * mu_bar_kelvin) > 0.01,
+          "the 80 C value must come from the Celsius ratio, not the Kelvin ratio");
+
+    // Monotone thinning over the paper's own operating range.
+    const double mu_60 = FluidProperties::liquid_solution_viscosity(0.0, 1.0e5, 333.15, cfg);
+    check(mu_40 > mu_60 && mu_60 > mu_80,
+          "Ferron viscosity must fall monotonically from 40 C to 80 C");
+
+    // Pure temperature law: neither pressure nor dissolved gas may move it, even
+    // with the EMPIRICAL coefficients set (they belong to the other model).
+    cfg.viscosity_pressure_coeff = 1.5e-8;
+    cfg.solution_viscosity_gas_coeff = -11.4;
+    check(FluidProperties::liquid_solution_viscosity(0.2, 5.0e6, 313.15, cfg) == mu_40,
+          "POLYNOMIAL must ignore pressure and dissolved gas");
+
+    // Extrapolated far past the fit a linear-only set goes negative; the floor
+    // must keep mu strictly positive rather than making the operator indefinite.
+    SimulationConfig runaway = cfg;
+    runaway.viscosity_poly_k0 = 1.0;
+    runaway.viscosity_poly_k1 = 1.0;
+    runaway.viscosity_poly_k2 = 0.0;
+    const double mu_hot = FluidProperties::liquid_solution_viscosity(0.0, 1.0e5, 600.0, runaway);
+    check(mu_hot > 0.0 && mu_hot < 1.0e-2 * runaway.mu,
+          "a polynomial that goes negative must be floored at a small positive fraction of mu");
+}
+
+void test_ferron_polynomial_validation() {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+
+    SimulationConfig cfg;
+    cfg.p_cav = 1.0e5;
+    cfg.bc_z_south_val = 1.0e5;
+    cfg.bc_z_north_val = 1.0e5;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.liquid_viscosity_model = LiquidViscosityModel::POLYNOMIAL;
+    cfg.mu = 0.0277;
+    cfg.viscosity_poly_k0 = 3.287;
+    cfg.viscosity_poly_k1 = 3.064;
+    cfg.viscosity_poly_k2 = 0.777;
+    cfg.property_reference_temperature = 313.15;
+    cfg.validate(errors, warnings);
+    check(errors.empty(), "the Ferron coefficient set must validate cleanly");
+    check(!contains_text(warnings, "k0 - k1 + k2"),
+          "a set that returns 1 at the reference temperature must not warn");
+
+    // mu is defined AT the reference temperature, so mubar(T_ref) must be 1.
+    SimulationConfig off_reference = cfg;
+    off_reference.viscosity_poly_k0 = 3.6;  // k0-k1+k2 = 1.313, 31% off
+    off_reference.validate(errors, warnings);
+    check(errors.empty(), "an off-reference coefficient set is a warning, not an error");
+    check(contains_text(warnings, "k0 - k1 + k2"),
+          "a coefficient set that misses mubar(T_ref) = 1 by more than 5% must warn");
+
+    // A Celsius ratio needs a reference above 0 degC.
+    SimulationConfig sub_zero = cfg;
+    sub_zero.property_reference_temperature = 260.0;
+    sub_zero.validate(errors, warnings);
+    check(contains_text(errors, "CELSIUS"),
+          "a reference below 273.15 K must be rejected: the Celsius ratio is undefined");
+
+    SimulationConfig degenerate = cfg;
+    degenerate.viscosity_poly_k0 = 1.0;
+    degenerate.viscosity_poly_k1 = 0.0;
+    degenerate.viscosity_poly_k2 = 0.0;
+    degenerate.validate(errors, warnings);
+    check(contains_text(warnings, "identical to"),
+          "the default (1, 0, 0) coefficients must be reported as equivalent to CONSTANT");
+
+    // The key round-trips through the text config.
+    SimulationConfig parsed;
+    parsed.load_from_text(
+        "liquid_viscosity_model = polynomial\n"
+        "viscosity_poly_k0 = 3.287\n"
+        "viscosity_poly_k1 = 3.064\n"
+        "viscosity_poly_k2 = 0.777\n");
+    check(parsed.liquid_viscosity_model == LiquidViscosityModel::POLYNOMIAL,
+          "liquid_viscosity_model = polynomial should parse");
+    check(parsed.viscosity_poly_k0 == 3.287 && parsed.viscosity_poly_k1 == 3.064 &&
+              parsed.viscosity_poly_k2 == 0.777,
+          "the three Ferron coefficients should parse");
+}
+
 void test_release_and_resorption() {
     SimulationConfig cfg;
     cfg.n_theta_global = 8;
@@ -426,6 +539,8 @@ int main(int argc, char** argv) {
     test_pure_oil_fallback();
     test_solution_property_models();
     test_r290_pz68_reference_point();
+    test_ferron_polynomial_viscosity();
+    test_ferron_polynomial_validation();
     test_release_and_resorption();
     test_free_gas_is_not_deleted_in_full_film();
     test_pressure_inlet_imposes_initial_gas_state();

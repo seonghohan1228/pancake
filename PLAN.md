@@ -81,6 +81,28 @@ Two things came out of it that are **not** FBNS-specific and are still open:
     either (memo §8.5).
   - Cross-film Dowson coefficients in the FBNS operator remain unstarted.
 
+Ferron polynomial viscosity — **DONE 2026-08-05** (`codex/viscosity-polynomial`;
+PHYSICS.md §13.2.1 and §17.5, README.md, CHANGES.md, `ctest` 27/27).
+`liquid_viscosity_model = POLYNOMIAL` selects
+`mu(T) = mu (k0 - k1 Tbar + k2 Tbar^2)` with `Tbar = T[degC]/T_ref[degC]`, the
+law Ferron, Frene & Boncompain (1983) actually used, so the validation cases can
+run that paper's viscosity instead of an Andrade fit to it. New keys
+`viscosity_poly_k0/k1/k2` default to `1, 0, 0` (identity), so the model is inert
+until configured. **The nondimensional temperature is a CELSIUS ratio**, verified
+against the paper text: its nomenclature reads "T = temperature degC", and its
+Table 1 set (3.287, 3.064, 0.777) gives `mubar = 1.000` at 40 degC and `0.267` at
+80 degC only under that reading — a Kelvin ratio gives 0.82, which is not the
+oil. Verified live under both FBNS+`ENERGY_EQUATION` and Elrod+`ENERGY_EQUATION`
+(`tests/test_fbns.cpp::test_polynomial_viscosity_couples`).
+
+Still open, deliberately not done here:
+  - No validation case is re-run on `POLYNOMIAL` yet. Cases 01-THD and 04 sit on
+    the Ferron geometry and should be repeated with the paper's own viscosity
+    law before their temperature/load gaps are attributed to anything else.
+  - The law is temperature-only. Ferron's rig ran to ~70 bar, where a Barus term
+    is not negligible; combining `POLYNOMIAL` with a pressure factor would need
+    a new model, not a new coefficient.
+
 Case 00c (JFO solver verification), test #3 — per-cell mass-residual output
 field: **DONE**. `mass_residual` output field added (`src/diagnostics.{hpp,cpp}`,
 PHYSICS.md §15.1, `tests/test_mass_residual.cpp`). The 00c converged state is

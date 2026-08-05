@@ -72,8 +72,12 @@ enum class DensityModel { CONSTANT, MIXTURE, TABLE };
 //   CONSTANT  - dissolved gas does not change liquid viscosity (mu = mu_oil).
 //   EMPIRICAL - mu_oil*exp[E_mu(1/T-1/T_ref)]*exp[a_c c_d]*exp[alpha_p(p-p_ref)]
 //               (Andrade temperature x dissolved-gas thinning x Barus piezo-viscosity).
+//   POLYNOMIAL- mu_oil*(k0 - k1 Tbar + k2 Tbar^2), Ferron, Frene & Boncompain
+//               (1983). Tbar is a ratio of CELSIUS temperatures, T[C]/T_ref[C];
+//               see viscosity_poly_k0 and PHYSICS.md. Pure temperature law: it
+//               carries no pressure or dissolved-gas dependence.
 //   TABLE     - measured kinematic nu(p,T), converted to dynamic per cell.
-enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, TABLE };
+enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE };
 // Per-timestep terminal/log verbosity. Both modes print every timestep; DETAILED
 // adds per-step diagnostics (film thickness, temperature range, fluid force, torque).
 enum class OutputVerbosity { SIMPLIFIED, DETAILED };
@@ -373,6 +377,7 @@ inline const char* to_config_value(LiquidViscosityModel model) {
     switch (model) {
         case LiquidViscosityModel::CONSTANT: return "CONSTANT";
         case LiquidViscosityModel::EMPIRICAL: return "EMPIRICAL";
+        case LiquidViscosityModel::POLYNOMIAL: return "POLYNOMIAL";
         case LiquidViscosityModel::TABLE: return "TABLE";
     }
     return "CONSTANT";
@@ -526,6 +531,9 @@ inline DensityModel density_model_from_config(std::string value) {
 inline LiquidViscosityModel liquid_viscosity_model_from_config(std::string value) {
     value = normalise_config_token(value);
     if (value == "TABLE" || value == "TABULATED") return LiquidViscosityModel::TABLE;
+    if (value == "POLYNOMIAL" || value == "POLY" || value == "FERRON") {
+        return LiquidViscosityModel::POLYNOMIAL;
+    }
     // LOG_MIXING was removed (it is EMPIRICAL with the T and p coefficients set to 0).
     if (value == "EMPIRICAL" || value == "EMPIRICAL_CORRELATION" || value == "CORRELATION" ||
         value == "LOG_MIXING" || value == "LOG") {
@@ -664,6 +672,19 @@ struct SimulationConfig {
     double solution_viscosity_gas_coeff = 0.0;   // Log-mixing viscosity exponent a_c [-]: mu_l = mu_oil exp(a_c c_d)
     double viscosity_temperature_coeff = 0.0;    // Andrade slope E_mu [K]: mu_oil(T)=mu exp(E_mu(1/T-1/T_ref))
     double viscosity_pressure_coeff = 0.0;       // Barus piezo-viscosity alpha_p [1/Pa]: mu *= exp(alpha_p(p-p_ref))
+    // POLYNOMIAL (Ferron, Frene & Boncompain, ASME J. Lubr. Technol. 105 (1983) 422):
+    //   mu(T) = mu * (k0 - k1 Tbar + k2 Tbar^2),  Tbar = T[degC] / T_ref[degC].
+    // Tbar is a ratio of CELSIUS temperatures, not Kelvin. The paper's nomenclature
+    // reads "T = temperature degC" and "Tbar = T/T0", and its own coefficients
+    // (k0=3.287, k1=3.064, k2=0.777, mu_i=0.0277 Pa s at T_i=40 degC) sum to
+    // k0-k1+k2 = 1.000 at Tbar=1 and to 0.267 at 80 degC, which is the measured
+    // VG32 drop; the same coefficients on a Kelvin ratio give 0.82 and are wrong.
+    // property_reference_temperature stays in KELVIN like every other temperature
+    // in this config; the Celsius conversion happens inside the viscosity law.
+    // Defaults (1, 0, 0) are the identity mu(T) = mu.
+    double viscosity_poly_k0 = 1.0;              // Ferron k0 [-] (constant term)
+    double viscosity_poly_k1 = 0.0;              // Ferron k1 [-] (linear term, subtracted)
+    double viscosity_poly_k2 = 0.0;              // Ferron k2 [-] (quadratic term)
     double gas_alpha_max = 1.0;                  // Maximum resolved free-gas volume fraction
     double gas_pressure_floor = 1.0;             // Ideal-gas pressure floor [Pa]
     MixtureViscosityModel mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
@@ -901,6 +922,9 @@ struct SimulationConfig {
             else if (key == "solution_viscosity_gas_coeff") solution_viscosity_gas_coeff = std::stod(value);
             else if (key == "viscosity_temperature_coeff") viscosity_temperature_coeff = std::stod(value);
             else if (key == "viscosity_pressure_coeff") viscosity_pressure_coeff = std::stod(value);
+            else if (key == "viscosity_poly_k0") viscosity_poly_k0 = std::stod(value);
+            else if (key == "viscosity_poly_k1") viscosity_poly_k1 = std::stod(value);
+            else if (key == "viscosity_poly_k2") viscosity_poly_k2 = std::stod(value);
             else if (key == "gas_alpha_max") gas_alpha_max = std::stod(value);
             else if (key == "gas_pressure_floor") gas_pressure_floor = std::stod(value);
             else if (key == "mixture_viscosity_model" || key == "gas_mixture_viscosity_model") mixture_viscosity_model = mixture_viscosity_model_from_config(value);
@@ -1387,6 +1411,38 @@ struct SimulationConfig {
                     require_nonnegative(viscosity_temperature_coeff, "viscosity_temperature_coeff");
                     require_nonnegative(viscosity_pressure_coeff, "viscosity_pressure_coeff");
                     break;
+                case LiquidViscosityModel::POLYNOMIAL: {
+                    // mu(T) = mu (k0 - k1 Tbar + k2 Tbar^2), Tbar = T[degC]/T_ref[degC].
+                    if (!finite(viscosity_poly_k0) || !finite(viscosity_poly_k1) ||
+                        !finite(viscosity_poly_k2)) {
+                        error("viscosity_poly_k0, viscosity_poly_k1 and viscosity_poly_k2 must be finite.");
+                    }
+                    // Tbar is a Celsius ratio, so a reference at or below 0 degC has no
+                    // usable normalisation (and 0 degC divides by zero).
+                    const double T_ref_C = polynomial_reference_temperature_celsius();
+                    if (!(T_ref_C > 0.0)) {
+                        error("liquid_viscosity_model = POLYNOMIAL needs property_reference_temperature "
+                              "above 273.15 K: the Ferron law normalises by the reference temperature "
+                              "in DEGREES CELSIUS, which must be positive.");
+                    }
+                    // mu_ref is defined AT the reference temperature, so mubar(T_ref) =
+                    // k0 - k1 + k2 must be 1. Ferron's own set gives exactly 1.000.
+                    // This is a warning, not an error: a user may deliberately fit a set
+                    // whose reference viscosity is carried by mu instead.
+                    const double mu_bar_ref = viscosity_poly_k0 - viscosity_poly_k1 + viscosity_poly_k2;
+                    if (finite(mu_bar_ref) && std::abs(mu_bar_ref - 1.0) > 0.05) {
+                        warn("POLYNOMIAL viscosity: k0 - k1 + k2 = " + std::to_string(mu_bar_ref) +
+                             " but mu is defined AT property_reference_temperature, where the "
+                             "polynomial should return 1. The run will use mu * " +
+                             std::to_string(mu_bar_ref) + " at the reference temperature.");
+                    }
+                    if (viscosity_poly_k1 == 0.0 && viscosity_poly_k2 == 0.0) {
+                        warn("POLYNOMIAL viscosity with viscosity_poly_k1 = viscosity_poly_k2 = 0 "
+                             "has no temperature dependence and is identical to "
+                             "liquid_viscosity_model = CONSTANT.");
+                    }
+                    break;
+                }
                 case LiquidViscosityModel::TABLE:
                     if (viscosity_table_2d.empty()) require_table(viscosity_table, "viscosity_table");
                     break;
@@ -1512,6 +1568,19 @@ struct SimulationConfig {
         if (!(henry > 0.0)) return 0.0;
         const double rho_l = rho_liquid > 0.0 ? rho_liquid : rho;
         return henry * rho_l * gas_specific_constant_for_species() * T;
+    }
+
+    /// Reference temperature of the POLYNOMIAL viscosity law in DEGREES CELSIUS.
+    ///
+    /// Ferron, Frene & Boncompain (1983) nondimensionalise temperature as
+    /// Tbar = T/T_0 with both in degC (their nomenclature: "T = temperature degC",
+    /// "Tbar = T/T_0 nondimensional temperature"). Everything else in this config
+    /// is Kelvin, so the single conversion point lives here and both the validator
+    /// and FluidProperties call it rather than open-coding 273.15.
+    /// Returns a non-positive value for references at or below 0 degC; validate()
+    /// rejects those, and the viscosity law falls back to mu.
+    double polynomial_reference_temperature_celsius() const {
+        return property_reference_temperature - 273.15;
     }
 
     /// Specific gas constant R_s of the dissolved species [J/(kg K)].
@@ -1815,7 +1884,7 @@ struct SimulationConfig {
             << "solubility_model = " << to_config_value(solubility_model) << "\n"
             << "# density_model options: CONSTANT, MIXTURE, TABLE\n"
             << "density_model = " << to_config_value(density_model) << "\n"
-            << "# liquid_viscosity_model options: CONSTANT, EMPIRICAL, TABLE\n"
+            << "# liquid_viscosity_model options: CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE\n"
             << "liquid_viscosity_model = " << to_config_value(liquid_viscosity_model) << "\n"
             << "dissolved_gas_initial = " << dissolved_gas_initial << "\n"
             << "dissolved_gas_max = " << dissolved_gas_max << "\n"
@@ -1828,6 +1897,14 @@ struct SimulationConfig {
             << "solution_viscosity_gas_coeff = " << solution_viscosity_gas_coeff << "\n"
             << "viscosity_temperature_coeff = " << viscosity_temperature_coeff << "\n"
             << "viscosity_pressure_coeff = " << viscosity_pressure_coeff << "\n"
+            << "# POLYNOMIAL (Ferron 1983): mu(T) = mu * (k0 - k1 Tbar + k2 Tbar^2) with\n"
+            << "# Tbar = T[degC] / property_reference_temperature[degC]. The ratio is in\n"
+            << "# CELSIUS (a Kelvin ratio does not reproduce the paper's numbers); the config\n"
+            << "# key itself stays in Kelvin. Ferron's VG32 set: 3.287, 3.064, 0.777 with\n"
+            << "# mu = 0.0277 Pa.s and property_reference_temperature = 313.15 (40 degC).\n"
+            << "viscosity_poly_k0 = " << viscosity_poly_k0 << "\n"
+            << "viscosity_poly_k1 = " << viscosity_poly_k1 << "\n"
+            << "viscosity_poly_k2 = " << viscosity_poly_k2 << "\n"
             << "gas_alpha_max = " << gas_alpha_max << "\n"
             << "gas_pressure_floor = " << gas_pressure_floor << "\n"
             << "# mixture_viscosity_model options: DUKLER, LINEAR, MCADAMS\n"

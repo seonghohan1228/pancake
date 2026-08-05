@@ -205,6 +205,17 @@ const std::vector<DoubleSpec>& double_specs() {
         {"viscosity_pressure_coeff", "Piezo-viscosity coeff.", "1/Pa",
          "Barus coefficient alpha_p: mu *= exp(alpha_p (p - p_ref)).",
          &SC::viscosity_pressure_coeff, ParamGroup::FluidProperties, true, 0.0, kInf, false},
+        {"viscosity_poly_k0", "Ferron k0", "-",
+         "POLYNOMIAL constant term: mu(T) = mu (k0 - k1 Tbar + k2 Tbar^2), Tbar = T[C]/T_ref[C]. "
+         "Ferron 1983 VG32: 3.287. Defaults to 1 (identity).",
+         &SC::viscosity_poly_k0, ParamGroup::FluidProperties, true, -kInf, kInf, false},
+        {"viscosity_poly_k1", "Ferron k1", "-",
+         "POLYNOMIAL linear term, SUBTRACTED. Ferron 1983 VG32: 3.064.",
+         &SC::viscosity_poly_k1, ParamGroup::FluidProperties, true, -kInf, kInf, false},
+        {"viscosity_poly_k2", "Ferron k2", "-",
+         "POLYNOMIAL quadratic term. Ferron 1983 VG32: 0.777. k0 - k1 + k2 should be 1, "
+         "since mu is defined at the reference temperature.",
+         &SC::viscosity_poly_k2, ParamGroup::FluidProperties, true, -kInf, kInf, false},
         {"gas_alpha_max", "Max free-gas fraction", "-",
          "Maximum resolved free-gas volume fraction.", &SC::gas_alpha_max,
          ParamGroup::FluidProperties, true, 0.0, 1.0, true},

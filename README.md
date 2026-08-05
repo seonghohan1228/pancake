@@ -396,6 +396,23 @@ solubility, dissolved-propane liquid-density mixing,
 Andrade/Barus viscosity coefficients, finite-rate gas transfer, and
 diffusivity explicitly. The solver validates required gas constants before a
 run and rejects under-specified custom gas models.
+For a THD run on a single-grade oil, `liquid_viscosity_model = POLYNOMIAL`
+selects the Ferron, Frene & Boncompain (1983) quadratic
+`mu(T) = mu * (k0 - k1*Tbar + k2*Tbar^2)` with coefficients `viscosity_poly_k0`,
+`viscosity_poly_k1`, `viscosity_poly_k2` (defaults `1, 0, 0`, the identity).
+**`Tbar` is the ratio of temperatures in degrees CELSIUS,
+`T[C] / property_reference_temperature[C]`, not Kelvin** — that is the paper's
+own convention and the only reading under which its coefficients reproduce the
+oil. The config key itself stays in Kelvin like every other temperature; the
+conversion happens inside the viscosity law. Ferron's ISO VG32 set is
+`viscosity_poly_k0 = 3.287`, `viscosity_poly_k1 = 3.064`,
+`viscosity_poly_k2 = 0.777` with `mu = 0.0277` and
+`property_reference_temperature = 313.15`, which gives exactly `mu` at 40 C and
+`0.0074 Pa.s` at 80 C. The law carries no pressure or dissolved-gas term (use
+`EMPIRICAL` for those); `mu` is floored at `1e-3 * mu` with one warning per run
+if the polynomial is extrapolated far enough to go negative. See PHYSICS.md
+§13.2.1.
+
 The effective film viscosity with free gas present is selected by
 `mixture_viscosity_model`: **`MCADAMS`** (default; homogeneous reciprocal blend by
 mass quality, correct asymptotes), `LINEAR` (mass-quality linear blend, Grando

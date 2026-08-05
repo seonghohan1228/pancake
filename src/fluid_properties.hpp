@@ -24,6 +24,8 @@ double liquid_solution_density(double dissolved_gas,
                                const SimulationConfig& cfg);
 
 /// Liquid oil plus dissolved-gas solution dynamic viscosity [Pa s].
+/// POLYNOMIAL (Ferron 1983) is a pure temperature law and ignores dissolved_gas
+/// and pressure; its Tbar is a ratio of CELSIUS temperatures (see PHYSICS.md).
 double liquid_solution_viscosity(double dissolved_gas,
                                  double pressure,
                                  double temperature,

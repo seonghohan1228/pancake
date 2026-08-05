@@ -1214,6 +1214,102 @@ void test_ceiling_is_fbns_only() {
     log_rank0("  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)");
 }
 
+// The Ferron polynomial viscosity law under both energy couplings.
+//
+// benchmark_config is already the Ferron, Frene & Boncompain (1983) bearing
+// (R = 50 mm, L = 80 mm, c = 152 um, mu = 0.0277 Pa s, rho = 860 kg/m3), so the
+// paper's own coefficients belong on it. The law is
+//   mu(T) = mu (k0 - k1 Tbar + k2 Tbar^2),  Tbar = T[degC]/T_ref[degC],
+// with Tbar a CELSIUS ratio: k0 - k1 + k2 = 1.000 at the 40 degC reference.
+//
+// Three things have to hold, and each is a separate assertion below:
+//   1. the polynomial actually moves mu (otherwise the rest proves nothing);
+//   2. that mu field reaches the Reynolds operator under FBNS AND under Elrod,
+//      shown by the pressure moving away from the frozen-mu solution in both;
+//   3. the polynomial and the Andrade exponential are genuinely different laws,
+//      so their converged fields differ.
+SimulationConfig ferron_polynomial_config(int n_theta, CavitationModel model) {
+    SimulationConfig cfg = thermal_config(n_theta, model);
+    cfg.liquid_viscosity_model = LiquidViscosityModel::POLYNOMIAL;
+    cfg.viscosity_temperature_coeff = 0.0;  // Andrade off; the polynomial replaces it
+    cfg.viscosity_poly_k0 = 3.287;
+    cfg.viscosity_poly_k1 = 3.064;
+    cfg.viscosity_poly_k2 = 0.777;
+    cfg.property_reference_temperature = 313.15;  // 40 degC
+    return cfg;
+}
+
+void test_polynomial_viscosity_couples() {
+    const int n_theta = 240;
+    const double mu_ref = 0.0277;
+    const double p_ref =
+        FBNS::pressure_scale(ferron_polynomial_config(n_theta, CavitationModel::FBNS));
+
+    // Per cavitation model: how far the polynomial moves mu, and how far the
+    // resulting pressure moves away from the same run with mu frozen at mu_ref.
+    auto spread_and_gap = [&](CavitationModel model, double& mu_spread, double& dp) {
+        ThermalCase poly(ferron_polynomial_config(n_theta, model));
+        const int poly_iters = solve_coupled(poly);
+        check(poly_iters < poly.cfg.coupling_max_iters,
+              "the POLYNOMIAL coupled solve must reach its fixed point");
+
+        SimulationConfig frozen_cfg = ferron_polynomial_config(n_theta, model);
+        frozen_cfg.liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
+        ThermalCase frozen(frozen_cfg);
+        solve_coupled(frozen);
+
+        mu_spread = 0.0;
+        dp = 0.0;
+        for (int i = 0; i < poly.mesh.n_theta_local; ++i) {
+            for (int j = 0; j < poly.mesh.n_z_local; ++j) {
+                mu_spread = std::max(mu_spread, std::abs(poly.fields["mu"](i, j) - poly.cfg.mu));
+                dp = std::max(dp,
+                    std::abs(poly.fields["pressure"](i, j) - frozen.fields["pressure"](i, j)));
+            }
+        }
+        double vals[2] = {mu_spread, dp};
+        MPI_Allreduce(MPI_IN_PLACE, vals, 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        mu_spread = vals[0];
+        dp = vals[1];
+    };
+
+    double fbns_mu = 0.0, fbns_dp = 0.0, elrod_mu = 0.0, elrod_dp = 0.0;
+    spread_and_gap(CavitationModel::FBNS, fbns_mu, fbns_dp);
+    spread_and_gap(CavitationModel::JFO, elrod_mu, elrod_dp);
+    log_rank0("  Ferron polynomial (FBNS):  max |mu - mu_ref|/mu_ref = " + fmt(fbns_mu / mu_ref) +
+              ", max |dp|/p_ref vs frozen mu = " + fmt(fbns_dp / p_ref));
+    log_rank0("  Ferron polynomial (Elrod): max |mu - mu_ref|/mu_ref = " + fmt(elrod_mu / mu_ref) +
+              ", max |dp|/p_ref vs frozen mu = " + fmt(elrod_dp / p_ref));
+
+    check(fbns_mu > 0.05 * mu_ref && elrod_mu > 0.05 * mu_ref,
+          "the polynomial must move mu appreciably under both cavitation models");
+    check(fbns_dp > 1.0e-3 * p_ref,
+          "the polynomial mu field must reach the FBNS Reynolds operator");
+    check(elrod_dp > 1.0e-3 * p_ref,
+          "the polynomial mu field must reach the Elrod Reynolds operator");
+
+    // Same reference viscosity, same reference temperature, different law: the
+    // Andrade exponential and the Ferron quadratic must not land on each other.
+    ThermalCase poly(ferron_polynomial_config(n_theta, CavitationModel::FBNS));
+    ThermalCase andrade(thermal_config(n_theta, CavitationModel::FBNS));
+    solve_coupled(poly);
+    solve_coupled(andrade);
+    double dmu = 0.0, dp = 0.0;
+    for (int i = 0; i < poly.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < poly.mesh.n_z_local; ++j) {
+            dmu = std::max(dmu, std::abs(poly.fields["mu"](i, j) - andrade.fields["mu"](i, j)));
+            dp = std::max(dp,
+                std::abs(poly.fields["pressure"](i, j) - andrade.fields["pressure"](i, j)));
+        }
+    }
+    double gap[2] = {dmu, dp};
+    MPI_Allreduce(MPI_IN_PLACE, gap, 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    log_rank0("  POLYNOMIAL vs EMPIRICAL: max |dmu|/mu_ref = " + fmt(gap[0] / mu_ref) +
+              ", max |dp|/p_ref = " + fmt(gap[1] / p_ref));
+    check(gap[0] > 0.01 * mu_ref && gap[1] > 1.0e-4 * p_ref,
+          "POLYNOMIAL and EMPIRICAL are different laws and must give different fields");
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
     int rank = 0;
@@ -1229,6 +1325,7 @@ int main(int argc, char** argv) {
     test_property_coupling_is_inert_when_off();
     test_viscosity_reaches_the_operator();
     test_energy_coupling_matches_elrod();
+    test_polynomial_viscosity_couples();
     test_gaseous_cavitation();
     test_zero_gas_reproduces_phase_two();
     test_ceiling_is_fbns_only();
