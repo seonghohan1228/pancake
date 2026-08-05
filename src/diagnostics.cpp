@@ -450,7 +450,8 @@ void mass_residual(Fields& fields, const Mesh& mesh,
 }
 
 void append_csv(const std::filesystem::path& path, double time, int step,
-                const MassBalance& balance, const Reynolds::ElrodStats& stats) {
+                const MassBalance& balance, const Reynolds::ElrodStats& stats,
+                const Coupling::Status* coupling) {
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank != 0) return;
@@ -462,7 +463,10 @@ void append_csv(const std::filesystem::path& path, double time, int step,
         csv << "step,time,outer_iters,flag_flips,max_theta_change,converged,"
                "liquid_mass,liquid_boundary_flux,inlet_mass_source,clamp_mass_liquid,"
                "liquid_residual,gas_mass,gas_boundary_flux,clamp_mass_gas,gas_residual,"
-               "cavitated_fraction\n";
+               "cavitated_fraction,"
+               "coupling_iters,coupling_R_p,coupling_R_T,coupling_converged,"
+               "coupling_best_iter,coupling_best_residual,coupling_restored_best,"
+               "coupling_relaxation\n";
     }
     csv.precision(15);
     csv << step << ',' << time << ',' << stats.outer_iters << ',' << stats.flag_flips << ','
@@ -471,7 +475,17 @@ void append_csv(const std::filesystem::path& path, double time, int step,
         << balance.inlet_mass_source << ',' << balance.clamp_mass_liquid << ','
         << balance.liquid_residual << ',' << balance.gas_mass << ','
         << balance.gas_boundary_flux << ',' << balance.clamp_mass_gas << ','
-        << balance.gas_residual << ',' << balance.cavitated_fraction << '\n';
+        << balance.gas_residual << ',' << balance.cavitated_fraction;
+    if (coupling) {
+        csv << ',' << coupling->iters << ',' << coupling->R_p << ',' << coupling->R_T
+            << ',' << (coupling->converged ? 1 : 0)
+            << ',' << coupling->best_iter << ',' << coupling->best_residual
+            << ',' << (coupling->restored_best ? 1 : 0)
+            << ',' << coupling->relaxation;
+    } else {
+        csv << ",,,,,,,";
+    }
+    csv << '\n';
 }
 
 }  // namespace Diagnostics

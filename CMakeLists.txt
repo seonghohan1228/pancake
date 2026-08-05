@@ -83,6 +83,7 @@ endfunction()
 set(PANCAKE_HEADERS
     src/communicator.hpp
     src/config.hpp
+    src/coupling.hpp
     src/bush_conduction.hpp
     src/cross_film.hpp
     src/diagnostics.hpp
@@ -164,6 +165,7 @@ if(PANCAKE_BUILD_SOLVER)
     set(PANCAKE_CORE_SOURCES
         src/bush_conduction.cpp
         src/communicator.cpp
+        src/coupling.cpp
         src/cross_film.cpp
         src/diagnostics.cpp
         src/energy.cpp

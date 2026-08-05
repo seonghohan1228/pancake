@@ -41,4 +41,6 @@ public:
     // For iterating
     auto begin() { return storage.begin(); }
     auto end() { return storage.end(); }
+    auto begin() const { return storage.begin(); }
+    auto end() const { return storage.end(); }
 };

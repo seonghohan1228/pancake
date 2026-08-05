@@ -8,6 +8,7 @@
 
 #include "communicator.hpp"
 #include "config.hpp"
+#include "coupling.hpp"
 #include "diagnostics.hpp"
 #include "cross_film.hpp"
 #include "energy.hpp"
@@ -290,6 +291,18 @@ int main(int argc, char** argv) {
             double coupling_R_T = 0.0;
             CrossFilm::WallState cross_film_state;
 
+            // Outer-loop control: convergence test, relaxation schedule and
+            // best-iterate bookkeeping. The snapshot below is what makes a
+            // cap-exhausted run deliver its lowest-residual iterate instead of
+            // whatever the limit cycle happened to land on.
+            Coupling::Controller coupling_control(cfg);
+            Coupling::Snapshot coupling_best;
+            Reynolds::ElrodStats best_elrod_stats;
+            Reynolds::ForceComponents best_forces;
+            CrossFilm::WallState best_cross_film_state;
+            const bool track_best =
+                steady_state && cfg.coupling_keep_best_iterate && max_coupling > 1;
+
             for (int outer = 0; outer < max_coupling; ++outer) {
                 if (steady_state) {
                     copy_physical(fields["pressure"], p_outer_prev, mesh);
@@ -385,17 +398,53 @@ int main(int argc, char** argv) {
                 if (steady_state) {
                     coupling_R_p = normalized_max_change(fields["pressure"], p_outer_prev, mesh, p_ref);
                     coupling_R_T = normalized_max_change(fields["temperature"], T_outer_prev, mesh, T_ref);
-                    relax_field(fields["pressure"], p_outer_prev, cfg.coupling_relaxation, mesh);
-                    relax_field(fields["temperature"], T_outer_prev, cfg.coupling_relaxation, mesh);
-                    if (coupling_R_p < cfg.coupling_tolerance && coupling_R_T < cfg.coupling_tolerance)
-                        break;
+                    const bool tolerance_met = coupling_control.record(outer, coupling_R_p, coupling_R_T);
+                    if (cfg.log_coupling_history) {
+                        std::ostringstream h;
+                        h << "Coupling outer=" << (outer + 1) << " R_p=" << coupling_R_p
+                          << " R_T=" << coupling_R_T
+                          << " omega=" << coupling_control.relaxation()
+                          << (coupling_control.is_best() ? " *best" : "");
+                        Utils::log(h.str(), Utils::Color::BLUE, 2);
+                    }
+                    // Snapshot BEFORE relaxation: the unrelaxed end-of-sweep state is
+                    // the one the solvers produced and the one the residual just
+                    // recorded describes.
+                    if (track_best && coupling_control.is_best()) {
+                        coupling_best.capture(fields);
+                        best_elrod_stats = elrod_stats;
+                        best_forces = forces;
+                        best_cross_film_state = cross_film_state;
+                    }
+                    relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
+                    relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
+                    if (tolerance_met) break;
                 }
             }
+            if (steady_state) {
+                coupling_control.finish(coupling_iters);
+                if (coupling_control.status().restored_best && coupling_best.valid()) {
+                    // Ghost layers are part of the snapshot, so the restored state
+                    // is bit-identical to the captured sweep and needs no exchange.
+                    coupling_best.restore(fields);
+                    elrod_stats = best_elrod_stats;
+                    forces = best_forces;
+                    cross_film_state = best_cross_film_state;
+                    coupling_R_p = coupling_control.status().best_R_p;
+                    coupling_R_T = coupling_control.status().best_R_T;
+                }
+            }
+            // The non-convergence verdict is not optional output: a run that ends
+            // on the cap without meeting coupling_tolerance must say so whether or
+            // not log_outer_iters is on.
+            if (steady_state && !coupling_control.status().converged) {
+                Utils::log(coupling_control.summary_line(), Utils::Color::RED, 1);
+                Utils::log(coupling_control.rollback_line(), Utils::Color::RED, 1);
+            }
             if (steady_state && cfg.log_outer_iters) {
-                std::ostringstream cl;
-                cl << "Coupling: " << coupling_iters << " outer iters, R_p=" << coupling_R_p
-                   << " R_T=" << coupling_R_T;
-                Utils::log(cl.str(), Utils::Color::CYAN, 1);
+                if (coupling_control.status().converged) {
+                    Utils::log(coupling_control.summary_line(), Utils::Color::CYAN, 1);
+                }
                 if (CrossFilm::active(cfg)) {
                     std::ostringstream xf;
                     xf << "CrossFilm: T_shaft=" << cross_film_state.t_shaft
@@ -421,7 +470,8 @@ int main(int argc, char** argv) {
                                                     steady_state ? 0.0 : cfg.dt);
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
-                    t, step, balance, elrod_stats);
+                    t, step, balance, elrod_stats,
+                    steady_state ? &coupling_control.status() : nullptr);
             }
 
             // Output: write VTK at the configured save cadence ...

@@ -52,6 +52,13 @@ enum class SolutionMode { TRANSIENT, STEADY_STATE };
 // historical behaviour); EQUILIBRIUM sets the dissolved fraction to the local
 // saturation value each outer iteration (an equilibrium flash).
 enum class SteadyGasModel { FROZEN, EQUILIBRIUM };
+// Under-relaxation schedule of the outer (Picard) coupling loop:
+//   FIXED    - coupling_relaxation is applied unchanged every sweep (historical).
+//   ADAPTIVE - the factor backs off whenever the coupling residual RISES and
+//              recovers while it falls. Targets the limit cycle the conjugate
+//              (CONDUCTION_2D bush) cases show, where the loop gain sits just
+//              above 1 and a fixed factor either over- or under-damps.
+enum class CouplingRelaxationMode { FIXED, ADAPTIVE };
 enum class TemperatureModel { ISOTHERMAL, ENERGY_EQUATION };
 // Lubricant property fidelity, ordered simplest -> fullest:
 //   CONSTANT     - fixed density and viscosity (plain oil).
@@ -897,6 +904,11 @@ struct SimulationConfig {
     double outer_tol       = 1e-6;  // Convergence tolerance on max change between outer iters
     double theta_min       = 1e-6;  // Minimum film content
     bool   log_outer_iters = true;  // Whether to print outer iteration progress
+    // Print the coupling residual of EVERY outer (Picard) sweep, not just the
+    // last. Off by default (it is one line per sweep, up to coupling_max_iters
+    // of them); on, it is the only way to see whether a loop is converging,
+    // stagnating or limit-cycling, which is what the conjugate cases needed.
+    bool   log_coupling_history = false;
 
     // FBNS (cavitation_model = FBNS). The complementarity solve has no artificial
     // bulk modulus, so bulk_modulus is unused; these replace max_outer_iters /
@@ -919,6 +931,20 @@ struct SimulationConfig {
     int    coupling_max_iters = 30;
     double coupling_tolerance = 1e-6;        // on normalized max pressure/temperature change
     double coupling_relaxation = 1.0;        // under-relaxation in (0, 1]; 1 = none
+    // Best-iterate rollback. A loop that exhausts coupling_max_iters without
+    // meeting the tolerance may end on an iterate that is WORSE than one it
+    // already passed through (measured on the conjugate Ferron cases: the
+    // residual bottoms out near outer 51 and then oscillates upward for the
+    // remaining 150 sweeps). With this on, such a run delivers the lowest-residual
+    // iterate instead of the last one and says so in the log. A run that MEETS
+    // the tolerance always delivers its last iterate, bit-identically to before.
+    bool   coupling_keep_best_iterate = true;
+    // Adaptive under-relaxation of the outer loop. Defaults are inert: FIXED
+    // reproduces the historical schedule exactly.
+    CouplingRelaxationMode coupling_relaxation_mode = CouplingRelaxationMode::FIXED;
+    double coupling_relaxation_min = 0.1;     // floor for the adaptive factor
+    double coupling_relaxation_backoff = 0.5; // multiplier applied when the residual rises
+    double coupling_relaxation_growth = 1.1;  // multiplier applied while it falls
     SteadyGasModel steady_gas_model = SteadyGasModel::FROZEN;
     bool   allow_frozen_gas_steady = false;  // opt in to running gas cavitation frozen in steady
 
@@ -1153,6 +1179,17 @@ struct SimulationConfig {
             else if (key == "coupling_max_iters") coupling_max_iters = std::stoi(value);
             else if (key == "coupling_tolerance") coupling_tolerance = std::stod(value);
             else if (key == "coupling_relaxation") coupling_relaxation = std::stod(value);
+            else if (key == "coupling_keep_best_iterate") {
+                if (is_true(value)) coupling_keep_best_iterate = true;
+                else if (is_false(value)) coupling_keep_best_iterate = false;
+            }
+            else if (key == "coupling_relaxation_mode") {
+                if (value == "ADAPTIVE") coupling_relaxation_mode = CouplingRelaxationMode::ADAPTIVE;
+                else if (value == "FIXED") coupling_relaxation_mode = CouplingRelaxationMode::FIXED;
+            }
+            else if (key == "coupling_relaxation_min") coupling_relaxation_min = std::stod(value);
+            else if (key == "coupling_relaxation_backoff") coupling_relaxation_backoff = std::stod(value);
+            else if (key == "coupling_relaxation_growth") coupling_relaxation_growth = std::stod(value);
             else if (key == "steady_gas_model") {
                 if (value == "EQUILIBRIUM") steady_gas_model = SteadyGasModel::EQUILIBRIUM;
                 else if (value == "FROZEN") steady_gas_model = SteadyGasModel::FROZEN;
@@ -1171,6 +1208,10 @@ struct SimulationConfig {
             else if (key == "log_outer_iters") {
                 if (is_true(value)) log_outer_iters = true;
                 else if (is_false(value)) log_outer_iters = false;
+            }
+            else if (key == "log_coupling_history") {
+                if (is_true(value)) log_coupling_history = true;
+                else if (is_false(value)) log_coupling_history = false;
             }
             else if (key == "output_dir") output_dir = value;
             else if (key == "filename_prefix") filename_prefix = value;
@@ -1519,6 +1560,32 @@ struct SimulationConfig {
             }
             if (!finite(fbns_pressure_scale) || fbns_pressure_scale < 0.0) {
                 error("fbns_pressure_scale must be >= 0 (0 = derive it from the operating point).");
+            }
+        }
+
+        // Outer (Picard) coupling schedule.
+        if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
+        if (!finite(coupling_tolerance) || coupling_tolerance <= 0.0) {
+            error("coupling_tolerance must be positive.");
+        }
+        if (!finite(coupling_relaxation) || coupling_relaxation <= 0.0 || coupling_relaxation > 1.0) {
+            error("coupling_relaxation must lie in (0, 1].");
+        }
+        if (coupling_relaxation_mode == CouplingRelaxationMode::ADAPTIVE) {
+            if (solution_mode != SolutionMode::STEADY_STATE) {
+                warn("coupling_relaxation_mode = ADAPTIVE only acts in STEADY_STATE; "
+                     "TRANSIENT runs one sweep per step and never relaxes.");
+            }
+            if (!finite(coupling_relaxation_min) || coupling_relaxation_min <= 0.0 ||
+                coupling_relaxation_min > coupling_relaxation) {
+                error("coupling_relaxation_min must lie in (0, coupling_relaxation].");
+            }
+            if (!finite(coupling_relaxation_backoff) || coupling_relaxation_backoff <= 0.0 ||
+                coupling_relaxation_backoff >= 1.0) {
+                error("coupling_relaxation_backoff must lie in (0, 1).");
+            }
+            if (!finite(coupling_relaxation_growth) || coupling_relaxation_growth < 1.0) {
+                error("coupling_relaxation_growth must be >= 1.");
             }
         }
 

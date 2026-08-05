@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include "config.hpp"
+#include "coupling.hpp"
 #include "field.hpp"
 #include "mesh.hpp"
 #include "reynolds.hpp"
@@ -82,7 +83,13 @@ void mass_residual(Fields& fields, const Mesh& mesh,
                    const SimulationConfig& cfg, double dt);
 
 /// Rank-0 CSV appender; writes a header row when creating the file.
+///
+/// `coupling` is the STEADY_STATE outer (Picard) loop outcome. Pass nullptr in
+/// TRANSIENT, where there is no outer loop: the coupling columns are then written
+/// empty rather than as a misleading "converged". The coupling columns are
+/// appended AFTER the existing ones so header-keyed readers keep working.
 void append_csv(const std::filesystem::path& path, double time, int step,
-                const MassBalance& balance, const Reynolds::ElrodStats& stats);
+                const MassBalance& balance, const Reynolds::ElrodStats& stats,
+                const Coupling::Status* coupling = nullptr);
 
 }  // namespace Diagnostics
