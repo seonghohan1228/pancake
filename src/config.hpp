@@ -92,6 +92,21 @@ enum class OutputVerbosity { SIMPLIFIED, DETAILED };
 //                       full-film faces, upwind across/inside cavitated faces.
 //                       Only meaningful for the Elrod film-content (JFO) equation.
 enum class ConvectionScheme { UPWIND, LINEAR, VANLEER, TYPE_DIFFERENCING };
+// Krylov method for every inner linear solve (pressure, film content, temperature,
+// gas transport). BCGS is the default; BCGSL is the more stable (and more
+// expensive) BiCGStab(ell) variant, GMRES/FGMRES are restarted alternatives.
+enum class KrylovMethod { BCGS, BCGSL, GMRES, FGMRES };
+// Preconditioner for every inner linear solve:
+//   ASM     - additive Schwarz, subdomain ILU(0), overlap set by linear_pc_overlap.
+//             Keeps the theta coupling across rank boundaries; the default because
+//             it is the only choice here whose convergence does not degrade with
+//             rank count on the convection-dominated operators.
+//   BJACOBI - block Jacobi, subdomain ILU(0). Identical to ASM at overlap 0 and
+//             cheaper per iteration; the pre-2026-08 behaviour. Known to diverge
+//             at some rank counts on the steady energy and Elrod equations.
+//   JACOBI  - point Jacobi. Diagnostic only.
+//   NONE    - unpreconditioned. Diagnostic only.
+enum class LinearPreconditioner { ASM, BJACOBI, JACOBI, NONE };
 // Effective film viscosity once free gas is present (all satisfy mu(alpha=0)=mu_l),
 // ordered legacy -> recommended:
 //   DUKLER  - void-fraction-weighted linear blend: alpha mu_g + (1-alpha) mu_l.
@@ -298,6 +313,26 @@ inline const char* to_config_value(ConvectionScheme scheme) {
     return "UPWIND";
 }
 
+inline const char* to_config_value(KrylovMethod method) {
+    switch (method) {
+        case KrylovMethod::BCGS:   return "BCGS";
+        case KrylovMethod::BCGSL:  return "BCGSL";
+        case KrylovMethod::GMRES:  return "GMRES";
+        case KrylovMethod::FGMRES: return "FGMRES";
+    }
+    return "BCGS";
+}
+
+inline const char* to_config_value(LinearPreconditioner pc) {
+    switch (pc) {
+        case LinearPreconditioner::ASM:     return "ASM";
+        case LinearPreconditioner::BJACOBI: return "BJACOBI";
+        case LinearPreconditioner::JACOBI:  return "JACOBI";
+        case LinearPreconditioner::NONE:    return "NONE";
+    }
+    return "ASM";
+}
+
 inline const char* to_config_value(MixtureViscosityModel model) {
     switch (model) {
         case MixtureViscosityModel::DUKLER: return "DUKLER";
@@ -417,6 +452,22 @@ inline const char* to_config_value(LiquidViscosityModel model) {
         case LiquidViscosityModel::TABLE: return "TABLE";
     }
     return "CONSTANT";
+}
+
+inline KrylovMethod krylov_method_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "BCGSL" || value == "BICGSTABL" || value == "BCGS_L") return KrylovMethod::BCGSL;
+    if (value == "GMRES") return KrylovMethod::GMRES;
+    if (value == "FGMRES") return KrylovMethod::FGMRES;
+    return KrylovMethod::BCGS;
+}
+
+inline LinearPreconditioner linear_preconditioner_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "BJACOBI" || value == "BLOCK_JACOBI") return LinearPreconditioner::BJACOBI;
+    if (value == "JACOBI" || value == "POINT_JACOBI") return LinearPreconditioner::JACOBI;
+    if (value == "NONE") return LinearPreconditioner::NONE;
+    return LinearPreconditioner::ASM;
 }
 
 inline ConvectionScheme convection_scheme_from_config(std::string value) {
@@ -648,6 +699,18 @@ struct SimulationConfig {
     // Relative tolerance for the inner Krylov solves. The global mass-balance
     // residual reported by the diagnostics is bounded by this tolerance.
     double linear_rtol = 1e-8;
+
+    // Inner linear solver. Defaults are chosen so that convergence does not
+    // depend on the MPI rank count; see LinearSolverOptions in linear_system.hpp.
+    KrylovMethod linear_ksp_type = KrylovMethod::BCGS;
+    LinearPreconditioner linear_pc_type = LinearPreconditioner::ASM;
+    // Additive-Schwarz subdomain overlap in cells; ignored unless linear_pc_type = ASM.
+    // 0 makes ASM equivalent to block Jacobi and reinstates the rank dependence.
+    int linear_pc_overlap = 1;
+    // Number of escalation rungs (0-2) tried when a linear solve fails before the
+    // run is aborted. Costs nothing on a solve that converges. 0 restores the
+    // abort-on-first-failure behaviour.
+    int linear_solver_fallbacks = 2;
 
     // Physics
     double omega = 100.0;
@@ -938,6 +1001,10 @@ struct SimulationConfig {
             else if (key == "thermal_convection_scheme") thermal_convection_scheme = convection_scheme_from_config(value);
             else if (key == "gas_convection_scheme") gas_convection_scheme = convection_scheme_from_config(value);
             else if (key == "linear_rtol") linear_rtol = std::stod(value);
+            else if (key == "linear_ksp_type") linear_ksp_type = krylov_method_from_config(value);
+            else if (key == "linear_pc_type") linear_pc_type = linear_preconditioner_from_config(value);
+            else if (key == "linear_pc_overlap") linear_pc_overlap = std::stoi(value);
+            else if (key == "linear_solver_fallbacks") linear_solver_fallbacks = std::stoi(value);
             else if (key == "omega") omega = std::stod(value);
             else if (key == "omega_ramp_time") omega_ramp_time = std::stod(value);
             else if (key == "mu") mu = std::stod(value);
@@ -1193,6 +1260,28 @@ struct SimulationConfig {
         }
         require_positive(dt, "dt");
         require_positive(write_interval, "write_interval");
+        require_positive(linear_rtol, "linear_rtol");
+        if (linear_pc_overlap < 0) {
+            error("linear_pc_overlap must be non-negative.");
+        }
+        if (linear_solver_fallbacks < 0 || linear_solver_fallbacks > 2) {
+            error("linear_solver_fallbacks must be between 0 and 2.");
+        }
+        if (linear_solver_fallbacks == 0) {
+            warn("linear_solver_fallbacks = 0: a linear solve that fails once aborts the run "
+                 "instead of being retried on a different Krylov path.");
+        }
+        if (linear_pc_type == LinearPreconditioner::ASM && linear_pc_overlap == 0) {
+            warn("linear_pc_overlap = 0 makes ASM equivalent to block Jacobi: the linear "
+                 "solves become rank-dependent and can diverge on the energy and Elrod "
+                 "equations. Use 1 or more.");
+        }
+        if (linear_pc_type != LinearPreconditioner::ASM) {
+            warn(std::string("linear_pc_type = ") + to_config_value(linear_pc_type) +
+                 " drops the coupling across MPI rank boundaries; convergence of the "
+                 "convection-dominated solves then depends on the rank count. ASM is the "
+                 "rank-robust choice.");
+        }
         if (solution_mode == SolutionMode::TRANSIENT) require_positive(end_t, "end_t");
         require_positive(mu, "mu");
         require_positive(rho, "rho");
@@ -1946,6 +2035,13 @@ struct SimulationConfig {
             << "thermal_convection_scheme = " << to_config_value(thermal_convection_scheme) << "\n"
             << "gas_convection_scheme = " << to_config_value(gas_convection_scheme) << "\n"
             << "linear_rtol = " << linear_rtol << "\n"
+            << "# Inner Krylov solver: BCGS, BCGSL, GMRES, FGMRES.\n"
+            << "# Preconditioner: ASM (default, rank-robust), BJACOBI, JACOBI, NONE.\n"
+            << "linear_ksp_type = " << to_config_value(linear_ksp_type) << "\n"
+            << "linear_pc_type = " << to_config_value(linear_pc_type) << "\n"
+            << "linear_pc_overlap = " << linear_pc_overlap << "\n"
+            << "# Escalation rungs (0-2) tried before a failed linear solve aborts the run.\n"
+            << "linear_solver_fallbacks = " << linear_solver_fallbacks << "\n"
             << "# Per-step mass-balance / convergence CSV cadence in steps; <= 0 disables.\n"
             << "diagnostics_interval = " << diagnostics_interval << "\n\n";
 

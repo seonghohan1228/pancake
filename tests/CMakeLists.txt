@@ -18,6 +18,8 @@ add_pancake_test(test_elrod_a1)
 add_pancake_test(test_elrod_a2)
 add_test(NAME test_elrod_a2_mpi6
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 6 $<TARGET_FILE:test_elrod_a2>)
+add_test(NAME test_elrod_a2_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_elrod_a2>)
 add_pancake_test(test_elrod_bc)
 add_pancake_test(test_inlets)
 add_pancake_test(test_velocity)
@@ -25,6 +27,10 @@ add_pancake_test(test_bc)
 add_pancake_test(test_journal_motion)
 add_pancake_test(test_forces)
 add_pancake_test(test_energy)
+# The steady energy equation is the operator the rank-dependent divergence hit
+# first; exercise it on the odd split too.
+add_test(NAME test_energy_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_energy>)
 add_pancake_test(test_io)
 add_pancake_test(test_fluid_properties)
 add_pancake_test(test_gas_transport)
@@ -33,9 +39,19 @@ add_pancake_test(test_mass_residual)
 add_pancake_test(test_fbns)
 add_test(NAME test_fbns_mpi6
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 6 $<TARGET_FILE:test_fbns>)
+# -n 1 and -n 4 are not redundant with -n 2 / -n 6. Preconditioner quality is a
+# function of how the theta direction is cut, and the Elrod and Schur solves used
+# to diverge at exactly these two counts while passing at 2 and 6. Leaving them
+# unpoliced is how that regression survived several releases.
+add_test(NAME test_fbns_mpi1
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:test_fbns>)
+add_test(NAME test_fbns_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_fbns>)
 add_pancake_test(test_schemes)
 add_test(NAME test_schemes_mpi6
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 6 $<TARGET_FILE:test_schemes>)
+add_test(NAME test_schemes_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_schemes>)
 add_pancake_test(test_property_tables)
 target_compile_definitions(test_property_tables PRIVATE
     PANCAKE_DATA_DIR="${CMAKE_SOURCE_DIR}/data")

@@ -113,6 +113,12 @@ static void test_steady_wall_balance() {
     cfg.bearing_wall_temperature = 300.0;
     cfg.journal_heat_transfer = 1000.0;
     cfg.bearing_heat_transfer = 1000.0;
+    // The assertion below is an analytic identity checked to 1e-6 K on a 305 K
+    // field, i.e. 3e-9 relative. The default linear_rtol of 1e-8 does not buy that
+    // much accuracy, and how far inside the tolerance a solve lands is a property
+    // of the preconditioner, not of the balance being tested. Ask for a solve tight
+    // enough that the residual cannot be what the assertion measures.
+    cfg.linear_rtol = 1.0e-13;
 
     Mesh mesh(cfg);
     Communicator comm(mesh);
@@ -173,6 +179,8 @@ static void test_steady_initial_solve_ignores_old_temperature() {
     cfg.bearing_wall_temperature = 300.0;
     cfg.journal_heat_transfer = 1000.0;
     cfg.bearing_heat_transfer = 1000.0;
+    // Same analytic identity, same reason as in test_steady_wall_balance.
+    cfg.linear_rtol = 1.0e-13;
 
     Mesh mesh(cfg);
     Communicator comm(mesh);
