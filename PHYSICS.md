@@ -146,6 +146,15 @@ The face interpolation is selectable per transported variable
 - `VANLEER` — van Leer TVD limited high-order deferred correction
   $\phi_f = \phi_U + \tfrac12\psi(r)(\phi_D-\phi_U)$ with
   $r = (\phi_U-\phi_{UU})/(\phi_D-\phi_U)$; sharper fronts, no new extrema (bounded).
+  The triple $(\phi_{UU},\phi_U,\phi_D)$ is taken from the side the flux comes
+  from, so it flips with the sign of $F_f$: on the east face of cell $i$ it is
+  $(\phi_{i-1},\phi_i,\phi_{i+1})$ for $F_e \ge 0$ and
+  $(\phi_{i+2},\phi_{i+1},\phi_i)$ for $F_e < 0$. This matters on the energy and
+  gas-transport equations, where the Poiseuille term can reverse a face flux
+  even with $\omega > 0$; on the Elrod $\theta$ equation the face flux is pure
+  Couette and carries the sign of $\omega$ throughout.
+  **Scope limit:** the deferred correction is applied on the circumferential
+  faces only. Axial ($z$) faces remain first-order upwind under `VANLEER`.
 - `TYPE_DIFFERENCING` (theta only) — Vijayaraghavan & Keith (1989): central
   interpolation across faces where both adjacent cells are full-film
   ($g = 1$), first-order upwind across and inside the cavitated region. This
@@ -155,6 +164,9 @@ The face interpolation is selectable per transported variable
 Validation (`tests/test_schemes.cpp`): step advection is bounded and sharper
 under TVD than upwind; observed refinement orders are $\approx 1.09$ (upwind)
 and $\approx 1.99$ (TVD van Leer) on a smooth profile with $\Delta t \propto \Delta x^2$.
+Directional symmetry is pinned separately: the mirrored profile advected with
+mirrored (negative) face flux reproduces the forward run's $L_1$ error to
+$10^{-9}$ and stays inside the initial bounds.
 
 ---
 

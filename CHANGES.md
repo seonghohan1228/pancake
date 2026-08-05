@@ -2,6 +2,58 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - van Leer far-upwind cell now follows the flux sign (D1 / F4)
+
+`FVM::divergence` hard-coded the far-upwind cell regardless of the face flux
+sign. On the east face it always differenced against `i-1` and, for `F_e < 0`,
+inverted the positive-flux gradient ratio. For a negative face flux the upwind
+cell is `i+1` and the far-upwind cell is `i+2`, so the scheme was reconstructing
+from the wrong stencil with the wrong `r` - neither TVD nor second order. Same on
+the west face.
+
+The reconstruction is now written in terms of the face's own upwind triple
+(far-upwind, upwind, downwind), which flips with the flux sign. The positive-flux
+branch is algebraically and floating-point identical to the old code.
+
+**Reclassified from latent to live.** `CHANGES.md` recorded D1 as "latent for
+omega > 0" and `PLAN.md` had F4 as TODO. That caveat held only for the Elrod
+theta equation, whose face flux is pure Couette and therefore carries the sign of
+`omega`. It does not hold for the two paths the campaign added or extended:
+
+- `energy.cpp` face flux is `0.5*omega*R*couette - g*F2*dp_dtheta/R`; the
+  Poiseuille term can reverse the face with `omega > 0`, and
+  `thermal_convection_scheme = VANLEER` reaches `FVM::divergence` unmodified.
+- `gas_transport.cpp` has the same structure via `gas_convection_scheme`.
+
+`omega < 0` is also legal (`validate()` never requires positivity), which puts
+every Elrod face on the reversed branch.
+
+**Test first, then fix.** `tests/test_schemes.cpp` gained a directional-symmetry
+case (the F4 acceptance gate): the mirrored step profile advected with mirrored
+flux is the same discrete problem up to a permutation, so its L1 error must match
+the forward run's. Against the old code it fails outright -
+
+| | forward | backward (old code) | backward (fixed) |
+|---|---|---|---|
+| L1 error | 0.0266008 | 0.0626316 | 0.0266008 |
+| range | - | [0.140741, **1.00469**] | [0.2, 1.0] |
+
+- 2.4x the error and a genuine overshoot past the initial maximum, i.e. the
+reversed branch was not bounded either. After the fix the two agree to every
+printed digit and the bounds are exact.
+
+**Nothing else moved.** The full 35-case suite was run on the pre-fix and
+post-fix binaries with verbose output captured and diffed: the only differences
+are the three new directional-test lines (the test is registered at 1, 4 and 6
+ranks) and nondeterministic MPI abort formatting in `test_ksp_guard`. No existing
+test's numbers changed, which is the expected result - every currently tested
+VANLEER path has non-negative face fluxes, so the fix is a no-op on them.
+
+**Not fixed here, and now documented:** the deferred correction still covers the
+circumferential faces only, so axial convection degrades to first-order upwind
+under `VANLEER`. That is the second half of F4 and is stated in `PHYSICS.md 5.5`
+rather than left for a reader to discover.
+
 ### 2026-08-05 - An unrecognized config key is now a hard error (audit Q1)
 
 `SimulationConfig::load_from_stream` had no terminal `else`: any key the parser

@@ -3,6 +3,9 @@
 //
 // Test 1 — TVD boundedness: 1-D periodic step advection produces no new
 //   extrema and a strictly smaller L1 error than first-order upwind.
+// Test 1b — Directional symmetry: the mirrored profile advected with mirrored
+//   (negative) face flux reproduces the forward run exactly, and stays bounded.
+//   This is the acceptance gate for the van Leer far-upwind indexing (PLAN F4).
 // Test 2 — Order of accuracy: smooth profile advection refines at ~1st order
 //   for upwind and visibly faster for TVD (dt scaled with dx so the spatial
 //   error dominates the backward-Euler time error).
@@ -153,6 +156,48 @@ void test_tvd_boundedness_and_sharpness() {
           "TVD step advection must not create new extrema");
     check(tvd.l1_error < upwind.l1_error,
           "TVD must resolve the step more sharply than upwind (smaller L1 error)");
+}
+
+// The van Leer reconstruction must not care which way the flux points. A face
+// with F < 0 has its upwind cell on the +theta side and its far-upwind cell one
+// further in that direction; the original code kept the far-upwind cell fixed at
+// the -theta side and inverted the positive-flux gradient ratio, which is a
+// different (and unbounded) scheme. Advecting the mirrored profile with the
+// mirrored flux is the same discrete problem up to a permutation, so every
+// scalar it produces must match.
+void test_tvd_directional_symmetry() {
+    const int n_cells = 120;
+    auto step_profile = [n_cells](int global_index) {
+        return (global_index >= n_cells / 4 && global_index < n_cells / 2) ? 1.0 : 0.2;
+    };
+    auto mirrored_profile = [n_cells, step_profile](int global_index) {
+        return step_profile(((n_cells - global_index) % n_cells + n_cells) % n_cells);
+    };
+
+    const AdvectionResult forward =
+        advect_profile(n_cells, 0.5, 20, ConvectionScheme::VANLEER, step_profile);
+    const AdvectionResult backward =
+        advect_profile(n_cells, -0.5, 20, ConvectionScheme::VANLEER, mirrored_profile);
+    const AdvectionResult backward_upwind =
+        advect_profile(n_cells, -0.5, 20, ConvectionScheme::UPWIND, mirrored_profile);
+
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0) {
+        std::cout << "  directional L1: forward=" << forward.l1_error
+                  << " backward=" << backward.l1_error
+                  << " backward range=[" << backward.min_seen << ", "
+                  << backward.max_seen << "]\n";
+    }
+
+    check(std::abs(forward.l1_error - backward.l1_error) < 1e-9 * (1.0 + forward.l1_error),
+          "VANLEER must give mirrored results for mirrored flux (far-upwind cell "
+          "must follow the flux sign)");
+    const double bound_tol = 1e-6;
+    check(backward.min_seen >= 0.2 - bound_tol && backward.max_seen <= 1.0 + bound_tol,
+          "VANLEER must not create new extrema under negative face flux");
+    check(backward.l1_error < backward_upwind.l1_error,
+          "VANLEER must beat upwind under negative face flux too");
 }
 
 void test_order_of_accuracy() {
@@ -457,6 +502,7 @@ int main(int argc, char** argv) {
 
     test_config_backcompat_and_guards();
     test_tvd_boundedness_and_sharpness();
+    test_tvd_directional_symmetry();
     test_order_of_accuracy();
     test_gumbel_elrod_match_type_differencing();
     test_capacity_term_finite_relaxation();

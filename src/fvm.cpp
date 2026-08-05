@@ -170,25 +170,41 @@ void divergence(LinearSystem& sys,
 
             // TVD deferred correction: explicit high-order fix added to source.
             // Uses phi.old (previous timestep / last outer iteration).
-            // East face
-            double phi_e_up = (F_e >= 0.0) ? phi.old(i, j) : phi.old(i + 1, j);
+            //
+            // The reconstruction is written in terms of the face's own upwind
+            // triple (far-upwind, upwind, downwind) rather than fixed cell
+            // offsets, because the triple flips with the sign of the face flux.
+            // For F_e < 0 the upwind cell is i+1 and the far-upwind cell is i+2;
+            // the previous form kept i-1 as the far-upwind cell and inverted the
+            // positive-flux ratio, which is neither the right gradient nor the
+            // right r. That was harmless only where every face flux carries the
+            // sign of omega (the Elrod theta equation, whose faces are pure
+            // Couette); on the energy and gas-transport paths the Poiseuille term
+            // makes negative faces reachable with omega > 0.
+            auto tvd_face = [&](double phi_uu, double phi_u, double phi_d) {
+                const double denom = phi_u - phi_uu;
+                const double num   = phi_d - phi_u;
+                const double r     = (std::abs(denom) > 1e-14) ? num / denom : 0.0;
+                return phi_u + 0.5 * limiter(r, scheme) * denom;
+            };
+
+            // East face, between (i,j) and (i+1,j)
+            const double phi_e_up = (F_e >= 0.0) ? phi.old(i, j) : phi.old(i + 1, j);
             {
-                double denom = phi.old(i, j) - phi.old(i - 1, j);
-                double num   = phi.old(i + 1, j) - phi.old(i, j);
-                double r     = (std::abs(denom) > 1e-14) ? num / denom : 0.0;
-                if (F_e < 0.0) r = 1.0 / (r + 1e-14);
-                double phi_e_ho = phi_e_up + 0.5 * limiter(r, scheme) * (phi_e_up - phi.old(i - 1, j));
+                const double phi_e_ho =
+                    (F_e >= 0.0)
+                        ? tvd_face(phi.old(i - 1, j), phi.old(i, j), phi.old(i + 1, j))
+                        : tvd_face(phi.old(i + 2, j), phi.old(i + 1, j), phi.old(i, j));
                 sys.source(i, j) -= F_e * (phi_e_ho - phi_e_up);
             }
 
-            // West face
-            double phi_w_up = (F_w >= 0.0) ? phi.old(i - 1, j) : phi.old(i, j);
+            // West face, between (i-1,j) and (i,j)
+            const double phi_w_up = (F_w >= 0.0) ? phi.old(i - 1, j) : phi.old(i, j);
             {
-                double denom = phi.old(i - 1, j) - phi.old(i - 2, j);
-                double num   = phi.old(i, j) - phi.old(i - 1, j);
-                double r     = (std::abs(denom) > 1e-14) ? num / denom : 0.0;
-                if (F_w < 0.0) r = 1.0 / (r + 1e-14);
-                double phi_w_ho = phi_w_up + 0.5 * limiter(r, scheme) * (phi_w_up - phi.old(i - 2, j));
+                const double phi_w_ho =
+                    (F_w >= 0.0)
+                        ? tvd_face(phi.old(i - 2, j), phi.old(i - 1, j), phi.old(i, j))
+                        : tvd_face(phi.old(i + 1, j), phi.old(i, j), phi.old(i - 1, j));
                 sys.source(i, j) += F_w * (phi_w_ho - phi_w_up);
             }
         }

@@ -52,7 +52,7 @@ Priority queue (user gates in brackets):
 | Item | Audit ref | Status |
 |---|---|---|
 | Unknown-config-key hard error, with typo suggestion | Q1 | **DONE 2026-08-05** — `tests/test_config_keys.cpp`; 105 case configs corrected |
-| VANLEER far-upwind cell for negative face flux | C / F4 | TODO |
+| VANLEER far-upwind cell for negative face flux | C / F4 | **DONE 2026-08-05** (theta faces; z-face TVD still open, F4 stays partial) |
 | GUI anisotropic-stiffness data loss on load | 3.5 / S9 | TODO |
 | `config.txt` cavitation default -> FBNS | Q5 | TODO |
 | Coefficient unification: energy axial BCs + gas transport | A / S1 | TODO |
@@ -2163,7 +2163,7 @@ code locations there, and record implementation evidence here.
 | F1 | Make PETSc solves fail loudly: convergence reason, iteration count, finite-field guard | D6 | TODO |
 | F2 | Initialize `theta` with the same effective cavitation pressure used by the EOS and solver | D3 | TODO |
 | F3 | Replace every hard-coded `theta >= 1` decision with one shared per-cell full-film predicate | D2, I3 | TODO |
-| F4 | Correct reversed-flow van Leer reconstruction and add north/south TVD correction | D1 | TODO |
+| F4 | Correct reversed-flow van Leer reconstruction and add north/south TVD correction | D1 | **PARTIAL (2026-08-05)** - reversed-flow reconstruction fixed and pinned by the directional-symmetry gate; the north/south TVD correction is still absent |
 | F5 | Synchronize all properties consumed across partitions and add coupled-path 1-rank/2-rank parity | D5, B9, I1 | TODO |
 | F6 | Add a fully populated config parse/serialize round-trip gate before extending the config surface | I7, B1a | TODO |
 | F7 | Harden linear/nonlinear iteration: warm starts, `theta`-space relaxation, tolerance-scaled snapping, exact constraint rows | D7, D8, D10, D11 | TODO |
