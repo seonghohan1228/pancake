@@ -239,10 +239,19 @@ Newton iterations independent of grid size. Scope: `temperature_model`
 `ISOTHERMAL` or `ENERGY_EQUATION`, `fluid_property_model` `CONSTANT`,
 `SINGLE_PHASE` (so THD runs with temperature- and pressure-dependent oil
 properties are supported) or `TWO_PHASE`, `cavitated_film_model` `FULL_FILM` or
-`STRIATED`, `DIRICHLET`/`NEUMANN` axial boundaries; steady or transient, static or
-moving bearing, MPI-parallel. Temperature reaches the solver through its per-cell
-Poiseuille mobility, which is frozen inside each Newton solve and refreshed by
-the outer Picard loop, exactly as on the Elrod path.
+`STRIATED`, `DIRICHLET`/`NEUMANN` axial boundaries, `cross_film_thermal_model`
+`POLYNOMIAL`; steady or transient, static or moving bearing, MPI-parallel.
+Temperature reaches the solver through its per-cell Poiseuille mobility, which is
+frozen inside each Newton solve and refreshed by the outer Picard loop, exactly
+as on the Elrod path.
+
+With `cross_film_thermal_model = POLYNOMIAL` that mobility is the generalized
+(Dowson) one, `rho_l F2`, and the Couette flux is carried by `2 F1/F0` instead of
+`h` — so `mu(T(y))` acts inside the film integrals rather than through a
+depth-averaged viscosity. `CrossFilm::update` rebuilds the integrals once per
+outer iteration, before the Newton solve, so they are frozen coefficients like
+`mu` and both Jacobian blocks, the linearity of the mass balance and the
+quadratic Newton rate are unchanged. See PHYSICS.md sections 7.3.9 and 13.1.3.
 
 Under `TWO_PHASE` the full-film ceiling `theta_full` drops from 1 to
 `1 - alpha_gas`, because the released gas occupies part of the gap and the liquid
@@ -322,7 +331,11 @@ groove cells, clamped cells and the rupture front the field must sit at round-of
 of the barotropic conductance. The field is registered only when selected, so
 runs that omit it are bit-identical. It is defined for `cavitation_model = JFO`
 and `FBNS` (each mirroring its own solver's face fluxes); validation warns and
-writes zeros otherwise. See PHYSICS.md §15.1.
+writes zeros otherwise. Both the solvers and this diagnostic assemble their
+coefficients from one header, `src/reynolds_coefficients.hpp`, so the residual
+reported is the residual of the operator actually assembled — including under the
+cross-film model and `gas_pressure_coupling = VOID_COUPLED`, where local copies
+had previously drifted. See PHYSICS.md §15.1.
 
 `solution_mode = STEADY_STATE` runs one pressure/thermal solve at `t=0` and
 skips bearing-motion advancement. This is intended for fast operating-point
@@ -360,7 +373,7 @@ profile, a conjugate wall model (circumferentially isothermal shaft whose
 temperature is solved from the global film-to-shaft heat balance, plus 1-D radial
 conduction through the bush to an outer convection boundary), and a generalized
 Reynolds equation using Dowson's `F0/F1/F2` viscosity integrals in place of
-`h^3/(12 mu)`. When it is active, `journal_heat_transfer`,
+`h^3/(12 mu)` (under both `cavitation_model = JFO` and `FBNS`). When it is active, `journal_heat_transfer`,
 `bearing_heat_transfer`, `journal_wall_temperature` and
 `bearing_wall_temperature` are ignored — the conjugate model replaces them, and
 the config validator warns rather than letting them look effective. Its own keys
@@ -505,6 +518,11 @@ src/
   linear_system.hpp/cpp PETSc sparse system wrapper
   io.hpp/cpp            VTK/PVD writers
   reynolds.hpp/cpp      Reynolds equation assembly and post-processing
+  reynolds_coefficients.hpp
+                         Single definition of the assembled operator coefficients
+                         (Poiseuille/Dowson mobility, Couette thickness and face
+                         flux, void/EOS parameters), shared by reynolds.cpp,
+                         fbns.cpp and diagnostics.cpp
   fbns.hpp/cpp          FBNS complementarity cavitation solver (cavitation_model = FBNS)
   gui/                  ImGui + ImPlot desktop GUI around pancake.exe
                         (see docs/GUI_ARCHITECTURE.md; built per BUILD.md)

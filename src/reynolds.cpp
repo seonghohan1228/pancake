@@ -12,6 +12,7 @@
 #include "fvm.hpp"
 #include "communicator.hpp"
 #include "fluid_properties.hpp"
+#include "reynolds_coefficients.hpp"
 
 namespace Reynolds {
 
@@ -36,118 +37,18 @@ double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int 
     return positive_field_value(fields, "mu", cfg.mu, i, j);
 }
 
-/// Poiseuille coefficient of the (generalized) Reynolds equation, per unit density.
-///
-/// Uniform across-the-gap viscosity gives h^3/(12 mu). With the cross-film model
-/// active it is Dowson's F2 = int_0^h y (y - F1/F0) dy/mu, which reduces to
-/// h^3/(12 mu) exactly when mu does not vary through the film. The two are
-/// alternatives, not a correction of one by the other.
-/// `prefactor` multiplies the coefficient from the left; it is an argument rather
-/// than applied by the caller so the classical branch keeps the exact original
-/// floating-point association and stays bit-identical when the model is off.
+// The Poiseuille mobility, the generalized Couette thickness and the void/EOS
+// parameters are shared with FBNS::solve and with Diagnostics, which must
+// re-evaluate exactly the operator assembled here. See reynolds_coefficients.hpp.
+using ReynoldsCoeff::VoidParams;
+using ReynoldsCoeff::couette_thickness;
+using ReynoldsCoeff::gas_inventory_plateau;
+using ReynoldsCoeff::poiseuille_coefficient;
+using ReynoldsCoeff::void_params;
+
 double reynolds_diffusion(const Fields& fields, const SimulationConfig& cfg,
                           double prefactor, int i, int j) {
-    if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
-        return prefactor * positive_field_value(fields, "cross_film_f2", 0.0, i, j);
-    }
-    const double h_val = fields["h"](i, j);
-    return prefactor * h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
-}
-
-double poiseuille_coefficient(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    return reynolds_diffusion(fields, cfg, 1.0, i, j);
-}
-
-/// Film thickness that carries the Couette flux. The generalized Reynolds
-/// equation transports U * F1/F0 rather than U * h/2, so this returns 2 F1/F0,
-/// which equals h under uniform viscosity and lets every Couette expression keep
-/// its explicit factor of one half.
-double couette_thickness(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    if (CrossFilm::active(cfg) && fields.has("cross_film_couette_h")) {
-        return positive_field_value(fields, "cross_film_couette_h", 0.0, i, j);
-    }
-    return fields["h"](i, j);
-}
-
-// WP-1 two-phase void coupling: per-cell generalized EOS parameters. Under NONE
-// (or when no free-gas field exists) these default to the single-phase values
-// (theta_full = 1, p_void = effective p_cav, beta_bar = bulk_modulus), so the
-// Elrod solve is bit-identical to the volumetrically-inert gas model.
-struct VoidParams {
-    double theta_full = 1.0;  // full-film ceiling = 1 - alpha_g
-    double p_void = 0.0;      // local cavitated-zone plateau pressure
-    double beta_bar = 0.0;    // mixture bulk modulus
-};
-
-/// Gas-inventory-consistent cavitated-zone plateau pressure [Pa].
-///
-/// Requiring the gas released between the bubble point p_sat and the local
-/// pressure p to exactly fill the void (1 - theta) at the ideal-gas density
-/// p / (R_s T) gives
-///     H (p_sat - p) rho_l theta h . R_s T / p = (1 - theta) h
-///  => p = L theta p_sat / [ (1 - theta) + L theta ],      L = H rho_l R_s T,
-/// the Ostwald coefficient. This is the fixed point of the explicit form
-/// p = m_g R_s T / ((1 - theta) h), but bounded: it tends to p_sat as theta -> 1
-/// rather than diverging like m_g / (1 - theta), and never exceeds p_sat. The
-/// explicit form divided a full-film cell's released gas by a ~zero void and
-/// produced O(1e4) bar plateaus whenever the flash left free gas in an
-/// uncavitated cell. Returns 0 when no Henry solubility model applies.
-double gas_inventory_plateau(const Fields& fields, const SimulationConfig& cfg,
-                             double theta, int i, int j) {
-    const double T = std::max(field_value(fields, "temperature", cfg.temperature_initial, i, j), 1.0);
-    const double rho_l = positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
-    const double L_ostwald = cfg.ostwald_coefficient(T, rho_l);
-    const double p_sat = cfg.saturation_pressure(cfg.dissolved_gas_initial, T);
-    if (!(L_ostwald > 0.0) || !(p_sat > 0.0)) return 0.0;
-    const double theta_c = std::clamp(theta, 0.0, 1.0);
-    const double denom = (1.0 - theta_c) + L_ostwald * theta_c;
-    if (!(denom > 0.0)) return p_sat;
-    return std::min(L_ostwald * theta_c * p_sat / denom, p_sat);
-}
-
-VoidParams void_params(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    VoidParams vp;
-    vp.p_void = cfg.effective_p_cav();
-    vp.beta_bar = cfg.bulk_modulus;
-    if (cfg.gas_pressure_coupling != GasPressureCoupling::VOID_COUPLED || !fields.has("alpha_gas")) {
-        return vp;  // single-phase defaults -> identical to the inert-gas model
-    }
-    const double alpha_cap = std::min(std::max(cfg.gas_alpha_max, 0.0), 0.999);
-    const double alpha_g = std::clamp(fields["alpha_gas"](i, j), 0.0, alpha_cap);
-    if (alpha_g <= 0.0) return vp;  // gas-free cell -> single-phase, bit-identical to NONE
-    vp.theta_full = 1.0 - alpha_g;
-    const double theta = std::max(field_value(fields, "theta", 1.0, i, j), cfg.theta_min);
-    const double p = std::max(field_value(fields, "pressure", vp.p_void, i, j), cfg.gas_pressure_floor);
-    // Mixture bulk modulus weighted by volume fraction: liquid (1 - alpha_g =
-    // theta_full) at the liquid beta, gas alpha_g at the isothermal value 1/p.
-    // Reduces to beta exactly when alpha_g = 0, so the no-gas limit matches the
-    // single-phase model (the vaporous-limit acceptance gate).
-    const double inv_beta = vp.theta_full / cfg.bulk_modulus + alpha_g / p;
-    vp.beta_bar = inv_beta > 0.0 ? 1.0 / inv_beta : cfg.bulk_modulus;
-
-    // Released gas filling the void sets the local plateau pressure (>= the onset
-    // threshold). Solved in closed form rather than evaluated explicitly from the
-    // current free-gas mass: requiring the gas released between p_sat and p to
-    // exactly fill the void (1 - theta) at the ideal-gas density p / (R_s T) gives
-    //     H (p_sat - p) rho_l theta h . R_s T / p = (1 - theta) h
-    //  => p = L theta p_sat / [ (1 - theta) + L theta ],     L = H rho_l R_s T,
-    // the Ostwald coefficient. This is the fixed point of the explicit form
-    // p = m_g R_s T / ((1 - theta) h), but bounded: it tends to p_sat as theta -> 1
-    // instead of diverging like m_g / (1 - theta), and never exceeds p_sat. The
-    // explicit form divided a full-film cell's released gas by a ~zero void and
-    // produced O(1e4) bar plateaus (and non-convergence) whenever the flash put
-    // free gas in an uncavitated cell.
-    // When the lagged plateau field is present (VOID_COUPLED runs), read the
-    // under-relaxed value the outer loop maintains. Recomputing the closure on the
-    // instantaneous theta at every assembly makes the p_void <-> theta feedback
-    // limit-cycle: the rupture front oscillates without ever flipping a flag, so
-    // the Elrod loop stalls at a finite mass residual and never converges.
-    if (fields.has("p_void")) {
-        vp.p_void = std::max(vp.p_void, field_value(fields, "p_void", vp.p_void, i, j));
-        return vp;
-    }
-    vp.p_void = std::max(vp.p_void, gas_inventory_plateau(fields, cfg, theta, i, j));
-    return vp;
+    return ReynoldsCoeff::poiseuille(fields, cfg, prefactor, i, j);
 }
 
 // Pressure the solver actually imposed at an axial boundary. Elrod derives its
@@ -377,9 +278,7 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
     Field Gamma_base("Gamma_base", mesh);
     for (int i = -ng; i < n_theta + ng; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            const double rho_base = theta_base_density(fields, cfg, i, j);
-            const double beta_eff = void_params(fields, cfg, i, j).beta_bar;
-            Gamma_base(i, j) = reynolds_diffusion(fields, cfg, rho_base * beta_eff, i, j);
+            Gamma_base(i, j) = ReynoldsCoeff::elrod_gamma_base(fields, cfg, i, j);
         }
     }
 
@@ -389,12 +288,7 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
     Field zero_flux_z("zero_flux_z", mesh);
     for (int i = -1; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            const double h_e = 0.5 * (couette_thickness(fields, cfg, i, j) +
-                                      couette_thickness(fields, cfg, i + 1, j));
-            const double rho_e = 0.5 * (
-                theta_base_density(fields, cfg, i, j) +
-                theta_base_density(fields, cfg, i + 1, j));
-            couette_flux(i, j) = rho_e * cfg.omega * R * h_e * 0.5 * d_z;
+            couette_flux(i, j) = ReynoldsCoeff::couette_face_flux(fields, mesh, cfg, i, j);
             zero_flux_z(i, j)  = 0.0;
         }
     }

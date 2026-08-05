@@ -2,6 +2,101 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-05 - Cross-film generalized coefficients under FBNS, and one definition of the Reynolds coefficients
+
+Two changes on one branch, because the second is what makes the first checkable.
+
+**1. `cavitation_model = FBNS` now accepts `cross_film_thermal_model = POLYNOMIAL`.**
+
+The validation guard that refused the combination is gone. The FBNS face
+mobilities are now the generalized (Dowson) ones the Elrod path already used:
+Poiseuille `rho_l F2` instead of `rho_l h^3/(12 mu)`, and Couette thickness
+`2 F1/F0` instead of `h`. That is the point of the model — `mu(T(y))` acts
+*inside* the film integrals rather than through a depth-averaged `mu`, and
+because `mu` is convex in `T` while the core is the hottest part of the film, the
+effective viscosity implied by `F2` is the lower one (PHYSICS.md §13.1.3). On the
+test bearing `F2` differs from `h^3/(12 mu)` by 9.7 % and `2F1/F0` from `h` by
+8.8 %.
+
+The storage term keeps the geometric `h`: it measures a volume of liquid, not a
+flux.
+
+**The Newton structure is unchanged, deliberately.** `CrossFilm::update` rebuilds
+`F0/F1/F2` once per outer (Picard) iteration, *before* `FBNS::solve` is entered,
+so inside one Newton solve they are frozen coefficients in exactly the sense `mu`
+already was. `A` and `B` are still built once at the top of the solve, the mass
+balance is still linear in `(p, alpha)`, every nonlinearity still lives in the
+Fischer-Burmeister equation, and the residual and the Jacobian read the *same*
+frozen mobilities — which is the condition for the quadratic local rate. A
+Jacobian carrying `d(F2)/dT` against a residual that did not would be the limping
+case and is not what was done.
+
+**2. `src/reynolds_coefficients.hpp` — one definition of the operator coefficients.**
+
+`Reynolds::solve_elrod`, `Reynolds::solve`, `FBNS::solve` and `Diagnostics` had
+four local copies of the same coefficients. `Diagnostics` *measures* the other
+three, so a drifted copy there is not a shortcut but a wrong number, and it had
+drifted:
+
+| quantity | assembly used | diagnostics used |
+|---|---|---|
+| Elrod `Gamma_base` | `rho_0 beta_bar F2` | `rho_0 * cfg.bulk_modulus * h^3/(12 mu)` |
+| Couette face flux | `2F1/F0` face average | plain `h` face average |
+| Elrod switch function | `theta >= VoidParams::theta_full` | `theta >= 1` |
+| FBNS boundary mobility | `rho_l F2` | `rho_l h^3/(12 mu)` |
+
+So on exactly the cross-film and `gas_pressure_coupling = VOID_COUPLED` runs that
+`mass_residual` exists to police, it reported a fabricated imbalance of the size
+of those differences. All four call sites now assemble from the shared header.
+
+**Changed**
+
+- `src/reynolds_coefficients.hpp` (new): `poiseuille` / `poiseuille_coefficient`,
+  `couette_thickness`, `couette_face_flux`, `fbns_mobility`, `elrod_gamma_base`,
+  and the `VoidParams` closure (`void_params`, `gas_inventory_plateau`) moved out
+  of `reynolds.cpp`'s anonymous namespace.
+- `src/fbns.cpp`: `poiseuille_gamma` and `couette_face_flux` delegate to the
+  shared header, so the generalized branch reaches the Jacobian blocks, the
+  residual `cell_outflow`, the cold-start solve and the axial Dirichlet links
+  together.
+- `src/diagnostics.cpp`: local `gamma_base`, `couette_face_flux` and the two
+  boundary-mobility lambdas replaced by the shared definitions; the Elrod switch
+  function now reads `VoidParams::theta_full`.
+- `src/reynolds.cpp`: local copies removed; `Gamma_base` and the Couette face
+  flux built from the shared header. Bit-identical (same expressions, same
+  floating-point association).
+- `src/config.hpp`: the `FBNS requires cross_film_thermal_model = NONE` error is
+  removed, with a comment recording why the combination is now sound.
+- `src/fbns.hpp`, `PHYSICS.md` §7.3.8 / new §7.3.9 / §13.1.3 / §15.1, `PLAN.md`.
+- `tests/test_fbns.cpp`: the scope test now asserts the combination is *accepted*;
+  `ThermalCase` registers the cross-film fields and `solve_coupled` calls
+  `CrossFilm::update` with the same ghost exchange `main.cpp` performs; new test 14.
+
+**Verified**
+
+- `ctest` 27/27 (`mpiexec -n 2` and `-n 6`).
+- Test 14: the generalized coefficients genuinely engage (9.7 % / 8.8 %, 4.5 K
+  core-to-mean rise); FBNS and Elrod driven through the identical Picard loop with
+  the identical conjugate-wall closure agree to 0.48 K over 454 shared full-film
+  cells, and the conjugate bush surface temperature to 0.50 K — within the
+  1.05x of the depth-averaged difference it is affine in; per-cell mass residual
+  `2.3e-10` of the peak Couette flux over every non-groove cell, `8.8e-12` on the
+  16 rupture/reformation front cells.
+- **Cross-film off is byte-identical to `6dacec0`** for FBNS: the Ferron THD
+  Fig. 4 configuration (720 x 192, `mpiexec -n 4`, `ENERGY_EQUATION` +
+  `POLYNOMIAL` viscosity + fed groove) reproduces all four `.vts` pieces and
+  `diagnostics.csv` byte for byte, with `mass_residual` added to the output field
+  set so the diagnostics change is inside the comparison.
+
+**Not changed, and still true**
+
+The §13.1.2 approximations of the cross-film profile now apply to FBNS runs as
+well: the midplane collocation is Couette-only (the pressure-gradient term was
+removed because it limit-cycled against the rupture position), and the convective
+term is saturated against the dissipative one, so where that saturation binds the
+quartic degenerates towards a fixed flattened shape rather than resolving the
+wall layers. Quote any cross-film temperature together with that caveat.
+
 ### 2026-08-05 - Ferron polynomial viscosity (`liquid_viscosity_model = POLYNOMIAL`)
 
 A third selectable liquid-viscosity law, the quadratic used by Ferron, Frene &

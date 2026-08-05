@@ -79,7 +79,48 @@ Two things came out of it that are **not** FBNS-specific and are still open:
     Newton solve converges and the gas mass stays bounded, but the first tens of
     steps are transient noise. The Elrod `VOID_COUPLED` path does not resolve it
     either (memo §8.5).
-  - Cross-film Dowson coefficients in the FBNS operator remain unstarted.
+  - Cross-film Dowson coefficients in the FBNS operator — **DONE 2026-08-05**
+    (`codex/fbns-crossfilm`); see the entry below.
+
+Cross-film generalized coefficients under FBNS — **DONE 2026-08-05**
+(`codex/fbns-crossfilm`; PHYSICS.md §7.3.8/§7.3.9, §13.1.3, §15.1, CHANGES.md,
+`ctest` 27/27). `cavitation_model = FBNS` now accepts
+`cross_film_thermal_model = POLYNOMIAL`: the face mobilities are `rho_l F2` and
+`2 F1/F0`, i.e. `mu(T(y))` acts inside the film integrals rather than through a
+depth-averaged `mu`. `CrossFilm::update` rebuilds the F-integrals once per outer
+Picard iteration, before `FBNS::solve`, so within one Newton solve they are
+frozen coefficients exactly as `mu` already was — the Jacobian blocks, the
+linearity of the mass balance and the quadratic Newton rate are unchanged.
+
+Same branch, second half: the **diagnostics operator now mirrors the assembled
+one** for both cavitation paths. `src/reynolds_coefficients.hpp` holds the single
+definition of the Poiseuille mobility, the Couette thickness/face flux, the FBNS
+mobility, the Elrod `Gamma_base` and the `VoidParams` closure; `reynolds.cpp`,
+`fbns.cpp` and `diagnostics.cpp` all assemble from it. Previously `Diagnostics`
+used `h^3/(12 mu)` with the scalar `bulk_modulus` and plain `h` where the
+assembly had moved to `F2`, `beta_bar` and `2 F1/F0`, so `mass_residual` reported
+a fabricated imbalance on the cross-film and `VOID_COUPLED` runs it exists to
+police. `EOS::switch_function` in the diagnostics also now reads
+`VoidParams::theta_full` instead of a hard 1.
+
+Verified: `tests/test_fbns.cpp` test 14 (F2 differs from `h^3/12mu` by 9.7 % and
+`2F1/F0` from `h` by 8.8 % on the test bearing, so the branch genuinely engages;
+FBNS and Elrod cross-film temperatures agree to 0.48 K over the shared full-film
+arc; per-cell mass residual `2.3e-10` of the peak Couette flux over every
+non-groove cell, fronts included). With `cross_film_thermal_model = NONE` the
+FBNS path is byte-identical to `6dacec0` on the Ferron THD Fig. 4 configuration
+(720 x 192, `mpiexec -n 4`, all four `.vts` pieces plus `diagnostics.csv`,
+`mass_residual` included in the output field set).
+
+Still open on this branch's topic:
+  - `VoidParams::theta_full` and `FullFilm::bound` remain two ceilings (unchanged
+    from the phase-3 note above); the diagnostics now follow the assembly on
+    both, but merging them is still separate work.
+  - §13.1.2's stated approximations are unchanged and now apply to FBNS runs too:
+    the midplane collocation is Couette-only, the convective term is saturated
+    against the dissipative one, and where that saturation binds the quartic
+    degenerates towards a fixed flattened shape rather than resolving the wall
+    layers.
 
 Ferron polynomial viscosity — **DONE 2026-08-05** (`codex/viscosity-polynomial`;
 PHYSICS.md §13.2.1 and §17.5, README.md, CHANGES.md, `ctest` 27/27).

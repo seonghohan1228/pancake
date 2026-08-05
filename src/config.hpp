@@ -1280,10 +1280,11 @@ struct SimulationConfig {
                       "plateau frozen at its initial value. Use cavitation_model = JFO for "
                       "the void-coupled plateau closure.");
             }
-            if (cross_film_thermal_model != CrossFilmModel::NONE) {
-                error("cavitation_model = FBNS requires cross_film_thermal_model = NONE "
-                      "(the generalized Dowson coefficients are not yet in the FBNS operator).");
-            }
+            // cross_film_thermal_model is supported: the FBNS face mobilities read
+            // the same generalized-Dowson F-integrals the Elrod path uses
+            // (rho_l F2 and the Couette thickness 2 F1/F0, ReynoldsCoeff), and
+            // CrossFilm::update rebuilds them once per outer iteration, so inside
+            // one Newton solve they are frozen coefficients exactly as mu is.
             if (bc_z_south_type == BCType::INLET_OUTLET || bc_z_north_type == BCType::INLET_OUTLET) {
                 error("cavitation_model = FBNS supports DIRICHLET and NEUMANN axial boundaries; "
                       "INLET_OUTLET switches on the sign of the solution and would break the "

@@ -46,12 +46,22 @@
 /// the mu(T, p) feedback by re-solving until pressure and temperature stop
 /// moving.
 ///
+/// The cross-film model (`cross_film_thermal_model = POLYNOMIAL`) rides on the
+/// same split. The face mobilities then come from the generalized (Dowson)
+/// Reynolds equation of PHYSICS.md 13.1.3 -- Poiseuille rho_l F2 and Couette
+/// thickness 2 F1/F0, i.e. mu(T(y)) integrated across the gap rather than a
+/// depth-averaged mu -- and `CrossFilm::update` rebuilds those integrals once per
+/// outer iteration, before this call. Inside one Newton solve they are frozen
+/// coefficients like mu, so both Jacobian blocks and the residual read the same
+/// values and the quadratic rate is preserved. `ReynoldsCoeff` holds the single
+/// definition the Elrod path, this path and `Diagnostics` all use.
+///
 /// Scope (enforced in SimulationConfig::validate): fluid_property_model =
 /// CONSTANT, SINGLE_PHASE or TWO_PHASE, gas_pressure_coupling = NONE,
-/// cross_film_thermal_model = NONE, DIRICHLET/NEUMANN axial boundaries.
-/// gas_pressure_coupling = VOID_COUPLED is still refused: it makes the cavitation
-/// plateau a per-cell field that only `Reynolds::solve_elrod`'s outer loop knows
-/// how to advance, so FBNS would run it frozen at its initial value.
+/// DIRICHLET/NEUMANN axial boundaries. gas_pressure_coupling = VOID_COUPLED is
+/// still refused: it makes the cavitation plateau a per-cell field that only
+/// `Reynolds::solve_elrod`'s outer loop knows how to advance, so FBNS would run
+/// it frozen at its initial value.
 namespace FBNS {
 
     /// Convergence summary of the Newton iteration.

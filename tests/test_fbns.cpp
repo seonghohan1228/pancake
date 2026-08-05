@@ -48,6 +48,14 @@
 // Test 13 - The moved ceiling is FBNS-only. FullFilm::bound returns exactly 1 for
 //   every other cavitation model whatever alpha_gas holds, which is what makes the
 //   Elrod and Gumbel paths byte-identical by construction rather than by luck.
+// Test 14 - Cross-film generalized (Dowson) coefficients. With
+//   cross_film_thermal_model = POLYNOMIAL the FBNS face mobilities become rho_l F2
+//   and 2 F1/F0, i.e. mu(T(y)) inside the film integrals. The coefficients must
+//   actually differ from h^3/(12 mu) and h; FBNS and Elrod driven through the
+//   identical Picard loop with the identical conjugate-wall closure must land on
+//   the same temperature over the shared full-film arc; and per-cell mass
+//   conservation must hold including on the fronts, which is what pins the
+//   diagnostics operator to the assembled one under BOTH cavitation models.
 //
 // Run as: mpirun -n <N> ./test_fbns
 
@@ -64,6 +72,7 @@
 
 #include "communicator.hpp"
 #include "config.hpp"
+#include "cross_film.hpp"
 #include "diagnostics.hpp"
 #include "energy.hpp"
 #include "equation_of_state.hpp"
@@ -527,9 +536,14 @@ void test_scope_is_enforced() {
           "FBNS must reject gas_pressure_coupling = VOID_COUPLED: the per-cell "
           "plateau has no update site outside solve_elrod");
 
+    // The generalized (Dowson) coefficients ARE in the FBNS operator now: the
+    // face mobilities read rho_l F2 and the Couette thickness 2 F1/F0 from the
+    // same ReynoldsCoeff definition the Elrod path uses, and CrossFilm::update
+    // rebuilds them once per outer iteration, which keeps them frozen inside one
+    // Newton solve exactly as mu is.
     SimulationConfig cross = thermal;
     cross.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
-    check(rejects(cross), "FBNS must reject the cross-film generalized coefficients");
+    check(accepts(cross), "FBNS must accept the cross-film generalized coefficients");
 
     SimulationConfig io_bc = base;
     io_bc.bc_z_south_type = BCType::INLET_OUTLET;
@@ -580,6 +594,11 @@ struct ThermalCase {
         fields.add("temperature", mesh).fill(cfg.temperature_initial);
         fields.add("heat_generation", mesh).fill(0.0);
         fields.add("inlet_indicator", mesh).fill(0.0);
+        fields.add("mass_residual", mesh).fill(0.0);
+        fields.add("cavitation_clamp_mass", mesh).fill(0.0);
+        // Allocation is unconditional and inert; only CrossFilm::update is gated,
+        // exactly as main.cpp does it.
+        CrossFilm::register_fields(fields, mesh, cfg);
         FilmThickness::compute_static(fields["h"], mesh, cfg);
         FilmThickness::compute_inlet_indicator(fields["inlet_indicator"], mesh, cfg);
         comm.update_ghosts(fields);
@@ -621,6 +640,18 @@ int solve_coupled(ThermalCase& c) {
 
         FluidProperties::update_solution_fields(c.fields, c.mesh, c.cfg);
         c.comm.update_ghosts(c.fields);
+
+        // Cross-film profile, conjugate walls and the Dowson F-integrals, before
+        // the flow solve and with the same ghost exchange main.cpp performs, so
+        // the generalized coefficients this iteration uses are the current ones.
+        // No-op unless cross_film_thermal_model is enabled.
+        if (CrossFilm::active(c.cfg)) {
+            CrossFilm::update(c.fields, c.mesh, c.cfg);
+            c.comm.update_ghosts(c.fields["cross_film_f0"]);
+            c.comm.update_ghosts(c.fields["cross_film_f1"]);
+            c.comm.update_ghosts(c.fields["cross_film_f2"]);
+            c.comm.update_ghosts(c.fields["cross_film_couette_h"]);
+        }
 
         if (FBNS::active(c.cfg)) {
             const FBNS::Stats stats = FBNS::solve(c.fields, c.sys, c.comm, c.mesh, c.cfg);
@@ -809,6 +840,170 @@ void test_energy_coupling_matches_elrod() {
           "the Andrade law must produce a genuinely varying viscosity field");
     check(w_hot < 0.95 * w_iso,
           "thinning the oil must reduce the load capacity relative to the isothermal run");
+}
+
+// Same bearing with the cross-film model on. The conjugate shaft/bush closure
+// replaces the Newton-cooling walls entirely (SimulationConfig::validate warns
+// about this), so journal_heat_transfer / bearing_heat_transfer are zeroed here
+// to say so explicitly rather than leave inert values in the config.
+SimulationConfig cross_film_config(int n_theta, CavitationModel model, double ecc_ratio) {
+    SimulationConfig cfg = thermal_config(n_theta, model, ecc_ratio);
+    cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+    cfg.cross_film_profile_order = 4;
+    cfg.cross_film_quadrature_points = 6;
+    cfg.journal_heat_transfer = 0.0;
+    cfg.bearing_heat_transfer = 0.0;
+    cfg.shaft_ambient_heat_transfer = 0.0;  // globally adiabatic shaft
+    cfg.bush_thermal_conductivity = 50.0;
+    cfg.bush_outer_radius = 0.10;
+    cfg.bush_outer_heat_transfer = 1000.0;
+    cfg.thermal_ambient_temperature = 313.15;
+    return cfg;
+}
+
+// Cross-film generalized (Dowson) coefficients under FBNS.
+//
+// The point of the model is that mu(T(y)) acts INSIDE the film integrals: the
+// Poiseuille mobility becomes rho_l F2 and the Couette thickness 2 F1/F0, not
+// h^3/(12 mu_avg) and h. Three things have to hold at once for that to be real
+// rather than decorative.
+//
+//  1. The coefficients must actually differ from their classical values, or
+//     every assertion below is vacuous.
+//  2. FBNS and Elrod-Adams, driven through the identical Picard loop with the
+//     identical cross-film closure, must land on the same temperature wherever
+//     both hold a full film -- the same statement
+//     test_energy_coupling_matches_elrod makes without the cross-film model, so
+//     a regression here is the generalized coefficients disagreeing between the
+//     two operators rather than anything about cavitation.
+//  3. Per-cell mass conservation must survive, INCLUDING on the rupture and
+//     reformation fronts. This is the sharp test of the diagnostics fix: the
+//     residual is re-evaluated by Diagnostics from ReynoldsCoeff, so if the
+//     diagnostics still used h^3/(12 mu) while the operator used F2 the front
+//     cells would light up by the size of the difference measured in (1).
+void test_cross_film_generalized_coefficients() {
+    const int n_theta = 720;
+    const double ecc = 0.3;
+
+    ThermalCase fbns(cross_film_config(n_theta, CavitationModel::FBNS, ecc));
+    const int fbns_iters = solve_coupled(fbns);
+    ThermalCase elrod(cross_film_config(n_theta, CavitationModel::JFO, ecc));
+    const int elrod_iters = solve_coupled(elrod);
+
+    check(fbns_iters < fbns.cfg.coupling_max_iters,
+          "the FBNS cross-film Picard loop must reach its fixed point");
+    check(elrod_iters < elrod.cfg.coupling_max_iters,
+          "the Elrod cross-film Picard loop must reach its fixed point");
+
+    // (1) The generalized coefficients must be genuinely generalized.
+    double worst_f2 = 0.0, worst_couette = 0.0, core_rise = 0.0;
+    for (int i = 0; i < fbns.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < fbns.mesh.n_z_local; ++j) {
+            const double h_val = fbns.fields["h"](i, j);
+            const double classical = h_val * h_val * h_val / (12.0 * fbns.fields["mu"](i, j));
+            worst_f2 = std::max(worst_f2,
+                std::abs(fbns.fields["cross_film_f2"](i, j) / classical - 1.0));
+            worst_couette = std::max(worst_couette,
+                std::abs(fbns.fields["cross_film_couette_h"](i, j) / h_val - 1.0));
+            core_rise = std::max(core_rise, std::abs(fbns.fields["cross_film_core_rise"](i, j)));
+        }
+    }
+    double gen[3] = {worst_f2, worst_couette, core_rise};
+    MPI_Allreduce(MPI_IN_PLACE, gen, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    log_rank0("  cross-film: max |F2/(h^3/12mu) - 1| = " + fmt(gen[0]) +
+              ", max |2F1/F0/h - 1| = " + fmt(gen[1]) +
+              ", max core rise = " + fmt(gen[2]) + " K");
+    check(gen[0] > 1.0e-3,
+          "the cross-film F2 must differ measurably from h^3/(12 mu), or mu(T(y)) is "
+          "not reaching the film integrals");
+    check(gen[2] > 0.1,
+          "the reconstructed profile must carry a real core-to-mean temperature "
+          "difference for the comparison to test anything");
+
+    // (2) Same temperature as Elrod on the shared full-film arc.
+    const int j = fbns.mesh.n_z_local / 2;
+    const std::vector<double> t_fbns = gather_row(fbns.fields["temperature"], fbns.mesh, j);
+    const std::vector<double> t_elrod = gather_row(elrod.fields["temperature"], elrod.mesh, j);
+    const std::vector<double> th_fbns = gather_row(fbns.fields["theta"], fbns.mesh, j);
+    const std::vector<double> th_elrod = gather_row(elrod.fields["theta"], elrod.mesh, j);
+    const std::vector<double> tb_fbns = gather_row(fbns.fields["cross_film_t_bush"], fbns.mesh, j);
+    const std::vector<double> tb_elrod = gather_row(elrod.fields["cross_film_t_bush"], elrod.mesh, j);
+    double worst_full_film = 0.0, worst_bush = 0.0;
+    double t_max_fbns = 0.0, t_max_elrod = 0.0;
+    int counted = 0;
+    for (int k = 0; k < n_theta; ++k) {
+        if (th_fbns[k] >= 1.0 - 1.0e-6 && th_elrod[k] >= 1.0 - 1.0e-6) {
+            worst_full_film = std::max(worst_full_film, std::abs(t_fbns[k] - t_elrod[k]));
+            worst_bush = std::max(worst_bush, std::abs(tb_fbns[k] - tb_elrod[k]));
+            ++counted;
+        }
+        t_max_fbns = std::max(t_max_fbns, t_fbns[k]);
+        t_max_elrod = std::max(t_max_elrod, t_elrod[k]);
+    }
+    log_rank0("  cross-film: " + std::to_string(fbns_iters) + " Picard iters (FBNS) vs " +
+              std::to_string(elrod_iters) + " (Elrod); T_max " + fmt(t_max_fbns) + " K vs " +
+              fmt(t_max_elrod) + " K; max |dT| = " + fmt(worst_full_film) + " K, max |dT_bush| = " +
+              fmt(worst_bush) + " K over " + std::to_string(counted) + " shared full-film cells");
+    check(t_max_fbns > fbns.cfg.temperature_initial + 1.0,
+          "the cross-film coupled run must actually heat the film");
+    check(counted > n_theta / 4,
+          "the shared full-film arc must be substantial for the comparison to mean anything");
+    check(worst_full_film < 0.5,
+          "FBNS and Elrod cross-film temperatures must agree within 0.5 K wherever both "
+          "hold a full film");
+    // The bush surface temperature is affine in the depth-averaged temperature
+    // through the conjugate closure, so its residual disagreement must be
+    // EXPLAINED by the depth-averaged one rather than be an independent error of
+    // the wall solve. Measured ratio is 1.05; the bound is loose enough not to be
+    // a tolerance to tune and tight enough to catch a wall closure that reacted to
+    // the cavitation model on its own.
+    check(worst_bush < 2.0 * worst_full_film,
+          "the conjugate bush surface temperature must not disagree by more than the "
+          "depth-averaged temperature it is derived from");
+
+    // (3) Per-cell mass conservation under the generalized operator, fronts
+    // included. Only the groove and its immediate neighbours are excluded: their
+    // imbalance is the modelled supply, which the global balance reports
+    // separately.
+    auto residual_report = [&](ThermalCase& c, const char* label, double tol) {
+        Diagnostics::mass_residual(c.fields, c.mesh, c.cfg, 0.0);
+        const Field& r = c.fields["mass_residual"];
+        const Field& mask = c.fields["inlet_indicator"];
+        const Field& film = c.fields["theta"];
+        double worst = 0.0, worst_front = 0.0;
+        double fronts = 0.0;
+        for (int ii = 0; ii < c.mesh.n_theta_local; ++ii) {
+            for (int jj = 0; jj < c.mesh.n_z_local; ++jj) {
+                if (mask(ii, jj) != 0.0 || mask(ii - 1, jj) != 0.0 || mask(ii + 1, jj) != 0.0)
+                    continue;
+                worst = std::max(worst, std::abs(r(ii, jj)));
+                const bool full = film(ii, jj) >= 1.0 - 1.0e-6;
+                const bool front = (film(ii - 1, jj) >= 1.0 - 1.0e-6) != full ||
+                                   (film(ii + 1, jj) >= 1.0 - 1.0e-6) != full;
+                if (front) {
+                    worst_front = std::max(worst_front, std::abs(r(ii, jj)));
+                    fronts += 1.0;
+                }
+            }
+        }
+        double vals[3] = {worst, worst_front, fronts};
+        MPI_Allreduce(MPI_IN_PLACE, vals, 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, vals + 2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        const double scale = flux_scale(c.mesh, c.cfg);
+        log_rank0(std::string("  cross-film ") + label + ": worst |r|/flux = " +
+                  fmt(vals[0] / scale) + " over all non-groove cells, " +
+                  fmt(vals[1] / scale) + " on the " + std::to_string((int)vals[2]) +
+                  " front cells");
+        check(vals[2] > 0.0, "the comparison needs actual rupture/reformation fronts");
+        check(vals[0] / scale < tol,
+              "the generalized operator must conserve mass cell by cell, fronts included");
+    };
+    residual_report(fbns, "FBNS", 1.0e-9);
+    // Elrod's barotropic residual is measured against the same Couette throughput
+    // for comparability; it is looser because the theta-formulation's Poiseuille
+    // conductance exceeds the throughput by O(beta/p), so a round-off-level row
+    // residual is a larger fraction of the flux.
+    residual_report(elrod, "Elrod", 1.0e-6);
 }
 
 // The viscosity feedback has to reach the FBNS *face mobilities*, not merely the
@@ -1325,6 +1520,7 @@ int main(int argc, char** argv) {
     test_property_coupling_is_inert_when_off();
     test_viscosity_reaches_the_operator();
     test_energy_coupling_matches_elrod();
+    test_cross_film_generalized_coefficients();
     test_polynomial_viscosity_couples();
     test_gaseous_cavitation();
     test_zero_gas_reproduces_phase_two();

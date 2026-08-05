@@ -683,8 +683,9 @@ Supported: `temperature_model` `ISOTHERMAL` and `ENERGY_EQUATION`,
 `density_model` / `liquid_viscosity_model` options), `solution_mode`
 `STEADY_STATE` and `TRANSIENT` (backward Euler), `motion_model` `STATIC` and
 `MOVING_BEARING`, groove and circular inlets, `DIRICHLET`/`NEUMANN` axial
-boundaries, `cavitated_film_model` `FULL_FILM` and `STRIATED`, and MPI
-decomposition in $\vartheta$.
+boundaries, `cavitated_film_model` `FULL_FILM` and `STRIATED`,
+`cross_film_thermal_model` `POLYNOMIAL` (§7.3.9), and MPI decomposition in
+$\vartheta$.
 
 **Rejected at config validation** rather than silently ignored, because each
 changes the complementarity datum or the operator's stencil rather than its
@@ -697,8 +698,6 @@ coefficients:
   its initial value $p_{cav}$ — silently reducing to `NONE` while reporting
   `VOID_COUPLED`. Making it work needs a plateau update site of its own plus its
   own validation; see `docs/FBNS_GAS_COUPLING.md` §5.
-- `cross_film_thermal_model != NONE` (the generalized Dowson $F_0/F_1/F_2$
-  coefficients are not in the FBNS operator).
 - `INLET_OUTLET` axial boundaries (they switch on the sign of the solution and
   would break the differentiability the Newton step relies on).
 
@@ -715,6 +714,41 @@ rejected above.
 `theta_convection_scheme` is ignored (FBNS uses first-order upwind, and a
 higher-order upwind stencil would add $\vartheta$-second-neighbour columns to $B$);
 `bulk_modulus` is unused.
+
+#### 7.3.9 Generalized (Dowson) coefficients under FBNS
+
+With `cross_film_thermal_model = POLYNOMIAL` the FBNS mass balance is assembled
+from the generalized Reynolds equation of §13.1.3 rather than the classical one:
+
+$$\nabla\!\cdot\!\left(\rho_l F_2\,\nabla p\right)
+\;-\; \frac{\partial}{R\,\partial\vartheta}\!\left(\rho_l\,\frac{\omega R}{2}\,\frac{2F_1}{F_0}\,\theta\right)
+\;-\; \frac{\partial(\rho_l h \theta)}{\partial t} \;=\; 0 .$$
+
+Only the two *flux* coefficients move: $\rho_l h^3/12\mu \to \rho_l F_2$ in the
+Poiseuille term and $h \to 2F_1/F_0$ in the Couette term. The storage term keeps
+the geometric $h$, because it measures a volume of liquid, not a flux. This is
+what puts $\mu(T(y))$ **inside** the film integrals instead of evaluating
+$h^3/12\mu$ at a depth-averaged viscosity; §13.1.3 explains why the two are not
+the same thing and why the effective viscosity implied by $F_2$ is the lower one.
+
+**The Newton structure is untouched.** `CrossFilm::update` rebuilds $F_0,F_1,F_2$
+once per outer (Picard) iteration, *before* `FBNS::solve` is called, so inside one
+Newton solve they are frozen coefficients in exactly the sense $\mu$ already was
+(§7.3.3): $A$ and $B$ are still built once at the top of the solve, the mass
+balance is still linear in $(p,\alpha)$, every nonlinearity still lives in $F$,
+and the residual and the Jacobian read the same frozen mobilities — which is the
+condition for the quadratic local rate. A Jacobian carrying
+$\partial F_2/\partial T$ terms against a residual that did not would be the
+limping case, and is not what is done.
+
+The complementarity datum is unaffected: $F_2 > 0$ everywhere, so a cavitated cell
+still pins itself at $p = p_{cav}$ and its Poiseuille flux still vanishes through
+$\nabla p = 0$ rather than through a switch function.
+
+`Reynolds::solve_elrod`, `FBNS::solve` and `Diagnostics` read these coefficients
+from one definition (`src/reynolds_coefficients.hpp`), so the residual §15.1
+reports is the residual of the operator that was actually assembled — see the note
+at the end of §15.1.
 
 ---
 
@@ -1225,6 +1259,11 @@ numerical guard; on the validation rigs it stays inside about $[0.6, 1.6]$.
 solve, and the caller exchanges ghosts for $F_0$, $F_1$, $F_2$ and $2F_1/F_0$
 because the Reynolds assembly reads them on both theta ghost layers.
 
+Both cavitation models use these coefficients. The Elrod–Adams path carries them
+in $\Gamma_{base} = \rho_0\bar\beta F_2$ and in its Couette face flux; the FBNS
+path carries them in $\rho_l F_2$ and the same Couette thickness (§7.3.9). The
+single definition lives in `src/reynolds_coefficients.hpp`.
+
 ### 13.2 Temperature-dependent Fluid Properties
 
 Thermal hydrodynamic coupling enters Reynolds through field-valued liquid
@@ -1626,6 +1665,18 @@ half-cell pressure link of §7.3.4. There is no clamp term: the FBNS truncations
 on Newton iterates, not on the converged state, so `cavitation_clamp_mass` stays
 zero and the sum identity reads $\sum_P r_P = -\Phi_{boundary} - S_{inlet}$ in
 steady state. Inlet cells are zeroed for the same reason as above.
+
+**One definition of the coefficients.** The residual above is a *measurement* of
+the assembled operator, so every coefficient in it — $\Gamma_{base}$, the switch
+function's full-film ceiling, the Couette face flux, the FBNS mobility — is taken
+from `src/reynolds_coefficients.hpp`, the same header `Reynolds::solve_elrod` and
+`FBNS::solve` assemble from. Local copies had drifted: the diagnostics still used
+$\rho_0\beta h^3/12\mu$ with the *scalar* `bulk_modulus` and $h$ in the Couette
+flux after the assembly had moved to $\rho_0\bar\beta F_2$ and $2F_1/F_0$, so on
+exactly the cross-film and `VOID_COUPLED` runs this field exists to police it
+reported a fabricated imbalance of the size of that difference (measured at ~10 %
+of the mobility on the cross-film test bearing). `tests/test_fbns.cpp` test 14
+holds both paths to round-off with the cross-film model on, fronts included.
 
 Reading the field: a cell that is not a groove cell, not clamped and not on the
 rupture or reformation front must sit at round-off of its own row — the

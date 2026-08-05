@@ -9,6 +9,7 @@
 #include <mpi.h>
 
 #include "full_film.hpp"
+#include "reynolds_coefficients.hpp"
 
 namespace FBNS {
 
@@ -23,45 +24,36 @@ constexpr int kP = 0, kE = 1, kW = 2, kN = 3, kS = 4;
 // converged solution is unperturbed. Both arguments are O(1) after scaling.
 constexpr double kFisherBurmeisterEpsilon = 1.0e-14;
 
-double field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
-    return fields.has(name) ? fields[name](i, j) : fallback;
-}
-
-double positive_field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
-    return std::max(field_value(fields, name, fallback, i, j), 1.0e-30);
-}
-
-double base_density(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    return positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
-}
-
-double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    return positive_field_value(fields, "mu", cfg.mu, i, j);
-}
+// Shared with the Elrod assembly and with Diagnostics, which must re-evaluate
+// exactly the operator assembled here. See reynolds_coefficients.hpp.
+using ReynoldsCoeff::base_density;
 
 double harmonic_avg(double a, double b) {
     if (a + b == 0.0) return 0.0;
     return 2.0 * a * b / (a + b);
 }
 
-/// Liquid Poiseuille mobility rho_l h^3 / (12 mu) [kg m / (Pa s)] per unit
-/// pressure gradient. Unlike the Elrod path there is no switch function and no
-/// bulk modulus: cavitated cells sit at p = p_cav by complementarity, so their
-/// pressure gradient — and hence their Poiseuille flux — vanishes on its own.
+/// Liquid Poiseuille mobility [kg m / (Pa s)] per unit pressure gradient:
+/// rho_l h^3/(12 mu) classically, rho_l F2 under the generalized (Dowson)
+/// Reynolds equation of PHYSICS.md 13.1.3. Unlike the Elrod path there is no
+/// switch function and no bulk modulus: cavitated cells sit at p = p_cav by
+/// complementarity, so their pressure gradient — and hence their Poiseuille flux
+/// — vanishes on its own.
+///
+/// The generalized branch is what makes mu(T(y)) act *inside* the film integrals
+/// rather than through a depth-averaged mu: F2 is the exact Poiseuille mobility
+/// of a film whose viscosity varies across the gap, not h^3/(12 mu) evaluated at
+/// an effective viscosity.
 double poiseuille_gamma(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    const double h_val = fields["h"](i, j);
-    return base_density(fields, cfg, i, j) * h_val * h_val * h_val /
-        (12.0 * dynamic_viscosity(fields, cfg, i, j));
+    return ReynoldsCoeff::fbns_mobility(fields, cfg, i, j);
 }
 
 /// Couette mass flux [kg/s] through the east face of (i,j), carrying theta = 1.
+/// The transported thickness is 2 F1/F0 under the generalized equation, which is
+/// h whenever mu is uniform across the gap.
 double couette_face_flux(const Fields& fields, const Mesh& mesh,
                          const SimulationConfig& cfg, int i, int j) {
-    const Field& h = fields["h"];
-    const double h_e = 0.5 * (h(i, j) + h(i + 1, j));
-    const double rho_e = 0.5 * (base_density(fields, cfg, i, j) +
-                                base_density(fields, cfg, i + 1, j));
-    return rho_e * cfg.omega * mesh.R * h_e * 0.5 * mesh.get_d_z();
+    return ReynoldsCoeff::couette_face_flux(fields, mesh, cfg, i, j);
 }
 
 /// Inlet covering cell (i,j), or nullptr. Mirrors the geometric membership test
@@ -259,6 +251,15 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
     // gamma -- which is what preserves the quadratic Newton rate. A Jacobian
     // that carried d(mu)/dT terms while the residual did not would be the
     // limping case.
+    //
+    // The cross-film model extends that split rather than breaking it. With
+    // cross_film_thermal_model = POLYNOMIAL the mobility is rho_l F2 and the
+    // Couette thickness is 2 F1/F0, i.e. mu(T(y)) acts inside the film integrals
+    // instead of through a depth-averaged mu. CrossFilm::update rebuilds F0/F1/F2
+    // once per outer (Picard) iteration, before this call, so within one Newton
+    // solve they are frozen coefficients exactly as mu is: A and B stay constant,
+    // the mass balance stays linear in (p, alpha), and every nonlinearity still
+    // lives in the Fischer-Burmeister equation. Nothing below changes shape.
     std::array<std::vector<double>, 5> A, B;
     for (auto& slot : A) slot.assign(n_local, 0.0);
     for (auto& slot : B) slot.assign(n_local, 0.0);

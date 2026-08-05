@@ -9,35 +9,34 @@
 #include "equation_of_state.hpp"
 #include "fbns.hpp"
 #include "full_film.hpp"
+#include "reynolds_coefficients.hpp"
 
 namespace Diagnostics {
 namespace {
 
-double field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
-    return fields.has(name) ? fields[name](i, j) : fallback;
-}
-
-double positive_field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
-    return std::max(field_value(fields, name, fallback, i, j), 1.0e-30);
-}
-
-double base_density(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    return positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
-}
-
-double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    return positive_field_value(fields, "mu", cfg.mu, i, j);
-}
+// Every coefficient below comes from ReynoldsCoeff, the single definition the
+// Elrod and FBNS assemblies use. This module *measures* those assemblies, so a
+// re-derived approximation here is not a shortcut but a wrong answer: the
+// previous local copies used h^3/(12 mu) and cfg.bulk_modulus where the assembly
+// had already moved to the Dowson F2 and the mixture beta_bar, which made
+// mass_residual report a fabricated imbalance on exactly the cross-film and
+// void-coupled runs it exists to police.
+using ReynoldsCoeff::base_density;
+using ReynoldsCoeff::couette_face_flux;
+using ReynoldsCoeff::dynamic_viscosity;
+using ReynoldsCoeff::field_value;
+using ReynoldsCoeff::void_params;
 
 double harmonic_avg(double a, double b) {
     if (a + b == 0.0) return 0.0;
     return 2.0 * a * b / (a + b);
 }
 
+/// Elrod diffusion coefficient before the switch function, exactly as
+/// Reynolds::solve_elrod builds it: rho_0 beta_bar F2 under the generalized
+/// (cross-film) Reynolds equation, rho_0 beta h^3/(12 mu) classically.
 double gamma_base(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
-    const double h_val = fields["h"](i, j);
-    return base_density(fields, cfg, i, j) * cfg.bulk_modulus *
-        h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
+    return ReynoldsCoeff::elrod_gamma_base(fields, cfg, i, j);
 }
 
 // Geometric inlet membership, mirroring Reynolds::apply_inlet_conditions.
@@ -61,16 +60,6 @@ bool inlet_cell(const Mesh& mesh, const SimulationConfig& cfg, int i, int j) {
         }
     }
     return false;
-}
-
-// Couette mass face flux at the east face of cell (i,j), mirroring solve_elrod.
-double couette_face_flux(const Fields& fields, const Mesh& mesh,
-                         const SimulationConfig& cfg, int i, int j) {
-    const Field& h = fields["h"];
-    const double h_e = 0.5 * (h(i, j) + h(i + 1, j));
-    const double rho_e = 0.5 * (base_density(fields, cfg, i, j) +
-                                base_density(fields, cfg, i + 1, j));
-    return rho_e * cfg.omega * mesh.R * h_e * 0.5 * mesh.get_d_z();
 }
 
 double van_leer(double r) {
@@ -131,7 +120,8 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
     const double ns_scale = R * d_theta / d_z;
 
     auto gamma_g = [&](int ii, int jj) {
-        return gamma_base(fields, cfg, ii, jj) * EOS::switch_function(theta(ii, jj));
+        return gamma_base(fields, cfg, ii, jj) *
+            EOS::switch_function(theta(ii, jj), void_params(fields, cfg, ii, jj).theta_full);
     };
 
     double outflow = 0.0;
@@ -193,11 +183,8 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
         // FBNS carries the axial ends as a plain Poiseuille Dirichlet link on the
         // pressure, with no bulk-modulus conversion and no switch function, so
         // the boundary flux is read straight off the pressure drop.
-        const Field& h = fields["h"];
         auto gamma_p = [&](int ii, int jj) {
-            const double h_val = h(ii, jj);
-            return std::max(field_value(fields, "rho_liquid_solution", cfg.rho, ii, jj), 1.0e-30) *
-                h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, ii, jj));
+            return ReynoldsCoeff::fbns_mobility(fields, cfg, ii, jj);
         };
         for (int i = 0; i < n_theta; ++i) {
             if (cfg.bc_z_south_type == BCType::DIRICHLET) {
@@ -225,11 +212,11 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
                                                      cfg.bc_z_north_val, R, d_theta, d_z);
             }
         } else {
-            const Field& h = fields["h"];
+            // Gumbel / full-Sommerfeld: Reynolds::solve assembles rho (not rho_l)
+            // times the same Poiseuille coefficient.
             auto gamma_p = [&](int ii, int jj) {
-                const double h_val = h(ii, jj);
-                return field_value(fields, "rho", cfg.rho, ii, jj) *
-                    h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, ii, jj));
+                return ReynoldsCoeff::poiseuille(
+                    fields, cfg, field_value(fields, "rho", cfg.rho, ii, jj), ii, jj);
             };
             if (cfg.bc_z_south_type != BCType::NEUMANN) {
                 const double cs = gamma_p(i, 0) * R * d_theta / (0.5 * d_z);
