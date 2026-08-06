@@ -762,6 +762,81 @@ from one definition (`src/reynolds_coefficients.hpp`), so the residual §15.1
 reports is the residual of the operator that was actually assembled — see the note
 at the end of §15.1.
 
+### 7.4 Outer (Picard) coupling loop (`src/coupling.hpp`, `main.cpp`)
+
+In `solution_mode = STEADY_STATE` the segregated sweep
+
+$$\text{properties} \to \text{Reynolds/FBNS} \to \text{properties} \to \text{gas}
+\to \text{velocities} \to \text{energy}$$
+
+is repeated until the normalised max changes
+
+$$R_p = \frac{\max_{i,j}|p^{k}-p^{k-1}|}{p_{ref}},\qquad
+R_T = \frac{\max_{i,j}|T^{k}-T^{k-1}|}{T_{ref}}$$
+
+both fall below `coupling_tolerance`, with $p_{ref} =$
+`property_reference_pressure` and $T_{ref} =$ `temperature_reference`. TRANSIENT
+runs exactly one sweep per timestep. Iterates are ranked by the single scalar
+$\rho^{k} = \max(R_p^{k}, R_T^{k})$, which is exactly the quantity that has to
+fall below the tolerance.
+
+**Under-relaxation.** After the residual of sweep $k$ is formed,
+
+$$p \leftarrow \omega\, p^{k} + (1-\omega)\, p^{k-1},\qquad
+T \leftarrow \omega\, T^{k} + (1-\omega)\, T^{k-1}$$
+
+with $\omega =$ `coupling_relaxation` $\in (0,1]$. Two schedules:
+
+* `coupling_relaxation_mode = FIXED` (default) holds $\omega$ constant. With
+  $\omega = 1$ this is a no-op and the loop is the plain segregated sweep.
+* `coupling_relaxation_mode = ADAPTIVE` starts at $\omega =$
+  `coupling_relaxation` and, after each sweep,
+  $\omega \leftarrow \max(\omega_{min}, \beta\omega)$ if $\rho^{k} > \rho^{k-1}$,
+  else $\omega \leftarrow \min(\omega_{max}, \gamma\omega)$, with
+  $\beta =$ `coupling_relaxation_backoff` (0.5), $\gamma =$
+  `coupling_relaxation_growth` (1.1) and $\omega_{min} =$
+  `coupling_relaxation_min` (0.1). It targets the signature of a limit cycle —
+  loop gain slightly above 1 with a reversing residual trend — without needing a
+  per-case $\omega$. Measured performance on the Ferron conjugate case: §13.1.2.
+
+Note the pre-existing limitation (HANDOFF **D8**): the relaxation acts on $p$ and
+$T$, while under Elrod the primary state is $\theta$. Under FBNS the relaxed $p$
+enters the next sweep only through the property update and the dissipation term,
+because FBNS re-solves $(p,\theta)$ from scratch each sweep.
+
+**Best-iterate rollback.** A Picard loop is not a descent method: nothing forces
+$\rho^{k}$ to be monotone, and a loop that exhausts `coupling_max_iters` can end
+on an iterate that is worse than one it already passed through. That is exactly
+what the conjugate Ferron cases do (§13.1.2), where the delivered iterate 200 was
+6.3x worse than iterate 56. The loop therefore snapshots the whole field set at
+every new minimum of $\rho$ and, **on cap exhaustion without meeting the
+tolerance**, restores that snapshot. Three properties make this safe:
+
+1. A loop that *meets* the tolerance always delivers its last iterate, so every
+   converging run is bit-identical to the pre-rollback solver.
+2. The snapshot is taken *before* under-relaxation, so the delivered state is a
+   genuine end-of-sweep solve rather than a blend of two sweeps.
+3. The snapshot covers every registered field including ghost layers and
+   `old_data`, so $p$, $\theta$, $T$, the wall state, the properties and the
+   integrated forces are restored as one self-consistent iterate.
+
+`coupling_keep_best_iterate = false` restores the historical last-iterate
+behaviour.
+
+**Non-convergence is reported, not implied.** A steady run that ends without
+meeting `coupling_tolerance` prints `NOT CONVERGED`, the cap it hit, and the
+best-vs-final residual comparison, in red, regardless of `log_outer_iters`;
+`results/diagnostics.csv` carries `coupling_iters`, `coupling_R_p`,
+`coupling_R_T`, `coupling_converged`, `coupling_best_iter`,
+`coupling_best_residual`, `coupling_restored_best` and `coupling_relaxation` for
+every step. `log_coupling_history = true` additionally prints $R_p$, $R_T$ and
+$\omega$ for every sweep, which is how the traces in §13.1.2 were produced.
+
+**What the rollback does not do.** It returns the best iterate the loop visited;
+it does not make that iterate converged. On the Ferron conjugate case the best
+iterate still sits at $\rho = 4.3\times10^{-5}$, 43x above the tolerance. The
+rollback is an honesty and robustness measure; under-relaxation is the fix.
+
 ---
 
 ## 8. Linear System
@@ -1332,16 +1407,39 @@ the solved $T_b$.
 
 **Coupled-loop convergence (measured, Ferron rig, 720 x 192).** With a
 `FIXED_TEMPERATURE` outer surface the Picard loop converges normally (21–27 outer
-iterations). With `CONVECTION` at $h = 80\ \mathrm{W/(m^2K)}$ — a bush that is
-almost globally adiabatic, so the film's temperature level is set by a very weak
-global balance — the loop **limit-cycles** instead of reaching
-`coupling_tolerance`: $R_p = 1.06\times10^{-3}$, $9.83\times10^{-4}$,
-$9.73\times10^{-4}$ at 100, 200 and 400 iterations, about 100 Pa and 8 mK of
-ripple. The solution underneath is settled — load, peak pressure, peak
-temperature, peak location and torque are identical to six significant figures at
-100, 200 and 400 iterations — and at 360 x 96 both variants converge normally, so
-this is a grid-dependent property of the segregated loop, not of the bush model.
-It is reported rather than tuned away.
+iterations). With a weak `CONVECTION` outer surface — $h = 80$ or
+$10\ \mathrm{W/(m^2K)}$, i.e. a bush that is almost globally adiabatic, so the
+film's temperature level is set by a very weak global balance — the loop
+**limit-cycles** instead of reaching `coupling_tolerance`. The residual
+$\max(R_p,R_T)$ decays geometrically to $\approx 4.3\times10^{-5}$ at outer 56 and
+then oscillates between $5\times10^{-5}$ and $3.6\times10^{-4}$ for as many sweeps
+as it is given, never approaching the $10^{-6}$ tolerance. In physical units the
+cycle is about 27 Pa of pressure ripple against a 1.4 MPa peak and 5 mK of
+temperature ripple. At 360 x 96 both variants converge normally, so this is a
+property of the segregated loop on this grid, not of the bush model.
+
+**The cycle is a loop gain marginally above one, and under-relaxation removes it.**
+Measured on the `rerun_cht_robin10` equilibrium (24 ranks, afml-r6, sweeps to
+`coupling_tolerance` $=10^{-6}$):
+
+| $\omega$ = `coupling_relaxation` | 1.0 | 0.95 | 0.9 | 0.8 | 0.7 | 0.5 | 0.3 | ADAPTIVE |
+|---|---|---|---|---|---|---|---|---|
+| outer sweeps | **200, never** | 48 | 53 | 64 | 76 | 113 | 197 | **52** |
+
+Even $\omega = 0.95$ converges, which locates the loop gain just above 1. The
+ADAPTIVE schedule (`coupling_relaxation_mode = ADAPTIVE`, §7.4) reaches the
+tolerance in 52 sweeps without a tuned $\omega$: it starts at the ceiling, halves
+the factor on the first residual rise and lets it recover, ending at
+$\omega = 0.974$ with a minimum of 0.5.
+
+**The limit cycle did not corrupt the archived answers.** Every converged variant
+above and the non-converged $\omega=1$ run agree on the delivered fields: the
+bush-side wall temperature profile differs by at most $10^{-3}$ K (the VTK write
+precision), $W$ by 0.11 N in 4002 N, $p_{max}$ by 40 Pa in 1.405 MPa, $T_{max}$ by
+1 mK, and $h_{min}$ and the cavitated fraction to every printed digit. The only
+visibly mobile quantity is the *argmax cell* of a nearly flat maximum, which hops
+$\pm1$ cell (0.5°). Details and the full residual traces:
+`cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
 
 The shaft stays globally isothermal in both bush models; that is Ferron's
 assumption too.

@@ -430,8 +430,6 @@ int main(int argc, char** argv) {
                     elrod_stats = best_elrod_stats;
                     forces = best_forces;
                     cross_film_state = best_cross_film_state;
-                    coupling_R_p = coupling_control.status().best_R_p;
-                    coupling_R_T = coupling_control.status().best_R_T;
                 }
             }
             // The non-convergence verdict is not optional output: a run that ends

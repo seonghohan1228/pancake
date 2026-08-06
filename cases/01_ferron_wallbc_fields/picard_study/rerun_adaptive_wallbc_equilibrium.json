@@ -1,0 +1,91 @@
+{
+  "rerun_cht_robin10": {
+    "pinned": {
+      "group": "rerun_cht_robin10",
+      "label": "pinned",
+      "cfg": {
+        "groove_mixing_model": "PINNED",
+        "q_supply": 0.0001
+      },
+      "W_target": 4000.0,
+      "eps": 0.5924166652364405,
+      "psi": -36.949817974791635,
+      "dir": "rerun_cht_robin10/fb_iter_03",
+      "metrics": {
+        "dir": "rerun_cht_robin10/fb_iter_03",
+        "cfgkey": "{\"groove_mixing_model\": \"PINNED\", \"q_supply\": 0.0001}",
+        "eps": 0.5924166652364405,
+        "psi": -36.949817974791635,
+        "tag": "pinned/x1",
+        "rc": 0,
+        "wall_s": 27.5,
+        "ok": true,
+        "Fx": -0.0329886,
+        "Fy": -4000.24,
+        "W": 4000.2400001360224,
+        "force_angle_deg": -90.00047249853809,
+        "p_max": 1390110.0,
+        "h_min": 6.19532e-05,
+        "cav_frac": 0.2620515046296296,
+        "friction_torque": 2.71235,
+        "T_max": 319.027,
+        "T_min": 313.15,
+        "T_max_theta_deg": 295.74998382032845,
+        "mu_min": 0.0220195,
+        "mu_max": 0.0277,
+        "q_supply": 0.00036734395499084764,
+        "liquid_residual": -1.78531912732277e-12,
+        "coupling": {
+          "iters": 42,
+          "R_p": 0.0,
+          "R_T": 1.31823e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "flow": {
+      "group": "rerun_cht_robin10",
+      "label": "flow",
+      "cfg": {
+        "groove_mixing_model": "FLOW_WEIGHTED",
+        "q_supply": 0.00036734395499084764
+      },
+      "W_target": 4000.0,
+      "eps": 0.6033118074934544,
+      "psi": -37.71824215785509,
+      "dir": "rerun_cht_robin10/fb_iter_07",
+      "metrics": {
+        "dir": "rerun_cht_robin10/fb_iter_07",
+        "cfgkey": "{\"groove_mixing_model\": \"FLOW_WEIGHTED\", \"q_supply\": 0.00036734395499084764}",
+        "eps": 0.6033118074934544,
+        "psi": -37.71824215785509,
+        "tag": "flow/x1",
+        "rc": 0,
+        "wall_s": 32.7,
+        "ok": true,
+        "Fx": -0.923149,
+        "Fy": -4002.38,
+        "W": 4002.3801064621634,
+        "force_angle_deg": -90.01321527206906,
+        "p_max": 1405340.0,
+        "h_min": 6.02966e-05,
+        "cav_frac": 0.26451099537037037,
+        "friction_torque": 2.61958,
+        "T_max": 320.155,
+        "T_min": 313.496,
+        "T_max_theta_deg": 293.24999707283416,
+        "mu_min": 0.0210355,
+        "mu_max": 0.02734,
+        "q_supply": 0.0003853176137548012,
+        "liquid_residual": 1.15866474860697e-11,
+        "coupling": {
+          "iters": 52,
+          "R_p": 0.0,
+          "R_T": 1.78241e-07
+        }
+      },
+      "newton_steps": 1
+    },
+    "q_supply": 0.00036734395499084764
+  }
+}

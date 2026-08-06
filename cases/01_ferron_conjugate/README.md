@@ -131,7 +131,13 @@ moved the bush-temperature peak from 347.7 deg (local closure, adiabatic) to
 247.8 deg against a measured 258.2 deg, at a level about 3 K too cold;
 `outer_robin80` was aborted by the rank-dependent linear-solve divergence
 (reproducer and fix: `cases/90_diagnostics/ksp_rank_robustness/`, commit
-`f0e772d`) and has not been re-run since.
+`f0e772d`) and **has now been re-run and closed** (2026-08-06): eps = 0.602770,
+psi = -37.7046, mean error -0.20 K and rms 1.21 K over the 16 Fig. 4 points.
+That is within 0.26 K of the h = 10 production group, so the -1.31 K / 1.76 K
+quoted in the CORRECTION above - measured on a near-equilibrium state, because
+the run could not close - understates h = 80. The CORRECTION's lesson stands
+and is in fact strengthened: it is closing the force balance, not the outer
+coefficient, that supplies the heat.
 
 ## Remote-only archives for this case
 
@@ -142,4 +148,7 @@ On afml-r6 under `~/pancake/cases/01_ferron_conjugate/`:
   digit; `outer_robin80` hit the same KSP abort at `fb_iter_03`.
 - `diag_h10_frozen_geometry/` - the frozen-geometry h = 10 probe whose conclusion
   is corrected above.
+- `picard_rerun_frozen/`, `picard_rerun_adaptive/` - the 2026-08-06 re-run of
+  both variants under the best-iterate fix (frozen protocol and fully converged);
+  see `../01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
 - `gate_fixed313/` - the cross-platform gate run.

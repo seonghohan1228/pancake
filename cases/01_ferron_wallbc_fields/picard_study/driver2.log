@@ -1,0 +1,5 @@
+r09 rc=0 wall=33.957882427s
+r095 rc=0 wall=28.851184977s
+ovh_nofix rc=0 wall=99.151948815s
+ovh_fixonly rc=0 wall=95.009364050s
+STUDY_DONE

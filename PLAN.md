@@ -16,10 +16,12 @@ VOID_COUPLED convergence items and the five deferred modelling gaps
 
 Priority queue (user gates in brackets):
 
-1. **Picard cap correctness** - the conjugate loop returns iterate 200 where
-   iterate ~51 was better (|G| rises then oscillates); return-best + relaxation
-   tuning, then re-run CHT variants and re-issue the Fig. 4 temperature plot.
-   Blocks trusting the -2.3 K residual. [then user re-verdicts temperature]
+1. ~~**Picard cap correctness**~~ - **DONE 2026-08-05**, see "In Progress" below.
+   Return-best + non-convergence flag landed; under-relaxation measured
+   (omega = 1 never converges, 0.95 converges in 48 sweeps, ADAPTIVE in 52);
+   the CHT reruns move no reported number beyond printed digits, so the -2.3 K
+   residual stands and the Fig. 4 temperature plot did not need re-issuing.
+   [user re-verdicts temperature on the unchanged numbers]
 2. **Audit quick wins** - unknown-config-key hard error (the campaign shipped
    a live example of the silent-drop failure); VANLEER reclassified live and
    fixed/fenced; GUI anisotropic-stiffness load bug; config.txt default ->
@@ -59,6 +61,46 @@ Complete 2026-08-05. Evidence and the deliberate exclusions are in
 | GUI anisotropic-stiffness data loss on load | 3.5 / S9 | **DONE 2026-08-05** - normalize on new-case and on support edits only; load/save preserve |
 | `config.txt` cavitation default -> FBNS | Q5 | **DONE 2026-08-05** - struct default stays JFO until the 11 default-reliant tests pin their model |
 | Coefficient unification: energy axial BCs + gas transport | A / S1 | **DONE 2026-08-05** - A/B on the archived Ferron cross-film point: load/pressure/temperature move at the 6-digit output floor, `cross_film_core_rise` and `q_journal` by ~5e-5 relative |
+### Picard cap correctness — DONE 2026-08-05
+
+The STEADY_STATE outer loop returned whatever iterate `coupling_max_iters` landed
+on and never said it had failed to meet `coupling_tolerance`. On the conjugate
+Ferron cases that iterate was 6.3x worse than one the loop had already passed
+through (`max(R_p,R_T)` bottoms out at 4.3e-5 near outer 56, then oscillates
+between 5e-5 and 3.6e-4 to the cap). Landed:
+
+- new `Coupling` module: best-iterate tracking, rollback **on cap exhaustion
+  only** (a converging run is bit-identical to before), a whole-field snapshot
+  taken before under-relaxation so the delivered state is a real end-of-sweep
+  solve, loud `NOT CONVERGED` logging independent of `log_outer_iters`, and eight
+  `coupling_*` columns appended to `diagnostics.csv`;
+- `coupling_relaxation_mode = ADAPTIVE` (default off) plus
+  `log_coupling_history` for the per-sweep residual trace.
+
+Measured on afml-r6 at 24 pinned ranks: the loop gain is only marginally above 1
+(omega = 0.95 already converges, in 48 sweeps against 200-and-never at 1.0), and
+ADAPTIVE gets there in 52 with no tuned value. The archived answers survive: the
+bush-side wall temperature profile moves <= 1e-3 K, W by 0.11 N in 4002 N,
+p_max by 40 Pa in 1.405 MPa, T_max by 1 mK across the iterate-200 state, the
+rolled-back best iterate and every converged relaxation setting. **The -2.3 K CHT
+peak residual, mean +0.02 K and rms 1.17 K are unchanged**, so item 6 of the
+priority queue (the four temperature suspects) is unblocked rather than
+redirected. Report: `cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
+
+Free by-product: `01_ferron_conjugate/outer_robin80` (h = 80), abandoned since
+its `fb_iter_06` aborted on the KSP divergence, was re-run and **closes** -
+eps = 0.602770, mean -0.20 K, rms 1.21 K over the 16 Fig. 4 points, within
+0.26 K of the h = 10 production group. The h = 80 hole in the conjugate case is
+shut, and the outer-coefficient sensitivity turns out to be small next to the
+force-balance closure.
+
+Remaining, deliberately not done here: HANDOFF **D8** is untouched - the
+relaxation still acts on p and T while the Elrod primary state is theta; and the
+best iterate on the conjugate case is still 43x above `coupling_tolerance`, so
+the rollback is an honesty measure and under-relaxation is the fix. Whether the
+frozen case protocol should adopt omega < 1 or ADAPTIVE is a user decision,
+because it changes a protocol every archived conjugate number was produced under
+(the numbers themselves do not move).
 
 ### Rank-dependent linear-solve divergence — DONE 2026-08-05
 

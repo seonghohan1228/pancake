@@ -47,6 +47,28 @@ fields: adiabatic fluxes and the conjugate shaft net are exactly zero.
 rerun_xf_adiabatic eps 0.608601, rerun_xf_bush40_J40 0.564609,
 favg_walls40 0.567497, rerun_cht_robin10 0.603314 (W +2.37 N, angle -90.013).
 
+## Picard cap defect: checked, and the numbers above are unaffected
+
+Every `rerun_cht_robin10` solver call hit `coupling_max_iters = 200` without
+meeting `coupling_tolerance = 1e-6`, and the loop was returning the last iterate
+rather than the best one it had passed through (6.3x worse in residual). Fixed on
+`codex/picard-best-iterate`: the loop now rolls back to its lowest-residual
+iterate on cap exhaustion and reports NON-CONVERGENCE loudly.
+
+Re-measured at the same equilibrium with the fix, and against nine converged
+under-relaxed settings: the bush-side `T_bearing` midplane profile moves by at
+most 1e-3 K (the VTK write precision), W by 0.11 N in 4002 N, p_max by 40 Pa in
+1.405 MPa and T_max by 1 mK. **Peak 46.71 C @ 265.2 deg, mean +0.02 K, rms 1.17 K
+and the -2.3 K peak residual are unchanged**, and the temperature figure did not
+need regenerating.
+
+The loop does converge under under-relaxation - `coupling_relaxation = 0.95` in 48
+sweeps, `coupling_relaxation_mode = ADAPTIVE` in 52, against 200-and-never at 1.0
+- so the frozen protocol's `coupling_relaxation = 1.0` is now a known-poor choice
+for the conjugate variants even though it costs nothing in the answer. Full
+report, traces and the run-by-run table: `PICARD_FIX_REPORT.md`, figure
+`ferron_picard_convergence.png`.
+
 ## Figures / files
 
 ferron_wallbc_temperature.png, ferron_wallbc_heatflux.png, equilibrium.json,

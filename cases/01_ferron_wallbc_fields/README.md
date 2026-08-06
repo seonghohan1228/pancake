@@ -68,6 +68,17 @@ with a cross-platform gate that matched Windows to all printed digits.
 - `plot_wallbc.py` -> `ferron_wallbc_temperature.png`,
   `ferron_wallbc_heatflux.png`.
 - `<group>/fb_iter_NN/` - one archived solver call each, with its `config.txt`.
+- `PICARD_FIX_REPORT.md`, `plot_picard.py` -> `ferron_picard_convergence.png`,
+  `picard_study/`, `compare_picard_rerun.py` - the outer-loop limit-cycle
+  investigation: why every `rerun_cht_robin10` call hit the 200-sweep cap, what
+  under-relaxation does about it, and the measurement showing the archived
+  numbers do not move. Bulk run trees on afml-r6 at
+  `~/pancake/cases/01_ferron_wallbc_fields/{picard_study_r6,picard_rerun_frozen,picard_rerun_adaptive}/`.
+
+`force_balance.py` reads `PANCAKE_COUPLING_MAX_ITERS`,
+`PANCAKE_COUPLING_RELAXATION` and `PANCAKE_COUPLING_EXTRA` from the environment;
+unset, they are the frozen protocol (200 sweeps, no relaxation) and the generated
+config is byte-identical to the archive.
 
 ## Where the bulk data is
 

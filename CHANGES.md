@@ -252,6 +252,120 @@ New `tests/test_config_keys.cpp` (35 ctest cases now, was 34):
 Known limitation, unchanged by this work: a *recognized* key with a malformed
 value still throws `std::invalid_argument` out of `std::stod` rather than being
 reported. That is a separate defect and is not addressed here.
+### 2026-08-05 - The Picard loop returns its best iterate and admits when it did not converge
+
+**Defect.** The STEADY_STATE outer (Picard) loop in `main.cpp` returned whatever
+iterate `coupling_max_iters` happened to land on, and said nothing about having
+failed to meet `coupling_tolerance`. On the conjugate Ferron cases
+(`bush_thermal_model = CONDUCTION_2D` with a weak outer Robin surface) that is a
+limit cycle: `max(R_p, R_T)` decays geometrically to 4.3e-5 at outer 56, then
+oscillates between 5e-5 and 3.6e-4 for the remaining 144 sweeps. The delivered
+iterate 200 was **6.3x worse** than iterate 56, on every one of the eight
+`rerun_cht_robin10` force-balance calls, and on four of the six `outer_robin80`
+calls that ran to completion (the other two scraped in at 187 and 190 sweeps).
+
+**Fix, in a new `Coupling` module** (`src/coupling.hpp`, `src/coupling.cpp`) so
+the loop control is testable without a solver:
+
+- `Coupling::Controller` ranks iterates by `max(R_p, R_T)` and, **only when the
+  loop exhausts the cap without meeting the tolerance**, asks for a rollback to
+  the lowest-residual sweep. A loop that meets the tolerance always returns its
+  last iterate, so every converging case is bit-identical to before.
+- `Coupling::Snapshot` deep-copies every registered field, ghost layers and
+  `old_data` included, so the restored state is one self-consistent iterate
+  (p, theta, T, wall state, properties, forces) and needs no ghost exchange. The
+  snapshot is taken *before* under-relaxation, so what is delivered is a genuine
+  end-of-sweep solve rather than a blend.
+- A non-converged steady run now prints `NOT CONVERGED`, the cap it hit and the
+  best-vs-final comparison **in red regardless of `log_outer_iters`**, and
+  `results/diagnostics.csv` gains `coupling_iters, coupling_R_p, coupling_R_T,
+  coupling_converged, coupling_best_iter, coupling_best_residual,
+  coupling_restored_best, coupling_relaxation`. New columns are appended, so
+  header-keyed readers are unaffected.
+
+**Under-relaxation is the actual cure, and it was measured, not assumed.** Sweeps
+to `coupling_tolerance = 1e-6` on the `rerun_cht_robin10` equilibrium, 24 pinned
+ranks on afml-r6:
+
+| `coupling_relaxation` | 1.0 | 0.95 | 0.9 | 0.8 | 0.7 | 0.5 | 0.3 | ADAPTIVE |
+|---|---|---|---|---|---|---|---|---|
+| outer sweeps | **200, never** | 48 | 53 | 64 | 76 | 113 | 197 | **52** |
+
+Even 0.95 converges, so the loop gain is only marginally above 1 - which is why
+`coupling_relaxation_mode = ADAPTIVE` (new, default off) works: it starts at the
+ceiling, halves the factor the first time the residual rises and lets it recover
+at 1.1x per falling sweep. It reached the tolerance in 52 sweeps with no tuned
+value, ending at omega = 0.974 having dipped to 0.5. Backoff 0.5 was chosen over
+0.7 (70 sweeps) and 0.8 (69 sweeps) by measurement.
+
+**The limit cycle did not corrupt any archived number, and that is the answer to
+the question the finding raised.** Comparing the iterate-200 state against the
+rolled-back best iterate and against every converged relaxation setting, on the
+same equilibrium:
+
+| quantity | spread across all 12 runs | rollback vs iterate 200 |
+|---|---|---|
+| bush-side wall temperature `T_bearing`, full midplane profile | <= 1e-3 K | 0 K (identical) |
+| `T_bearing` peak | 46.711-46.712 C | identical |
+| W | 4002.37-4002.48 N | 0.01 N |
+| p_max | 1405340-1405380 Pa | 0 Pa |
+| T_max | 320.154-320.155 K | 0 K |
+| h_min, cavitated fraction | identical to all printed digits | identical |
+
+The **-2.3 K CHT peak residual stands unchanged**; so do mean +0.02 K and rms
+1.17 K. The one mobile quantity is the *argmax cell* of a nearly flat maximum,
+which hops +-1 cell (0.5 deg). No figure needed regenerating.
+
+New config keys, all inert by default: `coupling_keep_best_iterate` (true;
+rollback only ever fires on cap exhaustion), `coupling_relaxation_mode`
+(FIXED/ADAPTIVE), `coupling_relaxation_min`, `coupling_relaxation_backoff`,
+`coupling_relaxation_growth`, `log_coupling_history`. `coupling_max_iters`,
+`coupling_tolerance` and `coupling_relaxation` are now validated.
+
+`cases/01_ferron_conjugate/force_balance.py` and
+`cases/01_ferron_wallbc_fields/force_balance.py` take the coupling schedule from
+`PANCAKE_COUPLING_MAX_ITERS`, `PANCAKE_COUPLING_RELAXATION` and
+`PANCAKE_COUPLING_EXTRA`, all defaulting to the frozen protocol so an unset
+environment writes a byte-identical config.
+
+Tests: `test_coupling` gains a monotone-convergence case (best == last, no
+rollback), a synthetic oscillating history proving the best iterate is returned
+and the run is called NON-CONVERGED, a slow-but-monotone case needing no
+rollback, an adaptive-schedule check and an exact `Snapshot` round-trip including
+ghosts and `old_data`. 34/34 green on Windows (MinGW) and on afml-r6 (GCC).
+
+**Reruns (24 pinned ranks on afml-r6, one job at a time).** `rerun_cht_robin10`
+under the frozen protocol reproduces its archive to 9 significant figures
+(eps 0.603313784 -> 0.603313785, psi to 5.3e-6 deg) with the rollback firing on
+all eight calls; scored against the 16 Fig. 4 points the archive, the rolled-back
+best iterate and a fully converged ADAPTIVE re-closure are **identical to three
+decimals** (mean +0.017 K, rms 1.173 K, peak 46.712 C, residual -2.33 K).
+`outer_fixed313` converges anyway and reproduces its archived -2.971 / 3.581
+exactly. Fully converged, the same batch costs 388 outer sweeps instead of 1600.
+
+**New result out of the same batch:** `01_ferron_conjugate/outer_robin80` - the
+h = 80 variant that had been abandoned when `fb_iter_06` aborted on the
+rank-dependent KSP divergence - now closes: eps = 0.602770, psi = -37.7046, mean
+error **-0.20 K**, rms **1.21 K**, peak 46.450 C. That is within 0.26 K of the
+h = 10 production group and 2.8 K better than the -1.31 K / 1.76 K on the books
+for it, which came from a never-converged near-equilibrium state. Closing the
+force balance, not the outer coefficient, is what supplies the heat. Re-closed
+under ADAPTIVE it lands on the same equilibrium to six digits from 501 sweeps
+instead of 2178.
+
+Full report, residual traces and the run-by-run comparison:
+`cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`;
+figure `cases/01_ferron_wallbc_fields/ferron_picard_convergence.png`.
+Physics: `PHYSICS.md` §7.4 (new) and §13.1.2 (rewritten - it previously said the
+limit cycle was "reported rather than tuned away", which is now superseded).
+Case docs: `01_ferron_wallbc_fields/{README,SUMMARY}.md`,
+`01_ferron_conjugate/{README,SUMMARY}.md` (the abandoned-`outer_robin80` notes
+are now closed), `cases/INDEX.md`.
+
+**Operational note recorded because it cost an hour.** afml-r6 was shared with
+another session's 24-rank batch. Three 24-rank jobs on 56 cores is not a 1.3x
+slowdown but a **45x** one under MPI busy-wait (692 s against ~99 s for the same
+call). Lanes are serialized here; one 24-rank job at a time is the policy.
 
 ### 2026-08-05 - Validation cases consolidated into one place, with an index
 

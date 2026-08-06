@@ -1,0 +1,7 @@
+base rc=0 wall=85.839187455s
+r08 rc=0 wall=38.436814746s
+r07 rc=0 wall=43.421320138s
+r05 rc=0 wall=65.326353206s
+r03 rc=0 wall=105.420716805s
+adapt rc=0 wall=32.709714016s
+STUDY_DONE
