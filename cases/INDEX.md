@@ -20,8 +20,11 @@ numbers used in `VALIDATION_PLAN.md`, in `PLAN.md` and in the commit history:
 | `02*` | static locus (load capacity vs eccentricity) |
 | `90*` | diagnostics: solver behaviour, not physics; no verdict |
 
-Stages 03 (transient to equilibrium), 04 (second THD dataset) and 05 (gaseous
-cavitation) are planned but have no directory yet.
+Stages 03 (transient to equilibrium) and 04 (second THD dataset) are planned but
+have no directory yet. Stage 05 (gaseous cavitation) is split per
+`docs/UNFINISHED_BUSINESS.md` §3.9: `05_etsion_extent/` covers sub-case 05a
+(cavity extent, runnable and now run); sub-cases 05b (cavity pressure) and
+05d remain blocked on the `p_void` convergence work and have no directory.
 
 **No directory was renamed during the consolidation.** The existing prefixes
 already encode the stage, they are the vocabulary that `VALIDATION_PLAN.md`,
@@ -49,6 +52,7 @@ Windows worktree, r6 means `afml-r6:~/pancake/cases/`.
 | 01 | `01_ferron_wallbc_fields/` | final four-way wall-BC comparison with the film-surface T and wall-flux fields exposed; first production use of the KSP fix; also carries the Picard-cap investigation (`PICARD_FIX_REPORT.md`) | **verdict pending** (user); Picard cap closed, numbers unmoved | `ferron_wallbc_temperature.png`, `ferron_wallbc_heatflux.png` | r6 (95 local / 1170 r6 - 983 MB of VTK stays remote by decision) |
 | 01 | `01_ferron_vs_reynsim/` | three-way overlay: experiment vs the previous-generation MATLAB/ReynSim solver vs pancake | done (agent); "This year" inside the band, "Last year" -17.6 % on the peak | `reynsim_midplane_pressure.png`, `reynsim_eccentricity.png`, `fig4_three_way.png` | both (98 / 98) |
 | 02 | `02_static_locus/` | eps vs Sommerfeld and attitude locus at L/D = 1 and 0.5 | **POSTPONED** (user, 08-05) - no reference table in the library; solver side complete and kept as supporting material | `static_locus.png` | both (268 / 268) |
+| 05 | `05_etsion_extent/` | gaseous cavitation, **EXTENT scope only**: cavity theta_st / theta_end vs Etsion & Ludwig (1982) Table 2, 8 conditions x 2 cavitation models. Submerged L/D = 0.75 bearing, eps = 0.4 static, four ambient levels | **verdict pending** (user). Agent state: FBNS mean \|err\| 5.9 deg on theta_st (4/8 inside the paper's own +/-5 deg), ambient-pressure trend to 2.5% at 1840 rpm; JFO fails (18-36 deg early rupture, load 1/10 of FBNS). Report in `ETSION_REPORT.md` (harness refuses `SUMMARY.md`) | `etsion_extent_scatter.png`, `etsion_extent_vs_ps.png`, `etsion_cavity_map.png` | both (fbns + jfo pulled to `results_remote/` sha256-verified; sens/vapour legs r6-only) |
 | 90 | `90_diagnostics/ksp_rank_robustness/` | minimal reproducer for the rank-dependent `DIVERGED_DTOL`; evidence behind `f0e772d` | closed by `f0e772d` | none | r6 (configs + logs local, 137 MB of results r6) |
 | 90 | `90_diagnostics/remote_harness/` | reference copies of the loose `afml-r6:~/` driver and analysis scripts | reference only | none | both (text only) |
 

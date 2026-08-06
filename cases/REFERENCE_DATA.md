@@ -30,6 +30,15 @@ Fig. 5 (eccentricity + PNG), Fig. 6 (pressure + temperature + PNG).
 ### DELIVERED
 - ferron1983_fig6_4000rpm_6kN_pressure.csv + _temperature.csv (+ source png). Used
   by Case 01-prelim; peak location agreed to ~3 deg with the stated theta origin.
+- **etsion1982_table2_extent.csv** (2026-08-05, agent). Etsion & Ludwig 1982
+  Table 2: theta_0, p_min, theta_st, theta_end for all 8 conditions.
+  **TRANSCRIBED from the PDF text layer, not digitised** - the extraction emits the
+  table column-major with the headers detached, so every value was re-attached to
+  its column by cross-checking against seven explicit statements in the Results
+  text; the checks are listed in the CSV header. Also records the rig, the oil
+  properties, the +/-5 deg angular uncertainty the paper states, and the fact that
+  **Table 2 carries no axial cavity width** (so the axial comparison of
+  `cases/05_etsion_extent/` is N/A, not pending). Used by Case 05.
 
 ### 1. Case 01-THD - blocks the THD validation run (see 01_ferron_thd/README.md)
 
@@ -52,12 +61,12 @@ the sweep is rerun to match.
 
 ### 3. Case 05 - gaseous cavitation (solver support landed, codex/fbns-gas)
 
-| # | What | Where | Form |
-|---|---|---|---|
-| 1 | Pressure profiles inside the cavitated zone | Etsion & Ludwig 1982, J. Lubr. Technol. 104:157 | one CSV per profile, note theta or z station in header |
-| 2 | Cavity extent boundary (theta-z trace) per condition | same paper, photos/sketches | one CSV per condition |
-| 3 | Operating/fluid parameters of their rig (geometry, speed, oil, air content if stated) | same paper | numbers in chat |
-| 4 | (optional) cavity pressure/temperature maps | Braun & Hendricks 1984, ASLE Trans. 27:1 | profiles as CSVs |
+| # | What | Where | Form | status |
+|---|---|---|---|---|
+| 1 | Pressure profiles inside the cavitated zone | Etsion & Ludwig 1982, Figs. 6/7 (4 panels each, p/p_s vs Z/L, 8-9 theta stations per panel) | one CSV per profile, note theta or z station in header | still needed - blocks sub-case 05b, which is separately blocked on `p_void` convergence |
+| 2 | Cavity extent boundary (theta-z trace) per condition | same paper, Figs. 5(a)-(d) photographs | one CSV per condition | still needed, and **optional**: Table 2 already gives theta_st / theta_end numerically, which is what Case 05 scored |
+| 3 | Operating/fluid parameters of their rig (geometry, speed, oil, air content if stated) | same paper | numbers in chat | **CLOSED** - all printed in the paper and transcribed into `etsion1982_table2_extent.csv`. Air content is NOT stated; Case 05 uses Henry saturation at atmospheric with an Ostwald coefficient of 0.09 and records it as UNVERIFIED |
+| 4 | (optional) cavity pressure/temperature maps | Braun & Hendricks 1984, ASLE Trans. 27:1 | profiles as CSVs | not in the library (`UNFINISHED_BUSINESS.md` §3.6) |
 
 ### 4. Case 00c #2 - 2D contour verification (optional but recommended)
 
