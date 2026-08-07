@@ -2,6 +2,22 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-07 - Cross-platform baseline and validation-claim reconciliation
+
+- Rebuilt the exact solver commit from a fresh Windows preset and verified all
+  35 tests, then transferred the hash-verified commit to an isolated Ubuntu
+  checkout, built in Release mode, and verified the same 35 tests there.
+- Added `cases/VALIDATION_STATUS.md` as the authoritative claim ledger and marked
+  the older root plan, first-campaign report, and unfinished-business audit as
+  historical snapshots.
+- Corrected three overclaims: the frozen campaign grid is not a universal
+  `p_max`/coupled-THD certificate; the clearance collapse does not distinguish a
+  uniform load bias; and Etsion case 05a has `alpha_gas = 0`, so it does not
+  validate gaseous-cavitation physics.
+- Made the Linux build command generator-neutral and Release by default, updated
+  both platform test baselines, and removed the CMake FetchContent timestamp
+  warning for the pinned GUI dependencies.
+
 ### 2026-08-05 - Energy axial boundaries and gas transport routed through ReynoldsCoeff (audit A / S1)
 
 `src/reynolds_coefficients.hpp` exists so the three assemblies of the Reynolds

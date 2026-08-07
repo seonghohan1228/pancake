@@ -1,0 +1,27 @@
+{
+  "gate_win": {
+    "alpha_gas_max": 0.0,
+    "axial_width_at_cavity_mid_m": 0.022621886161256516,
+    "axial_width_max_m": 0.02698751331518321,
+    "cav_fraction": 0.30889756944444446,
+    "coupling": null,
+    "extent_any_z": 205.5,
+    "extent_midplane": 205.0,
+    "gas_residual": -7.02697675292855e-15,
+    "h_min": 6.84004e-05,
+    "liquid_residual": -7.02702483950647e-15,
+    "n_cells": 138240,
+    "p_max": 334136.0,
+    "p_min": 101328.0,
+    "p_min_fullfilm_midplane": 101350.0,
+    "p_min_midplane": 101328.0,
+    "ranks": 4,
+    "theta_0_deg": 204.749906,
+    "theta_end_any_z": 49.999983,
+    "theta_end_midplane": 49.999983,
+    "theta_st_any_z": 204.499906,
+    "theta_st_midplane": 205.000098,
+    "wall_s": 42.19405160000315,
+    "z_mid": 0.0191492
+  }
+}

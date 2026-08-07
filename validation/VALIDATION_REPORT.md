@@ -1,4 +1,10 @@
-# pancake — verification and validation report
+# pancake — verification and validation report (historical)
+
+> **Superseded after 2026-08-02.** This report records the first campaign at
+> 23 tests and predates FBNS adoption, the final Ferron conjugate runs, the
+> clearance-collapse analysis, and Etsion case 05a. Use
+> `cases/VALIDATION_STATUS.md` for current claims. Numerical evidence remains
+> useful where later case reports cite it.
 
 **Date:** 2026-08-02 · **Branch:** `codex/validation-cavitation` · **Build:** MinGW64 / PETSc, 23/23 tests pass
 
@@ -18,7 +24,7 @@ equations right (against analytic solutions and an independent solver);
 | Question | Verdict |
 |---|---|
 | Is the Reynolds/cavitation discretisation correct? | **Yes.** Two independent checks: Raimondi & Boyd charts (S within 5.8%, attitude within 4.08°) and a from-scratch independent solver at the benchmark geometry (loads within 1.3–6.2%) |
-| Is the 52–68% load over-prediction a solver defect? | **No.** An independent solver reproduces it, and Ferron's *own* published theory over-predicts his own data by ~75–80% — worse than pancake |
+| Is the 52–68% load over-prediction a solver defect? | **Not identified as one, but unresolved.** An independent solver reproduces it; a later analysis shows that a uniform solver load bias is degenerate with a uniform clearance bias |
 | Is the energy equation implemented correctly? | **Dimensionally yes**, formulation is a correct depth-averaged form. But it is **structurally incomplete** — see §5 |
 | Can the 71° temperature-peak error be fixed by tuning? | **No.** With wall temperature a prescribed constant there is no mechanism to move heat upstream. It needs a conjugate model |
 | Is the gaseous-cavitation (VOID_COUPLED) path usable? | **No.** The outer coupling does not converge; answers are relaxation- and grid-dependent |

@@ -1,4 +1,9 @@
-# Validation & Fix Plan (2026-08-02)
+# Validation & Fix Plan (2026-08-02, historical)
+
+> **Superseded.** This is the first campaign's planning record and must not be
+> used as the current verdict table. Use `cases/VALIDATION_STATUS.md` for current
+> claims, `cases/VALIDATION_PLAN.md` for the active ladder, and `cases/INDEX.md`
+> for case locations.
 
 Agent-facing plan to resolve the CFD-vs-experiment mismatches and complete the
 validation matrix. Produced from three audits: the defect register
@@ -8,14 +13,15 @@ Christopherson solver.
 
 ## 0. Diagnosis — read before doing anything
 
-**The solver core is not the problem for load.** Load integration
+**Historical hypothesis, not a closed verdict:** the solver core was not found to
+be the source of the load discrepancy. Load integration
 (`reynolds.cpp:668-797`), film thickness (`film_thickness.cpp:27`), clearance
 handling, groove pressure (absolute), viscosity wiring and omega were all
 audited clean, and an independent isothermal Reynolds solve reproduces
 pancake's loads to within a few percent at the same inputs. Raimondi & Boyd
-passes (S within 5.8%). Therefore the +52-68% (Ferron) / +65-106% (Brito) load
-over-prediction is inherited from **reference data and shared physics
-assumptions**, not from the discretization.
+passes (S within 5.8%). These checks rule out several implementation defects, but
+they do not distinguish a uniform load-model bias from a uniform clearance bias.
+The later Sommerfeld-collapse analysis makes that degeneracy explicit.
 
 **The energy equation is dimensionally correct but structurally incomplete.**
 Depth-averaged form, convection velocity, Couette (`mu U^2/h`) and Poiseuille

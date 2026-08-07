@@ -1,0 +1,22 @@
+2026-08-05 22:46:57  === smoke on Atlas (Windows), 4 ranks, exe=C:\Dev\pancake\build-windows-mingw\pancake.exe ===
+2026-08-05 22:46:58  smoke/fbns ok 0s  cav=0.433 th_st=199.999897 th_end=82.000189 ext=242.0 p_max=3.035e+05 alpha_max=0
+2026-08-05 22:46:58  smoke/jfo ok 0s  cav=0.805 th_st=181.999855 th_end=152.000162 ext=330.0 p_max=1.421e+05 alpha_max=0
+2026-08-05 22:46:58  wrote smoke.json
+2026-08-05 22:49:23  timing/fbns720 ok 40s  cav=0.423 th_st=201.499899 th_end=82.49981 ext=241.0 p_max=3.036e+05 alpha_max=0
+2026-08-05 22:52:02  smoke/vap_fbns ok 78s  cav=0.261 th_st=278.000079 th_end=2.0 ext=84.0 p_max=3.268e+05 alpha_max=0.4677
+2026-08-05 22:53:39  smoke/vap_jfo ok 97s  cav=0.000 th_st=None th_end=None ext=0.0 p_max=3.286e+05 alpha_max=0.9
+2026-08-05 22:56:38  smoke/vap_fbns_relax ok 51s  cav=0.000 th_st=None th_end=None ext=0.0 p_max=3.262e+05 alpha_max=0.3314
+2026-08-05 23:00:06  === gate on Atlas (Windows), 4 ranks, exe=C:\Dev\pancake\build-windows-mingw\pancake.exe ===
+2026-08-05 23:00:49  gate_win ok 42s  cav=0.309 th_st=204.499906 th_end=49.999983 ext=205.5 p_max=3.341e+05 alpha_max=0
+2026-08-05 23:00:49  wrote gate_win.json
+2026-08-05 23:03:24  sens_pcav_tracks_ambient/n1840_ps136 [win] FAILED rc=1 (41s)
+2026-08-05 23:04:09  sens_pcav_tracks_ambient/n1840_ps544 [win] FAILED rc=1 (45s)
+2026-08-05 23:06:09  sens_shift_invariance/delta_40800 ok 82s  cav=0.423 th_st=201.499899 th_end=82.49981 ext=241.0 p_max=3.444e+05 alpha_max=0
+2026-08-05 23:26:00  HOUSEKEEPING: cases/sync_to_r6.sh deliberately NOT run for this batch.
+2026-08-05 23:26:00    The blanket mirror ships every file under cases/, which would copy
+2026-08-05 23:26:00    results_remote/ (the fbns+jfo trees pulled FROM r6, ~320 MB) back to r6
+2026-08-05 23:26:00    as a duplicate under a second path. Deliverables were instead shipped
+2026-08-05 23:26:00    explicitly by scp and sha256-verified on both ends (report, scripts,
+2026-08-05 23:26:00    comparison.csv/txt, the three figures, matrix_r6.json, gate_win.json,
+2026-08-05 23:26:00    sens_shift.json, and cases/INDEX.md + REFERENCE_DATA.md + VALIDATION_PLAN.md).
+2026-08-05 23:26:00    r6 already holds every result tree it produced.

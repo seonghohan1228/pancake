@@ -235,9 +235,11 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
     # configure time. No system packages, no DLLs - everything is compiled
     # into pancake_gui.exe.
     FetchContent_Declare(imgui
-        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b-docking.zip)
+        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b-docking.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_Declare(implot
-        URL https://github.com/epezent/implot/archive/refs/tags/v0.17.zip)
+        URL https://github.com/epezent/implot/archive/refs/tags/v0.17.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(imgui implot)
 
     add_library(pancake_imgui STATIC

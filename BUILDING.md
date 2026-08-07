@@ -105,20 +105,24 @@ cd /c/Dev/pancake
 ctest --test-dir build-windows-mingw --output-on-failure
 ```
 
-Current native baseline (2026-07-13): configure and release build succeed; all
-22 CTest tests pass, including `test_elrod_a2_mpi6` and `test_schemes_mpi6`.
+Current native baseline (2026-08-07): a fresh configure and release build succeed;
+all 35 CTest tests pass, including the MPI-4/6, FBNS, cross-film, gas-coupling,
+and steady-coupling tests.
 
 ## Linux
 
 Linux remains supported. Keep it in a separate build directory:
 
 ```bash
-cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release
 cmake --build build-linux -j
 ./build-linux/pancake -c config.txt
 mpirun -n 2 ./build-linux/pancake -c config.txt
 ctest --test-dir build-linux --output-on-failure
 ```
+
+The generator is deliberately unspecified so the command works with either
+Unix Makefiles or Ninja. Pass `-G Ninja` only when Ninja is installed.
 
 Install typical Debian/Ubuntu dependencies with:
 
@@ -129,3 +133,7 @@ sudo apt install build-essential cmake ninja-build openmpi-bin libopenmpi-dev li
 
 Use `-DPETSC_DIR=/path/to/petsc` if your PETSc installation is not discoverable
 by the default CMake search.
+
+Current Ubuntu workstation baseline (2026-08-07): GCC 11.4, OpenMPI, PETSc,
+Release build, and all 35 CTest tests pass with `OMP_NUM_THREADS=1` and
+`OPENBLAS_NUM_THREADS=1`.

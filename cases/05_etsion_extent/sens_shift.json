@@ -1,0 +1,28 @@
+{
+  "delta_Pa": 40800.0,
+  "shifted": {
+    "alpha_gas_max": 0.0,
+    "axial_width_at_cavity_mid_m": 0.026193762923560175,
+    "axial_width_max_m": 0.03055939007748687,
+    "cav_fraction": 0.4231915509259259,
+    "coupling": null,
+    "extent_any_z": 241.0,
+    "extent_midplane": 239.0,
+    "gas_residual": -3.13237925632591e-16,
+    "h_min": 6.84004e-05,
+    "liquid_residual": -3.13132665388338e-16,
+    "n_cells": 138240,
+    "p_max": 344377.0,
+    "p_min": 142125.0,
+    "p_min_fullfilm_midplane": 142171.0,
+    "p_min_midplane": 142125.0,
+    "ranks": 4,
+    "theta_0_deg": 203.249902,
+    "theta_end_any_z": 82.49981,
+    "theta_end_midplane": 82.49981,
+    "theta_st_any_z": 201.499899,
+    "theta_st_midplane": 203.500094,
+    "wall_s": 82.13007059998927,
+    "z_mid": 0.0191492
+  }
+}

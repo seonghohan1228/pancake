@@ -1,0 +1,84 @@
+# paper: Etsion, I. and Ludwig, L. P., "Observation of Pressure Variation in the
+#        Cavitation Region of Submerged Journal Bearings", ASME Journal of
+#        Lubrication Technology, Vol. 104, No. 2, April 1982, pp. 157-163.
+#        (ASLE-ASME Joint Lubrication Conference, New Orleans, Oct 4-7 1981,
+#        Paper No. 81-Lub-11.)
+# table:  Table 2 "Results of Minimum Film Pressure and Cavitation Extent"
+# source: TRANSCRIBED (not digitised) from the paper text layer of
+#         F:\Seongho\Research\literature\pdfs\Etsion and Ludwig - 1982 - Observation
+#         of Pressure Variation in the Cavitation Region of Submerged Journal Bearings.pdf
+#         Transcribed 2026-08-05. The PDF text layer emits the table column-major
+#         with the column headers detached; every value below was re-attached to its
+#         column by cross-checking against the explicit statements in the Results
+#         section (see "cross-checks" below), not by trusting the extraction order.
+#
+# rig (all printed in the paper, all VERIFIED):
+#   rotor diameter D = 5.08 cm  -> R = 25.4 mm ; L = 3.81 cm = 38.1 mm ; L/D = 0.75
+#   mean radial clearance c = 0.0114 cm = 114 um
+#   eccentricity ratio eps = 0.4 for EVERY reported condition (set by shims, STATIC)
+#   h_min = 0.00684 cm = 68.4 um (paper's own arithmetic, confirms eps = 0.4)
+#   both ends flooded (submerged) at the same ambient pressure p_s; NO circumferential
+#   inlet groove; acrylic housing; single 0.2 mm pressure tap on an indexing fixture
+#   differential transducer referenced to ATMOSPHERE -> every pressure below is GAUGE
+#   rotor runout < 0.00127 cm = 12.7 um ; oil-in temperature 30-38 C
+#   oil: paraffinic, unnamed. Table 1: mu = 0.026 N s/m2 at 38 C, specific gravity
+#        0.8285 (rho = 828.5 kg/m3), vapour pressure 0.1 mmHg = 13.3 Pa at 38 C.
+#   cavity contents mass-spectrometered: AIR, no oil vapour (paper p.161).
+#
+# angle convention (paper Nomenclature + Fig. 4):
+#   theta = angular position measured FROM THE LINE OF MAXIMUM CLEARANCE, positive
+#   IN THE DIRECTION OF SHAFT ROTATION. Hence theta = 0 deg is maximum clearance,
+#   theta = 180 deg is minimum clearance, 0 < theta < 180 is the CONVERGING arc and
+#   180 < theta < 360 is the DIVERGING arc.
+#   STATED UNCERTAINTY: the maximum-clearance line was located from the axial scan
+#   that showed constant ambient pressure; the paper states this "could produce an
+#   inaccuracy of +/- 5 deg in the apparent location of the maximum clearance".
+#   ALL FOUR ANGLE COLUMNS THEREFORE CARRY A COMMON +/- 5 deg SYSTEMATIC OFFSET.
+#   Angles were read in 5 deg scan increments, so the per-reading resolution is 5 deg
+#   (the single entry of 2.5-deg-like precision, theta_end = 15, is as printed).
+#
+# columns:
+#   N_rpm        shaft speed [rpm]
+#   p_s_kPa_gauge  ambient/supply pressure applied to BOTH bearing ends [kPa gauge]
+#                  (paper: 13.6 kPa = 2 psig ... 54.4 kPa = 8 psig in 13.6 kPa steps)
+#   theta_0_deg  angular position of MINIMUM FILM PRESSURE [deg, convention above]
+#   p_min_kPa_gauge  minimum film pressure [kPa gauge] (sub-cavity pressure loop)
+#   theta_st_deg cavitation START (rupture) [deg]
+#   theta_end_deg cavitation END (reformation) [deg]
+#
+# derived, NOT in the paper (computed here for convenience, wraps through 360):
+#   extent_deg = (theta_end_deg - theta_st_deg) mod 360
+#
+# cross-checks used to assign the columns (all satisfied):
+#   - "the minimum film pressure at 1840 rpm is -13.6 KPa regardless of the supply
+#      pressure ps"                                            -> p_min column, rows 1-4
+#   - "The location theta_0 ... ranging from theta_0 = 190 deg at ps = 13.6 KPa to
+#      theta_0 = 205 deg at ps = 54.4 KPa"                      -> theta_0 column, rows 1,4
+#   - "the minimum pressure dropped from -13.6 KPa to -27.2 KPa and, in one case
+#      when ps = 13.6 KPa, to -34 KPa"                          -> p_min column, rows 5-8
+#   - "the angular location of the minimum pressure, theta_0, is about 3-7 deg
+#      further downstream compared to the 1840 rpm case"        -> 3,3,7,5 deg. OK
+#   - "Cavitation starts about 5-10 deg downstream of the minimum pressure location"
+#                                                               -> 10,13,10,5 / 7,10,8,10. OK
+#   - "the end of the cavitation region at 3000 rpm is located a few degrees
+#      downstream of the corresponding end at 1840 rpm"         -> 0,+5,+5,+10 deg. OK
+#   - "at ps = 27.2 KPa the cavitation still penetrates into the converging portion";
+#     "A further increase ... to ps > 40.8 KPa causes the termination of the
+#      cavitation at or upstream of the maximum clearance line"
+#                                                               -> theta_end 40 and 15
+#                                                                  (still past 360 -> converging)
+#                                                                  vs 355 (upstream of 0). OK
+#
+# NOT IN TABLE 2: the axial (z) extent of the cavity. Table 2 has four data columns
+# only. Figs. 6 and 7 carry START/END marks on axial p(Z/L) traces but give no
+# cavity width in z, so the axial-width comparison requested for this case CANNOT be
+# scored against this reference. Marked N/A in the case README.
+N_rpm,p_s_kPa_gauge,theta_0_deg,p_min_kPa_gauge,theta_st_deg,theta_end_deg,extent_deg
+1840,13.6,190,-13.6,200,75,235
+1840,27.2,197,-13.6,210,40,190
+1840,40.8,200,-13.6,210,15,165
+1840,54.4,205,-13.6,210,355,145
+3000,13.6,193,-34.0,200,75,235
+3000,27.2,200,-27.2,210,45,195
+3000,40.8,207,-27.2,215,20,165
+3000,54.4,210,-27.2,220,5,145

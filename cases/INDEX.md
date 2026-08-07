@@ -2,11 +2,12 @@
 
 Front door for the validation campaign. Every case, test and diagnostic run for
 the campaign lives under `cases/`; nothing is kept in a home directory, `/tmp` or
-a scratch tree any more. Read `VALIDATION_PLAN.md` for the ladder and the decision
-gates, `REFERENCE_DATA.md` for what the digitised reference curves are and what is
-still missing, then this file for where anything actually is.
+a scratch tree any more. Read `VALIDATION_STATUS.md` for the current defensible
+claims, `VALIDATION_PLAN.md` for the ladder and decision gates,
+`REFERENCE_DATA.md` for the digitised reference curves, then this file for where
+anything actually is.
 
-Last consolidated: 2026-08-05 (branch `codex/cases-cleanup`, from `f0e772d`).
+Last reconciled: 2026-08-07 (`codex/validation-reconciliation`).
 
 ## Stage numbering
 
@@ -43,7 +44,7 @@ Windows worktree, r6 means `afml-r6:~/pancake/cases/`.
 
 | stage | dir | purpose | status | key figures | bulk data |
 |---|---|---|---|---|---|
-| 00 | `00_grid_dt_independence/` | grid + timestep independence on the Ferron geometry; freezes G6 720x192 and dt = 2e-5 s for every later case | **PASSED** (user, 08-05) | `gci_00a_fbns.png`, `dt_00b_fbns.png`, `e_vs_t_00b.png`, `gci_00a.png` (superseded JFO generation) | both (13489 local / 22570 r6; T2-T4 tails are r6-only, 5.4 GB each) |
+| 00 | `00_grid_dt_independence/` | operational grid + timestep protocol on the Ferron geometry; G6 720x192 and dt = 2e-5 s | **PASSED** (user, 08-05), with scope limits: `p_max` was not grid-independent and the later coupled THD/CHT model was not covered | `gci_00a_fbns.png`, `dt_00b_fbns.png`, `e_vs_t_00b.png`, `gci_00a.png` (superseded JFO generation) | both (13489 local / 22570 r6; T2-T4 tails are r6-only, 5.4 GB each) |
 | 00c | `00c_jfo_verification/` | exact 1-D JFO benchmark - solver correctness, no experiment | **CLOSED** by replacing Elrod with FBNS (front <= 1 cell) | none (tabular, `extract_front.py` output) | both (131 / 131) |
 | 01 | `01_ferron_prelim/` | Fig. 6 point (4000 rpm / 6 kN), isothermal, two bracketing viscosities | done (agent); superseded as a *result* by 01-THD, kept as the isothermal baseline and the sign-convention derivation | `ferron_midplane_pressure.png` | both (117 / 117) |
 | 01 | `01_ferron_thd/` | Fig. 4 point (2000 rpm / 4 kN) + Fig. 5 load line, energy equation + Ferron polynomial viscosity, `cross_film = NONE` | done (agent); under-predicts T by 5-7 K, which motivated the cross-film case | `ferron_thd_pressure.png`, `ferron_thd_temperature.png`, `ferron_thd_eccentricity.png` | both (872 / 872) |
@@ -51,8 +52,8 @@ Windows worktree, r6 means `afml-r6:~/pancake/cases/`.
 | 01 | `01_ferron_conjugate/` | same point with `bush_thermal_model = CONDUCTION_2D` (2-D bush conduction), two outer BCs | **verdict pending** (user); this is the CHT verdict campaign; `outer_robin80` limit-cycled the Picard loop, see `../01_ferron_wallbc_fields/PICARD_FIX_REPORT.md` | `ferron_conjugate_temperature.png`, `ferron_conjugate_pressure.png` | both (173 local / 656 r6 - r6 also holds the 24-rank rerun and two probes, see below) |
 | 01 | `01_ferron_wallbc_fields/` | final four-way wall-BC comparison with the film-surface T and wall-flux fields exposed; first production use of the KSP fix; also carries the Picard-cap investigation (`PICARD_FIX_REPORT.md`) | **verdict pending** (user); Picard cap closed, numbers unmoved | `ferron_wallbc_temperature.png`, `ferron_wallbc_heatflux.png` | r6 (95 local / 1170 r6 - 983 MB of VTK stays remote by decision) |
 | 01 | `01_ferron_vs_reynsim/` | three-way overlay: experiment vs the previous-generation MATLAB/ReynSim solver vs pancake | done (agent); "This year" inside the band, "Last year" -17.6 % on the peak | `reynsim_midplane_pressure.png`, `reynsim_eccentricity.png`, `fig4_three_way.png` | both (98 / 98) |
-| 02 | `02_static_locus/` | eps vs Sommerfeld and attitude locus at L/D = 1 and 0.5 | **POSTPONED** (user, 08-05) - no reference table in the library; solver side complete and kept as supporting material | `static_locus.png` | both (268 / 268) |
-| 05 | `05_etsion_extent/` | gaseous cavitation, **EXTENT scope only**: cavity theta_st / theta_end vs Etsion & Ludwig (1982) Table 2, 8 conditions x 2 cavitation models. Submerged L/D = 0.75 bearing, eps = 0.4 static, four ambient levels | **verdict pending** (user). Agent state: FBNS mean \|err\| 5.9 deg on theta_st (4/8 inside the paper's own +/-5 deg), ambient-pressure trend to 2.5% at 1840 rpm; JFO fails (18-36 deg early rupture, load 1/10 of FBNS). Report in `ETSION_REPORT.md` (harness refuses `SUMMARY.md`) | `etsion_extent_scatter.png`, `etsion_extent_vs_ps.png`, `etsion_cavity_map.png` | both (fbns + jfo pulled to `results_remote/` sha256-verified; sens/vapour legs r6-only) |
+| 02 | `02_static_locus/` | eps vs Sommerfeld and attitude locus at L/D = 1 and 0.5, plus Ferron/Brito collapse analysis | R&B numerical benchmark agrees; experimental absolute load level remains unresolved because uniform clearance and load biases are degenerate | `static_locus.png`, `s_eps_collapse.png` | both |
+| 05 | `05_etsion_extent/` | Etsion & Ludwig experimental **extent** comparison, 8 conditions x FBNS/JFO | **verdict pending** (user). FBNS partly captures extent trends, but `alpha_gas = 0` in every scored run; this is not validation of gas release or cavity pressure | `etsion_extent_scatter.png`, `etsion_extent_vs_ps.png`, `etsion_cavity_map.png` | both (production results pulled and checksum-verified; sensitivity legs r6-only) |
 | 90 | `90_diagnostics/ksp_rank_robustness/` | minimal reproducer for the rank-dependent `DIVERGED_DTOL`; evidence behind `f0e772d` | closed by `f0e772d` | none | r6 (configs + logs local, 137 MB of results r6) |
 | 90 | `90_diagnostics/remote_harness/` | reference copies of the loose `afml-r6:~/` driver and analysis scripts | reference only | none | both (text only) |
 
