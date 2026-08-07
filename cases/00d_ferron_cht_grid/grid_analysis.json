@@ -1,0 +1,126 @@
+{
+  "grids": {
+    "G5": {
+      "eps": 0.6383375784445077,
+      "psi_deg": -40.18898888759036,
+      "run_dir": "G5/fb_iter_10",
+      "W_N": 4001.730036475141,
+      "force_angle_deg": -89.99226407544484,
+      "p_max_Pa": 1455080.0,
+      "q_supply_m3s": 8.227815978671801e-05,
+      "q_supply_Lmin": 4.93668958720308,
+      "coupling": {
+        "iters": 85,
+        "R_p": 0.0,
+        "R_T": 2.69079e-07
+      },
+      "mean_error_K": 3.944330436769171,
+      "rms_error_K": 4.1346989940736165,
+      "max_abs_error_K": 5.509211016790857,
+      "peak_temperature_K": 323.645,
+      "peak_location_deg": 261.3749622309043,
+      "n_reference": 16,
+      "p_peak_gauge_MPa": 1.353755,
+      "p_peak_location_deg": 199.87481841715197,
+      "p_peak_error_pct": 7.397142280862514,
+      "p_peak_location_error_deg": 1.1203315738665367
+    },
+    "G6": {
+      "eps": 0.6373304198054965,
+      "psi_deg": -40.11319480784186,
+      "run_dir": "G6/fb_iter_13",
+      "W_N": 4001.540029016075,
+      "force_angle_deg": -89.99310009070106,
+      "p_max_Pa": 1453950.0,
+      "q_supply_m3s": 8.430258533953232e-05,
+      "q_supply_Lmin": 5.058155120371939,
+      "coupling": {
+        "iters": 111,
+        "R_p": 0.0,
+        "R_T": 4.42754e-08
+      },
+      "mean_error_K": 3.8211813819381675,
+      "rms_error_K": 4.015965901301448,
+      "max_abs_error_K": 5.372373447208361,
+      "peak_temperature_K": 323.529,
+      "peak_location_deg": 261.2500574315658,
+      "n_reference": 16,
+      "p_peak_gauge_MPa": 1.352625,
+      "p_peak_location_deg": 199.7499136178135,
+      "p_peak_error_pct": 7.3074962438932145,
+      "p_peak_location_error_deg": 1.2452363732050173
+    },
+    "G7": {
+      "eps": 0.636401237041122,
+      "psi_deg": -40.044236473548835,
+      "run_dir": "G7/fb_iter_13",
+      "W_N": 4001.4300249511152,
+      "force_angle_deg": -89.99360154676111,
+      "p_max_Pa": 1452820.0,
+      "q_supply_m3s": 8.627376039247128e-05,
+      "q_supply_Lmin": 5.176425623548277,
+      "coupling": {
+        "iters": 108,
+        "R_p": 0.0,
+        "R_T": 2.38349e-07
+      },
+      "mean_error_K": 3.7102276524281166,
+      "rms_error_K": 3.909452950491891,
+      "max_abs_error_K": 5.250385851650151,
+      "peak_temperature_K": 323.424,
+      "peak_location_deg": 261.16640559347667,
+      "n_reference": 16,
+      "p_peak_gauge_MPa": 1.351495,
+      "p_peak_location_deg": 199.8335654559026,
+      "p_peak_error_pct": 7.217850206923915,
+      "p_peak_location_error_deg": 1.1615845351159066
+    }
+  },
+  "g6_to_g7": {
+    "eps_rel_pct": {
+      "value": 0.14600580738886143,
+      "limit": 0.5,
+      "pass": true
+    },
+    "psi_deg": {
+      "value": 0.06895833429302911,
+      "limit": 0.25,
+      "pass": true
+    },
+    "p_max_rel_pct": {
+      "value": 0.07777976624771135,
+      "limit": 1.0,
+      "pass": true
+    },
+    "mean_error_K": {
+      "value": 0.11095372951005089,
+      "limit": 0.1,
+      "pass": false
+    },
+    "rms_error_K": {
+      "value": 0.10651295080955725,
+      "limit": 0.1,
+      "pass": false
+    },
+    "peak_temperature_K": {
+      "value": 0.10500000000001819,
+      "limit": 0.25,
+      "pass": true
+    },
+    "peak_location_deg": {
+      "value": 0.0836518380891107,
+      "limit": 2.0,
+      "pass": true
+    }
+  },
+  "limits": {
+    "eps_rel_pct": 0.5,
+    "psi_deg": 0.25,
+    "p_max_rel_pct": 1.0,
+    "mean_error_K": 0.1,
+    "rms_error_K": 0.1,
+    "peak_temperature_K": 0.25,
+    "peak_location_deg": 2.0
+  },
+  "pass": false
+}

@@ -9,6 +9,8 @@ from pathlib import Path
 CASE_DIR = Path(__file__).resolve().parent
 SOURCE_CASE = CASE_DIR.parent / "01_ferron_wallbc_fields"
 REF_PATH = CASE_DIR.parent / "ref_data" / "ferron1983_fig4_2000rpm_4kN_temperature.csv"
+PRESSURE_REF_PATH = CASE_DIR.parent / "ref_data" / "ferron1983_fig4_2000rpm_4kN_pressure.csv"
+P_AMBIENT = 101325.0
 sys.path.insert(0, str(SOURCE_CASE))
 
 import solver_io as S
@@ -25,9 +27,9 @@ LIMITS = {
 }
 
 
-def read_reference():
+def read_reference(path=REF_PATH):
     points = []
-    with REF_PATH.open(encoding="utf-8") as handle:
+    with path.open(encoding="utf-8") as handle:
         for row in csv.reader(handle):
             if not row or row[0].lstrip().startswith("#"):
                 continue
@@ -73,6 +75,21 @@ def score_profile(run_dir, reference):
     }
 
 
+def score_pressure(run_dir, reference):
+    """Peak midplane gauge pressure and errors against the digitised peak."""
+    theta, pressure = S.midplane_profile(CASE_DIR / run_dir, "p")
+    peak_index = max(range(len(pressure)), key=pressure.__getitem__)
+    model_gauge = pressure[peak_index] - P_AMBIENT
+    model_location = (theta[peak_index] - 90.0) % 360.0
+    exp_location, exp_gauge = max(reference, key=lambda item: item[1])
+    return {
+        "p_peak_gauge_MPa": model_gauge / 1.0e6,
+        "p_peak_location_deg": model_location,
+        "p_peak_error_pct": 100.0 * (model_gauge - exp_gauge) / exp_gauge,
+        "p_peak_location_error_deg": circular_difference(model_location, exp_location),
+    }
+
+
 def relative_change_percent(coarse, fine):
     return abs(fine - coarse) / max(abs(fine), 1.0e-300) * 100.0
 
@@ -80,6 +97,7 @@ def relative_change_percent(coarse, fine):
 def analyse():
     equilibria = json.loads((CASE_DIR / "grid_equilibrium.json").read_text(encoding="utf-8"))
     reference = read_reference()
+    pressure_reference = read_reference(PRESSURE_REF_PATH)
     out = {"grids": {}, "g6_to_g7": {}, "limits": LIMITS, "pass": False}
 
     for tag in ("G5", "G6", "G7"):
@@ -92,9 +110,12 @@ def analyse():
             "W_N": metrics["W"],
             "force_angle_deg": metrics["force_angle_deg"],
             "p_max_Pa": metrics["p_max"],
+            "q_supply_m3s": equilibria[tag]["q_supply"],
+            "q_supply_Lmin": equilibria[tag]["q_supply"] * 6.0e4,
             "coupling": metrics["coupling"],
         }
         row.update(score_profile(result["dir"], reference))
+        row.update(score_pressure(result["dir"], pressure_reference))
         out["grids"][tag] = row
 
     g6, g7 = out["grids"]["G6"], out["grids"]["G7"]

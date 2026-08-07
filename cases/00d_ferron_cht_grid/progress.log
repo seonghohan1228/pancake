@@ -18,3 +18,71 @@
 2026-08-07 09:15:25  smoke/fb_iter_10 [flow/x2] eps=0.616222 psi=-38.6178 -> W=4000.27 N angle=-89.9987 deg Tmax=48.36 C picard=67 (5 s)
 2026-08-07 09:15:25  smoke/flow iter 2: eps=0.616222 psi=-38.6178 W=4000.27 (dW=+0.27 N) dAngle=+0.0013 deg
 2026-08-07 09:15:25  smoke/flow CONVERGED eps=0.616222 psi=-38.6178
+2026-08-07 09:41:44  G5: start 480x128, warm eps=0.593400 psi=-37.5036
+2026-08-07 09:41:51  G5/fb_iter_00 [pinned/x0] eps=0.593400 psi=-37.5036 -> W=4017.64 N angle=-90.5166 deg Tmax=45.89 C picard=36 (6 s)
+2026-08-07 09:41:51  G5/pinned iter 0: eps=0.593400 psi=-37.5036 W=4017.64 (dW=+17.64 N) dAngle=-0.5166 deg
+2026-08-07 09:41:57  G5/fb_iter_01 [pinned/J_eps] eps=0.598400 psi=-37.5036 -> W=4102.47 N angle=-90.1439 deg Tmax=45.95 C picard=37 (6 s)
+2026-08-07 09:42:03  G5/fb_iter_02 [pinned/J_psi] eps=0.593400 psi=-37.0036 -> W=4018.50 N angle=-89.9782 deg Tmax=45.88 C picard=37 (6 s)
+2026-08-07 09:42:09  G5/fb_iter_03 [pinned/x1] eps=0.592305 psi=-36.9486 -> W=4000.28 N angle=-90.0006 deg Tmax=45.87 C picard=37 (6 s)
+2026-08-07 09:42:09  G5/pinned iter 1: eps=0.592305 psi=-36.9486 W=4000.28 (dW=+0.28 N) dAngle=-0.0006 deg
+2026-08-07 09:42:09  G5/pinned CONVERGED eps=0.592305 psi=-36.9486
+2026-08-07 09:42:09  G5: derived Q_supply = 8.227816e-05 m^3/s (4.94 L/min) from the PINNED steady mass balance
+2026-08-07 09:42:20  G5/fb_iter_04 [flow/x0] eps=0.592305 psi=-36.9486 -> W=3355.00 N angle=-90.0184 deg Tmax=49.73 C picard=79 (11 s)
+2026-08-07 09:42:20  G5/flow iter 0: eps=0.592305 psi=-36.9486 W=3355.00 (dW=-645.00 N) dAngle=-0.0184 deg
+2026-08-07 09:42:33  G5/fb_iter_05 [flow/J_eps] eps=0.597305 psi=-36.9486 -> W=3421.17 N angle=-89.6392 deg Tmax=49.81 C picard=86 (13 s)
+2026-08-07 09:42:45  G5/fb_iter_06 [flow/J_psi] eps=0.592305 psi=-36.4486 -> W=3358.31 N angle=-89.4749 deg Tmax=49.70 C picard=81 (12 s)
+2026-08-07 09:42:58  G5/fb_iter_07 [flow/x1] eps=0.642806 psi=-40.5173 -> W=4072.13 N angle=-89.9984 deg Tmax=50.82 C picard=86 (12 s)
+2026-08-07 09:42:58  G5/flow iter 1: eps=0.642806 psi=-40.5173 W=4072.13 (dW=+72.13 N) dAngle=+0.0016 deg
+2026-08-07 09:43:10  G5/fb_iter_08 [flow/J_eps] eps=0.647806 psi=-40.5173 -> W=4155.68 N angle=-89.6117 deg Tmax=50.93 C picard=89 (12 s)
+2026-08-07 09:43:22  G5/fb_iter_09 [flow/J_psi] eps=0.642806 psi=-40.0173 -> W=4076.04 N angle=-89.4641 deg Tmax=50.80 C picard=86 (12 s)
+2026-08-07 09:43:35  G5/fb_iter_10 [flow/x2] eps=0.638338 psi=-40.1890 -> W=4001.73 N angle=-89.9923 deg Tmax=50.72 C picard=85 (12 s)
+2026-08-07 09:43:35  G5/flow iter 2: eps=0.638338 psi=-40.1890 W=4001.73 (dW=+1.73 N) dAngle=+0.0077 deg
+2026-08-07 09:43:35  G5/flow CONVERGED eps=0.638338 psi=-40.1890
+2026-08-07 09:43:35  G6: start 720x192, warm eps=0.638338 psi=-40.1890
+2026-08-07 09:43:51  G6/fb_iter_00 [pinned/x0] eps=0.638338 psi=-40.1890 -> W=4857.29 N angle=-90.0195 deg Tmax=46.48 C picard=47 (16 s)
+2026-08-07 09:43:51  G6/pinned iter 0: eps=0.638338 psi=-40.1890 W=4857.29 (dW=+857.29 N) dAngle=-0.0195 deg
+2026-08-07 09:44:09  G6/fb_iter_01 [pinned/J_eps] eps=0.643338 psi=-40.1890 -> W=4964.52 N angle=-89.6411 deg Tmax=46.55 C picard=48 (16 s)
+2026-08-07 09:44:25  G6/fb_iter_02 [pinned/J_psi] eps=0.638338 psi=-39.6890 -> W=4858.21 N angle=-89.4887 deg Tmax=46.48 C picard=47 (16 s)
+2026-08-07 09:44:42  G6/fb_iter_03 [pinned/x1] eps=0.598125 psi=-37.2442 -> W=4096.30 N angle=-89.8921 deg Tmax=45.94 C picard=44 (16 s)
+2026-08-07 09:44:42  G6/pinned iter 1: eps=0.598125 psi=-37.2442 W=4096.30 (dW=+96.30 N) dAngle=+0.1079 deg
+2026-08-07 09:44:57  G6/fb_iter_04 [pinned/J_eps] eps=0.603125 psi=-37.2442 -> W=4183.19 N angle=-89.5195 deg Tmax=46.00 C picard=43 (15 s)
+2026-08-07 09:45:14  G6/fb_iter_05 [pinned/J_psi] eps=0.598125 psi=-36.7442 -> W=4097.20 N angle=-89.3544 deg Tmax=45.94 C picard=44 (16 s)
+2026-08-07 09:45:30  G6/fb_iter_06 [pinned/x2] eps=0.592553 psi=-36.9479 -> W=4002.52 N angle=-89.9882 deg Tmax=45.88 C picard=44 (16 s)
+2026-08-07 09:45:30  G6/pinned iter 2: eps=0.592553 psi=-36.9479 W=4002.52 (dW=+2.52 N) dAngle=+0.0118 deg
+2026-08-07 09:45:30  G6/pinned CONVERGED eps=0.592553 psi=-36.9479
+2026-08-07 09:45:30  G6: derived Q_supply = 8.430259e-05 m^3/s (5.06 L/min) from the PINNED steady mass balance
+2026-08-07 09:45:56  G6/fb_iter_07 [flow/x0] eps=0.592553 psi=-36.9479 -> W=3369.54 N angle=-90.0032 deg Tmax=49.65 C picard=75 (25 s)
+2026-08-07 09:45:56  G6/flow iter 0: eps=0.592553 psi=-36.9479 W=3369.54 (dW=-630.46 N) dAngle=-0.0032 deg
+2026-08-07 09:46:27  G6/fb_iter_08 [flow/J_eps] eps=0.597553 psi=-36.9479 -> W=3435.98 N angle=-89.6243 deg Tmax=49.73 C picard=95 (30 s)
+2026-08-07 09:46:52  G6/fb_iter_09 [flow/J_psi] eps=0.592553 psi=-36.4479 -> W=3372.53 N angle=-89.4601 deg Tmax=49.63 C picard=76 (25 s)
+2026-08-07 09:47:24  G6/fb_iter_10 [flow/x1] eps=0.641537 psi=-40.4260 -> W=4067.98 N angle=-90.0028 deg Tmax=50.70 C picard=96 (31 s)
+2026-08-07 09:47:24  G6/flow iter 1: eps=0.641537 psi=-40.4260 W=4067.98 (dW=+67.98 N) dAngle=-0.0028 deg
+2026-08-07 09:47:59  G6/fb_iter_11 [flow/J_eps] eps=0.646537 psi=-40.4260 -> W=4151.49 N angle=-89.6165 deg Tmax=50.80 C picard=112 (35 s)
+2026-08-07 09:48:33  G6/fb_iter_12 [flow/J_psi] eps=0.641537 psi=-39.9260 -> W=4071.69 N angle=-89.4686 deg Tmax=50.68 C picard=107 (33 s)
+2026-08-07 09:49:07  G6/fb_iter_13 [flow/x2] eps=0.637330 psi=-40.1132 -> W=4001.54 N angle=-89.9931 deg Tmax=50.60 C picard=111 (34 s)
+2026-08-07 09:49:07  G6/flow iter 2: eps=0.637330 psi=-40.1132 W=4001.54 (dW=+1.54 N) dAngle=+0.0069 deg
+2026-08-07 09:49:07  G6/flow CONVERGED eps=0.637330 psi=-40.1132
+2026-08-07 09:49:07  G7: start 1080x288, warm eps=0.637330 psi=-40.1132
+2026-08-07 09:50:05  G7/fb_iter_00 [pinned/x0] eps=0.637330 psi=-40.1132 -> W=4834.84 N angle=-90.0191 deg Tmax=46.47 C picard=64 (56 s)
+2026-08-07 09:50:05  G7/pinned iter 0: eps=0.637330 psi=-40.1132 W=4834.84 (dW=+834.84 N) dAngle=-0.0191 deg
+2026-08-07 09:51:06  G7/fb_iter_01 [pinned/J_eps] eps=0.642330 psi=-40.1132 -> W=4941.47 N angle=-89.6407 deg Tmax=46.54 C picard=65 (60 s)
+2026-08-07 09:51:54  G7/fb_iter_02 [pinned/J_psi] eps=0.637330 psi=-39.6132 -> W=4835.80 N angle=-89.4880 deg Tmax=46.46 C picard=53 (46 s)
+2026-08-07 09:52:33  G7/fb_iter_03 [pinned/x1] eps=0.597939 psi=-37.2303 -> W=4091.94 N angle=-89.8956 deg Tmax=45.94 C picard=41 (38 s)
+2026-08-07 09:52:33  G7/pinned iter 1: eps=0.597939 psi=-37.2303 W=4091.94 (dW=+91.94 N) dAngle=+0.1044 deg
+2026-08-07 09:53:19  G7/fb_iter_04 [pinned/J_eps] eps=0.602939 psi=-37.2303 -> W=4178.67 N angle=-89.5230 deg Tmax=46.00 C picard=51 (45 s)
+2026-08-07 09:54:06  G7/fb_iter_05 [pinned/J_psi] eps=0.597939 psi=-36.7303 -> W=4092.79 N angle=-89.3579 deg Tmax=45.94 C picard=51 (45 s)
+2026-08-07 09:54:44  G7/fb_iter_06 [pinned/x2] eps=0.592611 psi=-36.9483 -> W=4002.33 N angle=-89.9889 deg Tmax=45.88 C picard=40 (37 s)
+2026-08-07 09:54:44  G7/pinned iter 2: eps=0.592611 psi=-36.9483 W=4002.33 (dW=+2.33 N) dAngle=+0.0111 deg
+2026-08-07 09:54:44  G7/pinned CONVERGED eps=0.592611 psi=-36.9483
+2026-08-07 09:54:44  G7: derived Q_supply = 8.627376e-05 m^3/s (5.18 L/min) from the PINNED steady mass balance
+2026-08-07 09:56:08  G7/fb_iter_07 [flow/x0] eps=0.592611 psi=-36.9483 -> W=3381.03 N angle=-90.0025 deg Tmax=49.58 C picard=97 (83 s)
+2026-08-07 09:56:08  G7/flow iter 0: eps=0.592611 psi=-36.9483 W=3381.03 (dW=-618.97 N) dAngle=-0.0025 deg
+2026-08-07 09:57:32  G7/fb_iter_08 [flow/J_eps] eps=0.597611 psi=-36.9483 -> W=3447.98 N angle=-89.6234 deg Tmax=49.66 C picard=94 (82 s)
+2026-08-07 09:58:56  G7/fb_iter_09 [flow/J_psi] eps=0.592611 psi=-36.4483 -> W=3384.03 N angle=-89.4594 deg Tmax=49.56 C picard=95 (82 s)
+2026-08-07 10:00:35  G7/fb_iter_10 [flow/x1] eps=0.640332 psi=-40.3402 -> W=4063.44 N angle=-90.0070 deg Tmax=50.59 C picard=119 (97 s)
+2026-08-07 10:00:35  G7/flow iter 1: eps=0.640332 psi=-40.3402 W=4063.44 (dW=+63.44 N) dAngle=-0.0070 deg
+2026-08-07 10:02:23  G7/fb_iter_11 [flow/J_eps] eps=0.645332 psi=-40.3402 -> W=4146.91 N angle=-89.6209 deg Tmax=50.69 C picard=132 (107 s)
+2026-08-07 10:03:51  G7/fb_iter_12 [flow/J_psi] eps=0.640332 psi=-39.8402 -> W=4067.16 N angle=-89.4726 deg Tmax=50.57 C picard=108 (87 s)
+2026-08-07 10:05:21  G7/fb_iter_13 [flow/x2] eps=0.636401 psi=-40.0442 -> W=4001.43 N angle=-89.9936 deg Tmax=50.50 C picard=108 (88 s)
+2026-08-07 10:05:21  G7/flow iter 2: eps=0.636401 psi=-40.0442 W=4001.43 (dW=+1.43 N) dAngle=+0.0064 deg
+2026-08-07 10:05:21  G7/flow CONVERGED eps=0.636401 psi=-40.0442

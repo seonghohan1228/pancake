@@ -2,6 +2,9 @@
 
 > Stage 01 (Ferron validation family). Campaign index: `../INDEX.md`.
 
+> Current physical verdict: `../00d_ferron_cht_grid/README.md`. The archived
+> FLOW_WEIGHTED results here predate the full-length-groove source correction.
+
 Ferron et al. (1983) Fig. 4 point (2000 rpm, 4 kN), the **final four-way wall
 treatment comparison**, run with the film-surface temperatures and the wall heat
 fluxes written out as fields so the mechanism can be shown and not just inferred.

@@ -1,5 +1,12 @@
 # Case 01 wall-BC field batch - final four-case comparison (Ferron Fig. 4)
 
+> **Historical thermal comparison, superseded by case 00d (`df0802b`).** The
+> FLOW_WEIGHTED pass below used 22.04 L/min from an inlet diagnostic that
+> restored overwritten axial boundary faces and grew as `1/dz`. The corrected
+> G6 result is 5.06 L/min, +3.82 K mean, 4.02 K RMS and 50.38 C peak. Preserve
+> this file only as evidence for the wall-BC and Picard comparisons at the old
+> closure.
+
 2000 rpm / 4 kN, FBNS, G6, frozen protocol. Binary: codex/thermal-ksp-robustness
 @ f0e772d (KSP rank-robustness fix - first production use; rerun_cht_robin10
 closed its force balance where it previously diverged on both hosts). Run on

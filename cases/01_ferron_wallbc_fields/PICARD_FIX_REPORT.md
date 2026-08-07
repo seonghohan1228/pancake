@@ -1,5 +1,10 @@
 # The Picard cap defect: fix, measurement, and what it did (and did not) change
 
+> **Scope correction (2026-08-07):** the Picard conclusions remain valid for the
+> runs tested, but their favorable Ferron temperature score is superseded. The
+> FLOW_WEIGHTED closure used a grid-divergent inlet diagnostic; corrected case
+> 00d gives 5.06 L/min and +3.82 K mean / 4.02 K RMS on G6.
+
 Branch `codex/picard-best-iterate`, from `main` @ `79ddbee`.
 Solver commit shipped to afml-r6 and hash-verified: see §6.
 Date: 2026-08-05.

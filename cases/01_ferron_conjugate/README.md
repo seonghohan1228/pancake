@@ -2,6 +2,9 @@
 
 > Stage 01 (Ferron validation family). Campaign index: `../INDEX.md`.
 
+> Current physical verdict: `../00d_ferron_cht_grid/README.md`. The archived
+> FLOW_WEIGHTED results here predate the full-length-groove source correction.
+
 Ferron, Frene & Boncompain (1983) Fig. 4 point (2000 rpm, 4 kN) re-run with
 `bush_thermal_model = CONDUCTION_2D`: steady 2-D `(r, theta)` heat conduction in
 the bush annulus, Ferron's own bush model, in place of the per-cell 1-D radial

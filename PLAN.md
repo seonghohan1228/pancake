@@ -10,29 +10,27 @@ Old-plan reconciliation: the 2026-08-02 campaign's Phase 1 (reference-data
 verification) closed via user-verified parameters (c_hot = 152 um et al.);
 Phase 3 (grid/dt independence) PASSED but on FBNS, which made its beta-scaling
 caveat obsolete (Elrod's beta-entangled front was root-caused and replaced,
-00c); Phase 4 (validation matrix) is partially hit: Ferron pressure (+0.8%),
+00c); Phase 4 (validation matrix) is partially hit: Ferron pressure,
 eccentricity (parallel within clearance ambiguity), THD temperature
-(CHT shape reproduced, -2.3 K peak residual, verdict pending). The WP-1b
+(the formerly favorable CHT score was invalidated by inlet-source accounting;
+corrected G6 is +3.82 K mean / 4.02 K RMS). The WP-1b
 VOID_COUPLED convergence items and the five deferred modelling gaps
 (2026-07-31) remain open and are now tracked in UNFINISHED_BUSINESS.
 
 Priority queue (user gates in brackets):
 
-0. **Ferron CHT grid sensitivity** - IN PROGRESS 2026-08-07 on
-   `codex/ferron-cht-grid-check`. Re-close the final h=10 conjugate equilibrium
-   on 480x128, 720x192 and 1080x288 grids with converged adaptive coupling; score
-   the exact bush-temperature and pressure quantities currently quoted. The
-   first pass exposed a diagnostic defect: the reported groove source restored
-   axial boundary faces already overwritten by the inlet row and therefore grew
-   as `1/dz`. The operator-aligned fix is under cross-platform verification and
-   the matrix must be rerun before a grid verdict is recorded.
+0. **Ferron CHT grid sensitivity** - **DONE, FAIL 2026-08-07**. The first pass
+   exposed and fixed a groove-source diagnostic that grew as `1/dz`. The clean
+   hash-verified rerun passes five of seven G6-to-G7 checks but misses the 0.10 K
+   mean/RMS limits at 0.111/0.107 K. Corrected G6 is +3.82 K mean / 4.02 K RMS;
+   the previous +0.02/1.17 K validation score is superseded. Evidence: case 00d.
 
 1. ~~**Picard cap correctness**~~ - **DONE 2026-08-05**, see "In Progress" below.
    Return-best + non-convergence flag landed; under-relaxation measured
    (omega = 1 never converges, 0.95 converges in 48 sweeps, ADAPTIVE in 52);
-   the CHT reruns move no reported number beyond printed digits, so the -2.3 K
-   residual stands and the Fig. 4 temperature plot did not need re-issuing.
-   [user re-verdicts temperature on the unchanged numbers]
+   within that historical closure, the CHT reruns move no reported number beyond
+   printed digits. Case 00d later superseded its physical validation score after
+   correcting the inferred supply flow.
 2. **Audit quick wins** - unknown-config-key hard error (the campaign shipped
    a live example of the silent-drop failure); VANLEER reclassified live and
    fixed/fenced; GUI anisotropic-stiffness load bug; config.txt default ->
@@ -49,8 +47,9 @@ Priority queue (user gates in brackets):
    Engels 2024 (void fraction). [user picks scope]
 5. **Case 03 transient-to-equilibrium** - nearly free (retarget dt_T3 config,
    2/4/6 kN), cross-checks moving-bearing vs static force balance.
-6. **Ferron temperature residual** - after (1): STRIATED cavitated-thermal A/B
-   (never run on Ferron), shaft-Robin variant, groove-mixing sensitivity.
+6. **Ferron temperature residual** - resolve the fresh-oil groove-mixing flow
+   against Ferron's measured inlet-flow evidence before STRIATED, shaft-Robin,
+   or other thermal-model sensitivity work.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.
@@ -95,9 +94,10 @@ ADAPTIVE gets there in 52 with no tuned value. The archived answers survive: the
 bush-side wall temperature profile moves <= 1e-3 K, W by 0.11 N in 4002 N,
 p_max by 40 Pa in 1.405 MPa, T_max by 1 mK across the iterate-200 state, the
 rolled-back best iterate and every converged relaxation setting. **The -2.3 K CHT
-peak residual, mean +0.02 K and rms 1.17 K are unchanged**, so item 6 of the
-priority queue (the four temperature suspects) is unblocked rather than
-redirected. Report: `cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
+peak residual, mean +0.02 K and rms 1.17 K are unchanged within that closure**.
+Case 00d later invalidated the inferred supply flow and therefore supersedes the
+physical score, not the Picard comparison. Report:
+`cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
 
 Free by-product: `01_ferron_conjugate/outer_robin80` (h = 80), abandoned since
 its `fb_iter_06` aborted on the KSP divergence, was re-run and **closes** -

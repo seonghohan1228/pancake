@@ -80,3 +80,39 @@ python3 cases/00d_ferron_cht_grid/analyse_grid.py
 `python run_grid.py --smoke` uses 180 x 48 and is not scored. Solver output stays
 ignored inside each run directory; configs, logs, equilibrium JSON, and the
 analysis are the provenance record.
+
+## Result
+
+Run on `afml-r6` from hash-verified solver commit `df0802b`, 24 MPI ranks. Both
+the PINNED and FLOW_WEIGHTED passes re-closed force balance independently and
+met the adaptive coupling tolerance on every grid.
+
+| grid | Q_supply [L/min] | eps | psi [deg] | p_max [MPa abs.] | mean [K] | RMS [K] | peak [C] | peak x [deg] |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| G5 | 4.937 | 0.638338 | -40.1890 | 1.45508 | +3.944 | 4.135 | 50.495 | 261.375 |
+| G6 | 5.058 | 0.637330 | -40.1132 | 1.45395 | +3.821 | 4.016 | 50.379 | 261.250 |
+| G7 | 5.176 | 0.636401 | -40.0442 | 1.45282 | +3.710 | 3.909 | 50.274 | 261.166 |
+
+G6 to G7 passes eccentricity (0.146%), attitude (0.069 deg), peak pressure
+(0.078%), peak temperature (0.105 K), and peak location (0.084 deg). It fails
+the pre-registered mean-error and RMS-error changes: 0.111 K and 0.107 K against
+0.100 K limits. **Overall verdict: FAIL.** G6 is not certified for the quoted
+conjugate temperature metrics; G7 is the best available result, not a certified
+grid-independent replacement.
+
+### Defect exposed and corrected
+
+The first matrix reported Q_supply = 16.26, 22.04, and 30.65 L/min. That nearly
+linear `n_z` growth was not physical grid sensitivity. The inlet row overwrites
+the axial boundary link where the full-length groove reaches each bearing end,
+but `mass_balance()` restored those discarded faces. Their fixed pressure jump
+over `dz/2` generated a false source proportional to `1/dz`.
+
+Commit `df0802b` makes inlet-source and boundary accounting follow the assembled
+row precedence for both FBNS and Elrod. A manufactured two-grid regression is
+independent of `n_z` to 3.5e-16 relative. The corrected supply flow has a much
+smaller 4.94 to 5.18 L/min trend. Because the old FLOW_WEIGHTED pass used the
+contaminated flow, its favorable +0.02 K mean / 1.17 K RMS / 46.71 C peak is
+superseded. The corrected G6 comparison is +3.82 K mean / 4.02 K RMS / 50.38 C
+peak. Its midplane pressure peak is 1.353 MPa gauge at 199.75 deg, +7.31% and
+1.25 deg from the digitised experimental peak.

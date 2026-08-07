@@ -1,5 +1,9 @@
 # Case 01-CONJUGATE - results
 
+> **Historical thermal comparison, superseded by case 00d (`df0802b`).** Its
+> FLOW_WEIGHTED supply rate came from the same grid-divergent inlet diagnostic.
+> Use case 00d for current pressure, temperature, equilibrium, and grid evidence.
+
 Ferron et al. (1983) Fig. 4 point (2000 rpm, 4 kN), `bush_thermal_model =
 CONDUCTION_2D`, G6 720 x 192, FBNS + `ENERGY_EQUATION` + cross-film polynomial,
 globally adiabatic shaft. Protocol and every stated approximation are in
