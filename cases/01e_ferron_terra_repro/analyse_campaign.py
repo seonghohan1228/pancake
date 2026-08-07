@@ -74,7 +74,7 @@ def main():
             row["pressure_peak_error_pct"]=100.0*(row["pressure_peak_gauge_MPa"]*1e6-exp_p)/exp_p
             row["pressure_peak_location_error_deg"]=circular(row["pressure_peak_location_deg"],exp_p_x)
     grids={}
-    for label in ("r0","r1","r2"):
+    for label in ("r0","r1","r2","d_grid"):
         a,b=runs.get(label+"_g6"),runs.get(label+"_g7")
         if a and b and a["status"]==b["status"]=="PASS":
             checks=grid_checks(a,b); grids[label]={"checks":checks,"pass":all(v["pass"] for v in checks.values())}

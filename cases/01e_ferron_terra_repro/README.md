@@ -29,6 +29,8 @@ validation PASS.
 | R1 | `r1_g6`, `r1_g7` | 720x192, 1080x288 | outer cylinder fixed at 40 C, shaft adiabatic | Ferron outer-cylinder condition |
 | R2 | `r2_g6`, `r2_g7` | 720x192, 1080x288 | R1 plus scalar shaft held near 43 C | explicit surrogate sensitivity |
 | C | Fig. 4 THD, Fig. 5 six-load, cross-film A/B/C, conjugate fixed/Robin80 | G6 | archived Claude matrix, corrected source | reproduction comparison |
+| D-grid | `d_grid_g5/g6/g7` | 480x128, 720x192, 1080x288 | R1 thermal closure | fresh steady CHT grid check |
+| D-dt | `d_dt_t0..t4` | G6 | R1 closure, moving-bearing 4 kN step | fresh physical-time timestep check |
 
 Every equilibrium executes two independent force-balance passes: `PINNED`, then
 `FLOW_WEIGHTED` using the first pass's corrected source.  Coupling must finish
@@ -53,6 +55,25 @@ python3 cases/01e_ferron_terra_repro/export_visual_data.py
 python3 cases/01e_ferron_terra_repro/plot_campaign.py
 ```
 
+For the fresh discretisation sequence, run the steady grid set first, then the
+physical-time ladder, still one process group at a time:
+
+```bash
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_campaign.py D_GRID
+
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_timestep.py
+
+python3 cases/01e_ferron_terra_repro/analyse_campaign.py
+python3 cases/01e_ferron_terra_repro/analyse_discretization.py
+python3 cases/01e_ferron_terra_repro/export_visual_data.py
+python3 cases/01e_ferron_terra_repro/plot_campaign.py
+python3 cases/01e_ferron_terra_repro/plot_discretization.py
+```
+
 Use `--smoke` only for a 180x48 harness check; it is never scored.  Before a
 remote batch: verify the remote commit hash, run the Windows/Linux gate, and
 checksum the returned archive. Solver calls are isolated below
@@ -67,3 +88,31 @@ Ferron residuals where an output `T_bearing` field is available.  Archive values
 are copied into `baseline.json` as labelled comparison data, not imported at run
 time.  `plot_campaign.py` writes 300 dpi, no-title PNGs; `export_visual_data.py`
 writes the compact local field archive used for profiles and contours.
+
+## D: discretisation add-on
+
+This is deliberately distinct from Claude's Case 00.
+
+- **D-grid** is steady and force-balanced.  It measures spatial discretisation
+  of the current R1 conjugate thermal model, at the Fig. 4 condition.  It is
+  not a pseudo-time test: `dt` is ignored by `STEADY_STATE`.
+- **D-dt** is an actual physical-time calculation: `TRANSIENT` plus
+  `MOVING_BEARING`, released from `eps=0.1` under a 4 kN load at 2000 rpm.  It
+  uses the corrected source inferred by D-grid G6 and thus cannot run before
+  that case has closed.  It tests the discretisation of the transient path,
+  not a replacement for the steady force-balanced solution.
+
+D-dt's registered ladder is `8e-5`, `4e-5`, `2e-5`, `1e-5`, and `5e-6` s to
+`0.06 s`, written every `5e-4 s`.  `8e-5 s` is an intentional stability probe.
+The proposed acceptance comparison is T2-to-T3: final eccentricity <=0.5%,
+final force magnitude <=1.0%, final attitude <=0.25 deg, and final maximum
+film temperature <=0.10 K; T3-to-T4 must be no worse.  A failed film guard,
+non-converged FBNS step, or missing final frame fails that ladder leg. Transient
+mode advances one segregated flow/energy sweep per physical timestep, so the
+steady Picard-coupling residual is intentionally not defined for D-dt.
+
+Claude's original Case 00 instead used: (i) fixed-eccentricity, steady,
+isothermal JFO grids 60x16 to 480x128 and a later FBNS timestep tail; and
+(ii) a **physical** 4000 rpm / 6 kN moving-bearing transient with a 10 kg
+bearing.  Its nominal THD grid pair is not reused because its committed
+configuration was invalid and its archived viscosity was thermally inert.

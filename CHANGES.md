@@ -17,6 +17,10 @@
   keeps smoke and production archives separate, distinguishes model-derived
   groove source from experimental flow, and pre-registers R0/R1/R2 plus the
   corrected reproduction of Claude's Fig. 4/Fig. 5 and wall-model matrix.
+- Added a distinct discretisation add-on to case 01e: a fresh G5/G6/G7 steady
+  force-balanced CHT grid ladder and a physical moving-bearing timestep ladder
+  from 80 to 5 microseconds. This does not reuse Claude's invalid nominal THD
+  grid pair or conflate steady grid convergence with physical-time refinement.
 
 ### 2026-08-07 - Ferron conjugate-THD grid protocol
 

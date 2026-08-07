@@ -21,7 +21,7 @@ def main():
         d=CASE_DIR/r["flow"]["dir"]; t=S.midplane_profile(d,"T_bearing"); p=S.midplane_profile(d,"p")
         if t: out[name+"_theta_T_deg"]=(np.asarray(t[0])-90)%360; out[name+"_T_bearing_C"]=np.asarray(t[1])-273.15
         if p: out[name+"_theta_p_deg"]=(np.asarray(p[0])-90)%360; out[name+"_p_gauge_MPa"]=(np.asarray(p[1])-101325)/1e6
-    for name in ("r0_g6","r1_g6","r2_g6"):
+    for name in ("r0_g6","r1_g6","r2_g6","d_grid_g6"):
         if name not in eq or "flow" not in eq[name]: continue
         d=CASE_DIR/eq[name]["flow"]["dir"]; theta,z,p=plane(d,"p"); _,_,T=plane(d,"T"); out[name+"_theta_deg"]=theta; out[name+"_z_over_L"]=z/.08-.5; out[name+"_plane_p_gauge_MPa"]=(p-101325)/1e6; out[name+"_plane_T_C"]=T-273.15
     np.savez_compressed(CASE_DIR/"visual_data.npz",**out)

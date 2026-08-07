@@ -130,11 +130,11 @@ def main():
         return
     with np.load(visual_path) as data:
         tags = [tag for tag in ("r0_g6", "r0_g7", "r1_g6", "r1_g7",
-                                "r2_g6", "r2_g7")
+                                "r2_g6", "r2_g7", "d_grid_g5", "d_grid_g6", "d_grid_g7")
                 if tag + "_T_bearing_C" in data]
         if tags:
             plot_profiles(data, tags)
-        for tag in ("r0_g6", "r1_g6", "r2_g6"):
+        for tag in ("r0_g6", "r1_g6", "r2_g6", "d_grid_g6"):
             if tag + "_plane_T_C" in data:
                 plot_contours(data, tag)
 
