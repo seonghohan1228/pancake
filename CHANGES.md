@@ -23,6 +23,8 @@
 - Added reproducible Ferron G5--G7 profile comparisons and G6 pressure and
   temperature contours. Remote Ubuntu VTK data are reduced to a portable NumPy
   archive, while the publication-style PNG figures are rendered on Windows.
+- Added a direct profile and pointwise-difference figure comparing Claude's
+  archived G6 conjugate result with the corrected G6 result.
 
 ### 2026-08-07 - Cross-platform baseline and validation-claim reconciliation
 

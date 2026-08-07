@@ -133,3 +133,14 @@ The G6 fields show the expected axial pressure maximum and the nearly
 axially-uniform central bush-temperature distribution. These plots are made
 from `visual_data.npz`; regenerate the archive from the Ubuntu VTK output with
 `export_visual_data.py`, then run `plot_visuals.py` on Windows.
+
+### Claude archive versus corrected result
+
+![Claude and corrected G6 comparison](ferron_claude_corrected_comparison.png)
+
+The corrected inlet-source accounting reduces the inferred fresh-oil flow from
+22.04 to 5.06 L/min. The resulting hot-oil carry-over raises the bush profile
+by about 3.7--3.9 K and shifts the force-balanced pressure lobe. Generate
+this figure with `plot_claude_comparison.py`; it reads Claude's archived profile
+from `../01_ferron_wallbc_fields/extract.json` and the corrected profile from
+`visual_data.npz`.
