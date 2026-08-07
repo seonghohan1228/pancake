@@ -91,11 +91,14 @@ namespace FBNS {
     /// backward-Euler storage of (rho h theta). Interior faces telescope between
     /// neighbours, so summing over the domain leaves only the axial boundary
     /// faces and the storage terms. `dt <= 0` drops the storage terms.
+    /// `include_axial_boundary_faces = false` mirrors an inlet row that has
+    /// overwritten an axial boundary link.
     ///
     /// This is the residual the Newton iteration drives to zero, and the same
     /// expression Diagnostics::mass_residual reports per cell.
     double cell_outflow(const Fields& fields, const Mesh& mesh,
-                        const SimulationConfig& cfg, double dt, int i, int j);
+                        const SimulationConfig& cfg, double dt, int i, int j,
+                        bool include_axial_boundary_faces = true);
 
     /// Solve the complementarity problem. Sets "pressure", "theta" and "rho"
     /// (= rho_liquid * theta) and leaves both unknowns with valid ghost cells.

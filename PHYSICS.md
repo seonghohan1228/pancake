@@ -1882,6 +1882,11 @@ $$\sum_P r_P \;=\; S_{storage} - \Phi_{boundary} - S_{inlet} - \frac{M_{clamp}}{
 Inlet penalty cells carry only the clamp term. Their flux imbalance *is* the
 modelled supply source, which the global balance already reports separately as
 $S_{inlet}$; leaving it in the field would double-count it in the sum above.
+The inlet row is applied after the axial boundary rows. At a full-length groove,
+it therefore overwrites the axial boundary link in the two overlapping end
+cells. Both $\Phi_{boundary}$ and $S_{inlet}$ omit those discarded faces. Adding
+them back only in diagnostics creates a contradictory pressure jump over
+$\Delta z/2$ and a false groove source proportional to $1/\Delta z$.
 
 **Under `cavitation_model = FBNS`** the field mirrors the FBNS operator instead
 (`FBNS::cell_outflow`), because that solver assembles different face fluxes: the

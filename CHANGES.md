@@ -11,6 +11,11 @@
 - Acceptance limits target the quantities actually quoted in validation:
   eccentricity, attitude, cell-centred peak pressure, and the mean, RMS, peak,
   and peak location of the bush-temperature comparison.
+- Fixed inlet-flow diagnostics at a full-length pressure groove. Inlet row
+  replacement already discarded overlapping axial boundary links, but the
+  diagnostic restored them and made the inferred supply flow grow as `1/dz`.
+  Boundary and inlet-source accounting now use the same row precedence as the
+  assembled FBNS and Elrod operators; a two-grid regression test pins it.
 
 ### 2026-08-07 - Cross-platform baseline and validation-claim reconciliation
 

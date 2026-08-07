@@ -21,7 +21,11 @@ Priority queue (user gates in brackets):
 0. **Ferron CHT grid sensitivity** - IN PROGRESS 2026-08-07 on
    `codex/ferron-cht-grid-check`. Re-close the final h=10 conjugate equilibrium
    on 480x128, 720x192 and 1080x288 grids with converged adaptive coupling; score
-   the exact bush-temperature and pressure quantities currently quoted.
+   the exact bush-temperature and pressure quantities currently quoted. The
+   first pass exposed a diagnostic defect: the reported groove source restored
+   axial boundary faces already overwritten by the inlet row and therefore grew
+   as `1/dz`. The operator-aligned fix is under cross-platform verification and
+   the matrix must be rerun before a grid verdict is recorded.
 
 1. ~~**Picard cap correctness**~~ - **DONE 2026-08-05**, see "In Progress" below.
    Return-best + non-convergence flag landed; under-relaxation measured

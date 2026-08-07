@@ -110,7 +110,8 @@ bool axial_link_active(const Fields& fields, BCType type, double bc_val, int i, 
 // storage terms. Used both for the inlet penalty cells (whose rows the penalty
 // replaced) and for the per-cell mass_residual field.
 double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
-                          const SimulationConfig& cfg, double dt, int i, int j) {
+                          const SimulationConfig& cfg, double dt, int i, int j,
+                          bool include_axial_boundary_faces = true) {
     const Field& theta = fields["theta"];
     const int n_z = mesh.n_z_local;
     const double d_theta = mesh.get_d_theta();
@@ -135,7 +136,8 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
     if (j + 1 < n_z) {
         outflow += harmonic_avg(gamma_g(i, j), gamma_g(i, j + 1)) * ns_scale *
             (theta(i, j) - theta(i, j + 1));
-    } else if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, j)) {
+    } else if (include_axial_boundary_faces &&
+               axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
                                               FullFilm::bound(fields, cfg, i, j),
                                               cfg.bc_z_north_val, R, d_theta, d_z);
@@ -143,7 +145,8 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
     if (j > 0) {
         outflow += harmonic_avg(gamma_g(i, j - 1), gamma_g(i, j)) * ns_scale *
             (theta(i, j) - theta(i, j - 1));
-    } else if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, j)) {
+    } else if (include_axial_boundary_faces &&
+               axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, j)) {
         outflow += cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, j), theta(i, j),
                                               FullFilm::bound(fields, cfg, i, j),
                                               cfg.bc_z_south_val, R, d_theta, d_z);
@@ -187,11 +190,13 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
             return ReynoldsCoeff::fbns_mobility(fields, cfg, ii, jj);
         };
         for (int i = 0; i < n_theta; ++i) {
-            if (cfg.bc_z_south_type == BCType::DIRICHLET) {
+            if (cfg.bc_z_south_type == BCType::DIRICHLET &&
+                !inlet_cell(mesh, cfg, i, 0)) {
                 const double cs = gamma_p(i, 0) * R * d_theta / (0.5 * d_z);
                 inflow += cs * (std::max(cfg.bc_z_south_val, cfg.effective_p_cav()) - pressure(i, 0));
             }
-            if (cfg.bc_z_north_type == BCType::DIRICHLET) {
+            if (cfg.bc_z_north_type == BCType::DIRICHLET &&
+                !inlet_cell(mesh, cfg, i, n_z - 1)) {
                 const double cn = gamma_p(i, n_z - 1) * R * d_theta / (0.5 * d_z);
                 inflow += cn * (std::max(cfg.bc_z_north_val, cfg.effective_p_cav()) - pressure(i, n_z - 1));
             }
@@ -201,12 +206,14 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
     for (int i = 0; i < n_theta; ++i) {
         if (cfg.cavitation_model == CavitationModel::JFO) {
             const Field& theta = fields["theta"];
-            if (axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, 0)) {
+            if (!inlet_cell(mesh, cfg, i, 0) &&
+                axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, 0)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, 0), theta(i, 0),
                                                      FullFilm::bound(fields, cfg, i, 0),
                                                      cfg.bc_z_south_val, R, d_theta, d_z);
             }
-            if (axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, n_z - 1)) {
+            if (!inlet_cell(mesh, cfg, i, n_z - 1) &&
+                axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, n_z - 1)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, n_z - 1), theta(i, n_z - 1),
                                                      FullFilm::bound(fields, cfg, i, n_z - 1),
                                                      cfg.bc_z_north_val, R, d_theta, d_z);
@@ -363,12 +370,16 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             balance.clamp_mass_gas += field_value(fields, "gas_clamp_mass", 0.0, i, j);
 
             if (inlet_cell(mesh, cfg, i, j)) {
+                // Inlet row replacement occurs after axial-BC assembly, so an
+                // overlapping groove cell no longer owns an axial boundary
+                // link. Restoring that discarded face here makes a full-length
+                // groove source grow as 1/dz.
                 if (FBNS::active(cfg)) {
                     balance.inlet_mass_source +=
-                        FBNS::cell_outflow(fields, mesh, cfg, dt, i, j);
+                        FBNS::cell_outflow(fields, mesh, cfg, dt, i, j, false);
                 } else if (cfg.cavitation_model == CavitationModel::JFO) {
                     balance.inlet_mass_source +=
-                        elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
+                        elrod_cell_outflow(fields, mesh, cfg, dt, i, j, false);
                 }
             }
         }

@@ -56,6 +56,9 @@
 //   the same temperature over the shared full-film arc; and per-cell mass
 //   conservation must hold including on the fronts, which is what pins the
 //   diagnostics operator to the assembled one under BOTH cavitation models.
+// Test 15 - Inlet/axial-boundary precedence. A full-length pressure groove
+//   overwrites the axial boundary rows at their overlap. Diagnostics must not
+//   restore those discarded faces or its inlet source grows as 1/dz.
 //
 // Run as: mpirun -n <N> ./test_fbns
 
@@ -461,6 +464,38 @@ void test_dirichlet_axial_ends() {
           "the groove must supply mass for the telescoping identity to test anything");
     check(std::abs(closure) < 1.0e-9 * std::max(std::abs(balance.liquid_boundary_flux), scale),
           "the summed per-cell residual must reproduce the boundary flux plus the groove supply");
+}
+
+double manufactured_full_length_groove_source(int n_z) {
+    SimulationConfig cfg = benchmark_config(120, n_z);
+    cfg.omega = 0.0;
+    cfg.bc_z_south_type = BCType::DIRICHLET;
+    cfg.bc_z_south_val = cfg.p_cav;
+    cfg.bc_z_north_type = BCType::DIRICHLET;
+    cfg.bc_z_north_val = cfg.p_cav;
+
+    Case c(cfg);
+    for (int i = 0; i < c.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < c.mesh.n_z_local; ++j) {
+            c.fields["pressure"](i, j) = c.inlet_mask(i, j) != 0.0
+                ? cfg.inlets.front().p_supply : cfg.p_cav;
+        }
+    }
+    c.comm.update_ghosts(c.fields);
+    return Diagnostics::mass_balance(c.fields, c.mesh, cfg, 0.0).inlet_mass_source;
+}
+
+void test_inlet_overwrites_axial_boundary() {
+    const double source_8 = manufactured_full_length_groove_source(8);
+    const double source_16 = manufactured_full_length_groove_source(16);
+    const double rel = std::abs(source_16 - source_8) /
+        std::max(std::abs(source_8), 1.0e-30);
+    log_rank0("  full-length groove: source(nz=8) = " + fmt(source_8) +
+              ", source(nz=16) = " + fmt(source_16) + ", rel = " + fmt(rel));
+    check(std::abs(source_8) > 0.0,
+          "the manufactured groove must carry a nonzero circumferential source");
+    check(rel < 1.0e-12,
+          "an overwritten axial boundary face must not contaminate the inlet source");
 }
 
 void test_scope_is_enforced() {
@@ -1516,6 +1551,7 @@ int main(int argc, char** argv) {
     test_front_accuracy_beats_elrod();
     test_transient_storage();
     test_dirichlet_axial_ends();
+    test_inlet_overwrites_axial_boundary();
     test_scope_is_enforced();
     test_property_coupling_is_inert_when_off();
     test_viscosity_reaches_the_operator();

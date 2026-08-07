@@ -135,7 +135,8 @@ double pressure_scale(const SimulationConfig& cfg) {
 }
 
 double cell_outflow(const Fields& fields, const Mesh& mesh,
-                    const SimulationConfig& cfg, double dt, int i, int j) {
+                    const SimulationConfig& cfg, double dt, int i, int j,
+                    bool include_axial_boundary_faces) {
     const Field& pressure = fields["pressure"];
     const Field& theta = fields["theta"];
     const int n_z = mesh.n_z_local;
@@ -159,14 +160,16 @@ double cell_outflow(const Fields& fields, const Mesh& mesh,
     if (j + 1 < n_z) {
         outflow += harmonic_avg(gamma_p(i, j), gamma_p(i, j + 1)) * ns_scale *
             (pressure(i, j) - pressure(i, j + 1));
-    } else if (cfg.bc_z_north_type == BCType::DIRICHLET) {
+    } else if (include_axial_boundary_faces &&
+               cfg.bc_z_north_type == BCType::DIRICHLET) {
         outflow += gamma_p(i, j) * bnd_scale *
             (pressure(i, j) - axial_boundary_pressure(cfg, cfg.bc_z_north_val));
     }
     if (j > 0) {
         outflow += harmonic_avg(gamma_p(i, j - 1), gamma_p(i, j)) * ns_scale *
             (pressure(i, j) - pressure(i, j - 1));
-    } else if (cfg.bc_z_south_type == BCType::DIRICHLET) {
+    } else if (include_axial_boundary_faces &&
+               cfg.bc_z_south_type == BCType::DIRICHLET) {
         outflow += gamma_p(i, j) * bnd_scale *
             (pressure(i, j) - axial_boundary_pressure(cfg, cfg.bc_z_south_val));
     }
