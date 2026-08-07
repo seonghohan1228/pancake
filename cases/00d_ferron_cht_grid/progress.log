@@ -1,0 +1,20 @@
+2026-08-07 09:14:42  smoke: start 180x48, warm eps=0.593400 psi=-37.5036
+2026-08-07 09:14:45  smoke/fb_iter_00 [pinned/x0] eps=0.593400 psi=-37.5036 -> W=4024.51 N angle=-90.5115 deg Tmax=45.83 C picard=39 (3 s)
+2026-08-07 09:14:45  smoke/pinned iter 0: eps=0.593400 psi=-37.5036 W=4024.51 (dW=+24.51 N) dAngle=-0.5115 deg
+2026-08-07 09:14:48  smoke/fb_iter_01 [pinned/J_eps] eps=0.598400 psi=-37.5036 -> W=4109.69 N angle=-90.1377 deg Tmax=45.88 C picard=39 (3 s)
+2026-08-07 09:14:51  smoke/fb_iter_02 [pinned/J_psi] eps=0.593400 psi=-37.0036 -> W=4025.21 N angle=-89.9754 deg Tmax=45.82 C picard=39 (3 s)
+2026-08-07 09:14:54  smoke/fb_iter_03 [pinned/x1] eps=0.591915 psi=-36.9238 -> W=4000.45 N angle=-90.0002 deg Tmax=45.80 C picard=39 (3 s)
+2026-08-07 09:14:54  smoke/pinned iter 1: eps=0.591915 psi=-36.9238 W=4000.45 (dW=+0.45 N) dAngle=-0.0002 deg
+2026-08-07 09:14:54  smoke/pinned CONVERGED eps=0.591915 psi=-36.9238
+2026-08-07 09:14:54  smoke: derived Q_supply = 1.559818e-04 m^3/s (9.36 L/min) from the PINNED steady mass balance
+2026-08-07 09:14:59  smoke/fb_iter_04 [flow/x0] eps=0.591915 psi=-36.9238 -> W=3632.67 N angle=-90.0090 deg Tmax=47.94 C picard=63 (4 s)
+2026-08-07 09:14:59  smoke/flow iter 0: eps=0.591915 psi=-36.9238 W=3632.67 (dW=-367.33 N) dAngle=-0.0090 deg
+2026-08-07 09:15:03  smoke/fb_iter_05 [flow/J_eps] eps=0.596915 psi=-36.9238 -> W=3706.56 N angle=-89.6326 deg Tmax=48.01 C picard=64 (4 s)
+2026-08-07 09:15:07  smoke/fb_iter_06 [flow/J_psi] eps=0.591915 psi=-36.4238 -> W=3635.10 N angle=-89.4653 deg Tmax=47.92 C picard=63 (4 s)
+2026-08-07 09:15:12  smoke/fb_iter_07 [flow/x1] eps=0.617348 psi=-38.7101 -> W=4018.28 N angle=-90.0121 deg Tmax=48.38 C picard=67 (5 s)
+2026-08-07 09:15:12  smoke/flow iter 1: eps=0.617348 psi=-38.7101 W=4018.28 (dW=+18.28 N) dAngle=-0.0121 deg
+2026-08-07 09:15:16  smoke/fb_iter_08 [flow/J_eps] eps=0.622348 psi=-38.7101 -> W=4101.62 N angle=-89.6318 deg Tmax=48.46 C picard=68 (5 s)
+2026-08-07 09:15:21  smoke/fb_iter_09 [flow/J_psi] eps=0.617348 psi=-38.2101 -> W=4020.92 N angle=-89.4744 deg Tmax=48.36 C picard=67 (4 s)
+2026-08-07 09:15:25  smoke/fb_iter_10 [flow/x2] eps=0.616222 psi=-38.6178 -> W=4000.27 N angle=-89.9987 deg Tmax=48.36 C picard=67 (5 s)
+2026-08-07 09:15:25  smoke/flow iter 2: eps=0.616222 psi=-38.6178 W=4000.27 (dW=+0.27 N) dAngle=+0.0013 deg
+2026-08-07 09:15:25  smoke/flow CONVERGED eps=0.616222 psi=-38.6178

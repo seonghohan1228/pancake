@@ -2,6 +2,16 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-07 - Ferron conjugate-THD grid protocol
+
+- Added case 00d, a pre-registered G5/G6/G7 film-plane grid check of the final
+  Ferron conjugate equilibrium. Every grid independently re-closes the two-pass
+  groove model and force balance with converged adaptive pressure-temperature
+  coupling.
+- Acceptance limits target the quantities actually quoted in validation:
+  eccentricity, attitude, cell-centred peak pressure, and the mean, RMS, peak,
+  and peak location of the bush-temperature comparison.
+
 ### 2026-08-07 - Cross-platform baseline and validation-claim reconciliation
 
 - Rebuilt the exact solver commit from a fresh Windows preset and verified all
