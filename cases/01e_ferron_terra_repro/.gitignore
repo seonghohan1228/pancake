@@ -1,0 +1,4 @@
+__pycache__/
+smoke_equilibrium.json
+runs/smoke/
+runs/aborted_initial_smoke/

@@ -761,13 +761,16 @@ struct SimulationConfig {
     // exists because the collocation is the one part of the model that reads a
     // gradient of the solution. Only affects the path to the fixed point.
     double cross_film_relaxation = 1.0;
-    // Shaft: circumferentially isothermal, its temperature solved from the global
-    // film-to-shaft heat balance. shaft_ambient_heat_transfer = 0 (default) makes
-    // the shaft globally adiabatic, so the integral of the film-to-shaft flux is
-    // zero and the shaft carries heat from the loaded arc back upstream.
+    // Shaft: circumferentially and axially isothermal, its temperature solved from the global
+    // film-to-shaft heat balance. This is a reduced model, not Ferron's r-z shaft
+    // conduction problem. shaft_ambient_heat_transfer = 0 (default) makes the
+    // shaft globally adiabatic, so the integral of the film-to-shaft flux is zero
+    // and the shaft carries heat from the loaded arc back upstream.
     double shaft_ambient_heat_transfer = 0.0;   // [W/(m^2 K)] shaft to ambient
     double shaft_ambient_area_ratio = 1.0;      // exposed shaft area / bearing surface area
     double thermal_ambient_temperature = 300.0; // Ambient/sump temperature [K]
+    // Optional shaft sink temperature [K]. <= 0 uses thermal_ambient_temperature.
+    double shaft_ambient_temperature = 0.0;
     // Bush: 1-D radial conduction from the film surface through the bush wall to an
     // outer-surface convection boundary. bush_outer_heat_transfer = 0 (default)
     // makes the bush adiabatic at its outer surface, i.e. no net heat leaves the film
@@ -775,6 +778,9 @@ struct SimulationConfig {
     double bush_thermal_conductivity = 50.0;    // [W/(m K)] bush material
     double bush_outer_radius = 0.0;             // [m]; <=0 means R + 0.1*R
     double bush_outer_heat_transfer = 0.0;      // [W/(m^2 K)] bush outer surface to ambient
+    // Optional outer-bush boundary temperature [K]. <= 0 uses
+    // thermal_ambient_temperature for both convection and fixed-temperature BCs.
+    double bush_outer_temperature = 0.0;
     // CONDUCTION_2D replaces the local radial closure above by a steady 2-D
     // (r, theta) conduction solve in the annulus [R, bush_outer_radius], which is
     // what lets the bush move heat circumferentially. LOCAL (default) is
@@ -1062,9 +1068,11 @@ struct SimulationConfig {
             else if (key == "shaft_ambient_heat_transfer") shaft_ambient_heat_transfer = std::stod(value);
             else if (key == "shaft_ambient_area_ratio") shaft_ambient_area_ratio = std::stod(value);
             else if (key == "thermal_ambient_temperature") thermal_ambient_temperature = std::stod(value);
+            else if (key == "shaft_ambient_temperature") shaft_ambient_temperature = std::stod(value);
             else if (key == "bush_thermal_conductivity") bush_thermal_conductivity = std::stod(value);
             else if (key == "bush_outer_radius") bush_outer_radius = std::stod(value);
             else if (key == "bush_outer_heat_transfer") bush_outer_heat_transfer = std::stod(value);
+            else if (key == "bush_outer_temperature") bush_outer_temperature = std::stod(value);
             else if (key == "bush_thermal_model") bush_thermal_model = bush_thermal_model_from_config(value);
             else if (key == "bush_radial_cells") bush_radial_cells = std::stoi(value);
             else if (key == "bush_outer_boundary") bush_outer_boundary = bush_outer_boundary_from_config(value);
@@ -1413,6 +1421,12 @@ struct SimulationConfig {
             require_nonnegative(bush_outer_heat_transfer, "bush_outer_heat_transfer");
             require_positive(shaft_ambient_area_ratio, "shaft_ambient_area_ratio");
             require_positive(thermal_ambient_temperature, "thermal_ambient_temperature");
+            if (!finite(shaft_ambient_temperature)) {
+                error("shaft_ambient_temperature must be finite; <= 0 uses thermal_ambient_temperature.");
+            }
+            if (!finite(bush_outer_temperature)) {
+                error("bush_outer_temperature must be finite; <= 0 uses thermal_ambient_temperature.");
+            }
             if (bush_outer_radius > 0.0 && bush_outer_radius <= R) {
                 error("bush_outer_radius must exceed R.");
             }
@@ -1435,7 +1449,8 @@ struct SimulationConfig {
             if (bush_outer_boundary == BushOuterBoundary::FIXED_TEMPERATURE &&
                 bush_outer_heat_transfer > 0.0) {
                 warn("bush_outer_boundary = FIXED_TEMPERATURE: the outer surface is held at "
-                     "thermal_ambient_temperature and bush_outer_heat_transfer is IGNORED.");
+                     "bush_outer_temperature when positive, otherwise thermal_ambient_temperature; "
+                     "bush_outer_heat_transfer is IGNORED.");
             }
         }
         if (bush_thermal_model == BushThermalModel::CONDUCTION_2D &&
@@ -2162,9 +2177,13 @@ struct SimulationConfig {
             << "shaft_ambient_heat_transfer = " << shaft_ambient_heat_transfer << "\n"
             << "shaft_ambient_area_ratio = " << shaft_ambient_area_ratio << "\n"
             << "thermal_ambient_temperature = " << thermal_ambient_temperature << "\n"
+            << "# <= 0 uses thermal_ambient_temperature\n"
+            << "shaft_ambient_temperature = " << shaft_ambient_temperature << "\n"
             << "bush_thermal_conductivity = " << bush_thermal_conductivity << "\n"
             << "bush_outer_radius = " << bush_outer_radius << "\n"
             << "bush_outer_heat_transfer = " << bush_outer_heat_transfer << "\n"
+            << "# <= 0 uses thermal_ambient_temperature\n"
+            << "bush_outer_temperature = " << bush_outer_temperature << "\n"
             << "# bush_thermal_model options: LOCAL (per-cell 1-D radial closure),\n"
             << "# CONDUCTION_2D (steady (r, theta) conduction in the bush annulus).\n"
             << "bush_thermal_model = " << to_config_value(bush_thermal_model) << "\n"
@@ -2362,8 +2381,10 @@ struct SimulationConfig {
             "cross_film_profile_order", "cross_film_quadrature_points",
             "cross_film_relaxation", "shaft_ambient_heat_transfer",
             "shaft_ambient_area_ratio", "thermal_ambient_temperature",
+            "shaft_ambient_temperature",
             "bush_thermal_conductivity", "bush_outer_radius",
-            "bush_outer_heat_transfer", "bush_thermal_model", "bush_radial_cells",
+            "bush_outer_heat_transfer", "bush_outer_temperature",
+            "bush_thermal_model", "bush_radial_cells",
             "bush_outer_boundary", "groove_mixing_model", "fluid_property_model",
             "dissolved_gas_species", "solubility_model", "oil_gas_solution_model",
             "density_model", "liquid_viscosity_model", "viscosity_model",

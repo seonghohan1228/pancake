@@ -49,7 +49,14 @@ Priority queue (user gates in brackets):
    2/4/6 kN), cross-checks moving-bearing vs static force balance.
 6. **Ferron temperature residual** - resolve the fresh-oil groove-mixing flow
    against Ferron's measured inlet-flow evidence before STRIATED, shaft-Robin,
-   or other thermal-model sensitivity work.
+   or other thermal-model sensitivity work. The 2026-08-07 boundary audit also
+   found that the current z-collapsed bush omits Ferron's axial-face \(h_b\)
+   condition and the scalar shaft omits its r-z/43 C end condition. Independent
+   outer-bush and shaft sink temperatures now permit bounded sensitivity runs;
+   a full Ferron reproduction still requires r-theta-z bush and r-z shaft solids.
+   Case `01e_ferron_terra_repro` is the isolated remote rerun in progress; its
+   reduced-model numerical/grid verdicts must remain separate from any Ferron
+   temperature-validation verdict.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.

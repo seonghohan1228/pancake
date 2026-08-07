@@ -161,7 +161,10 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     gauss_legendre_unit(std::max(2, cfg.cross_film_quadrature_points), nodes, weights);
 
     const double bush_g = bush_conductance(cfg);
-    const double t_amb = cfg.thermal_ambient_temperature;
+    const double t_bush_outer = cfg.bush_outer_temperature > 0.0
+        ? cfg.bush_outer_temperature : cfg.thermal_ambient_temperature;
+    const double t_shaft_ambient = cfg.shaft_ambient_temperature > 0.0
+        ? cfg.shaft_ambient_temperature : cfg.thermal_ambient_temperature;
 
     // ---------------------------------------------------------------------
     // Step 1: the quartic amplitude c, from one collocation of the cross-film
@@ -281,14 +284,15 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // ---------------------------------------------------------------------
     // Step 2: conjugate walls.
     //
-    // Shaft: circumferentially isothermal at T_s, its temperature set by the
-    // global film-to-shaft balance. With shaft_ambient_heat_transfer = 0 the
-    // shaft is globally adiabatic: the integral of the film-to-shaft flux is
-    // zero, so heat entering the shaft in the loaded arc leaves it again
-    // upstream. That is the mechanism the constant-T_wall closure lacks.
+    // Shaft: circumferentially and axially isothermal at T_s, its temperature set
+    // by a global film-to-shaft balance. This is a reduced closure: Ferron solves
+    // an r-z shaft problem with prescribed 43 C axial-end temperatures. With
+    // shaft_ambient_heat_transfer = 0 the shaft is globally adiabatic: the
+    // integral of the film-to-shaft flux is zero, so heat entering the shaft in
+    // the loaded arc leaves it again upstream.
     //
     // Bush (LOCAL, the default): per-cell 1-D radial conduction to the outer
-    // boundary, q_bush = (T_b - T_amb) * G, G referred to the bore. With
+    // boundary, q_bush = (T_b - T_bush_outer) * G, G referred to the bore. With
     // bush_thermal_model = CONDUCTION_2D the same T_b = alpha + beta T_s comes
     // instead from the annulus solve of step 2a; everything downstream is
     // unchanged, which is why only the alpha/beta assignment below is branched.
@@ -321,11 +325,12 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // a steady 2-D (r, theta) conduction problem instead (PHYSICS.md 13.1.2).
     //
     // Two modelling choices, both stated rather than hidden:
-    //  * the bush is z-collapsed, as Ferron's bush equation is, so the coupling
-    //    uses the z-AVERAGE of the film-side flux law at each theta and returns
-    //    one bore temperature per theta;
-    //  * the lateral (axial end face) free convection of the paper is neglected;
-    //    at h = 80 W/(m^2 K) over the two end faces it is a ~1% term.
+    //  * the bush is z-collapsed, so the coupling uses the z-AVERAGE of the
+    //    film-side flux law at each theta and returns one bore temperature per
+    //    theta. Ferron solves the r-theta-z bush equation instead;
+    //  * Ferron's lateral (axial end-face) free convection is absent. A
+    //    z-collapsed sink could approximate its integrated loss only, not the
+    //    local r-theta-z solution.
     //
     // Both right-hand sides are solved, so T_b(theta) = alpha + beta T_s stays
     // exact and the shaft balance below closes in one step exactly as before.
@@ -412,7 +417,7 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             const size_t idx = static_cast<size_t>(i) * n_z + j;
             if (!bush_is_2d(cfg)) {
                 const double denom = kh * (0.5 * b_slope + 1.0) + bush_g;
-                alpha[idx] = (kh * (b_const + b_slope * t_bar) + bush_g * t_amb) / denom;
+                alpha[idx] = (kh * (b_const + b_slope * t_bar) + bush_g * t_bush_outer) / denom;
                 beta[idx] = kh * (1.0 - 0.5 * b_slope) / denom;
             }  // CONDUCTION_2D filled alpha/beta from the annulus solve in step 2a
             // q_shaft = kh (a + b) = kh [T_b - T_s + b_const + b_slope (T_bar - T_m)]
@@ -425,11 +430,12 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     }
     MPI_Allreduce(MPI_IN_PLACE, sums, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    // sum q_shaft dA = sums[1] + sums[2] + T_s (sums[3] - sums[0]) = shaft_sink (T_s - T_amb)
+    // sum q_shaft dA = sums[1] + sums[2] + T_s (sums[3] - sums[0])
+    //                 = shaft_sink (T_s - T_shaft_ambient)
     const double lhs_slope = sums[3] - sums[0] - shaft_sink;
     double t_shaft = cfg.temperature_reference;
     if (std::abs(lhs_slope) > 1.0e-30) {
-        t_shaft = -(sums[1] + sums[2] + shaft_sink * t_amb) / lhs_slope;
+        t_shaft = -(sums[1] + sums[2] + shaft_sink * t_shaft_ambient) / lhs_slope;
     }
     if (!std::isfinite(t_shaft) || t_shaft <= 0.0) t_shaft = cfg.temperature_reference;
     state.t_shaft = t_shaft;

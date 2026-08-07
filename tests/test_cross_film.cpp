@@ -67,9 +67,11 @@ static const char* kKeys =
     "shaft_ambient_heat_transfer = 37.5\n"
     "shaft_ambient_area_ratio = 2.25\n"
     "thermal_ambient_temperature = 305.5\n"
+    "shaft_ambient_temperature = 316.15\n"
     "bush_thermal_conductivity = 46.5\n"
     "bush_outer_radius = 0.075\n"
     "bush_outer_heat_transfer = 82.5\n"
+    "bush_outer_temperature = 314.15\n"
     "bush_thermal_model = CONDUCTION_2D\n"
     "bush_radial_cells = 24\n"
     "bush_outer_boundary = FIXED_TEMPERATURE\n"
@@ -90,12 +92,16 @@ static void assert_keys_present(const SimulationConfig& cfg, const char* where) 
           (w + ": shaft_ambient_area_ratio").c_str());
     check(std::abs(cfg.thermal_ambient_temperature - 305.5) < 1e-12,
           (w + ": thermal_ambient_temperature").c_str());
+    check(std::abs(cfg.shaft_ambient_temperature - 316.15) < 1e-12,
+          (w + ": shaft_ambient_temperature").c_str());
     check(std::abs(cfg.bush_thermal_conductivity - 46.5) < 1e-12,
           (w + ": bush_thermal_conductivity").c_str());
     check(std::abs(cfg.bush_outer_radius - 0.075) < 1e-12,
           (w + ": bush_outer_radius").c_str());
     check(std::abs(cfg.bush_outer_heat_transfer - 82.5) < 1e-12,
           (w + ": bush_outer_heat_transfer").c_str());
+    check(std::abs(cfg.bush_outer_temperature - 314.15) < 1e-12,
+          (w + ": bush_outer_temperature").c_str());
     check(cfg.bush_thermal_model == BushThermalModel::CONDUCTION_2D,
           (w + ": bush_thermal_model").c_str());
     check(cfg.bush_radial_cells == 24, (w + ": bush_radial_cells").c_str());
@@ -143,6 +149,10 @@ static void test_config_round_trip() {
           "bush_thermal_model must default to LOCAL");
     check(defaults.bush_outer_boundary == BushOuterBoundary::CONVECTION,
           "bush_outer_boundary must default to CONVECTION");
+    check(defaults.shaft_ambient_temperature == 0.0,
+          "shaft_ambient_temperature must default to the ambient fallback");
+    check(defaults.bush_outer_temperature == 0.0,
+          "bush_outer_temperature must default to the ambient fallback");
     check(defaults.groove_mixing_model == GrooveMixingModel::PINNED,
           "groove_mixing_model must default to PINNED");
 
@@ -282,6 +292,46 @@ static void test_adiabatic_shaft_balance() {
           "the journal heat-flux field must integrate to the zero net adiabatic shaft heat");
     check(state.t_shaft > 320.0 && state.t_shaft < 340.0,
           "shaft temperature should land inside the film temperature range");
+}
+
+// The optional temperatures must override the common ambient independently.
+// Large conductances make the scalar closures approach their selected sinks.
+static void test_independent_surface_temperature_overrides() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 24;
+    cfg.n_z_global = 4;
+    cfg.omega = 800.0;
+    cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
+    cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+    cfg.temperature_initial = 330.0;
+    cfg.temperature_reference = 330.0;
+    cfg.thermal_ambient_temperature = 300.0;
+    cfg.shaft_ambient_temperature = 322.0;
+    cfg.bush_outer_temperature = 315.0;
+    cfg.shaft_ambient_heat_transfer = 1.0e10;
+    cfg.bush_outer_heat_transfer = 1.0e10;
+    cfg.bush_thermal_conductivity = 1.0e10;
+    cfg.bush_outer_radius = 2.0 * cfg.R;
+
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields;
+    build_fields(fields, mesh, cfg);
+    comm.update_ghosts(fields);
+    const CrossFilm::WallState state = CrossFilm::update(fields, mesh, cfg);
+
+    double bush_error = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            bush_error = std::max(bush_error,
+                                  std::abs(fields["cross_film_t_bush"](i, j) - 315.0));
+        }
+    }
+    check(std::abs(state.t_shaft - 322.0) < 1.0e-4,
+          "shaft_ambient_temperature must set the scalar shaft sink");
+    check(global_max_abs(bush_error) < 1.0e-4,
+          "bush_outer_temperature must set the bush outer-boundary sink");
 }
 
 // lambda = 0 is pure carry-over (groove delivers the upstream film), lambda = 1 is
@@ -579,9 +629,9 @@ static CrossFilm::WallState run_bush(const SimulationConfig& cfg, Fields& fields
     return CrossFilm::update(fields, mesh, cfg);
 }
 
-// The bush equation is z-collapsed by construction (Ferron's is too), so the
-// bore temperature it returns must be one value per theta. A z-dependent result
-// would mean the z-average never happened.
+// The reduced bush equation is z-collapsed by construction, so the bore
+// temperature it returns must be one value per theta. A z-dependent result would
+// mean the z-average never happened.
 static void test_bush_2d_is_z_uniform_and_smooths() {
     SimulationConfig local_cfg = bush_2d_config();
     local_cfg.bush_outer_heat_transfer = 80.0;
@@ -687,6 +737,7 @@ int main(int argc, char** argv) {
     test_config_round_trip();
     test_uniform_viscosity_reduction();
     test_adiabatic_shaft_balance();
+    test_independent_surface_temperature_overrides();
     test_groove_mixing_limits(0.0, false);
     test_groove_mixing_limits(1.0, true);
     test_surface_fields_match_the_profile();

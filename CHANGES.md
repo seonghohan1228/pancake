@@ -2,6 +2,22 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-08-07 - Ferron thermal-boundary audit corrections
+
+- Added optional `shaft_ambient_temperature` and `bush_outer_temperature`.
+  Positive values independently set the scalar shaft sink and bush outer-boundary
+  temperatures; zero or negative values preserve the historical fallback to
+  `thermal_ambient_temperature`. Parsing, serialization, validation, and the
+  cross-film config round-trip test cover both keys.
+- Corrected the Ferron documentation: the present bush model is z-collapsed and
+  omits the paper's axial-face \(h_b\) condition; the scalar shaft closure omits
+  Ferron's r-z shaft conduction and 43 C end temperatures. These changes expose
+  boundary-condition sensitivity without claiming a full-solid reproduction.
+- Added isolated case `01e_ferron_terra_repro` for the new Ubuntu campaign. It
+  keeps smoke and production archives separate, distinguishes model-derived
+  groove source from experimental flow, and pre-registers R0/R1/R2 plus the
+  corrected reproduction of Claude's Fig. 4/Fig. 5 and wall-model matrix.
+
 ### 2026-08-07 - Ferron conjugate-THD grid protocol
 
 - Added case 00d, a pre-registered G5/G6/G7 film-plane grid check of the final

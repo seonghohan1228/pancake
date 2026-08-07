@@ -306,7 +306,8 @@ Solution solve(const Coupling& coupling, int n_theta, double r_inner,
                                                            : 1.1 * r_inner;
     const double d_theta = 2.0 * M_PI / n_theta;
     const double d_r = (r_outer - r_inner) / n_r;
-    const double t_amb = cfg.thermal_ambient_temperature;
+    const double t_outer = cfg.bush_outer_temperature > 0.0
+        ? cfg.bush_outer_temperature : cfg.thermal_ambient_temperature;
 
     Operator op;
     op.n_theta = n_theta;
@@ -367,7 +368,7 @@ Solution solve(const Coupling& coupling, int n_theta, double r_inner,
     for (int i = 0; i < n_theta; ++i) {
         rhs[0][op.at(i, 0)] += op.inner_lambda[i] * op.s_inner * coupling.a0[i];
         rhs[1][op.at(i, 0)] += op.inner_lambda[i] * op.s_inner * coupling.a1[i];
-        rhs[0][op.at(i, n_r - 1)] += op.outer_u * t_amb;  // ambient enters the constant part only
+        rhs[0][op.at(i, n_r - 1)] += op.outer_u * t_outer;
     }
     const std::vector<double> src0 = rhs[0];
     const std::vector<double> src1 = rhs[1];
