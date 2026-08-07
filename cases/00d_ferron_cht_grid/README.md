@@ -116,3 +116,20 @@ contaminated flow, its favorable +0.02 K mean / 1.17 K RMS / 46.71 C peak is
 superseded. The corrected G6 comparison is +3.82 K mean / 4.02 K RMS / 50.38 C
 peak. Its midplane pressure peak is 1.353 MPa gauge at 199.75 deg, +7.31% and
 1.25 deg from the digitised experimental peak.
+
+## Visual comparison
+
+![Ferron grid profiles](ferron_cht_grid_profiles.png)
+
+The G5--G7 pressure profiles are visually indistinguishable and reproduce the
+experimental pressure lobe closely. The bush-temperature profiles retain a
+clear positive bias, especially before the measured temperature rise. The
+small separation between G5--G7 is physically modest but remains large enough
+to fail the pre-registered mean/RMS convergence thresholds.
+
+![G6 pressure and temperature contours](ferron_cht_g6_contours.png)
+
+The G6 fields show the expected axial pressure maximum and the nearly
+axially-uniform central bush-temperature distribution. These plots are made
+from `visual_data.npz`; regenerate the archive from the Ubuntu VTK output with
+`export_visual_data.py`, then run `plot_visuals.py` on Windows.

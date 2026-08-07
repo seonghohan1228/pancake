@@ -20,6 +20,9 @@
   corrected supply flow is 4.94 to 5.18 L/min. The registered grid verdict still
   fails narrowly on mean/RMS temperature change, and the corrected G6 validation
   score is +3.82 K mean / 4.02 K RMS rather than +0.02 K / 1.17 K.
+- Added reproducible Ferron G5--G7 profile comparisons and G6 pressure and
+  temperature contours. Remote Ubuntu VTK data are reduced to a portable NumPy
+  archive, while the publication-style PNG figures are rendered on Windows.
 
 ### 2026-08-07 - Cross-platform baseline and validation-claim reconciliation
 
