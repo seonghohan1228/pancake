@@ -87,6 +87,7 @@ def main():
         runs[name] = {"dt_s": dt, "run_dir": run_dir.relative_to(CASE_DIR).as_posix(), "rc": rc, "wall_s": round(wall, 1),
                       "q_supply_m3s": q_supply, "metrics": metrics}
         output.write_text(json.dumps(runs, indent=2)); F.progress(f"{name}: rc={rc}")
-        if rc != 0 or metrics is None: raise RuntimeError(f"{name}: failed or no final frame")
+        if rc != 0 or metrics is None:
+            F.progress(f"{name}: archived failed stability/completion verdict; continuing ladder")
 
 if __name__ == "__main__": main()

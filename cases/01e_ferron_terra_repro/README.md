@@ -110,6 +110,8 @@ This is deliberately distinct from Claude's Case 00.
 
 D-dt's registered ladder is `8e-5`, `4e-5`, `2e-5`, `1e-5`, and `5e-6` s to
 `0.06 s`, written every `5e-4 s`.  `8e-5 s` is an intentional stability probe.
+Failure of a coarse probe is archived but does not prevent the finer timesteps
+from running.
 The proposed acceptance comparison is T2-to-T3: final eccentricity <=0.5%,
 final force magnitude <=1.0%, final attitude <=0.25 deg, and final maximum
 film temperature <=0.10 K; T3-to-T4 must be no worse.  A failed film guard,
