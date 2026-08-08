@@ -23,6 +23,8 @@
   grid pair or conflate steady grid convergence with physical-time refinement.
   Failed coarse stability probes are archived without aborting finer timestep
   legs.
+- Added reproducible 300 dpi D-grid convergence, surface-temperature/pressure
+  profile, and film-field contour figures from the transferred Ubuntu data.
 - Added a separately labelled repaired-legacy reproduction of Claude's original
   G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
   repairs are machine-readable; non-converged coupling remains a failed verdict.

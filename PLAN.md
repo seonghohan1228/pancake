@@ -61,6 +61,8 @@ Priority queue (user gates in brackets):
    substitute for the missing full-solid and independent-flow evidence. A
    repaired-legacy mode reproduces Claude's original GCT only for comparison;
    it is report-only because the nominal THD viscosity input is effectively inert.
+   The fresh steady D-grid ladder passes; its figures are generated locally from
+   transferred field data. The physical timestep ladder remains in progress.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.
