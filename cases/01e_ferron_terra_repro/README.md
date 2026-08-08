@@ -21,6 +21,12 @@ it does not implement Ferron's `(r, z)` shaft with 43 C axial ends. Consequently
 R0--R2 can receive numerical and grid verdicts, but not a Ferron temperature-
 validation PASS.
 
+For this campaign, axial bush cooling is deliberately neglected by user
+decision. R1/R2/D instead enforce Ferron's outer-radius boundary *form*,
+`T(R2)=Tb`. Ferron reports `Ta=40 C` and `Ti=40 C` but does not publish a
+numerical `Tb`; the configured `Tb=40 C` is therefore an explicit `Tb=Ta`
+assumption, not a measured paper value.
+
 ## Pre-registered scope
 
 | mode | runs | grid | boundary condition | purpose |
@@ -114,5 +120,36 @@ steady Picard-coupling residual is intentionally not defined for D-dt.
 Claude's original Case 00 instead used: (i) fixed-eccentricity, steady,
 isothermal JFO grids 60x16 to 480x128 and a later FBNS timestep tail; and
 (ii) a **physical** 4000 rpm / 6 kN moving-bearing transient with a 10 kg
-bearing.  Its nominal THD grid pair is not reused because its committed
-configuration was invalid and its archived viscosity was thermally inert.
+bearing. Its nominal THD pair is not used in D-grid; it is reproduced only in
+the separately labelled, minimally repaired legacy mode below because its
+archived viscosity was thermally inert.
+
+## REPAIRED_LEGACY: exact Claude GCT reproduction
+
+`run_legacy_gct.py` is the separate historical reproduction, not D-grid.  It
+retains the original 00a grids: isothermal JFO G1--G5 = 60x16, 120x32,
+240x64, 360x96, 480x128; fixed `eps=0.6`, `psi=-90 deg`, 4000 rpm, and
+`STEADY_STATE`.  The legacy `dt=1e-5 s` is a solver guard only and is ignored.
+There is no imposed external load because eccentricity is fixed.
+
+It also carries the original nominal energy-equation G3/G4 pair.  Those inputs
+are `REPAIRED_LEGACY`, not exact: the current `SINGLE_PHASE` validator rejects
+two zero gas coefficients.  The two coefficients are changed to `1e-12` only;
+the machine-readable before/after/reason record is
+`legacy_repair_ledger.json`.  The legacy Andrade coefficient remains `0.034 K`,
+so that pair is energy-only and must never be described as a thermoviscous grid
+check.  These figures are report-only numerical reproductions, not Ferron
+validation or a replacement for D-grid.
+
+```bash
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_legacy_gct.py ISOTHERMAL
+
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_legacy_gct.py THD
+
+python3 cases/01e_ferron_terra_repro/analyse_legacy_gct.py
+python3 cases/01e_ferron_terra_repro/plot_legacy_gct.py
+```

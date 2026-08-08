@@ -1,0 +1,18 @@
+{
+  "campaign": "REPAIRED_LEGACY Claude Case 00a GCT",
+  "source_configs": "cases/00_grid_dt_independence/grid_G*/config.txt",
+  "isothermal": {
+    "runs": {"g1": [60, 16], "g2": [120, 32], "g3": [240, 64], "g4": [360, 96], "g5": [480, 128]},
+    "settings_preserved": {"solution_mode": "STEADY_STATE", "cavitation_model": "JFO", "temperature_model": "ISOTHERMAL", "eccentricity_ratio": 0.6, "attitude_angle_deg": -90.0, "omega_rpm": 4000, "dt_s": 1e-5, "dt_semantics": "ignored by STEADY_STATE"},
+    "repairs": []
+  },
+  "nominal_thd": {
+    "runs": {"g3": [240, 64], "g4": [360, 96]},
+    "settings_preserved": {"solution_mode": "STEADY_STATE", "cavitation_model": "JFO", "temperature_model": "ENERGY_EQUATION", "viscosity_model": "EMPIRICAL", "viscosity_temperature_coeff": 0.034, "eccentricity_ratio": 0.6, "attitude_angle_deg": -90.0, "omega_rpm": 4000, "dt_s": 1e-5, "dt_semantics": "ignored by STEADY_STATE"},
+    "repairs": [
+      {"key": "dissolved_gas_henry_coeff", "from": 0, "to": 1e-12, "reason": "current SINGLE_PHASE validator requires positive Henry coefficient; gas concentration remains zero"},
+      {"key": "solution_viscosity_gas_coeff", "from": 0, "to": 1e-12, "reason": "current SINGLE_PHASE validator requires non-zero coefficient; gas concentration remains zero"}
+    ],
+    "scientific_limit": "The 0.034 coefficient is Andrade units of K in the current solver, so this is energy-only, not a thermoviscously coupled grid check."
+  }
+}

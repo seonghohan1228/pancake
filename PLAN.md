@@ -58,7 +58,9 @@ Priority queue (user gates in brackets):
    reduced-model numerical/grid verdicts must remain separate from any Ferron
    temperature-validation verdict. Its D add-on separately reruns the present
    CHT grid ladder and a 4 kN, 2000 rpm physical timestep ladder; neither is a
-   substitute for the missing full-solid and independent-flow evidence.
+   substitute for the missing full-solid and independent-flow evidence. A
+   repaired-legacy mode reproduces Claude's original GCT only for comparison;
+   it is report-only because the nominal THD viscosity input is effectively inert.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.

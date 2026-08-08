@@ -21,6 +21,9 @@
   force-balanced CHT grid ladder and a physical moving-bearing timestep ladder
   from 80 to 5 microseconds. This does not reuse Claude's invalid nominal THD
   grid pair or conflate steady grid convergence with physical-time refinement.
+- Added a separately labelled repaired-legacy reproduction of Claude's original
+  G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
+  repairs are machine-readable; non-converged coupling remains a failed verdict.
 
 ### 2026-08-07 - Ferron conjugate-THD grid protocol
 

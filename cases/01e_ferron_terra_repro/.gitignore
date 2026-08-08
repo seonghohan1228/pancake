@@ -1,6 +1,8 @@
 __pycache__/
 smoke_equilibrium.json
 smoke_d_timestep_runs.json
+smoke_legacy_gct_runs.json
 runs/smoke/
 runs/aborted_initial_smoke/
 runs/aborted_dt_smoke_before_flow_check/
+runs/aborted_legacy_smoke_before_convergence_status/
