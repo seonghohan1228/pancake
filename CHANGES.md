@@ -1,5 +1,10 @@
 # Change Log
 
+- Added the 2000 rpm / 4 kN Ferron temperature comparison using the current
+  R1-G7 bearing-interface temperature. No last-year circumferential temperature
+  curve is drawn because the LGEP exports contain only unverified scalar time
+  histories, not a comparable temperature field.
+
 ## Unreleased - Windows MSYS2 GUI Workflow
 
 ### 2026-08-07 - Ferron thermal-boundary audit corrections

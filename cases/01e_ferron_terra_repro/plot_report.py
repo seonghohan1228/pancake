@@ -143,6 +143,27 @@ def pressure_validation():
     plt.close(fig)
 
 
+def temperature_validation():
+    experiment = reference("ferron1983_fig4_2000rpm_4kN_temperature.csv")
+    with np.load(CASE_DIR / "visual_data.npz") as data:
+        theta, temperature = sorted_xy(data["r1_g7_theta_T_deg"],
+                                       data["r1_g7_T_bearing_C"])
+
+    fig, axis = plt.subplots(figsize=(6.6, 4.6))
+    axis.plot(theta, temperature, color="#009E73", linewidth=1.8,
+              label="This year (JFO + CHT, R1 G7)")
+    axis.plot(experiment[:, 0], experiment[:, 1], linestyle="none",
+              marker=MARKERS[1], markerfacecolor="white", color="black",
+              label="Ferron (1983)")
+    axis.set_xlim(0.0, 360.0)
+    axis.set_xticks(np.arange(0.0, 361.0, 60.0))
+    axis.set_xlabel(r"$\theta-\theta_g$ (deg)")
+    axis.set_ylabel(r"$T_b$ ($^\circ$C)")
+    smart_legend(axis, loc="upper left", fontsize=11)
+    save_figure(fig, CASE_DIR / "terra_report_temperature_validation")
+    plt.close(fig)
+
+
 def cht_comparison():
     experiment = reference("ferron1983_fig4_2000rpm_4kN_temperature.csv")
     cases = (
@@ -176,6 +197,7 @@ def main():
     legacy_grid_convergence()
     timestep_convergence()
     pressure_validation()
+    temperature_validation()
     cht_comparison()
 
 
