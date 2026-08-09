@@ -103,7 +103,7 @@ def timestep_convergence():
     axes[1].set_xlabel(r"$\Delta t$ ($\mu$s)")
     axes[1].set_ylabel(r"$\overline{\epsilon}$")
     mean_max = max(means)
-    axes[1].set_ylim(mean_max - 0.60 * 0.005, mean_max + 0.40 * 0.005)
+    axes[1].set_ylim(mean_max - 0.60 * 0.01, mean_max + 0.40 * 0.01)
     save_figure(fig, CASE_DIR / "terra_report_timestep_convergence")
     plt.close(fig)
 
