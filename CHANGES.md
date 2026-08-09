@@ -1,5 +1,9 @@
 # Change Log
 
+- Reordered the Ferron thermal-model comparison and standardized its line map:
+  depth-averaged grey dotted, adiabatic cross-film blue, 40 C cross-film
+  orange, fixed-40 C CHT yellow, and outer-Robin CHT green.
+
 - Expanded the 2000 rpm / 4 kN temperature figure to compare cross-film THD
   with isothermal walls, depth-averaged THD, outer-Robin heat transfer, CHT with
   fixed outer bush temperature, and adiabatic cross-film THD. The compact visual
