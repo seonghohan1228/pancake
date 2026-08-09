@@ -109,8 +109,9 @@ This is deliberately distinct from Claude's Case 00.
   that case has closed.  It tests the discretisation of the transient path,
   not a replacement for the steady force-balanced solution.
 
-D-dt's registered ladder is `8e-5`, `4e-5`, `2e-5`, `1e-5`, and `5e-6` s to
-`0.06 s`, written every `5e-4 s`.  `8e-5 s` is an intentional stability probe.
+D-dt's ladder is `3.2e-4`, `1.6e-4`, `8e-5`, `4e-5`, `2e-5`, `1e-5`, and
+`5e-6` s to `0.06 s`, written every `5e-4 s`. The three largest steps are
+intentional stability probes.
 Failure of a coarse probe is archived but does not prevent the finer timesteps
 from running.
 The proposed acceptance comparison is T2-to-T3: final eccentricity <=0.5%,

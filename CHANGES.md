@@ -34,6 +34,9 @@
 - Extended the fresh force-balanced R1 grid sequence from G5--G7 to G1--G7 so
   the total-cell convergence plot includes the inexpensive coarse grids rather
   than borrowing points from Claude's fixed-eccentricity study.
+- Extended the transient stability sweep above 80 microseconds with 160 and
+  320 microsecond probes. Incomplete coarse histories remain visible as dashed
+  curves but are excluded from the common-60-ms endpoint comparison.
 - Added a separately labelled repaired-legacy reproduction of Claude's original
   G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
   repairs are machine-readable; non-converged coupling remains a failed verdict.

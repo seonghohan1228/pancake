@@ -79,17 +79,25 @@ def legacy_grid_convergence():
 
 def timestep_convergence():
     data = json.loads((CASE_DIR / "d_timestep_history.json").read_text())
-    complete = [data[f"d_dt_t{i}"] for i in (1, 2, 3, 4)]
-    colors = blues(len(complete))
+    ordered_names = ("d_dt_tn2", "d_dt_tn1", "d_dt_t0", "d_dt_t1",
+                     "d_dt_t2", "d_dt_t3", "d_dt_t4")
+    histories = [data[name] for name in ordered_names if name in data]
+    complete = [run for run in histories if run["history"][-1]["time_s"] >= 0.06]
+    colors = blues(len(histories))
     means = []
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.3), constrained_layout=True)
-    for color, run in zip(colors, complete):
+    for color, run in zip(colors, histories):
         time_ms = np.asarray([row["time_s"] for row in run["history"]]) * 1e3
         eps = np.asarray([row["eps"] for row in run["history"]])
-        mask = time_ms >= 40.0
-        means.append(float(np.mean(eps[mask])))
+        completed = time_ms[-1] >= 60.0
+        suffix = "" if completed else " (incomplete)"
         axes[0].plot(time_ms, eps, color=color,
-                     label=rf"$\Delta t={run['dt_us']:.0f}\,\mu\mathrm{{s}}$")
+                     linestyle="-" if completed else "--",
+                     label=rf"$\Delta t={run['dt_us']:.0f}\,\mu\mathrm{{s}}$" + suffix)
+    for run in complete:
+        time_ms = np.asarray([row["time_s"] for row in run["history"]]) * 1e3
+        eps = np.asarray([row["eps"] for row in run["history"]])
+        means.append(float(np.mean(eps[time_ms >= 40.0])))
     axes[0].set_xlabel(r"$t$ (ms)")
     axes[0].set_ylabel(r"$\epsilon$")
     smart_legend(axes[0], fontsize=11)

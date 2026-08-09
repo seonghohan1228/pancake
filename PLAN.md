@@ -65,8 +65,9 @@ Priority queue (user gates in brackets):
    gate; its figures are generated locally from
    transferred field data. The physical timestep ladder also passes its
    registered 20/10/5 microsecond comparisons, selecting 20 microseconds; the
-   unstable 80 microsecond leg and force-imbalanced 40 microsecond endpoint stay
-   visible in the report rather than being counted as successful cases.
+   80/160/320 microsecond stability probes and force-imbalanced 40 microsecond
+   endpoint stay visible in the report rather than being counted as successful
+   cases.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.

@@ -9,6 +9,8 @@ from pathlib import Path
 CASE_DIR = Path(__file__).resolve().parent
 CLEARANCE = 1.52e-4
 RUNS = {
+    "d_dt_tn2": 320.0,
+    "d_dt_tn1": 160.0,
     "d_dt_t0": 80.0,
     "d_dt_t1": 40.0,
     "d_dt_t2": 20.0,
@@ -46,6 +48,8 @@ def main():
     output = {}
     for name, dt_us in RUNS.items():
         run_dir = CASE_DIR / "runs" / "production" / name
+        if not (run_dir / "results" / "flat" / "results.pvd").exists():
+            continue
         output[name] = {"dt_us": dt_us, "history": series(run_dir)}
         print(f"{name}: {len(output[name]['history'])} frames")
     (CASE_DIR / "d_timestep_history.json").write_text(

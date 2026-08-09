@@ -10,7 +10,8 @@ CASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(CASE_DIR))
 import force_balance as F
 S = F.S
-LADDER = {"d_dt_t0": 8e-5, "d_dt_t1": 4e-5, "d_dt_t2": 2e-5,
+LADDER = {"d_dt_tn2": 3.2e-4, "d_dt_tn1": 1.6e-4,
+          "d_dt_t0": 8e-5, "d_dt_t1": 4e-5, "d_dt_t2": 2e-5,
           "d_dt_t3": 1e-5, "d_dt_t4": 5e-6}
 
 def dynamic_config(dt, q_supply, grid=(720, 192), end_t=0.06, write_interval=5e-4):
@@ -70,13 +71,8 @@ def main():
         run_root = CASE_DIR / "runs" / "production"
     runs = json.loads(output.read_text()) if output.exists() else {}
     for name, dt in ladder.items():
-        archived = runs.get(name, {})
-        archived_metrics = archived.get("metrics", {})
-        if (archived.get("rc") == 0
-                and archived_metrics.get("final_time_s", 0.0) >= end_t
-                and archived_metrics.get("flow_converged_all_steps", False)):
+        if name in runs:
             F.progress(f"{name}: already archived, skipped"); continue
-        runs.pop(name, None)
         run_dir = run_root / name
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "config.txt").write_text(
