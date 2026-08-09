@@ -151,6 +151,9 @@ transient/timestep convergence, Ferron pressure and R1-G7 bearing-interface
 temperature validation, and CHT temperature comparison figures. It also plots
 the time reached by every coarse stability
 probe, including runs that cannot enter the common endpoint comparison.
+The CHT comparison includes fixed-wall, depth-averaged, outer-Robin,
+fixed-outer-temperature CHT, and fully adiabatic cross-film treatments. The
+outer-Robin curve is a heat-transfer boundary, not a prescribed wall-flux mode.
 Convergence panels reserve 10% of their data range above the maximum and 40%
 below the minimum.
 

@@ -13,7 +13,7 @@ CASES_DIR = CASE_DIR.parent
 STYLE_DIR = Path.home() / ".codex" / "skills" / "plot-data" / "scripts"
 sys.path.insert(0, str(STYLE_DIR))
 
-from plot_style import MARKERS, apply_style, blues, save_figure, smart_legend
+from plot_style import COLORS, MARKERS, apply_style, blues, save_figure, smart_legend
 
 
 def convergence_limits(axis, values):
@@ -167,26 +167,31 @@ def temperature_validation():
 def cht_comparison():
     experiment = reference("ferron1983_fig4_2000rpm_4kN_temperature.csv")
     cases = (
-        ("c_xf_adiabatic", "cross-film, both walls adiabatic"),
-        ("c_xf_bush40_jad", r"cross-film, bush $40\,^\circ$C / journal adiabatic"),
-        ("c_xf_bush40_j40", r"cross-film, both walls $40\,^\circ$C"),
-        ("c_conj_fixed", r"conjugate bush, fixed outer $T_b=40\,^\circ$C"),
-        ("c_conj_robin80", r"conjugate bush, outer $h=80$ W m$^{-2}$ K$^{-1}$"),
+        ("c_xf_bush40_j40", "T_bearing_C", "theta_T_deg",
+         r"cross-film THD, both walls $40\,^\circ$C", COLORS[1], "-."),
+        ("c_fig4_jadiabatic", "T_bar_C", "theta_Tbar_deg",
+         r"depth-averaged THD ($\bar{T}$, not a surface)", "0.45", ":"),
+        ("c_conj_robin80", "T_bearing_C", "theta_T_deg",
+         r"cross-film + CHT, outer Robin $h=80$", COLORS[4], "--"),
+        ("c_conj_fixed", "T_bearing_C", "theta_T_deg",
+         r"cross-film + CHT, fixed outer $T_b=40\,^\circ$C", COLORS[2], "-"),
+        ("c_xf_adiabatic", "T_bearing_C", "theta_T_deg",
+         r"cross-film THD, both walls adiabatic", COLORS[0], "-"),
     )
-    colors = blues(len(cases))
     with np.load(CASE_DIR / "visual_data.npz") as data:
         fig, axis = plt.subplots(figsize=(7.2, 5.2))
-        for color, (tag, label) in zip(colors, cases):
-            theta, temperature = sorted_xy(data[tag + "_theta_T_deg"],
-                                           data[tag + "_T_bearing_C"])
-            axis.plot(theta, temperature, color=color, label=label)
+        for tag, value_key, theta_key, label, color, linestyle in cases:
+            theta, temperature = sorted_xy(data[tag + "_" + theta_key],
+                                           data[tag + "_" + value_key])
+            axis.plot(theta, temperature, color=color, linestyle=linestyle,
+                      linewidth=1.8, label=label)
     axis.plot(experiment[:, 0], experiment[:, 1], linestyle="none",
               marker=MARKERS[2], markerfacecolor="white",
               label="Ferron et al. (1983)")
     axis.set_xlim(0.0, 360.0)
     axis.set_xlabel(r"$\theta-\theta_g$ (deg)")
-    axis.set_ylabel(r"$T_b$ ($^\circ$C)")
-    smart_legend(axis, fontsize=10)
+    axis.set_ylabel(r"$T$ ($^\circ$C)")
+    smart_legend(axis, fontsize=9)
     save_figure(fig, CASE_DIR / "terra_report_cht_comparison")
     plt.close(fig)
 

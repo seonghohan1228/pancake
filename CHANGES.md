@@ -1,5 +1,10 @@
 # Change Log
 
+- Expanded the 2000 rpm / 4 kN temperature figure to compare cross-film THD
+  with isothermal walls, depth-averaged THD, outer-Robin heat transfer, CHT with
+  fixed outer bush temperature, and adiabatic cross-film THD. The compact visual
+  exporter now retains the depth-averaged temperature profile for each case.
+
 - Added the 2000 rpm / 4 kN Ferron temperature comparison using the current
   R1-G7 bearing-interface temperature. No last-year circumferential temperature
   curve is drawn because the LGEP exports contain only unverified scalar time

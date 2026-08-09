@@ -18,8 +18,9 @@ def main():
     eq=json.loads((CASE_DIR/"campaign_equilibrium.json").read_text()); out={}
     for name,r in eq.items():
         if "flow" not in r: continue
-        d=CASE_DIR/r["flow"]["dir"]; t=S.midplane_profile(d,"T_bearing"); p=S.midplane_profile(d,"p")
+        d=CASE_DIR/r["flow"]["dir"]; t=S.midplane_profile(d,"T_bearing"); t_bar=S.midplane_profile(d,"T"); p=S.midplane_profile(d,"p")
         if t: out[name+"_theta_T_deg"]=(np.asarray(t[0])-90)%360; out[name+"_T_bearing_C"]=np.asarray(t[1])-273.15
+        if t_bar: out[name+"_theta_Tbar_deg"]=(np.asarray(t_bar[0])-90)%360; out[name+"_T_bar_C"]=np.asarray(t_bar[1])-273.15
         if p: out[name+"_theta_p_deg"]=(np.asarray(p[0])-90)%360; out[name+"_p_gauge_MPa"]=(np.asarray(p[1])-101325)/1e6
     for name in ("r0_g6","r1_g6","r2_g6","d_grid_g6"):
         if name not in eq or "flow" not in eq[name]: continue
