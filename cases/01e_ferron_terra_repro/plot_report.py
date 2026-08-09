@@ -39,7 +39,7 @@ def reference(name):
 
 def grid_convergence():
     analysis = json.loads((CASE_DIR / "d_grid_campaign_analysis.json").read_text())
-    rows = [analysis["runs"][f"d_grid_g{i}"] for i in range(1, 8)
+    rows = [analysis["runs"][f"d_grid_g{i}"] for i in range(1, 9)
             if f"d_grid_g{i}" in analysis["runs"]]
     cells = np.asarray([np.prod(row["grid"]) for row in rows])
     series = (
@@ -78,48 +78,45 @@ def legacy_grid_convergence():
 
 
 def timestep_convergence():
-    data = json.loads((CASE_DIR / "d_timestep_history.json").read_text())
-    ordered_names = ("d_dt_tn2", "d_dt_tn1", "d_dt_t0", "d_dt_t1",
-                     "d_dt_t2", "d_dt_t3", "d_dt_t4")
-    histories = [data[name] for name in ordered_names if name in data]
-    complete = [run for run in histories if run["history"][-1]["time_s"] >= 0.06]
+    old_data = json.loads((CASE_DIR / "d_timestep_history.json").read_text())
+    extended_path = CASE_DIR / "d_timestep_100ms_history.json"
+    data = json.loads(extended_path.read_text()) if extended_path.exists() else old_data
+    extended_names = ("d_dt100_t1", "d_dt100_t2", "d_dt100_t3", "d_dt100_t4")
+    fallback_names = ("d_dt_t1", "d_dt_t2", "d_dt_t3", "d_dt_t4")
+    selected_names = extended_names if extended_path.exists() else fallback_names
+    histories = [data[name] for name in selected_names if name in data]
     colors = blues(len(histories))
     means = []
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.3), constrained_layout=True)
     for color, run in zip(colors, histories):
         time_ms = np.asarray([row["time_s"] for row in run["history"]]) * 1e3
         eps = np.asarray([row["eps"] for row in run["history"]])
-        completed = time_ms[-1] >= 60.0
-        suffix = "" if completed else " (incomplete)"
-        if completed and run["dt_us"] == 40.0:
-            suffix = " (force imbalance)"
         axes[0].plot(time_ms, eps, color=color,
-                     linestyle="-" if completed else "--",
-                     marker=None if completed else "x", markersize=7,
-                     label=rf"$\Delta t={run['dt_us']:.0f}\,\mu\mathrm{{s}}$" + suffix)
-    for run in complete:
-        time_ms = np.asarray([row["time_s"] for row in run["history"]]) * 1e3
-        eps = np.asarray([row["eps"] for row in run["history"]])
-        means.append(float(np.mean(eps[time_ms >= 40.0])))
+                     label=rf"$\Delta t={run['dt_us']:.0f}\,\mu\mathrm{{s}}$")
+        means.append(float(np.mean(eps[time_ms >= time_ms[-1] - 50.0])))
     axes[0].set_xlabel(r"$t$ (ms)")
     axes[0].set_ylabel(r"$\epsilon$")
     smart_legend(axes[0], fontsize=11)
 
-    dt_us = [run["dt_us"] for run in complete]
+    dt_us = [run["dt_us"] for run in histories]
     axes[1].plot(dt_us, means, linestyle="none", marker=MARKERS[0])
     axes[1].set_xlabel(r"$\Delta t$ ($\mu$s)")
-    axes[1].set_ylabel(r"$\overline{\epsilon}_{40\text{--}60\,\mathrm{ms}}$")
-    convergence_limits(axes[1], means)
+    axes[1].set_ylabel(r"$\overline{\epsilon}$")
+    mean_max = max(means)
+    axes[1].set_ylim(mean_max - 0.60 * 0.005, mean_max + 0.40 * 0.005)
     save_figure(fig, CASE_DIR / "terra_report_timestep_convergence")
     plt.close(fig)
 
     fig, axis = plt.subplots()
-    dt_all = [run["dt_us"] for run in histories]
-    reached_ms = [run["history"][-1]["time_s"] * 1e3 for run in histories]
+    stability_names = ("d_dt_tn2", "d_dt_tn1", "d_dt_t0")
+    stability_runs = [old_data[name] for name in stability_names if name in old_data]
+    stability_runs.extend(histories)
+    dt_all = [run["dt_us"] for run in stability_runs]
+    reached_ms = [run["history"][-1]["time_s"] * 1e3 for run in stability_runs]
     axis.plot(dt_all, reached_ms, linestyle="none", marker=MARKERS[0])
     axis.set_xlabel(r"$\Delta t$ ($\mu$s)")
     axis.set_ylabel(r"$t_{\mathrm{reached}}$ (ms)")
-    axis.set_ylim(-3.0, 66.0)
+    convergence_limits(axis, reached_ms)
     save_figure(fig, CASE_DIR / "terra_report_timestep_stability")
     plt.close(fig)
 

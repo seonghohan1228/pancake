@@ -77,6 +77,7 @@ SPECS = {
     "d_grid_g5": spec("D-grid G5 current R1 closure", (480,128), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
     "d_grid_g6": spec("D-grid G6 current R1 closure", (720,192), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
     "d_grid_g7": spec("D-grid G7 current R1 closure", (1080,288), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
+    "d_grid_g8": spec("D-grid G8 current R1 closure", (1620,432), conjugate("FIXED_TEMPERATURE"), warm=(0.609,-38.68), kind="MODEL-CLOSURE"),
     "c_fig4_jadiabatic": spec("C Fig.4 J adiabatic", (720,192), depth_average(0), warm=(0.5738,-36.32), fields=BASE_FIELDS),
     "c_fig4_jiso40": spec("C Fig.4 J iso40", (720,192), depth_average(10000), warm=(0.5675,-36.12), fields=BASE_FIELDS),
     "c_xf_adiabatic": spec("C cross-film adiabatic", (720,192), crossfilm_local(0,0), warm=(0.6086,-37.55)),
@@ -90,7 +91,7 @@ for w in (2000,3000,4000,6000,8000,10000):
 
 MODES = {
     "R0": ["r0_g6", "r0_g7"], "R1": ["r1_g6", "r1_g7"], "R2": ["r2_g6", "r2_g7"],
-    "D_GRID": [f"d_grid_g{i}" for i in range(1, 8)],
+    "D_GRID": [f"d_grid_g{i}" for i in range(1, 9)],
     "C": ["c_fig4_jadiabatic", "c_fig4_jiso40", *[f"c_fig5_w{w}" for w in (2000,3000,4000,6000,8000,10000)], "c_xf_adiabatic", "c_xf_bush40_jad", "c_xf_bush40_j40", "c_conj_fixed", "c_conj_robin80"],
 }
 

@@ -35,7 +35,7 @@ assumption, not a measured paper value.
 | R1 | `r1_g6`, `r1_g7` | 720x192, 1080x288 | outer cylinder fixed at 40 C, shaft adiabatic | Ferron outer-cylinder condition |
 | R2 | `r2_g6`, `r2_g7` | 720x192, 1080x288 | R1 plus scalar shaft held near 43 C | explicit surrogate sensitivity |
 | C | Fig. 4 THD, Fig. 5 six-load, cross-film A/B/C, conjugate fixed/Robin80 | G6 | archived Claude matrix, corrected source | reproduction comparison |
-| D-grid | `d_grid_g1`--`g7` | 60x16 through 1080x288 | R1 thermal closure | fresh steady CHT grid check |
+| D-grid | `d_grid_g1`--`g8` | 60x16 through 1620x432 | R1 thermal closure | fresh steady CHT grid check |
 | D-dt | `d_dt_t0..t4` | G6 | R1 closure, moving-bearing 4 kN step | fresh physical-time timestep check |
 
 Every equilibrium executes two independent force-balance passes: `PINNED`, then
@@ -73,6 +73,10 @@ PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 python3 cases/01e_ferron_terra_repro/run_timestep.py
 
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_timestep.py --extended-100ms
+
 python3 cases/01e_ferron_terra_repro/analyse_campaign.py
 python3 cases/01e_ferron_terra_repro/analyse_discretization.py
 python3 cases/01e_ferron_terra_repro/export_visual_data.py
@@ -104,7 +108,7 @@ writes the compact local field archive used for profiles and contours.
 This is deliberately distinct from Claude's Case 00.
 
 - **D-grid** is steady and force-balanced on 60x16, 120x32, 240x64, 360x96,
-  480x128, 720x192, and 1080x288 grids. It measures spatial discretisation
+  480x128, 720x192, 1080x288, and 1620x432 grids. It measures spatial discretisation
   of the current R1 conjugate thermal model, at the Fig. 4 condition.  It is
   not a pseudo-time test: `dt` is ignored by `STEADY_STATE`.
 - **D-dt** is an actual physical-time calculation: `TRANSIENT` plus
@@ -118,6 +122,8 @@ D-dt's ladder is `3.2e-4`, `1.6e-4`, `8e-5`, `4e-5`, `2e-5`, `1e-5`, and
 intentional stability probes.
 Failure of a coarse probe is archived but does not prevent the finer timesteps
 from running.
+The separately archived `--extended-100ms` mode reruns only 40/20/10/5
+microseconds to 0.10 s for the final convergence figure.
 The proposed acceptance comparison is T2-to-T3: final eccentricity <=0.5%,
 final force magnitude <=1.0%, final attitude <=0.25 deg, and final maximum
 film temperature <=0.10 K; T3-to-T4 must be no worse.  A failed film guard,
@@ -131,6 +137,8 @@ transferring the compact JSON and plotting on Windows:
 ```bash
 python3 cases/01e_ferron_terra_repro/analyse_discretization.py
 python3 cases/01e_ferron_terra_repro/export_timestep_history.py
+python3 cases/01e_ferron_terra_repro/analyse_discretization.py --extended-100ms
+python3 cases/01e_ferron_terra_repro/export_timestep_history.py --extended-100ms
 python3 cases/01e_ferron_terra_repro/plot_report.py
 ```
 

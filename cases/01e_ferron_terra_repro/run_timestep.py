@@ -13,6 +13,8 @@ S = F.S
 LADDER = {"d_dt_tn2": 3.2e-4, "d_dt_tn1": 1.6e-4,
           "d_dt_t0": 8e-5, "d_dt_t1": 4e-5, "d_dt_t2": 2e-5,
           "d_dt_t3": 1e-5, "d_dt_t4": 5e-6}
+LADDER_100MS = {"d_dt100_t1": 4e-5, "d_dt100_t2": 2e-5,
+                "d_dt100_t3": 1e-5, "d_dt100_t4": 5e-6}
 
 def dynamic_config(dt, q_supply, grid=(720, 192), end_t=0.06, write_interval=5e-4):
     s = F.SPECS["d_grid_g6"]
@@ -53,6 +55,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--rerun-failed", action="store_true")
+    parser.add_argument("--extended-100ms", action="store_true")
     args = parser.parse_args()
     if args.smoke:
         ladder = {"d_dt_smoke": 2e-5}
@@ -66,9 +69,12 @@ def main():
         equilibria = json.loads(eq_path.read_text())
         if "d_grid_g6" not in equilibria: raise SystemExit("run D_GRID first: D-grid G6 source missing")
         q_supply = equilibria["d_grid_g6"]["q_supply_m3s"]
-        ladder = LADDER
-        grid, end_t, write_interval = (720, 192), 0.06, 5e-4
-        output = CASE_DIR / "d_timestep_runs.json"
+        ladder = LADDER_100MS if args.extended_100ms else LADDER
+        grid = (720, 192)
+        end_t = 0.10 if args.extended_100ms else 0.06
+        write_interval = 5e-4
+        output = CASE_DIR / ("d_timestep_100ms_runs.json" if args.extended_100ms
+                             else "d_timestep_runs.json")
         run_root = CASE_DIR / "runs" / "production"
     runs = json.loads(output.read_text()) if output.exists() else {}
     for name, dt in ladder.items():

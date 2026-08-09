@@ -78,6 +78,10 @@ def main():
         a,b=runs.get(label+"_g6"),runs.get(label+"_g7")
         if a and b and a["status"]==b["status"]=="PASS":
             checks=grid_checks(a,b); grids[label]={"checks":checks,"pass":all(v["pass"] for v in checks.values())}
+    a,b=runs.get("d_grid_g7"),runs.get("d_grid_g8")
+    if a and b and a["status"]==b["status"]=="PASS":
+        checks=grid_checks(a,b)
+        grids["d_grid_g7_g8"]={"checks":checks,"pass":all(v["pass"] for v in checks.values())}
     fidelity={
         "outer_radius_fixed_temperature": "R1/R2 only",
         "bush_axial_hb_80": "NOT_MODELLED",

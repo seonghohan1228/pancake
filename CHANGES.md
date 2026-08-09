@@ -40,6 +40,11 @@
   common-60-ms endpoint comparison.
 - Added an explicit `--rerun-failed` recovery path for timestep launch errors;
   it cannot overwrite an archived solver run with `rc=0`.
+- Added G8 (1620x432) to the fresh R1 grid study and a distinct 0.10 s
+  40/20/10/5 microsecond ladder. The report averages eccentricity over the last
+  50 ms, labels it only as mean eccentricity, omits diverged histories, fixes
+  the mean panel to a 0.005 span with its maximum at 60% height, and applies the
+  10%/40% padding rule to the time-reached panel.
 - Added a separately labelled repaired-legacy reproduction of Claude's original
   G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
   repairs are machine-readable; non-converged coupling remains a failed verdict.
