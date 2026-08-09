@@ -1,9 +1,5 @@
 # Change Log
 
-- Redrew the Ferron 4000 rpm / 6 kN three-way pressure comparison with only the
-  current JFO solver's 40 degC isothermal-viscosity result; the archived 55 degC
-  sensitivity remains in the data but is no longer plotted.
-
 ## Unreleased - Windows MSYS2 GUI Workflow
 
 ### 2026-08-07 - Ferron thermal-boundary audit corrections

@@ -2,7 +2,7 @@
 
 1. reynsim_midplane_pressure.png - mid-plane p(theta) at 4000 rpm / 6 kN:
    Ferron 1983 Fig. 6 experiment (points), previous-generation MATLAB/ReynSim
-   (line), current pancake FBNS isothermal result at 40 degC.
+   (line), current pancake FBNS isothermal band (two thin lines).
 2. reynsim_eccentricity.png - eps vs W: ReynSim's two numerical vintages, their
    own experimental digitisation (source unverified), our Fig. 5 digitisation
    rescaled 145/152, and our FBNS+THD sweep at 2000 rpm.
@@ -61,11 +61,18 @@ def plot_pressure():
     eq = json.loads((PRELIM / "equilibrium.json").read_text())
     fig, ax = plt.subplots(figsize=(6.6, 4.6))
 
-    # Current solver: 01-prelim isothermal FBNS result at the 40 degC
-    # supply-temperature viscosity.
-    x, y = solver_midplane(PRELIM / eq["mu40"]["dir"])
-    ax.plot(x, y, "-", lw=1.8, color=COLORS[2],
-            label=r"This year (JFO, 40 $^{\circ}$C)")
+    # Current solver: 01-prelim isothermal FBNS band at this exact condition.
+    # One legend entry for the current solver: the isothermal band (40-55 C).
+    band = [("mu40", "-"), ("mu55", "--")]
+    curves = []
+    for i, (key, ls) in enumerate(band):
+        x, y = solver_midplane(PRELIM / eq[key]["dir"])
+        curves.append((x, y))
+        ax.plot(x, y, ls, lw=1.1, color=COLORS[2],
+                label=("This year (JFO)" if i == 0 else None))
+    if len(curves[0][0]) == len(curves[1][0]):
+        ax.fill_between(curves[0][0], curves[0][1], curves[1][1],
+                        color=COLORS[2], alpha=0.15, lw=0, zorder=0)
 
     # Previous generation.
     xr, pr = R.midplane_pressure()

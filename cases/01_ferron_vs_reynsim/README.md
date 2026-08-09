@@ -27,14 +27,14 @@ this case has no separate `SUMMARY.md`.
 
 | figure | what it shows |
 |---|---|
-| `reynsim_midplane_pressure.png` | mid-plane p(theta) at 4000 rpm / 6 kN: experiment (points), ReynSim (line), and pancake FBNS isothermal at 40 degC |
+| `reynsim_midplane_pressure.png` | mid-plane p(theta) at 4000 rpm / 6 kN: experiment (points), ReynSim (line), pancake FBNS isothermal band (two thin lines) |
 | `reynsim_eccentricity.png` | eps vs W: ReynSim's two numerical vintages, their own experimental digitisation (source unverified), our Fig. 5 digitisation rescaled 145/152, and our FBNS+THD sweep at 2000 rpm |
 | `fig4_three_way.png` | the same three-way overlay at the Fig. 4 point (2000 rpm, 4 kN) |
 
 Headline: ReynSim's peak is 1.507 MPa gauge against the experiment's 1.828 MPa,
-i.e. **-17.6 %**, while pancake's displayed 40 degC isothermal result is -5.0 %.
-The retained 55 degC result is +6.9 % but is not drawn. Peak locations agree
-within about 3 deg for all three displayed datasets.
+i.e. **-17.6 %**, while pancake's two isothermal viscosities bracket the
+measurement at -5.0 % and +6.9 %. Peak locations agree within about 3 deg for all
+three.
 
 ## Cross-references (fix these before renaming anything)
 
