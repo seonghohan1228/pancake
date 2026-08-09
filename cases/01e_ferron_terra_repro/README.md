@@ -136,8 +136,10 @@ python3 cases/01e_ferron_terra_repro/plot_report.py
 
 `plot_report.py` produces the requested total-cell grid convergence, full
 transient/timestep convergence, Ferron pressure validation, and CHT temperature
-comparison figures. Convergence panels reserve 10% of their data range above
-the maximum and 40% below the minimum.
+comparison figures. It also plots the time reached by every coarse stability
+probe, including runs that cannot enter the common endpoint comparison.
+Convergence panels reserve 10% of their data range above the maximum and 40%
+below the minimum.
 
 Claude's original Case 00 instead used: (i) fixed-eccentricity, steady,
 isothermal JFO grids 60x16 to 480x128 and a later FBNS timestep tail; and

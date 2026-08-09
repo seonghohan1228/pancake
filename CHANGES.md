@@ -36,7 +36,8 @@
   than borrowing points from Claude's fixed-eccentricity study.
 - Extended the transient stability sweep above 80 microseconds with 160 and
   320 microsecond probes. Incomplete coarse histories remain visible as dashed
-  curves but are excluded from the common-60-ms endpoint comparison.
+  curves and in a separate time-reached plot, but are excluded from the
+  common-60-ms endpoint comparison.
 - Added an explicit `--rerun-failed` recovery path for timestep launch errors;
   it cannot overwrite an archived solver run with `rc=0`.
 - Added a separately labelled repaired-legacy reproduction of Claude's original

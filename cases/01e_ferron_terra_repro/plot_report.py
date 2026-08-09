@@ -91,8 +91,11 @@ def timestep_convergence():
         eps = np.asarray([row["eps"] for row in run["history"]])
         completed = time_ms[-1] >= 60.0
         suffix = "" if completed else " (incomplete)"
+        if completed and run["dt_us"] == 40.0:
+            suffix = " (force imbalance)"
         axes[0].plot(time_ms, eps, color=color,
                      linestyle="-" if completed else "--",
+                     marker=None if completed else "x", markersize=7,
                      label=rf"$\Delta t={run['dt_us']:.0f}\,\mu\mathrm{{s}}$" + suffix)
     for run in complete:
         time_ms = np.asarray([row["time_s"] for row in run["history"]]) * 1e3
@@ -108,6 +111,16 @@ def timestep_convergence():
     axes[1].set_ylabel(r"$\overline{\epsilon}_{40\text{--}60\,\mathrm{ms}}$")
     convergence_limits(axes[1], means)
     save_figure(fig, CASE_DIR / "terra_report_timestep_convergence")
+    plt.close(fig)
+
+    fig, axis = plt.subplots()
+    dt_all = [run["dt_us"] for run in histories]
+    reached_ms = [run["history"][-1]["time_s"] * 1e3 for run in histories]
+    axis.plot(dt_all, reached_ms, linestyle="none", marker=MARKERS[0])
+    axis.set_xlabel(r"$\Delta t$ ($\mu$s)")
+    axis.set_ylabel(r"$t_{\mathrm{reached}}$ (ms)")
+    axis.set_ylim(-3.0, 66.0)
+    save_figure(fig, CASE_DIR / "terra_report_timestep_stability")
     plt.close(fig)
 
 
