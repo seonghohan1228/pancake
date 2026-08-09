@@ -80,6 +80,10 @@ python3 cases/01e_ferron_terra_repro/plot_campaign.py
 python3 cases/01e_ferron_terra_repro/plot_discretization.py
 ```
 
+An infrastructure/launch failure may be replaced explicitly with
+`run_timestep.py --rerun-failed`; completed or physically incomplete runs with
+`rc=0` remain immutable.
+
 Use `--smoke` only for a 180x48 harness check; it is never scored.  Before a
 remote batch: verify the remote commit hash, run the Windows/Linux gate, and
 checksum the returned archive. Solver calls are isolated below

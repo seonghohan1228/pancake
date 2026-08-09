@@ -52,6 +52,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--rerun-failed", action="store_true")
     args = parser.parse_args()
     if args.smoke:
         ladder = {"d_dt_smoke": 2e-5}
@@ -72,7 +73,10 @@ def main():
     runs = json.loads(output.read_text()) if output.exists() else {}
     for name, dt in ladder.items():
         if name in runs:
-            F.progress(f"{name}: already archived, skipped"); continue
+            if not args.rerun_failed or runs[name].get("rc") == 0:
+                F.progress(f"{name}: already archived, skipped"); continue
+            F.progress(f"{name}: replacing archived launch failure")
+            runs.pop(name)
         run_dir = run_root / name
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "config.txt").write_text(
