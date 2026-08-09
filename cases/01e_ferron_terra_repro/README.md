@@ -119,6 +119,20 @@ non-converged FBNS step, or missing final frame fails that ladder leg. Transient
 mode advances one segregated flow/energy sweep per physical timestep, so the
 steady Picard-coupling residual is intentionally not defined for D-dt.
 
+After the remote ladder, extract its lightweight eccentricity histories before
+transferring the compact JSON and plotting on Windows:
+
+```bash
+python3 cases/01e_ferron_terra_repro/analyse_discretization.py
+python3 cases/01e_ferron_terra_repro/export_timestep_history.py
+python3 cases/01e_ferron_terra_repro/plot_report.py
+```
+
+`plot_report.py` produces the requested total-cell grid convergence, full
+transient/timestep convergence, Ferron pressure validation, and CHT temperature
+comparison figures. Convergence panels reserve 10% of their data range above
+the maximum and 40% below the minimum.
+
 Claude's original Case 00 instead used: (i) fixed-eccentricity, steady,
 isothermal JFO grids 60x16 to 480x128 and a later FBNS timestep tail; and
 (ii) a **physical** 4000 rpm / 6 kN moving-bearing transient with a 10 kg

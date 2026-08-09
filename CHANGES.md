@@ -25,6 +25,12 @@
   legs.
 - Added reproducible 300 dpi D-grid convergence, surface-temperature/pressure
   profile, and film-field contour figures from the transferred Ubuntu data.
+- Completed the 24-rank Ubuntu timestep ladder. The 80 microsecond leg became
+  unstable and stopped early, 40 microseconds reached the endpoint but missed
+  force balance, and the registered 20/10/5 microsecond comparisons passed.
+  Added full eccentricity histories and report-style grid, timestep, Ferron
+  pressure, and CHT-temperature figures. Convergence panels reserve 10% of the
+  data range above the maximum and 40% below the minimum.
 - Added a separately labelled repaired-legacy reproduction of Claude's original
   G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
   repairs are machine-readable; non-converged coupling remains a failed verdict.
