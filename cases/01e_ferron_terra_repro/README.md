@@ -84,6 +84,10 @@ python3 cases/01e_ferron_terra_repro/plot_campaign.py
 python3 cases/01e_ferron_terra_repro/plot_discretization.py
 ```
 
+For one unattended sequential batch, launch
+`run_g8_dt100_extension.py` while G8 is active; it waits for the G8 ledger entry
+before starting the 0.10 s ladder, analysis, and history export.
+
 An infrastructure/launch failure may be replaced explicitly with
 `run_timestep.py --rerun-failed`; completed or physically incomplete runs with
 `rc=0` remain immutable.

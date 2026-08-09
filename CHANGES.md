@@ -45,6 +45,8 @@
   50 ms, labels it only as mean eccentricity, omits diverged histories, fixes
   the mean panel to a 0.005 span with its maximum at 60% height, and applies the
   10%/40% padding rule to the time-reached panel.
+- Added an unattended queue that waits for the independent G8 result before
+  launching the four 0.10 s cases, preserving the one-24-rank-job policy.
 - Added a separately labelled repaired-legacy reproduction of Claude's original
   G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
   repairs are machine-readable; non-converged coupling remains a failed verdict.
