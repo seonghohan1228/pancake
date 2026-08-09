@@ -164,6 +164,48 @@ bearing. Its nominal THD pair is not used in D-grid; it is reproduced only in
 the separately labelled, minimally repaired legacy mode below because its
 archived viscosity was thermally inert.
 
+## F6: 4000 rpm / 6000 N with digitised Ferron supply flow
+
+This mode targets Ferron's Figure 6 temperature condition independently of the
+older model-derived inlet closure. The force-balance search starts from
+`eps=0.58`, uses G6 (`720x192`), and holds the digitised Figure 10 fresh supply
+fixed throughout the search:
+
+- `Q*=0.5128803764`, where `Q*=Qi/(L*c*U)`;
+- `L=0.08 m`, hot clearance `c=152 um`, `R=0.05 m`, and 4000 rpm;
+- `Qi=1.306195764e-4 m3/s = 7.83717 L/min`.
+
+Because `Qi` is supplied independently, F6 runs one direct `FLOW_WEIGHTED`
+force balance. It does not perform the old PINNED pass or replace the measured
+flow with the solver's groove-source diagnostic.
+
+The four registered cases are depth-averaged THD, cross-film adiabatic,
+cross-film with both walls fixed at 40 C, and cross-film plus CHT with the bush
+outer cylinder fixed at `Tb=40 C`. There is no `h=80` case: Ferron's `h_b=80`
+W/(m2 K) belongs to the axial bush faces, and axial cooling is deliberately
+deferred. The CHT result is therefore a reduced-model comparison, not a full
+reproduction of Ferron's three-dimensional bush conduction.
+
+Run on the isolated Ubuntu checkout with one 24-rank process group:
+
+```bash
+PANCAKE_EXE=/path/to/pancake PANCAKE_MPI=mpirun PANCAKE_NPROC=24 \
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+python3 cases/01e_ferron_terra_repro/run_campaign.py F6
+
+python3 cases/01e_ferron_terra_repro/export_fig6_visual_data.py
+```
+
+After checksum-verified transfer, plot on Windows:
+
+```bash
+python cases/01e_ferron_terra_repro/plot_fig6.py
+```
+
+Ferron's Figure 6 triangles are thermocouple readings approximately 0.5 mm
+below the bearing bore. The depth-averaged curve is a film-average temperature;
+the three cross-film curves report the bearing-side interface temperature.
+
 ## REPAIRED_LEGACY: exact Claude GCT reproduction
 
 `run_legacy_gct.py` is the separate historical reproduction, not D-grid.  It

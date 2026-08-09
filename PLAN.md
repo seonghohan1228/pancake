@@ -19,6 +19,14 @@ VOID_COUPLED convergence items and the five deferred modelling gaps
 
 Priority queue (user gates in brackets):
 
+0a. **Ferron Figure 6 measured-flow campaign** - **IN PROGRESS 2026-08-09**.
+    At 4000 rpm / 6000 N, start the force-balance search from `eps=0.58` and
+    hold the user-digitised Figure 10 supply fixed at `Qi=7.837 L/min`. Run four
+    G6 thermal closures: depth-averaged, adiabatic cross-film, both-wall 40 C
+    cross-film, and fixed-outer-40 C CHT. Do not rerun `h=80`; it represents
+    deferred axial-face cooling. Return the Ubuntu archive, compact profiles,
+    Ferron overlay, numerical verdicts, and exact remote provenance.
+
 0. **Ferron CHT grid sensitivity** - **DONE, FAIL 2026-08-07**. The first pass
    exposed and fixed a groove-source diagnostic that grew as `1/dz`. The clean
    hash-verified rerun passes five of seven G6-to-G7 checks but misses the 0.10 K

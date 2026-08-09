@@ -15,6 +15,8 @@ import solver_io as S
 
 CLEARANCE = 1.52e-4
 Q_PLACEHOLDER = 1.0e-4
+FIG6_Q_STAR = 0.5128803763677692
+FIG6_QI = FIG6_Q_STAR * 0.08 * CLEARANCE * 0.05 * 418.879020479
 W_TOL_REL, ANGLE_TOL = 1.0e-3, 0.05
 D_EPS, D_PSI = 5.0e-3, 0.5
 COMMON_XF = """cross_film_thermal_model = POLYNOMIAL
@@ -85,6 +87,10 @@ SPECS = {
     "c_xf_bush40_jad": spec("C cross-film bush40/J adiabatic", (720,192), crossfilm_local(0,1e7,1e7), warm=(0.5860,-36.8)),
     "c_conj_fixed": spec("C conjugate outer fixed 40 C", (720,192), conjugate("FIXED_TEMPERATURE"), warm=(0.5934,-37.50)),
     "c_conj_robin80": spec("C conjugate outer Robin h=80", (720,192), conjugate("CONVECTION",80), warm=(0.6028,-37.70)),
+    "f6_depth_averaged": spec("F6 depth-averaged THD", (720,192), depth_average(0), target=6000.0, omega=418.879020479, warm=(0.58,-36.0), fields=BASE_FIELDS),
+    "f6_xf_adiabatic": spec("F6 cross-film adiabatic", (720,192), crossfilm_local(0,0), target=6000.0, omega=418.879020479, warm=(0.58,-36.0)),
+    "f6_xf_iso40": spec("F6 cross-film both walls 40 C", (720,192), crossfilm_local(1e7,1e7,1e7), target=6000.0, omega=418.879020479, warm=(0.58,-36.0)),
+    "f6_cht_fixed": spec("F6 CHT fixed outer 40 C", (720,192), conjugate("FIXED_TEMPERATURE"), target=6000.0, omega=418.879020479, warm=(0.58,-36.0)),
 }
 for w in (2000,3000,4000,6000,8000,10000):
     SPECS[f"c_fig5_w{w}"] = spec(f"C Fig.5 W={w} N", (720,192), depth_average(0), target=float(w), warm=(0.58,-36.0), fields=BASE_FIELDS)
@@ -93,6 +99,7 @@ MODES = {
     "R0": ["r0_g6", "r0_g7"], "R1": ["r1_g6", "r1_g7"], "R2": ["r2_g6", "r2_g7"],
     "D_GRID": [f"d_grid_g{i}" for i in range(1, 9)],
     "C": ["c_fig4_jadiabatic", "c_fig4_jiso40", *[f"c_fig5_w{w}" for w in (2000,3000,4000,6000,8000,10000)], "c_xf_adiabatic", "c_xf_bush40_jad", "c_xf_bush40_j40", "c_conj_fixed", "c_conj_robin80"],
+    "F6": ["f6_depth_averaged", "f6_xf_adiabatic", "f6_xf_iso40", "f6_cht_fixed"],
 }
 
 def progress(message):
@@ -149,18 +156,35 @@ def solve(name):
     flow=newton(name,{"mixing":"FLOW_WEIGHTED","q_supply":q},pinned["eps"],pinned["psi"],s["target"])
     return {"label":s["label"],"kind":s["kind"],"grid":s["grid"],"target_N":s["target"],"q_supply_m3s":q,"pinned":pinned,"flow":flow}
 
+def solve_known_qi(name):
+    s=SPECS[name]; eps,psi=s["warm"]
+    cfg={"mixing":"FLOW_WEIGHTED","q_supply":FIG6_QI}
+    flow=newton(name,cfg,eps,psi,s["target"])
+    return {"label":s["label"],"kind":"FERRON-QI + MODEL-CLOSURE",
+            "grid":s["grid"],"target_N":s["target"],
+            "q_star":FIG6_Q_STAR,"q_supply_m3s":FIG6_QI,
+            "q_source":"Ferron Fig. 10, 4000 rpm, eps=0.577999, Q*=Q_i/(L*c*U)",
+            "flow":flow}
+
 def main():
     global RUN_ROOT
     import argparse
     parser=argparse.ArgumentParser(); parser.add_argument("mode", choices=MODES); parser.add_argument("--smoke",action="store_true"); args=parser.parse_args()
-    result_path=CASE_DIR/("smoke_equilibrium.json" if args.smoke else "campaign_equilibrium.json")
-    RUN_ROOT = CASE_DIR / "runs" / ("smoke" if args.smoke else "production")
+    fig6 = args.mode == "F6"
+    if fig6:
+        result_path=CASE_DIR/("fig6_smoke_equilibrium.json" if args.smoke else "fig6_equilibrium.json")
+        RUN_ROOT = CASE_DIR / "runs" / ("fig6_smoke" if args.smoke else "fig6_ferron_qi")
+    else:
+        result_path=CASE_DIR/("smoke_equilibrium.json" if args.smoke else "campaign_equilibrium.json")
+        RUN_ROOT = CASE_DIR / "runs" / ("smoke" if args.smoke else "production")
     data=json.loads(result_path.read_text()) if result_path.exists() else {}
     for name in MODES[args.mode]:
         if name in data and "failed" not in data[name]: progress(f"{name}: already archived, skipped"); continue
         data.pop(name, None)
         if args.smoke: SPECS[name]={**SPECS[name],"grid":(180,48)}
-        try: data[name]=solve(name); result_path.write_text(json.dumps(data,indent=2))
+        try:
+            data[name]=solve_known_qi(name) if fig6 else solve(name)
+            result_path.write_text(json.dumps(data,indent=2))
         except Exception as exc: data[name]={"failed":str(exc),"label":SPECS[name]["label"]}; result_path.write_text(json.dumps(data,indent=2)); raise
 
 if __name__ == "__main__": main()

@@ -1,5 +1,13 @@
 # Change Log
 
+- Added a separate Ferron Figure 6 campaign at 4000 rpm and 6000 N using the
+  user-digitised Figure 10 fresh supply, `Qi=7.837 L/min` at `eps=0.578`.
+  It runs depth-averaged, adiabatic cross-film, fixed-40 C cross-film, and
+  fixed-outer-40 C CHT models on G6. The axial-face `h_b=80` case is excluded
+  because axial cooling remains outside the present reduced CHT model.
+- Added compact Figure 6 profile export and a 300 dpi temperature comparison
+  against Ferron's subsurface bearing thermocouple data.
+
 - Reordered the Ferron thermal-model comparison and standardized its line map:
   depth-averaged grey dotted, adiabatic cross-film blue, 40 C cross-film
   orange, fixed-40 C CHT yellow, and outer-Robin CHT green.
