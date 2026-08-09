@@ -61,7 +61,8 @@ Priority queue (user gates in brackets):
    substitute for the missing full-solid and independent-flow evidence. A
    repaired-legacy mode reproduces Claude's original GCT only for comparison;
    it is report-only because the nominal THD viscosity input is effectively inert.
-   The fresh steady D-grid ladder passes; its figures are generated locally from
+   The fresh steady D-grid ladder covers G1--G7 and passes its registered G6--G7
+   gate; its figures are generated locally from
    transferred field data. The physical timestep ladder also passes its
    registered 20/10/5 microsecond comparisons, selecting 20 microseconds; the
    unstable 80 microsecond leg and force-imbalanced 40 microsecond endpoint stay

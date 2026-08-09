@@ -35,7 +35,7 @@ assumption, not a measured paper value.
 | R1 | `r1_g6`, `r1_g7` | 720x192, 1080x288 | outer cylinder fixed at 40 C, shaft adiabatic | Ferron outer-cylinder condition |
 | R2 | `r2_g6`, `r2_g7` | 720x192, 1080x288 | R1 plus scalar shaft held near 43 C | explicit surrogate sensitivity |
 | C | Fig. 4 THD, Fig. 5 six-load, cross-film A/B/C, conjugate fixed/Robin80 | G6 | archived Claude matrix, corrected source | reproduction comparison |
-| D-grid | `d_grid_g5/g6/g7` | 480x128, 720x192, 1080x288 | R1 thermal closure | fresh steady CHT grid check |
+| D-grid | `d_grid_g1`--`g7` | 60x16 through 1080x288 | R1 thermal closure | fresh steady CHT grid check |
 | D-dt | `d_dt_t0..t4` | G6 | R1 closure, moving-bearing 4 kN step | fresh physical-time timestep check |
 
 Every equilibrium executes two independent force-balance passes: `PINNED`, then
@@ -99,7 +99,8 @@ writes the compact local field archive used for profiles and contours.
 
 This is deliberately distinct from Claude's Case 00.
 
-- **D-grid** is steady and force-balanced.  It measures spatial discretisation
+- **D-grid** is steady and force-balanced on 60x16, 120x32, 240x64, 360x96,
+  480x128, 720x192, and 1080x288 grids. It measures spatial discretisation
   of the current R1 conjugate thermal model, at the Fig. 4 condition.  It is
   not a pseudo-time test: `dt` is ignored by `STEADY_STATE`.
 - **D-dt** is an actual physical-time calculation: `TRANSIENT` plus

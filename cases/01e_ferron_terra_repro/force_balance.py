@@ -70,6 +70,10 @@ SPECS = {
     "r1_g7": spec("R1 G7 outer fixed 40 C", (1080,288), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5)),
     "r2_g6": spec("R2 G6 fixed 40 C + scalar shaft 43 C", (720,192), conjugate("FIXED_TEMPERATURE", shaft_h=1e7, shaft_t=316.15), warm=(0.60,-37.5), kind="SURROGATE + MODEL-CLOSURE"),
     "r2_g7": spec("R2 G7 fixed 40 C + scalar shaft 43 C", (1080,288), conjugate("FIXED_TEMPERATURE", shaft_h=1e7, shaft_t=316.15), warm=(0.60,-37.5), kind="SURROGATE + MODEL-CLOSURE"),
+    "d_grid_g1": spec("D-grid G1 current R1 closure", (60,16), conjugate("FIXED_TEMPERATURE"), warm=(0.61,-38.7), kind="MODEL-CLOSURE"),
+    "d_grid_g2": spec("D-grid G2 current R1 closure", (120,32), conjugate("FIXED_TEMPERATURE"), warm=(0.61,-38.7), kind="MODEL-CLOSURE"),
+    "d_grid_g3": spec("D-grid G3 current R1 closure", (240,64), conjugate("FIXED_TEMPERATURE"), warm=(0.61,-38.7), kind="MODEL-CLOSURE"),
+    "d_grid_g4": spec("D-grid G4 current R1 closure", (360,96), conjugate("FIXED_TEMPERATURE"), warm=(0.61,-38.7), kind="MODEL-CLOSURE"),
     "d_grid_g5": spec("D-grid G5 current R1 closure", (480,128), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
     "d_grid_g6": spec("D-grid G6 current R1 closure", (720,192), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
     "d_grid_g7": spec("D-grid G7 current R1 closure", (1080,288), conjugate("FIXED_TEMPERATURE"), warm=(0.60,-37.5), kind="MODEL-CLOSURE"),
@@ -86,7 +90,7 @@ for w in (2000,3000,4000,6000,8000,10000):
 
 MODES = {
     "R0": ["r0_g6", "r0_g7"], "R1": ["r1_g6", "r1_g7"], "R2": ["r2_g6", "r2_g7"],
-    "D_GRID": ["d_grid_g5", "d_grid_g6", "d_grid_g7"],
+    "D_GRID": [f"d_grid_g{i}" for i in range(1, 8)],
     "C": ["c_fig4_jadiabatic", "c_fig4_jiso40", *[f"c_fig5_w{w}" for w in (2000,3000,4000,6000,8000,10000)], "c_xf_adiabatic", "c_xf_bush40_jad", "c_xf_bush40_j40", "c_conj_fixed", "c_conj_robin80"],
 }
 

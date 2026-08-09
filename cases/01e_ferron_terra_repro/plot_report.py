@@ -39,7 +39,8 @@ def reference(name):
 
 def grid_convergence():
     analysis = json.loads((CASE_DIR / "d_grid_campaign_analysis.json").read_text())
-    rows = [analysis["runs"][f"d_grid_g{i}"] for i in (5, 6, 7)]
+    rows = [analysis["runs"][f"d_grid_g{i}"] for i in range(1, 8)
+            if f"d_grid_g{i}" in analysis["runs"]]
     cells = np.asarray([np.prod(row["grid"]) for row in rows])
     series = (
         ([row["eps"] for row in rows], r"$\epsilon$"),
@@ -53,13 +54,6 @@ def grid_convergence():
         axis.set_ylabel(label)
         convergence_limits(axis, values)
         axis.ticklabel_format(axis="y", style="plain", useOffset=False)
-        selected = 1
-        y_min, y_max = axis.get_ylim()
-        axis.annotate("138k cells", xy=(cells[selected], values[selected]),
-                      xytext=(cells[selected], y_min + 0.10 * (y_max - y_min)),
-                      ha="center", va="center",
-                      bbox={"boxstyle": "round", "fc": "white", "ec": "black"},
-                      arrowprops={"arrowstyle": "-|>", "color": "black"})
     save_figure(fig, CASE_DIR / "terra_report_grid_convergence")
     plt.close(fig)
 
@@ -105,14 +99,6 @@ def timestep_convergence():
     axes[1].set_xlabel(r"$\Delta t$ ($\mu$s)")
     axes[1].set_ylabel(r"$\overline{\epsilon}_{40\text{--}60\,\mathrm{ms}}$")
     convergence_limits(axes[1], means)
-    selected = dt_us.index(20.0)
-    y_min, y_max = axes[1].get_ylim()
-    axes[1].annotate(r"$20\,\mu\mathrm{s}$",
-                     xy=(dt_us[selected], means[selected]),
-                     xytext=(dt_us[selected], y_min + 0.10 * (y_max - y_min)),
-                     ha="center", va="center",
-                     bbox={"boxstyle": "round", "fc": "white", "ec": "black"},
-                     arrowprops={"arrowstyle": "-|>", "color": "black"})
     save_figure(fig, CASE_DIR / "terra_report_timestep_convergence")
     plt.close(fig)
 
