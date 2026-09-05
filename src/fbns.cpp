@@ -134,61 +134,48 @@ double pressure_scale(const SimulationConfig& cfg) {
     return std::max(p_ref, 1.0);
 }
 
+double mass_flux_theta(const Fields& fields, const Mesh& mesh,
+                       const SimulationConfig& cfg, int i, int j) {
+    const double mobility = harmonic_avg(poiseuille_gamma(fields, cfg, i, j),
+                                          poiseuille_gamma(fields, cfg, i + 1, j));
+    const double couette = couette_face_flux(fields, mesh, cfg, i, j);
+    return mobility * mesh.get_d_z() / (mesh.R * mesh.get_d_theta()) *
+        (fields["pressure"](i, j) - fields["pressure"](i + 1, j)) +
+        couette * fields["theta"](couette >= 0 ? i : i + 1, j);
+}
+
+double mass_flux_z(const Fields& fields, const Mesh& mesh,
+                   const SimulationConfig& cfg, int i, int j) {
+    const Field& p = fields["pressure"];
+    const double scale = mesh.R * mesh.get_d_theta() / mesh.get_d_z();
+    if (j < 0) {
+        if (cfg.bc_z_south_type != BCType::DIRICHLET) return 0;
+        return 2 * scale * poiseuille_gamma(fields, cfg, i, 0) *
+            (axial_boundary_pressure(cfg, cfg.bc_z_south_val) - p(i, 0));
+    }
+    if (j == mesh.n_z_local - 1) {
+        if (cfg.bc_z_north_type != BCType::DIRICHLET) return 0;
+        return 2 * scale * poiseuille_gamma(fields, cfg, i, j) *
+            (p(i, j) - axial_boundary_pressure(cfg, cfg.bc_z_north_val));
+    }
+    return scale * harmonic_avg(poiseuille_gamma(fields, cfg, i, j),
+                                poiseuille_gamma(fields, cfg, i, j + 1)) * (p(i, j) - p(i, j + 1));
+}
+
 double cell_outflow(const Fields& fields, const Mesh& mesh,
                     const SimulationConfig& cfg, double dt, int i, int j,
                     bool include_axial_boundary_faces) {
-    const Field& pressure = fields["pressure"];
-    const Field& theta = fields["theta"];
-    const int n_z = mesh.n_z_local;
-    const double d_theta = mesh.get_d_theta();
-    const double d_z = mesh.get_d_z();
-    const double R = mesh.R;
-    const double ew_scale = d_z / (R * d_theta);
-    const double ns_scale = R * d_theta / d_z;
-    const double bnd_scale = R * d_theta / (0.5 * d_z);
+    double outflow = mass_flux_theta(fields, mesh, cfg, i, j)
+        - mass_flux_theta(fields, mesh, cfg, i - 1, j);
+    if (j + 1 < mesh.n_z_local || include_axial_boundary_faces)
+        outflow += mass_flux_z(fields, mesh, cfg, i, j);
+    if (j > 0 || include_axial_boundary_faces)
+        outflow -= mass_flux_z(fields, mesh, cfg, i, j - 1);
 
-    auto gamma_p = [&](int ii, int jj) { return poiseuille_gamma(fields, cfg, ii, jj); };
-
-    double outflow = 0.0;
-
-    // Poiseuille diffusion through the four faces. Axial Dirichlet faces use the
-    // half-cell distance; NEUMANN faces carry no flux.
-    outflow += harmonic_avg(gamma_p(i, j), gamma_p(i + 1, j)) * ew_scale *
-        (pressure(i, j) - pressure(i + 1, j));
-    outflow += harmonic_avg(gamma_p(i - 1, j), gamma_p(i, j)) * ew_scale *
-        (pressure(i, j) - pressure(i - 1, j));
-    if (j + 1 < n_z) {
-        outflow += harmonic_avg(gamma_p(i, j), gamma_p(i, j + 1)) * ns_scale *
-            (pressure(i, j) - pressure(i, j + 1));
-    } else if (include_axial_boundary_faces &&
-               cfg.bc_z_north_type == BCType::DIRICHLET) {
-        outflow += gamma_p(i, j) * bnd_scale *
-            (pressure(i, j) - axial_boundary_pressure(cfg, cfg.bc_z_north_val));
-    }
-    if (j > 0) {
-        outflow += harmonic_avg(gamma_p(i, j - 1), gamma_p(i, j)) * ns_scale *
-            (pressure(i, j) - pressure(i, j - 1));
-    } else if (include_axial_boundary_faces &&
-               cfg.bc_z_south_type == BCType::DIRICHLET) {
-        outflow += gamma_p(i, j) * bnd_scale *
-            (pressure(i, j) - axial_boundary_pressure(cfg, cfg.bc_z_south_val));
-    }
-
-    // Couette transport of the film content, first-order upwind on the face flux
-    // sign (the sliding direction), as in the FBNS discretization.
-    const double flux_e = couette_face_flux(fields, mesh, cfg, i, j);
-    const double flux_w = couette_face_flux(fields, mesh, cfg, i - 1, j);
-    outflow += flux_e * ((flux_e >= 0.0) ? theta(i, j) : theta(i + 1, j));
-    outflow -= flux_w * ((flux_w >= 0.0) ? theta(i - 1, j) : theta(i, j));
-
-    // Backward-Euler storage of the liquid content plus the explicit squeeze term.
+    // Backward-Euler difference of the complete liquid inventory.
     if (dt > 0.0) {
-        const double rho_l = base_density(fields, cfg, i, j);
-        const double vol = mesh.cell_volume();
-        outflow += rho_l * fields["h"](i, j) * vol * (theta(i, j) - theta.old(i, j)) / dt;
-        if (fields.has("dh_dt")) {
-            outflow += rho_l * theta.old(i, j) * fields["dh_dt"](i, j) * vol;
-        }
+        outflow += (ReynoldsCoeff::liquid_mass_area(fields, cfg, i, j) -
+                    ReynoldsCoeff::old_liquid_mass_area(fields, cfg, dt, i, j)) * mesh.cell_volume() / dt;
     }
     return outflow;
 }

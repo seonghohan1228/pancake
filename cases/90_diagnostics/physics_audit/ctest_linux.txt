@@ -1,0 +1,86 @@
+Internal ctest changing into directory: /mnt/c/Dev/pancake-physics-audit/build-linux
+Test project /mnt/c/Dev/pancake-physics-audit/build-linux
+      Start  1: test_linear_system
+ 1/40 Test  #1: test_linear_system ...............   Passed    0.40 sec
+      Start  2: test_fvm
+ 2/40 Test  #2: test_fvm .........................   Passed    0.32 sec
+      Start  3: test_eos
+ 3/40 Test  #3: test_eos .........................   Passed    0.00 sec
+      Start  4: test_elrod_a1
+ 4/40 Test  #4: test_elrod_a1 ....................   Passed    0.33 sec
+      Start  5: test_elrod_a2
+ 5/40 Test  #5: test_elrod_a2 ....................   Passed    1.90 sec
+      Start  6: test_elrod_a2_mpi6
+ 6/40 Test  #6: test_elrod_a2_mpi6 ...............   Passed    2.75 sec
+      Start  7: test_elrod_a2_mpi4
+ 7/40 Test  #7: test_elrod_a2_mpi4 ...............   Passed    1.98 sec
+      Start  8: test_elrod_bc
+ 8/40 Test  #8: test_elrod_bc ....................   Passed    0.32 sec
+      Start  9: test_inlets
+ 9/40 Test  #9: test_inlets ......................   Passed    0.31 sec
+      Start 10: test_velocity
+10/40 Test #10: test_velocity ....................   Passed    0.31 sec
+      Start 11: test_bc
+11/40 Test #11: test_bc ..........................   Passed    0.33 sec
+      Start 12: test_journal_motion
+12/40 Test #12: test_journal_motion ..............   Passed    0.31 sec
+      Start 13: test_forces
+13/40 Test #13: test_forces ......................   Passed    0.31 sec
+      Start 14: test_energy
+14/40 Test #14: test_energy ......................   Passed    0.32 sec
+      Start 15: test_energy_mpi4
+15/40 Test #15: test_energy_mpi4 .................   Passed    0.34 sec
+      Start 16: test_io
+16/40 Test #16: test_io ..........................   Passed    0.38 sec
+      Start 17: test_fluid_properties
+17/40 Test #17: test_fluid_properties ............   Passed    0.30 sec
+      Start 18: test_gas_transport
+18/40 Test #18: test_gas_transport ...............   Passed    0.31 sec
+      Start 19: test_diagnostics
+19/40 Test #19: test_diagnostics .................   Passed    0.34 sec
+      Start 20: test_mass_residual
+20/40 Test #20: test_mass_residual ...............   Passed    0.32 sec
+      Start 21: test_fbns
+21/40 Test #21: test_fbns ........................   Passed    2.37 sec
+      Start 22: test_fbns_mpi6
+22/40 Test #22: test_fbns_mpi6 ...................   Passed    2.64 sec
+      Start 23: test_fbns_mpi1
+23/40 Test #23: test_fbns_mpi1 ...................   Passed    2.90 sec
+      Start 24: test_fbns_mpi4
+24/40 Test #24: test_fbns_mpi4 ...................   Passed    2.45 sec
+      Start 25: test_schemes
+25/40 Test #25: test_schemes .....................   Passed    0.75 sec
+      Start 26: test_schemes_mpi6
+26/40 Test #26: test_schemes_mpi6 ................   Passed    0.70 sec
+      Start 27: test_schemes_mpi4
+27/40 Test #27: test_schemes_mpi4 ................   Passed    0.71 sec
+      Start 28: test_property_tables
+28/40 Test #28: test_property_tables .............   Passed    0.30 sec
+      Start 29: test_bush_conduction
+29/40 Test #29: test_bush_conduction .............   Passed    0.37 sec
+      Start 30: test_cross_film
+30/40 Test #30: test_cross_film ..................   Passed    0.31 sec
+      Start 31: test_cross_film_mpi4
+31/40 Test #31: test_cross_film_mpi4 .............   Passed    0.34 sec
+      Start 32: test_config_keys
+32/40 Test #32: test_config_keys .................   Passed    1.06 sec
+      Start 33: test_coupling
+33/40 Test #33: test_coupling ....................   Passed    0.29 sec
+      Start 34: test_gas_coupling
+34/40 Test #34: test_gas_coupling ................   Passed   14.89 sec
+      Start 35: test_physics_audit
+35/40 Test #35: test_physics_audit ...............   Passed    0.33 sec
+      Start 36: test_physics_audit_mpi1
+36/40 Test #36: test_physics_audit_mpi1 ..........   Passed    0.32 sec
+      Start 37: test_physics_audit_mpi4
+37/40 Test #37: test_physics_audit_mpi4 ..........   Passed    0.35 sec
+      Start 38: test_solver_failure
+38/40 Test #38: test_solver_failure ..............   Passed    0.36 sec
+      Start 39: test_transient_time
+39/40 Test #39: test_transient_time ..............   Passed    0.71 sec
+      Start 40: test_ksp_guard
+40/40 Test #40: test_ksp_guard ...................   Passed    0.27 sec
+
+100% tests passed, 0 tests failed out of 40
+
+Total Test time (real) =  44.44 sec

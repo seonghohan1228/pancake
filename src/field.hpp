@@ -10,6 +10,7 @@
 enum class GridLocation { CENTER, FACE_THETA, FACE_Z };
 
 class Field {
+    bool old_time_stored_ = false;
 public:
     std::string name;
     GridLocation location;
@@ -25,7 +26,14 @@ public:
     inline double old(int i, int j) const { return old_data[(j + n_ghost) * stride_theta + (i + n_ghost)]; }    // Previous timestep
 
     void fill(double value);
-    void store_old_time() { old_data = data; }
+    void store_old_time() { old_data = data; old_time_stored_ = true; }
+    /// Whether an explicit previous-time snapshot exists (fill does not create one).
+    bool has_old_time() const { return old_time_stored_; }
+    /// Restore a snapshot's history, including whether that history was initialized.
+    void restore_old_time(const std::vector<double>& values, bool initialized) {
+        old_data = values;
+        old_time_stored_ = initialized;
+    }
 };
 
 class Fields {

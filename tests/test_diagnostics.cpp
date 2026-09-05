@@ -256,6 +256,7 @@ void test_gas_exchange_closure() {
         const Diagnostics::MassBalance balance =
             Diagnostics::mass_balance(fields, mesh, cfg, cfg.dt);
         worst_gas_residual = std::max(worst_gas_residual, std::abs(balance.gas_residual));
+        fields["theta"].store_old_time();
         fields["dissolved_gas"].store_old_time();
         fields["free_gas_mass"].store_old_time();
     }
@@ -287,10 +288,9 @@ void test_gas_exchange_closure() {
 // the flag, zero without -- a cavitated full-film face carries none). omega = 0,
 // uniform cavitated film, no kinetics/diffusion, so the axial boundary inflow is
 // the only thing that can change the composition. The film content theta is held
-// fixed to isolate the boundary convection, so the *global* gas residual is not a
-// closure check here (frozen theta against a net inflow breaks liquid continuity);
-// the gas balance closure under solved continuity is covered by the fixed-theta
-// closed cell in test_gas_exchange_closure.
+// fixed to isolate the boundary convection. This prescribed carrier does not
+// satisfy liquid continuity, so concentration need not stay below the reservoir
+// value. The conservative gas equation must still balance storage against inflow.
 void test_reformation_boundary_reservoir_state() {
     auto run = [](bool reflood, double& boundary_c, double& interior_c,
                   double& gas_boundary_flux) {
@@ -354,6 +354,8 @@ void test_reformation_boundary_reservoir_state() {
             comm.update_ghosts(fields);
             GasTransport::solve(fields, sys, mesh, cfg, cfg.dt);
             balance = Diagnostics::mass_balance(fields, mesh, cfg, cfg.dt);
+            check(std::abs(balance.gas_residual) < 1e-10,
+                  "reflood gas storage must equal boundary input including reported clamps");
             fields["dissolved_gas"].store_old_time();
             fields["free_gas_mass"].store_old_time();
         }
@@ -377,12 +379,11 @@ void test_reformation_boundary_reservoir_state() {
               " ON=" + std::to_string(c_bound_on) + " (c_in=0.2175); gas_boundary_flux OFF=" +
               std::to_string(flux_off) + " ON=" + std::to_string(flux_on));
 
-    const double c_in = 0.2175, c_start = 0.05;
+    const double c_start = 0.05;
     check(std::abs(c_bound_off - c_start) < 1e-6,
           "reformation BC OFF: cavitated boundary cell receives no reflood (stays depleted)");
     check(c_bound_on > c_start + 1e-4,
           "reformation BC ON: reflood re-saturates the boundary cell toward c_in");
-    check(c_bound_on <= c_in + 1e-9, "reformation BC ON: boundary cell stays bounded by c_in");
     check(c_bound_on > c_int_on + 1e-6,
           "reformation BC ON: boundary cell gains more gas than the interior");
     // Diagnostics mirror: a cavitated boundary carries no full-film flux (OFF), and

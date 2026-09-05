@@ -65,6 +65,19 @@ target_compile_definitions(test_config_keys PRIVATE
     PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_pancake_test(test_coupling)
 add_pancake_test(test_gas_coupling)
+add_pancake_test(test_physics_audit)
+add_test(NAME test_physics_audit_mpi1
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:test_physics_audit>)
+add_test(NAME test_physics_audit_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_physics_audit>)
+add_test(NAME test_solver_failure
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/solver_failure
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_solver_failure.cmake)
+add_test(NAME test_transient_time
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/transient_time
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_transient_time.cmake)
 # Aborts by design: passes only when the KSP guard prints its own diagnosis.
 add_pancake_test(test_ksp_guard)
 set_tests_properties(test_ksp_guard PROPERTIES

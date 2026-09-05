@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -88,9 +89,13 @@ void copy_physical(const Field& src, Field& dst, const Mesh& mesh) {
 // Global max |cur - prev| over physical cells, normalized by ref (pressure space).
 double normalized_max_change(const Field& cur, const Field& prev, const Mesh& mesh, double ref) {
     double local_max = 0.0;
-    for (int i = 0; i < mesh.n_theta_local; ++i)
-        for (int j = 0; j < mesh.n_z_local; ++j)
-            local_max = std::max(local_max, std::abs(cur(i, j) - prev(i, j)));
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double change = std::abs(cur(i, j) - prev(i, j));
+            local_max = !std::isfinite(change) ? std::numeric_limits<double>::infinity()
+                                              : std::max(local_max, change);
+        }
+    }
     double global_max = local_max;
     MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     return global_max / std::max(std::abs(ref), 1.0);
@@ -174,6 +179,7 @@ int main(int argc, char** argv) {
         return 3;
     }
 
+    bool nonlinear_failed = false;
     {
         // Initialize fields
         Fields fields;
@@ -183,7 +189,7 @@ int main(int argc, char** argv) {
         // own uncavitated initial guess.
         const double theta_initial = FBNS::active(cfg)
             ? 1.0
-            : std::max(EOS::theta_from_pressure(pressure_initial, cfg.p_cav, cfg.bulk_modulus), cfg.theta_min);
+            : std::max(EOS::theta_from_pressure(pressure_initial, cfg.effective_p_cav(), cfg.bulk_modulus), cfg.theta_min);
         fields.add("pressure", mesh).fill(pressure_initial);
         fields.add("theta",    mesh).fill(theta_initial);
         fields.add("h",        mesh).fill(cfg.c);
@@ -249,11 +255,14 @@ int main(int argc, char** argv) {
         LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
         Field p_outer_prev("p_outer_prev", mesh);  // pre-sweep snapshots for the
         Field T_outer_prev("T_outer_prev", mesh);  // outer (Picard) coupling residual
+        Field c_outer_prev("c_outer_prev", mesh);
+        Field alpha_outer_prev("alpha_outer_prev", mesh);
 
         // Initialize old_time to current state
         fields["pressure"].store_old_time();
         fields["theta"].store_old_time();
         fields["h"].store_old_time();
+        fields["rho_liquid_solution"].store_old_time();
         fields["temperature"].store_old_time();
         fields["dissolved_gas"].store_old_time();
         fields["free_gas_mass"].store_old_time();
@@ -262,15 +271,40 @@ int main(int argc, char** argv) {
         double output_time = 0;
         int step = 0;
         const bool steady_state = cfg.solution_mode == SolutionMode::STEADY_STATE;
+        Reynolds::ForceComponents previous_forces;
+        if (!steady_state) {
+            SimulationConfig initial_cfg = cfg;
+            initial_cfg.omega = cfg.omega_at_time(0);
+            Reynolds::calculate_velocities(fields, mesh, initial_cfg);
+            previous_forces = Reynolds::calculate_macroscopic_properties(fields, mesh, initial_cfg);
+            JournalMotion::write_state_fields(fields, bearing_state, cfg);
+            comm.update_ghosts(fields["velocity_theta"]);
+            comm.update_ghosts(fields["velocity_z"]);
+            IO::write_timestep(0, 0, mesh, fields, cfg);
+            output_time = cfg.write_interval;
+        }
 
         // Time loop
-        while (steady_state ? (step == 0) : (t <= cfg.end_t || std::abs(t - cfg.end_t) < 1e-8)) {
+        while (steady_state ? (step == 0) : (t < cfg.end_t)) {
             SimulationConfig step_cfg = cfg;
+            if (!steady_state) {
+                const double remaining = cfg.end_t - t;
+                const double time_roundoff = 1e-12 * std::max(cfg.dt, cfg.end_t);
+                step_cfg.dt = remaining <= cfg.dt + time_roundoff ? remaining : cfg.dt;
+                t = step_cfg.dt == remaining ? cfg.end_t : t + step_cfg.dt;
+                ++step;
+                // Explicit fluid-force predictor: geometry and the field solution
+                // now share the target time. The force stays lagged by one step.
+                JournalMotion::advance(bearing_state,
+                    {previous_forces.fluid_x, previous_forces.fluid_y, previous_forces.fluid_z},
+                    cfg, step_cfg.dt);
+            }
             step_cfg.omega = cfg.omega_at_time(t);
 
             update_film_geometry(fields, mesh, cfg, bearing_state);
             const double h_min = global_min_field(fields["h"], mesh);
             if (cfg.stop_on_nonpositive_film && h_min <= cfg.min_film_thickness) {
+                nonlinear_failed = true;
                 Utils::log("Stopping: minimum film thickness reached " + std::to_string(h_min),
                            Utils::Color::RED, 1);
                 break;
@@ -282,7 +316,7 @@ int main(int argc, char** argv) {
             // sweep, identical to before.
             Reynolds::ElrodStats elrod_stats;
             Reynolds::ForceComponents forces;
-            const double gas_dt = steady_state ? 0.0 : cfg.dt;
+            const double gas_dt = steady_state ? 0.0 : step_cfg.dt;
             const int max_coupling = steady_state ? std::max(1, cfg.coupling_max_iters) : 1;
             const double p_ref = std::max(cfg.property_reference_pressure, 1.0);
             const double T_ref = std::max(cfg.temperature_reference, 1.0);
@@ -307,6 +341,8 @@ int main(int argc, char** argv) {
                 if (steady_state) {
                     copy_physical(fields["pressure"], p_outer_prev, mesh);
                     copy_physical(fields["temperature"], T_outer_prev, mesh);
+                    copy_physical(fields["dissolved_gas"], c_outer_prev, mesh);
+                    copy_physical(fields["alpha_gas"], alpha_outer_prev, mesh);
                 }
 
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
@@ -348,6 +384,8 @@ int main(int argc, char** argv) {
                 } else {
                     Reynolds::solve(fields, sys, mesh, step_cfg);
                 }
+                if (!steady_state && cfg.mass_conserving_cavitation() && !elrod_stats.converged)
+                    nonlinear_failed = true;
 
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
 
@@ -365,7 +403,7 @@ int main(int argc, char** argv) {
                 // liquid film mass flux, then exchange dissolved <-> free gas locally, then
                 // refresh mixture properties (rho, mu) for the velocity/energy solves. In
                 // STEADY_STATE with steady_gas_model = EQUILIBRIUM, flash to the local
-                // saturation state instead (transport is meaningless without time advance).
+                // feed flash instead; conservative steady species transport is still absent.
                 if (steady_state && cfg.steady_gas_model == SteadyGasModel::EQUILIBRIUM) {
                     FluidProperties::equilibrate_gas(fields, mesh, cfg);
                 } else {
@@ -383,6 +421,11 @@ int main(int argc, char** argv) {
                 // ceiling would be one gas update stale across every rank boundary.
                 if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE) {
                     comm.update_ghosts(fields["alpha_gas"]);
+                    comm.update_ghosts(fields["theta"]);
+                    comm.update_ghosts(fields["rho_liquid_solution"]);
+                    comm.update_ghosts(fields["mu_liquid_solution"]);
+                    comm.update_ghosts(fields["rho_cp_liquid_solution"]);
+                    comm.update_ghosts(fields["k_liquid_solution"]);
                 }
 
                 // Calculate velocities and macroscopic properties
@@ -398,11 +441,16 @@ int main(int argc, char** argv) {
                 if (steady_state) {
                     coupling_R_p = normalized_max_change(fields["pressure"], p_outer_prev, mesh, p_ref);
                     coupling_R_T = normalized_max_change(fields["temperature"], T_outer_prev, mesh, T_ref);
-                    const bool tolerance_met = coupling_control.record(outer, coupling_R_p, coupling_R_T);
+                    const double coupling_R_g = cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE
+                        ? std::max(normalized_max_change(fields["dissolved_gas"], c_outer_prev, mesh, 1.0) /
+                                       std::max(cfg.dissolved_gas_initial, 1e-6),
+                                   normalized_max_change(fields["alpha_gas"], alpha_outer_prev, mesh, 1.0)) : 0.0;
+                    const bool tolerance_met = coupling_control.record(outer, coupling_R_p, coupling_R_T, coupling_R_g);
                     if (cfg.log_coupling_history) {
                         std::ostringstream h;
                         h << "Coupling outer=" << (outer + 1) << " R_p=" << coupling_R_p
                           << " R_T=" << coupling_R_T
+                          << " R_g=" << coupling_R_g
                           << " omega=" << coupling_control.relaxation()
                           << (coupling_control.is_best() ? " *best" : "");
                         Utils::log(h.str(), Utils::Color::BLUE, 2);
@@ -436,9 +484,11 @@ int main(int argc, char** argv) {
             // on the cap without meeting coupling_tolerance must say so whether or
             // not log_outer_iters is on.
             if (steady_state && !coupling_control.status().converged) {
+                nonlinear_failed = true;
                 Utils::log(coupling_control.summary_line(), Utils::Color::RED, 1);
                 Utils::log(coupling_control.rollback_line(), Utils::Color::RED, 1);
             }
+            if (cfg.mass_conserving_cavitation() && !elrod_stats.converged) nonlinear_failed = true;
             if (steady_state && cfg.log_outer_iters) {
                 if (coupling_control.status().converged) {
                     Utils::log(coupling_control.summary_line(), Utils::Color::CYAN, 1);
@@ -459,13 +509,13 @@ int main(int argc, char** argv) {
             // against the previous timestep.
             // No-op unless mass_residual was selected as an output field.
             Diagnostics::mass_residual(fields, mesh, step_cfg,
-                                       steady_state ? 0.0 : cfg.dt);
+                                       steady_state ? 0.0 : step_cfg.dt);
             const bool diagnostics_now = cfg.diagnostics_interval > 0 &&
                 step % cfg.diagnostics_interval == 0;
             Diagnostics::MassBalance balance;
             if (diagnostics_now) {
                 balance = Diagnostics::mass_balance(fields, mesh, step_cfg,
-                                                    steady_state ? 0.0 : cfg.dt);
+                                                    steady_state ? 0.0 : step_cfg.dt);
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
                     t, step, balance, elrod_stats,
@@ -474,7 +524,8 @@ int main(int argc, char** argv) {
 
             // Output: write VTK at the configured save cadence ...
             const bool save_now =
-                (t >= output_time || std::abs(t - output_time) < 1e-8 || step == 0);
+                (t >= output_time || std::abs(t - output_time) < 1e-8 || step == 0 ||
+                 (!steady_state && t == cfg.end_t));
             if (save_now) {
                 comm.update_ghosts(fields["velocity_theta"]);
                 comm.update_ghosts(fields["velocity_z"]);
@@ -505,6 +556,8 @@ int main(int argc, char** argv) {
                         line << " | r_l=" << balance.liquid_residual;
                         if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE) {
                             line << " r_gas=" << balance.gas_residual;
+                            line << " gas_volume_excess=" << balance.gas_volume_excess
+                                 << " gas_eos_defect=" << balance.gas_eos_defect;
                         }
                     }
                 }
@@ -512,27 +565,25 @@ int main(int argc, char** argv) {
                 Utils::log(line.str(), Utils::Color::GREEN, 1);
             }
 
-            // Advance time
+            if (nonlinear_failed) break;
+
+            // Store the completed state for the next physical interval.
             fields["pressure"].store_old_time();
             fields["theta"].store_old_time();
             fields["h"].store_old_time();
+            fields["rho_liquid_solution"].store_old_time();
             fields["temperature"].store_old_time();
             fields["dissolved_gas"].store_old_time();
             fields["free_gas_mass"].store_old_time();
-            if (!steady_state) {
-                JournalMotion::advance(
-                    bearing_state,
-                    {forces.fluid_x, forces.fluid_y, forces.fluid_z},
-                    cfg,
-                    cfg.dt);
-                t += cfg.dt;
-            }
-            step++;
+            previous_forces = forces;
+            if (steady_state) ++step;
         }
 
-        Utils::log("Simulation finished successfully.");
+        Utils::log(nonlinear_failed ? "Simulation stopped with an unconverged or inadmissible state."
+                                    : "Simulation finished successfully.",
+                   nonlinear_failed ? Utils::Color::RED : Utils::Color::GREEN);
     }  // LinearSystem and Fields destroyed before PetscFinalize
 
     PetscFinalize();
-    return 0;
+    return nonlinear_failed ? 4 : 0;
 }

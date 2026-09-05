@@ -4,11 +4,51 @@
 #include <cmath>
 
 #include "full_film.hpp"
+#include "fbns.hpp"
+#include "communicator.hpp"
 #include "fvm.hpp"
 #include "reynolds_coefficients.hpp"
 
 namespace GasTransport {
 namespace {
+
+struct ReservoirRow {
+    int i, j;
+    double a_p, a_e, a_w, a_n, a_s, source;
+};
+
+// Impose reservoir values during the solve so downstream cells see the boundary
+// composition. Retain the displaced equations to measure the reservoir source.
+std::vector<ReservoirRow> impose_reservoir(LinearSystem& sys, const Fields& fields,
+                                         const Mesh& mesh, double value) {
+    std::vector<ReservoirRow> rows;
+    if (!fields.has("inlet_indicator")) return rows;
+    for (int j = 0; j < mesh.n_z_local; ++j) {
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            if (fields["inlet_indicator"](i, j) <= 0.5) continue;
+            rows.push_back({i, j, sys.a_p(i, j), sys.a_e(i, j), sys.a_w(i, j),
+                            sys.a_n(i, j), sys.a_s(i, j), sys.source(i, j)});
+            sys.a_e(i, j) = sys.a_w(i, j) = sys.a_n(i, j) = sys.a_s(i, j) = 0;
+            sys.a_p(i, j) = std::max(std::abs(sys.a_p(i, j)), 1e-30);
+            sys.source(i, j) = sys.a_p(i, j) * value;
+        }
+    }
+    return rows;
+}
+
+void account_reservoir(const std::vector<ReservoirRow>& rows, Field& concentration,
+                       Field* gas_clamp, const Mesh& mesh, double dt) {
+    Communicator comm(mesh);
+    comm.update_ghosts(concentration);
+    if (!gas_clamp) return;
+    for (const auto& row : rows) {
+        const int i = row.i, j = row.j;
+        const double source = row.a_p * concentration(i, j) - row.a_e * concentration(i + 1, j)
+            - row.a_w * concentration(i - 1, j) - row.a_n * concentration(i, j + 1)
+            - row.a_s * concentration(i, j - 1) - row.source;
+        (*gas_clamp)(i, j) += source * dt;
+    }
+}
 
 double field_value(const Fields& fields, const char* name, double fallback, int i, int j) {
     return fields.has(name) ? fields[name](i, j) : fallback;
@@ -83,6 +123,7 @@ double boundary_liquid_density(const Fields& fields, const SimulationConfig& cfg
 double south_boundary_mass_flux(const Field& p, const Field& h, const Field& theta,
                                 const Fields& fields, const Mesh& mesh,
                                 const SimulationConfig& cfg, int i) {
+    if (FBNS::active(cfg)) return FBNS::mass_flux_z(fields, mesh, cfg, i, -1);
     const double u_z = south_boundary_velocity(p, h, theta, fields, mesh, cfg, i);
     const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
     const double rho_face = boundary_liquid_density(fields, cfg, theta, i, 0);
@@ -93,6 +134,7 @@ double north_boundary_mass_flux(const Field& p, const Field& h, const Field& the
                                 const Fields& fields, const Mesh& mesh,
                                 const SimulationConfig& cfg, int i) {
     const int j = mesh.n_z_local - 1;
+    if (FBNS::active(cfg)) return FBNS::mass_flux_z(fields, mesh, cfg, i, j);
     const double u_z = north_boundary_velocity(p, h, theta, fields, mesh, cfg, i);
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
     const double rho_face = boundary_liquid_density(fields, cfg, theta, i, j);
@@ -102,6 +144,8 @@ double north_boundary_mass_flux(const Field& p, const Field& h, const Field& the
 double south_boundary_volume_flux(const Field& p, const Field& h, const Field& theta,
                                   const Fields& fields, const Mesh& mesh,
                                   const SimulationConfig& cfg, int i) {
+    if (FBNS::active(cfg)) return FBNS::mass_flux_z(fields, mesh, cfg, i, -1) /
+        std::max(ReynoldsCoeff::liquid_mass_area(fields, cfg, i, 0), 1e-30);
     return south_boundary_velocity(p, h, theta, fields, mesh, cfg, i) *
         mesh.R * mesh.get_d_theta();
 }
@@ -109,33 +153,10 @@ double south_boundary_volume_flux(const Field& p, const Field& h, const Field& t
 double north_boundary_volume_flux(const Field& p, const Field& h, const Field& theta,
                                   const Fields& fields, const Mesh& mesh,
                                   const SimulationConfig& cfg, int i) {
+    if (FBNS::active(cfg)) return FBNS::mass_flux_z(fields, mesh, cfg, i, mesh.n_z_local - 1) /
+        std::max(ReynoldsCoeff::liquid_mass_area(fields, cfg, i, mesh.n_z_local - 1), 1e-30);
     return north_boundary_velocity(p, h, theta, fields, mesh, cfg, i) *
         mesh.R * mesh.get_d_theta();
-}
-
-// Non-conservative correction: convert the conservative div(F c) assembled by
-// FVM::divergence into the material form F.grad(c) by subtracting c_P * div(F).
-// Axial boundary faces are open: outflow carries gas out, and inflow carries the
-// configured initial dissolved composition.
-void add_nonconservative_correction(LinearSystem& sys, const Field& flux_theta,
-                                    const Field& flux_z, const Field& p,
-                                    const Field& h, const Field& theta,
-                                    const Fields& fields,
-                                    const SimulationConfig& cfg,
-                                    const Mesh& mesh) {
-    for (int i = 0; i < mesh.n_theta_local; ++i) {
-        for (int j = 0; j < mesh.n_z_local; ++j) {
-            const double flux_e = flux_theta(i, j);
-            const double flux_w = flux_theta(i - 1, j);
-            const double flux_n = (j + 1 < mesh.n_z_local)
-                ? flux_z(i, j)
-                : north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
-            const double flux_s = (j > 0)
-                ? flux_z(i, j - 1)
-                : south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
-            sys.a_p(i, j) -= (flux_e - flux_w + flux_n - flux_s);
-        }
-    }
 }
 
 void add_dissolved_axial_boundary_convection(LinearSystem& sys, const Field& p,
@@ -201,6 +222,33 @@ void apply_supply_cell_gas_composition(Fields& fields, const Mesh& mesh,
 
 }  // namespace
 
+double axial_gas_inflow(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE || !fields.has("dissolved_gas")) return 0;
+    double inflow = 0;
+    if (fields.has("gas_boundary_mass_flux")) {
+        for (int j = 0; j < mesh.n_z_local; ++j)
+            for (int i = 0; i < mesh.n_theta_local; ++i) inflow += fields["gas_boundary_mass_flux"](i, j);
+        return inflow;
+    }
+    const Field& p = fields["pressure"];
+    const Field& h = fields["h"];
+    const Field& theta = fields["theta"];
+    const Field& c = fields["dissolved_gas"];
+    const double c_in = std::clamp(cfg.dissolved_gas_initial, 0.0, cfg.dissolved_gas_max);
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        const double fs = south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
+        inflow += fs * (fs >= 0 ? c_in : c(i, 0));
+        if (fs < 0) inflow += south_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i) *
+            field_value(fields, "free_gas_mass", 0, i, 0);
+        const int j = mesh.n_z_local - 1;
+        const double fn = north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
+        inflow -= fn * (fn < 0 ? c_in : c(i, j));
+        if (fn > 0) inflow -= north_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i) *
+            field_value(fields, "free_gas_mass", 0, i, j);
+    }
+    return inflow;
+}
+
 void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
            const SimulationConfig& cfg, double dt) {
     if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return;
@@ -214,6 +262,9 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
     Field* gas_clamp = fields.has("gas_clamp_mass") ? &fields["gas_clamp_mass"] : nullptr;
     if (gas_clamp != nullptr) gas_clamp->fill(0.0);
     const double cell_area = mesh.cell_volume();
+    Field& saved_boundary = fields.has("gas_boundary_mass_flux") ? fields["gas_boundary_mass_flux"]
+        : fields.add("gas_boundary_mass_flux", mesh);
+    saved_boundary.fill(0);
 
     const int n_theta = mesh.n_theta_local;
     const int n_z = mesh.n_z_local;
@@ -259,7 +310,15 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                                                         h_face, mu_face, R,
                                                         i, j, i + 1, j);
             flux_theta(i, j) = rho_face * h_face * u_theta * d_z;
+            if (FBNS::active(cfg)) flux_theta(i, j) = FBNS::mass_flux_theta(fields, mesh, cfg, i, j);
             free_gas_flux_theta(i, j) = u_theta * d_z;
+            if (FBNS::active(cfg)) {
+                const int upwind = flux_theta(i, j) >= 0 ? i : i + 1;
+                const double rho_l_face = 0.5 * (ReynoldsCoeff::base_density(fields, cfg, i, j) +
+                                                  ReynoldsCoeff::base_density(fields, cfg, i + 1, j));
+                free_gas_flux_theta(i, j) = flux_theta(i, j) /
+                    std::max(rho_l_face * h_face * theta(upwind, j), 1e-30);
+            }
         }
     }
     for (int i = 0; i < n_theta; ++i) {
@@ -280,7 +339,10 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                                                         h_face, mu_face, 1.0,
                                                         i, j, i, j + 1);
             flux_z(i, j) = rho_face * h_face * u_z * R * d_theta;
+            if (FBNS::active(cfg)) flux_z(i, j) = FBNS::mass_flux_z(fields, mesh, cfg, i, j);
             free_gas_flux_z(i, j) = u_z * R * d_theta;
+            if (FBNS::active(cfg)) free_gas_flux_z(i, j) = flux_z(i, j) /
+                std::max(rho_face * h_face, 1e-30);
         }
     }
 
@@ -298,11 +360,26 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
     FVM::divergence(sys, flux_theta, flux_z, c_lag, gas_scheme, mesh);
     add_dissolved_axial_boundary_convection(sys, p, h, theta, fields, mesh, cfg);
     if (cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0) {
-        FVM::ddt_weighted(sys, c, capacity, dt, mesh);
+        for (int i = 0; i < n_theta; ++i) {
+            for (int j = 0; j < n_z; ++j) {
+                sys.a_p(i, j) += capacity(i, j) * cell_area / dt;
+                sys.source(i, j) += ReynoldsCoeff::old_liquid_mass_area(fields, cfg, dt, i, j) *
+                    c.old(i, j) * cell_area / dt;
+            }
+        }
     }
-    add_nonconservative_correction(sys, flux_theta, flux_z, p, h, theta, fields, cfg, mesh);
 
+    const double c_in = std::clamp(cfg.dissolved_gas_initial, 0.0, cfg.dissolved_gas_max);
+    const auto dissolved_reservoir = impose_reservoir(sys, fields, mesh, c_in);
     sys.solve(c, cfg.linear_rtol, 1000, "dissolved gas concentration");
+    account_reservoir(dissolved_reservoir, c, gas_clamp, mesh, dt);
+    for (int i = 0; i < n_theta; ++i) {
+        const double fs = south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
+        const int j = n_z - 1;
+        const double fn = north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
+        saved_boundary(i, 0) += fs * (fs >= 0 ? c_in : c(i, 0));
+        saved_boundary(i, j) -= fn * (fn < 0 ? c_in : c(i, j));
+    }
 
     const double c_max = std::max(0.0, cfg.dissolved_gas_max);
     for (int i = 0; i < n_theta; ++i) {
@@ -316,8 +393,6 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
             c(i, j) = c_clamped;
         }
     }
-    apply_supply_cell_gas_composition(fields, mesh, cfg);
-
     if (fields.has("free_gas_mass")) {
         Field& free_gas_mass = fields["free_gas_mass"];
         sys.reset();
@@ -325,7 +400,16 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                         gas_scheme, mesh);
         add_free_gas_axial_boundary_convection(sys, p, h, theta, fields, mesh, cfg);
         FVM::ddt(sys, free_gas_mass, dt, mesh);
+        const auto free_reservoir = impose_reservoir(sys, fields, mesh, 0);
         sys.solve(free_gas_mass, cfg.linear_rtol, 1000, "free gas mass");
+        account_reservoir(free_reservoir, free_gas_mass, gas_clamp, mesh, dt);
+
+        for (int i = 0; i < n_theta; ++i) {
+            const double fs = south_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
+            const double fn = north_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
+            if (fs < 0) saved_boundary(i, 0) += fs * free_gas_mass(i, 0);
+            if (fn > 0) saved_boundary(i, n_z - 1) -= fn * free_gas_mass(i, n_z - 1);
+        }
 
         for (int i = 0; i < n_theta; ++i) {
             for (int j = 0; j < n_z; ++j) {
@@ -336,8 +420,8 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
                 free_gas_mass(i, j) = m_clamped;
             }
         }
-        apply_supply_cell_gas_composition(fields, mesh, cfg);
     }
+    apply_supply_cell_gas_composition(fields, mesh, cfg);
 }
 
 }  // namespace GasTransport

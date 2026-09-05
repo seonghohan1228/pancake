@@ -1,0 +1,148 @@
+{
+  "solver_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+  "scope": "Synthetic transient regression; volume errors are reported, not certified",
+  "runs": [
+    {
+      "ranks": 1,
+      "diagnostic_rows": 10,
+      "max_abs_gas_residual": 1.30042114933244e-12,
+      "max_gas_volume_excess": 0.000269730879870478,
+      "max_gas_eos_defect": 0.0,
+      "final_ranges": {
+        "alpha_gas": [
+          0.0,
+          0.00170326
+        ],
+        "dissolved_gas": [
+          0.00199801,
+          0.002
+        ],
+        "p": [
+          100000.0,
+          896697.0
+        ],
+        "T": [
+          313.152,
+          313.167
+        ],
+        "film_content": [
+          0.994275,
+          1.0
+        ],
+        "theta_rad": [
+          0.0654498,
+          6.21774
+        ],
+        "z_m": [
+          0.0025,
+          0.0375
+        ]
+      },
+      "relative_difference_vs_mpi1_at_vtk_precision": {
+        "alpha_gas": 0.0,
+        "dissolved_gas": 0.0,
+        "p": 0.0,
+        "T": 0.0,
+        "film_content": 0.0,
+        "theta_rad": 0.0,
+        "z_m": 0.0
+      },
+      "numerical_pass": true
+    },
+    {
+      "ranks": 2,
+      "diagnostic_rows": 10,
+      "max_abs_gas_residual": 8.72568098808923e-12,
+      "max_gas_volume_excess": 0.000269730880207542,
+      "max_gas_eos_defect": 0.0,
+      "final_ranges": {
+        "alpha_gas": [
+          0.0,
+          0.00170326
+        ],
+        "dissolved_gas": [
+          0.00199801,
+          0.002
+        ],
+        "p": [
+          100000.0,
+          896697.0
+        ],
+        "T": [
+          313.152,
+          313.167
+        ],
+        "film_content": [
+          0.994275,
+          1.0
+        ],
+        "theta_rad": [
+          0.0654498,
+          6.21774
+        ],
+        "z_m": [
+          0.0025,
+          0.0375
+        ]
+      },
+      "relative_difference_vs_mpi1_at_vtk_precision": {
+        "alpha_gas": 5.871094254553819e-10,
+        "dissolved_gas": 0.0,
+        "p": 0.0,
+        "T": 0.0,
+        "film_content": 0.0,
+        "theta_rad": 0.0,
+        "z_m": 0.0
+      },
+      "numerical_pass": true
+    },
+    {
+      "ranks": 4,
+      "diagnostic_rows": 10,
+      "max_abs_gas_residual": 1.91762955677098e-11,
+      "max_gas_volume_excess": 0.000269730880259056,
+      "max_gas_eos_defect": 0.0,
+      "final_ranges": {
+        "alpha_gas": [
+          0.0,
+          0.00170326
+        ],
+        "dissolved_gas": [
+          0.00199801,
+          0.002
+        ],
+        "p": [
+          100000.0,
+          896697.0
+        ],
+        "T": [
+          313.152,
+          313.167
+        ],
+        "film_content": [
+          0.994275,
+          1.0
+        ],
+        "theta_rad": [
+          0.0654498,
+          6.21774
+        ],
+        "z_m": [
+          0.0025,
+          0.0375
+        ]
+      },
+      "relative_difference_vs_mpi1_at_vtk_precision": {
+        "alpha_gas": 5.871094254553819e-10,
+        "dissolved_gas": 0.0,
+        "p": 0.0,
+        "T": 0.0,
+        "film_content": 0.0,
+        "theta_rad": 0.0,
+        "z_m": 0.0
+      },
+      "numerical_pass": true
+    }
+  ],
+  "numerical_pass": true
+}

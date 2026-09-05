@@ -49,6 +49,27 @@ inline double base_density(const Fields& fields, const SimulationConfig& cfg, in
     return positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
 }
 
+/// Liquid-solution inventory per bearing area [kg/m^2].
+inline double liquid_mass_area(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    return base_density(fields, cfg, i, j) * fields["h"](i, j) * fields["theta"](i, j);
+}
+
+/// Previous inventory. Drivers should snapshot h, theta and rho_liquid_solution.
+/// Legacy prescribed-squeeze callers without h history use h_old = h - dt dh_dt.
+inline double old_liquid_mass_area(const Fields& fields, const SimulationConfig& cfg,
+                                   double dt, int i, int j) {
+    const Field& h = fields["h"];
+    const Field& theta = fields["theta"];
+    const double h_old = h.has_old_time() ? h.old(i, j)
+        : h(i, j) - dt * field_value(fields, "dh_dt", 0.0, i, j);
+    double rho_old = base_density(fields, cfg, i, j);
+    if (fields.has("rho_liquid_solution") && fields["rho_liquid_solution"].has_old_time()) {
+        rho_old = fields["rho_liquid_solution"].old(i, j);
+    }
+    const double theta_old = theta.has_old_time() ? theta.old(i, j) : theta(i, j);
+    return rho_old * h_old * theta_old;
+}
+
 /// Cell dynamic viscosity [Pa s], already carrying the pressure, dissolved-gas
 /// and mixture corrections of the selected property model.
 inline double dynamic_viscosity(const Fields& fields, const SimulationConfig& cfg, int i, int j) {

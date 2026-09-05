@@ -1,5 +1,9 @@
 # Physics and Numerical Methods
 
+Current conservation and gas-model scope: [September 2026 update](#18-conservative-gas-update-and-experimental-scope-2026-09-06).
+That section supersedes historical transient exchange, relaxation and storage
+descriptions below. Oil-air is experimental; R410A is not implemented.
+
 ## 1. Problem Overview
 
 `pancake` solves the **Reynolds equation** for thin-film lubrication in a **journal bearing** — a shaft of radius $R$ rotating at angular velocity $\omega$ inside a slightly larger bore, separated by a thin lubricant film. The geometry is described in cylindrical coordinates $(\theta, z)$ on the bearing surface, where $\theta \in [0, 2\pi)$ is the circumferential angle and $z \in [0, L]$ is the axial coordinate.
@@ -44,7 +48,7 @@ $$\underbrace{\frac{1}{R^2}\frac{\partial}{\partial\theta}\left[\gamma\frac{\par
 
 The LHS is recognised as the surface divergence $\text{div}(\gamma\,\text{grad}\,p)$ on the cylindrical surface.
 
-**Steady-state incompressible** (standard form): set $\rho = \text{const}$ and $\partial/\partial t = 0$, giving the classical half-Sommerfeld problem.
+**Steady-state incompressible** (standard form): set $\rho = \text{const}$ and $\partial/\partial t = 0$. This gives the classical Reynolds equation; half-Sommerfeld pressure clipping is a separate, non-mass-conserving cavitation approximation.
 
 ---
 
@@ -322,7 +326,11 @@ and a face carries Poiseuille flow only when *both* cells it joins do. Everythin
 
 Currently $\alpha_{gas} = 0$ in that ceiling for every model: free gas is treated as volumetrically inert in the film-content equation, so the liquid may occupy the whole gap and $\theta_{full} = 1$ exactly, which is the historical test. The reason the ceiling is written as one function rather than fifteen literals is that it is not a local decision — moving it to $1 - \alpha_{gas}$ at a subset of the sites would switch off Poiseuille transport across the whole domain as soon as any gas came out of solution, silently and with a converged residual (`docs/FBNS_GAS_COUPLING.md` §3). The Elrod operator carries the same ceiling separately as `VoidParams::theta_full` (§16), which *is* gas-aware under `gas_pressure_coupling = VOID_COUPLED`; the two merge when the resolved-gas bound lands.
 
-**Weighted time derivative.** The FVM operator `FVM::ddt_weighted(sys, theta, weight, dt, mesh)` discretises the liquid-content storage $\partial(\rho_0\theta h)/\partial t$ with weight $\rho_0 h$. It adds $\rho_0 h\,V/\Delta t$ to $a_P$ and $\rho_0 h\,V\,\theta^n/\Delta t$ to `source`. This capacity term is assembled for **every** transient solve (`solution_mode = TRANSIENT`), fixed or moving bearing — gating it on bearing motion would make a fixed-bearing transient (e.g. an `omega_ramp_time` startup) quasi-steady in $\theta$ with film-history physics silently absent. The explicit squeeze source $-\rho_0\theta^n\,\partial h/\partial t$ is added whenever a `dh_dt` field is present. `STEADY_STATE` mode omits both, giving the quasi-steady operating-point solve.
+**Conservative time derivative (2026-09-06).** Every transient JFO solve adds
+$\rho_l^{n+1} h^{n+1}\Delta A/\Delta t$ to the theta diagonal and
+$(\rho_l h\theta)^n\Delta A/\Delta t$ to its source. Stored density and gap
+include property and squeeze changes in the inventory difference; there is no
+additional squeeze source. Steady mode omits storage. See §18.
 
 ### 7.3 FBNS Complementarity Solver (`FBNS::solve`, `cavitation_model = FBNS`)
 
@@ -455,7 +463,7 @@ mass-conserving solvers can be compared face by face:
 |---|---|
 | Poiseuille | $\mathrm{harm}\big(\gamma_P,\gamma_E\big)\,\dfrac{\Delta z}{R\,\Delta\vartheta}\,(p_P - p_E)$, $\;\gamma = \rho_l h^3/(12\mu)$ |
 | Couette | $F_e\,\theta_{up}$, $\;F_e = \bar\rho_l\,\omega R\,\bar h\,\Delta z/2$, first-order upwind on $\mathrm{sign}(F_e)$ |
-| Storage | $\rho_l h\,\dfrac{\theta_P - \theta_P^{\,n}}{\Delta t}\,\Delta A \;+\; \rho_l\,\theta_P^{\,n}\,\dfrac{\partial h}{\partial t}\,\Delta A$ |
+| Storage | $\big[(\rho_l h\theta)_P^{n+1}-(\rho_l h\theta)_P^n\big]\Delta A/\Delta t$ (complete inventory; §18) |
 
 - **Circumferential**: periodic, handled by the ghost exchange and by
   `LinearSystem`'s wrapping column indices. Nothing special is needed — $\mathrm{FB}$
@@ -672,7 +680,10 @@ pairs $\theta$ with an $\alpha_{gas}$ that the gas update has already advanced, 
 $\theta \le 1-\alpha_{gas}$ need not hold in a VTK file; it holds at the point the
 FBNS solve returns, which is where the constraint lives.
 
-**Where this is stiff.** On `config_r290_pz68_quick.txt` the feed enters exactly at
+**Historical stiffness result, prior to the §18 conservation repair.** These
+transient results used a mass-inconsistent relaxation and must be rerun. The
+relaxation setting now applies only to steady feed flash. On
+`config_r290_pz68_quick.txt` the feed entered exactly at
 its bubble point and the flash releases enough propane to fill $\sim$23% of the gap
 in one $5\,\mu$s step. The ceiling drops by that much at once, the resulting
 $\partial\theta/\partial t$ sink swings the load between $5.8\times10^{2}$ N and
@@ -1151,15 +1162,10 @@ where `omega_ramp_time = t_ramp`. If `omega_ramp_time <= 0`, transient runs use
 full `omega` immediately. `solution_mode = STEADY_STATE` ignores the ramp and
 uses the target speed for its single operating-point solve.
 
-For moving-bearing Elrod-Adams solves, the transient term
-$\partial(\rho_l\theta h)/\partial t$ is expanded as
-$\rho_l h\,\partial\theta/\partial t + \rho_l\theta\,\partial h/\partial t$.
-The weighted capacity term $\rho_l h\,\partial\theta/\partial t$ is always
-assembled for transient moving-bearing pressure solves, including when
-`pressure_time_method = EULER_EXPLICIT`. Omitting that storage term while
-retaining the lagged squeeze source would not conserve liquid content and can
-create artificial startup cavitation. The explicit part is the lagged
-$\theta^n\,\partial h/\partial t$ source.
+Moving-bearing JFO and FBNS now difference the complete liquid inventory
+$(\rho_l h\theta)^{n+1}-(\rho_l h\theta)^n$ (§18). This includes density as
+well as geometry changes; the old product-rule approximation omitted density
+storage and has been removed from these paths.
 
 ### 13.1.1 Groove Hot-Oil Carry-Over
 
@@ -1559,9 +1565,9 @@ $$\rho_l =
 \text{linear table}(c_d), & \text{TABLE}
 \end{cases}$$
 
-where `dissolved_gas_liquid_density` supplies $\rho_{dg,liq}$. If it is zero,
-the code falls back to ideal-gas density for backward compatibility, but this
-is not recommended for dissolved propane in oil.
+where `dissolved_gas_liquid_density` supplies the effective partial liquid-volume
+density $\rho_{dg,liq}$. MIXTURE requires a positive value. A free-gas EOS is
+not a dissolved-species partial-volume model; the former fallback was removed.
 
 For `EMPIRICAL`, the liquid-solution viscosity is:
 
@@ -1669,7 +1675,8 @@ so liquid mass conservation remains tied to the Elrod-Adams film-content
 variable.
 
 When `fluid_property_model = TWO_PHASE`, finite-rate
-release/resorption updates the dissolved and free gas diagnostics:
+release/resorption updates dissolved, free and liquid inventories (§18).
+The former explicit approximation was:
 
 $$\Delta m_g =
 k_{dg}(c_d - c_{d,eq})\,\rho_l h\,\alpha_l\,\Delta t$$
@@ -1680,8 +1687,9 @@ the reported/resolved free-gas volume fraction by `gas_alpha_max`:
 
 $$0 \le \alpha_g \le \alpha_{g,max}$$
 
-Dissolved-gas transport is a segregated advection-diffusion step on $c_d$ using
-the same liquid film mass flux as the JFO equation. Free gas mass per bearing
+Dissolved-gas transport is a conservative segregated advection-diffusion step on
+$c_d$. FBNS uses its exact discrete liquid flux; JFO retains a reconstructed
+carrier velocity. Free gas mass per bearing
 area is transported conservatively with the same film-averaged velocity and no
 slip. Both transport solves are skipped when `dt <= 0` (steady operating-point
 runs) to avoid solving boundaryless steady advection problems.
@@ -1723,9 +1731,8 @@ point explicitly:
 The CLI and GUI validate these dependencies before launch. For example, HENRY
 requires `dissolved_gas_henry_coeff > 0`, MIXTURE requires
 `dissolved_gas_liquid_density > 0`, empirical/log viscosity requires a non-zero
-`solution_viscosity_gas_coeff`, and `TWO_PHASE` currently requires
-`JFO` so gas release is coupled to the mass-conserving JFO
-liquid-content solve.
+`solution_viscosity_gas_coeff`, and `TWO_PHASE` requires JFO or FBNS. These
+configuration checks do not certify physical gas-pressure coupling.
 
 This is a segregated nonlinear JFO/property/gas update, not a PISO method. A
 true PISO label would require a Navier-Stokes pressure-velocity backend.
@@ -1998,9 +2005,10 @@ nothing and change nothing when they are not.
 
 ## 16. Oil–Refrigerant Gaseous Cavitation (PZ68S + R290)
 
-This section records the *physical model* for cavitation of an oil with a
-dissolved refrigerant (the target case is PAG-class PZ68S oil saturated with
-R290/propane). It is the canonical summary; the full survey, the
+This section records the historical proposed model for PAG-class PZ68S oil
+saturated with R290/propane. It is not a general thermodynamic law or a validated
+model for the current oil-R410A target. The max-threshold and local plateau
+construction below remains experimental; §18 states current limits. The full survey, the
 literature-verification ledger, and the cited sources live in
 `docs/CAVITATION_OIL_REFRIGERANT.md`. The implementation status and the
 work-package breakdown are in `PLAN.md` Phase E (WP-12 data backend + onset,
@@ -2243,3 +2251,141 @@ Feature gates (default-off ≡ historical behavior): `cavitation_threshold`
 (`SCALAR_PCAV`/`LOCAL_PSAT`, §16.1), `gas_pressure_coupling` (`NONE`/`VOID_COUPLED`,
 §16.3/WP-1), `cavitated_film_model` (`FULL_FILM`/`STRIATED`), `steady_gas_model`
 (`FROZEN`/`EQUILIBRIUM`), `consistent_boundary_flux` (§6).
+
+## 18. Conservative gas update and experimental scope (2026-09-06)
+
+### 18.1 Inventories and flow storage
+
+Use bearing-area inventories in kg/m²:
+
+$$M_l=\rho_l h\theta,\qquad M_d=c_dM_l,\qquad M_g=m_{g,free},
+\qquad M_o=(1-c_d)M_l.$$
+
+Here $M_l$ includes dissolved species, $M_o$ is base oil, and $M_g$ is the
+resolved free species. The total mixture inventory is $M_l+M_g$; the total gas
+species inventory is $M_d+M_g$. The `rho` field is $\rho_l\theta$, the liquid
+inventory per gap volume, rather than the total two-phase density.
+
+JFO and FBNS flow storage is now
+
+$$\frac{M_l^{n+1}-M_l^n}{\Delta t}\Delta A.$$
+
+The driver snapshots `rho_liquid_solution`, `h` and `theta` once per physical
+step. Geometry change is already included, so adding $\rho_l\theta\dot h$
+again would double-count squeeze. Low-level callers without a stored gap may
+use the legacy prescribed-squeeze fallback $h^n=h-\Delta t\dot h$; new drivers
+should store the actual previous geometry. Frozen-coefficient Newton/Picard
+still leaves pressure/property coupling error until the outer state closes.
+
+### 18.2 Conservative transport and phase exchange
+
+Before local reaction, dissolved species solves
+
+$$\frac{c_d^* M_l^*-c_d^n M_l^n}{\Delta t}\Delta A
++\sum_f F_{l,f}c_{d,f}^* - \sum_f D_f M_{l,f}\nabla c_d^*\cdot\mathbf n_f A_f=0.$$
+
+FBNS supplies its exact harmonic-mobility Poiseuille and upwind Couette face
+fluxes $F_{l,f}$. The former subtraction of $c_d\nabla\cdot F_l$ is gone.
+Free inventory uses conservative advection at a reconstructed homogeneous
+liquid velocity. This no-slip closure does not model bubble migration or
+coalescence. Reservoir rows prescribe feed concentration and zero free gas
+inside the solves; displaced-row residuals measure the imposed gas source.
+
+For reaction at frozen $p,T$, let $c_e=c_{d,eq}(p,T)$ and $k$ be the transfer
+rate. The implemented local kinetic law is
+
+$$\dot M_l=\dot M_d=-k(M_d-c_eM_l),\qquad
+\dot M_g=k(M_d-c_eM_l).$$
+
+Thus $M_o=M_l-M_d$ and $M_d+M_g$ are invariants. Define
+$q=M_d-c_eM_l$; then $\dot q=-k(1-c_e)q$. The exact unrestricted transfer is
+
+$$\Delta M=M_l(c_d-c_e)
+\frac{1-\exp[-k(1-c_e)\Delta t]}{1-c_e}.$$
+
+The $c_e\to1$ limit of the quotient is $k\Delta t$. `expm1` and a small-argument
+expansion retain accuracy for short steps. Bound release by the available
+dissolved mass and configured free-gas capacity; bound absorption by existing
+free mass. A capacity-limited release leaves supersaturation rather than
+discarding species. Then reconstruct
+
+$$M_l'=M_l-\Delta M,\quad M_d'=c_dM_l-\Delta M,\quad
+M_g'=M_g+\Delta M,\quad c_d'=M_d'/M_l',\quad
+\theta'=M_l'/[\rho_l(c_d',p,T)h].$$
+
+`gas_mass_transfer` is $\Delta M/(h\Delta t)$, positive for release. It is a
+sink in liquid continuity and a source in free gas; it cancels from total gas
+species conservation. No numerical relaxation is applied to physical transient
+exchange. Analytic local integration prevents kinetic overshoot but does not
+make the split flow/transport/energy integration exact.
+
+### 18.3 Steady flash and property consistency
+
+The steady feed flash is a local composition closure. For feed mass fraction
+$c_f=(c_dM_l+M_g)/(M_l+M_g)$,
+
+$$M_g=\frac{c_f-c_d}{1-c_f}M_l.$$
+
+At an unrestricted flash $c_d=\min(c_e,c_f)$. If the volume cap limits $M_g$,
+or steady numerical relaxation changes it, reconstruct
+$c_d=c_f-(1-c_f)M_g/M_l$. This preserves the specified local feed fraction.
+It is not conservative steady transport through the bearing.
+
+The two-dimensional viscosity table stores kinematic $\nu(p,T)$, so the shared
+property helper returns $\mu=\rho_l\nu$. Both mean-film and cross-film sampling
+now call that helper. A saturation table contains composition implicitly and
+cannot establish off-saturation $\mu(p,T,c_d)$ without additional data.
+
+### 18.4 Admissibility and physical scope
+
+At the gas-update state define
+
+$$\alpha_{EOS}=\frac{M_g}{\rho_g h},\qquad
+E_V=\max_{cells}[0,\theta+\alpha_{EOS}-1],\qquad
+E_{EOS}=\max_{cells}|\alpha_g-\alpha_{EOS}|.$$
+
+`gas_volume_excess` and `gas_eos_defect` report these dimensionless diagnostics.
+They use the stored gas-step `rho_gas`; a subsequent temperature update may
+introduce additional thermodynamic lag. A cap may hide gas volume in the
+reported alpha, but cannot hide it from these diagnostics. The mild synthetic
+air test already gives $E_V\simeq2.7\times10^{-4}$. Conservation is therefore
+verified separately from volume admissibility.
+
+FBNS currently constrains pressure against a scalar equilibrium plateau using
+lagged gas volume. Pressure, species masses and volume must be solved
+consistently before claiming a physical gaseous cavity pressure. The transient
+driver has one segregated sweep; steady convergence additionally checks
+$R_g=\max(\|\Delta c_d\|_\infty/\max(c_{d,initial},10^{-6}),
+\|\Delta\alpha_g\|_\infty)$. This detects an evolving gas state but is not an
+EOS/volume closure test. Reported Newton convergence applies to its inner solve.
+
+Classical JFO is an equilibrium liquid-content model. There is no independent
+vapor inventory, multicomponent gas EOS, nucleation model or latent/dissolution
+enthalpy term here. AIR and PROPANE/R290 are the only parsed free species;
+R410A is rejected. For oil-R410A, component solubility/partitioning and mixture
+properties are required. For oil-air, measured dissolved and entrained air
+content and rate data are required. Neither experimental system is validated
+by the present regression tests. See the [audit and priorities](docs/PHYSICS_AUDIT_2026-09.md).
+
+### 18.5 Physical time and geometry
+
+The transient driver writes the initial fields at $t=0$ without advancing
+them. For each interval, $\Delta t_n=\min(\Delta t,t_{end}-t_n)$, it predicts
+the bearing geometry at $t_{n+1}$ using the previous fluid force, updates gap
+geometry, and advances flow, species and energy with that same interval.
+The completed fields and bearing position are saved at $t_{n+1}$. Floating-point
+roundoff near the final time is absorbed into the last interval rather than
+creating a tiny extra step. `end_t = 0` writes only the initial state.
+
+This replaces the old convention that performed an advance at label zero and
+included an extra interval at the final label. It also aligns the gap change
+with old/new liquid storage. The fluid force in the geometry predictor remains
+explicit; choosing RK4 for the rigid-body subsystem does not make the coupled
+flow/gas/thermal evolution fourth order. New transient comparisons require
+timestep convergence of the complete coupled sequence.
+
+The CLI regression checks the exact insulated uniform-film solution
+$T(t)=T_0+\mu(\omega R/h)^2t/(\rho c_p)$ and a decoupled constant axial load
+$z(t)=F_z t^2/(2m)$, including a half-sized final interval. Initial values,
+integrated heating and saved geometry therefore test physical elapsed time,
+not only the labels written to the PVD file.

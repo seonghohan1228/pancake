@@ -262,7 +262,7 @@ The Daniel/Idemitsu-type PTSV chart (viscosity + solubility vs T, p; "100% = pur
 
 1. **Keep the Elrod–Adams θ / switch-function backbone** (`pancake` already has it). It is mass-conserving and it is a *formal approximation of the very compressible-mixture model you want* [R5], so you are not throwing anything away.
 2. **Promote `p_cav` → `p_sat(T, c_d)`**, the local solution bubble-point read from the PTSV solubility surface (§5.1). This is the single most important physics change. The complementarity in §3 is unchanged in form.
-3. **Make μ and ρ composition- and void-fraction-dependent** (§5.2–5.4): liquid-solution properties below `p_sat`; two-phase mixture properties above it. Couple both back into the Reynolds coefficients.
+3. **Make μ and ρ composition- and void-fraction-dependent** (§5.2–5.4): for an equilibrium fixed-composition state, the liquid solution is above its bubble-point pressure; phase separation can occur below it. The former above/below wording was reversed. Nonequilibrium transport may retain bubbles above the threshold or supersaturation below it. Couple consistent properties back into the Reynolds coefficients.
 4. **Default to an equilibrium (Bunsen/Henry) closure**; provide a **finite-rate desorption** option (transport equation for `c_d` with a release/resorption rate) for high-speed/dynamic regimes (§2.5). [R2]
 5. **Ingest the supplier PTSV chart** as the solubility/viscosity/(density) surfaces; supply an **R290 gas-phase EOS** separately for the desorbed phase.
 

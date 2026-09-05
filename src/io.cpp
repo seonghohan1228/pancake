@@ -1,6 +1,8 @@
 #include "io.hpp"
 
 #include <cmath>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <mpi.h>
@@ -14,6 +16,36 @@ namespace fs = std::filesystem;
 
 namespace IO {
 namespace {
+bool processor_directory(const std::string& name) {
+    return name.starts_with("processor") && name.size() > 9 &&
+        std::all_of(name.begin() + 9, name.end(), [](unsigned char c) { return std::isdigit(c); });
+}
+
+// Remove only products with the solver's naming convention. A rerun must not
+// recursively erase reports, input files or unrelated content in output_dir.
+void clear_solver_products(const fs::path& root, const std::string& prefix, std::error_code& ec) {
+    fs::recursive_directory_iterator it(root, fs::directory_options::none, ec), end;
+    for (; !ec && it != end; it.increment(ec)) {
+        if (it->is_symlink(ec)) { it.disable_recursion_pending(); continue; }
+        if (it->is_directory(ec)) {
+            const std::string name = it->path().filename().string();
+            if (!processor_directory(name) && !(it.depth() == 0 && name == "flat"))
+                it.disable_recursion_pending();
+            continue;
+        }
+        const std::string name = it->path().filename().string();
+        const std::string stem = it->path().stem().string();
+        const std::string ext = it->path().extension().string();
+        bool generated = name == "results.pvd" || (it.depth() == 0 && name == "diagnostics.csv");
+        if ((ext == ".vts" || ext == ".pvts") && stem.starts_with(prefix + "_")) {
+            const std::string suffix = stem.substr(prefix.size() + 1);
+            generated = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(),
+                [](unsigned char c) { return std::isdigit(c) || c == '_'; });
+        }
+        if (generated) fs::remove(it->path(), ec);
+    }
+}
+
 // Selection key (what config output_fields / output_field_enabled use). theta is
 // selected as film_content for backward compatibility.
 std::string selection_key_for_field(const std::string& name) {
@@ -404,7 +436,7 @@ void prepare_output_directory(const SimulationConfig& cfg, MPI_Comm comm) {
         const fs::path root(cfg.output_dir);
 
         if (fs::exists(root, ec)) {
-            fs::remove_all(root, ec);
+            clear_solver_products(root, cfg.filename_prefix, ec);
             if (ec) {
                 setup_error = "Cannot clear output_dir '" + root.string() + "': " +
                     ec.message() + ". Close any viewer using the results, or choose a new output_dir.";

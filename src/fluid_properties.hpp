@@ -48,13 +48,14 @@ double interpolate_property_table(const std::vector<PropertyTablePoint>& table,
 /// Refresh rho/mu/thermal property fields from pressure, temperature, theta, and dissolved gas.
 void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
-/// Finite-rate release/resorption between dissolved gas and free gas in JFO void space.
+/// Conservative finite-rate dissolved/free phase exchange at frozen p,T.
+/// Updates liquid inventory (theta), concentration and free-gas mass together.
+/// The split update does not enforce coupled pressure-volume equilibrium.
 void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg, double dt);
 
-/// Steady-state equilibrium gas flash: set the dissolved fraction to the local
-/// saturation value and release the excess (relative to the feed composition) as
-/// free gas. Used in STEADY_STATE with steady_gas_model = EQUILIBRIUM, where time
-/// advance (and therefore the finite-rate transport) is not meaningful.
+/// Local steady feed flash; a gas-volume cap retains excess gas dissolved.
+/// Preserves the specified local feed fraction, but does not solve conservative
+/// steady species transport. Used with steady_gas_model = EQUILIBRIUM.
 void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
 }  // namespace FluidProperties

@@ -356,9 +356,15 @@ int main(int argc, char** argv) {
         fields.add("inlet_indicator", mesh).fill(0.0);
 
         FluidProperties::equilibrate_gas(fields, mesh, cfg);
-        // c_eq(5e5) = 2.175e-7 * 5e5 = 0.108750 < feed -> some R290 comes out of solution.
-        check(close(fields["dissolved_gas"](0, 0), 0.10875, 1e-5),
-              "equilibrate_gas: dissolved = local saturation below p_sat");
+        // The volume cap prevents complete flashing. Excess refrigerant must
+        // remain dissolved, while total refrigerant/mixture stays at the feed value.
+        const double liquid_mass = cfg.rho * cfg.c;
+        const double gas_mass = fields["free_gas_mass"](0, 0);
+        check(fields["dissolved_gas"](0, 0) >= 0.10875,
+              "equilibrate_gas: capped release cannot force all excess out of solution");
+        check(close((fields["dissolved_gas"](0, 0) * liquid_mass + gas_mass) /
+                        (liquid_mass + gas_mass), cfg.dissolved_gas_initial, 1e-10),
+              "equilibrate_gas: volume cap must retain the feed composition");
         check(fields["free_gas_mass"](0, 0) > 1e-9, "equilibrate_gas: free gas released");
         check(fields["alpha_gas"](0, 0) > 0.0 && fields["alpha_gas"](0, 0) <= cfg.gas_alpha_max + 1e-12,
               "equilibrate_gas: void fraction within [0, alpha_max]");

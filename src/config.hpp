@@ -621,7 +621,10 @@ inline FluidPropertyModel fluid_property_model_from_config(std::string value) {
 inline DissolvedGasSpecies dissolved_gas_species_from_config(std::string value) {
     value = normalise_config_token(value);
     if (value == "AIR") return DissolvedGasSpecies::AIR;
-    return DissolvedGasSpecies::PROPANE;
+    if (value == "PROPANE" || value == "R290") return DissolvedGasSpecies::PROPANE;
+    throw std::invalid_argument("Unsupported dissolved_gas_species '" + value +
+        "'. Supported species: AIR, PROPANE (R290). R410A is an R32/R125 blend; "
+        "its oil solubility and phase properties are not provided by the propane model.");
 }
 
 inline SolubilityModel solubility_model_from_config(std::string value) {
@@ -801,7 +804,7 @@ struct SimulationConfig {
     double dissolved_gas_max = 1.0;              // Upper bound for dissolved gas mass fraction
     double dissolved_gas_henry_coeff = 0.0;      // Henry slope H at the reference T [1/Pa]: c_sat = H(T) p
     double dissolved_gas_henry_temp_coeff = 0.0; // van't Hoff slope E_H [K]: H(T)=H_ref exp(E_H(1/T-1/T_ref))
-    double dissolved_gas_liquid_density = 0.0;   // Dissolved-gas (liquid-phase) density for mixing [kg/m^3]; 0 -> ideal gas
+    double dissolved_gas_liquid_density = 0.0;   // Partial liquid-volume density [kg/m^3]; required by MIXTURE
     double gas_mass_transfer_rate = 0.0;         // Finite-rate release/resorption [1/s]
     double dissolved_gas_diffusivity = 0.0;      // Effective Fickian diffusivity of dissolved gas [m^2/s]
     double solution_density_gas_coeff = 0.0;     // Optional density correction by concentration
@@ -825,15 +828,8 @@ struct SimulationConfig {
     double gas_pressure_floor = 1.0;             // Ideal-gas pressure floor [Pa]
     MixtureViscosityModel mixture_viscosity_model = MixtureViscosityModel::MCADAMS;
     GasPressureCoupling gas_pressure_coupling = GasPressureCoupling::NONE;  // released gas into pressure (WP-1)
-    // Under-relaxation on the free-gas state wherever the released gas is
-    // volumetrically active, i.e. wherever a change in alpha_gas feeds back into
-    // the liquid solve. Two such paths exist:
-    //   - Elrod + VOID_COUPLED, through the plateau p_void. At w = 1 the
-    //     p_void <-> theta feedback limit-cycles (the rupture front oscillates
-    //     with no flag flips, so the Elrod loop stalls at a finite mass residual).
-    //   - FBNS + TWO_PHASE, through the full-film ceiling theta <= 1 - alpha_gas.
-    // The fixed point is unchanged; only the path to it is damped. Ignored when
-    // the free gas is volumetrically inert (every other combination).
+    // Numerical relaxation of the Elrod p_void iteration and steady feed flash.
+    // Physical transient phase transfer and EOS gas volume are never relaxed.
     double void_coupling_relaxation = 0.3;
     double mu_gas = 0.0;                         // Free-gas dynamic viscosity [Pa s]; required by DUKLER/MCADAMS/LINEAR models
     double property_reference_pressure = 101325.0;
@@ -1070,7 +1066,10 @@ struct SimulationConfig {
             else if (key == "bush_outer_boundary") bush_outer_boundary = bush_outer_boundary_from_config(value);
             else if (key == "groove_mixing_model") groove_mixing_model = groove_mixing_model_from_config(value);
             else if (key == "fluid_property_model") fluid_property_model = fluid_property_model_from_config(value);
-            else if (key == "dissolved_gas_species") dissolved_gas_species = dissolved_gas_species_from_config(value);
+            else if (key == "dissolved_gas_species") {
+                try { dissolved_gas_species = dissolved_gas_species_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
             else if (key == "solubility_model" || key == "oil_gas_solution_model") solubility_model = solubility_model_from_config(value);
             else if (key == "density_model") density_model = density_model_from_config(value);
             else if (key == "liquid_viscosity_model" || key == "viscosity_model") liquid_viscosity_model = liquid_viscosity_model_from_config(value);
@@ -1343,7 +1342,7 @@ struct SimulationConfig {
                  "convection-dominated solves then depends on the rank count. ASM is the "
                  "rank-robust choice.");
         }
-        if (solution_mode == SolutionMode::TRANSIENT) require_positive(end_t, "end_t");
+        if (solution_mode == SolutionMode::TRANSIENT) require_nonnegative(end_t, "end_t");
         require_positive(mu, "mu");
         require_positive(rho, "rho");
         require_positive(bulk_modulus, "bulk_modulus");
@@ -1631,9 +1630,9 @@ struct SimulationConfig {
 
         if (variable_properties) {
             if (!finite(dissolved_gas_initial) || !finite(dissolved_gas_max) ||
-                dissolved_gas_initial < 0.0 || dissolved_gas_max <= 0.0 ||
+                dissolved_gas_initial < 0.0 || dissolved_gas_max <= 0.0 || dissolved_gas_max > 1.0 ||
                 dissolved_gas_initial > dissolved_gas_max) {
-                error("Dissolved gas values must satisfy 0 <= dissolved_gas_initial <= dissolved_gas_max and dissolved_gas_max > 0.");
+                error("Dissolved gas values must satisfy 0 <= dissolved_gas_initial <= dissolved_gas_max <= 1 and dissolved_gas_max > 0.");
             }
             require_nonnegative(dissolved_gas_henry_temp_coeff, "dissolved_gas_henry_temp_coeff");
             require_nonnegative(dissolved_gas_diffusivity, "dissolved_gas_diffusivity");
@@ -1779,8 +1778,8 @@ struct SimulationConfig {
             if (finite(dissolved_gas_initial) && dissolved_gas_initial <= 0.0) {
                 warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
             }
-            if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate <= 0.0) {
-                error("TWO_PHASE requires gas_mass_transfer_rate > 0.");
+            if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate < 0.0) {
+                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables phase exchange).");
             }
             if (solution_mode == SolutionMode::STEADY_STATE &&
                 steady_gas_model == SteadyGasModel::FROZEN && !allow_frozen_gas_steady) {
@@ -1792,7 +1791,8 @@ struct SimulationConfig {
                 error("gas_alpha_max must be in (0, 1] for TWO_PHASE.");
             }
             if (finite(dt) && finite(gas_mass_transfer_rate) && dt * gas_mass_transfer_rate > 1.0) {
-                warn("dt * gas_mass_transfer_rate > 1; release/resorption is stiff for the selected timestep.");
+                warn("dt * gas_mass_transfer_rate > 1; local exchange is integrated analytically, "
+                     "but transport/pressure splitting still requires a timestep study.");
             }
 
             switch (mixture_viscosity_model) {

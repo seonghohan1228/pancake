@@ -11,6 +11,37 @@ energy equation for lubricant temperature and viscous heat generation.
 For a feature-level record of substantive project contributions, see
 `docs/PROJECT_CONTRIBUTIONS.md`.
 
+## Cavitation readiness (2026-09-06)
+
+Use **FBNS** as the equilibrium, mass-conserving Reynolds baseline. It is
+numerically verified against the exact 1-D free-boundary problem. The oil-air
+gas model is experimental; **R410A is not implemented** and is now rejected
+instead of silently selecting propane. There is no separately transported
+vapor phase or latent-heat closure.
+
+The [physics audit](docs/PHYSICS_AUDIT_2026-09.md) reviews branches, history and
+validation evidence, and records conservation/property repairs. Both native
+Windows and Linux pass 40 regression tests. This is numerical verification,
+not validation of either proposed experimental fluid system.
+
+Two-phase runs should enable `diagnostics_interval = 1` and inspect
+`gas_volume_excess` and `gas_eos_defect` alongside mass residuals: a converged
+pressure solve can still leave inconsistent gas volume after the split update.
+Steady diagnostics now include `coupling_R_g`. Failed nonlinear solves or a
+minimum-film stop return exit code **4**; case scripts must honor it. Transient
+exchange no longer uses `void_coupling_relaxation`.
+
+Transient VTK output now starts with the unadvanced initial state at `t = 0`.
+The driver advances geometry and fields to each reported time and shortens the
+last interval to end exactly at `end_t`; `end_t = 0` writes the initial state
+only. The old driver took an extra step. Rerun transient comparisons affected
+by that convention. Geometry still uses the previous step's fluid force.
+
+Reproduction scripts and synthetic inputs are in
+[the audit verification case](cases/90_diagnostics/physics_audit/README.md).
+Reruns now preserve unrelated files in `output_dir` and replace only files
+matching the solver's output naming conventions.
+
 The current Windows development workflow uses **MSYS2 MINGW64**. Visual Studio
 is not required to build or run the native solver or GUI in the current code.
 

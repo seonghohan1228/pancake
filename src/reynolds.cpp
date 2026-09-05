@@ -376,28 +376,14 @@ ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
                             ConvectionScheme::UPWIND, mesh);
         }
 
-        // Liquid-content storage ∂(ρ₀θh)/∂t is part of every transient solve;
-        // gating it on bearing motion would make fixed-bearing transients
-        // quasi-steady in θ (film history silently absent).
+        // Conservative storage of rho_l h theta, including density and gap changes.
         if (cfg.solution_mode != SolutionMode::STEADY_STATE) {
-            Field rho_h_weight("rho_h_weight", mesh);
             for (int i = 0; i < n_theta; ++i) {
                 for (int j = 0; j < n_z; ++j) {
-                    rho_h_weight(i, j) = theta_base_density(fields, cfg, i, j) * h(i, j);
+                    const double area_dt = mesh.cell_volume() / cfg.dt;
+                    sys.a_p(i, j) += theta_base_density(fields, cfg, i, j) * h(i, j) * area_dt;
+                    sys.source(i, j) += ReynoldsCoeff::old_liquid_mass_area(fields, cfg, cfg.dt, i, j) * area_dt;
                 }
-            }
-            FVM::ddt_weighted(sys, theta, rho_h_weight, cfg.dt, mesh);
-
-            if (fields.has("dh_dt")) {
-                const Field& dh_dt = fields["dh_dt"];
-                Field squeeze_src("squeeze_src", mesh);
-                for (int i = 0; i < n_theta; ++i) {
-                    for (int j = 0; j < n_z; ++j) {
-                        squeeze_src(i, j) = -theta_base_density(fields, cfg, i, j) *
-                            theta.old(i, j) * dh_dt(i, j);
-                    }
-                }
-                FVM::add_source(sys, squeeze_src, mesh);
             }
         }
 

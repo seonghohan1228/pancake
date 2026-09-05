@@ -20,8 +20,8 @@ Controller::Controller(const SimulationConfig& cfg) {
     status_.relaxation_min_used = omega_;
 }
 
-bool Controller::record(int outer, double R_p, double R_T) {
-    const double r = residual_metric(R_p, R_T);
+bool Controller::record(int outer, double R_p, double R_T, double R_g) {
+    const double r = residual_metric(R_p, R_T, R_g);
 
     // Relaxation schedule. FIXED leaves omega_ at its constructed value, so the
     // sequence of updates is byte-for-byte the historical one.
@@ -39,13 +39,15 @@ bool Controller::record(int outer, double R_p, double R_T) {
         status_.best_iter = outer + 1;
         status_.best_R_p = R_p;
         status_.best_R_T = R_T;
+        status_.best_R_g = R_g;
         status_.best_residual = r;
     }
 
     status_.iters = outer + 1;
     status_.R_p = R_p;
     status_.R_T = R_T;
-    status_.converged = (R_p < tolerance_) && (R_T < tolerance_);
+    status_.R_g = R_g;
+    status_.converged = r < tolerance_;
 
     prev_residual_ = r;
     any_recorded_ = true;
@@ -67,7 +69,7 @@ void Controller::finish(int iters_done) {
 std::string Controller::summary_line() const {
     std::ostringstream s;
     s << "Coupling: " << status_.iters << " outer iters, R_p=" << status_.R_p
-      << " R_T=" << status_.R_T
+      << " R_T=" << status_.R_T << " R_g=" << status_.R_g
       << " | " << (status_.converged ? "CONVERGED" : "NOT CONVERGED")
       << " (tol=" << tolerance_ << ")";
     if (!status_.converged && status_.cap_exhausted) {
@@ -103,6 +105,7 @@ void Snapshot::capture(const Fields& fields) {
         e.name = kv.first;
         e.data = kv.second->data;
         e.old_data = kv.second->old_data;
+        e.history_initialized = kv.second->has_old_time();
         entries_.push_back(std::move(e));
     }
     valid_ = true;
@@ -114,7 +117,7 @@ void Snapshot::restore(Fields& fields) const {
         if (!fields.has(e.name)) continue;
         Field& f = fields[e.name];
         if (f.data.size() == e.data.size()) f.data = e.data;
-        if (f.old_data.size() == e.old_data.size()) f.old_data = e.old_data;
+        if (f.old_data.size() == e.old_data.size()) f.restore_old_time(e.old_data, e.history_initialized);
     }
 }
 

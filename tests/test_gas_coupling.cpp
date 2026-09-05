@@ -75,7 +75,7 @@ static Fields make_cell_fields(const Mesh& mesh, const SimulationConfig& cfg,
 static double propane_per_area(const Fields& fields, const SimulationConfig& cfg) {
     const double c_d = fields["dissolved_gas"](0, 0);
     const double m_g = fields["free_gas_mass"](0, 0);
-    return c_d * cfg.rho * 1.0 * cfg.c + m_g;  // theta = 1, h = cfg.c
+    return c_d * fields["rho_liquid_solution"](0, 0) * fields["theta"](0, 0) * cfg.c + m_g;
 }
 
 // Gate 1: sub-saturated cell releases gas; total propane is conserved and steady.

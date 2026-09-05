@@ -2,6 +2,41 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-09-06 - Conserve cavitating-mixture inventories and audit readiness
+
+- Audited all accessible branches, reachable history and validation evidence
+  from isolated local main; preserved the dirty Ferron checkout. See
+  `docs/PHYSICS_AUDIT_2026-09.md` for findings, provenance and unresolved work.
+- Difference full old/new liquid and dissolved inventories so changing gap,
+  density and solution mass do not create species. Replace nonconservative gas
+  convection with conservative transport using exact FBNS carrier fluxes.
+- Integrate frozen-state release/resorption analytically, update liquid mass
+  and concentration together, and remove mass-losing transient gas relaxation.
+  Correct the steady feed-flash lever rule and retain capacity-limited excess
+  in solution. The steady flash remains an approximation to species transport.
+- Impose gas reservoir composition inside both linear solves and account for
+  displaced rows. Preserve the boundary flux actually used by transport and
+  include phase transfer in liquid continuity diagnostics.
+- Reject unknown species (including unsupported R410A), impossible mass
+  fractions and missing dissolved partial-volume density. Share 2-D viscosity
+  table conversion with cross-film property calls. A zero exchange rate is valid.
+- Include gas change and nonfinite metrics in steady convergence; preserve
+  history initialization in restored snapshots. Return exit 4 for failed
+  nonlinear solves and minimum-film termination instead of reporting success.
+- Add gas-volume and EOS-defect diagnostics without concealing volume error
+  through nonconservative clipping. The pressure/gas/volume closure is still open.
+- Correct the transient driver: save the unadvanced initial state, predict
+  geometry at the target time from the previous fluid force, use a shortened
+  final interval consistently in flow/gas/energy/motion, and always save the
+  final state. Permit end_t = 0 for initial output. A CLI regression checks exact
+  insulated Couette heating and rigid-body acceleration over a partial step.
+- Replace recursive output-directory deletion with targeted solver-product
+  cleanup, preserving unrelated reports, inputs and symlink targets.
+- Add MPI-1/2/4 conservation regressions and a CLI failure contract, plus exact
+  1-D and synthetic air reproduction scripts. Full native Windows and Ubuntu
+  suites pass 40/40. Update README, PHYSICS, PLAN and validation claims; correct
+  the reversed bubble-point wording and the front-convergence interpretation.
+
 ### 2026-08-07 - Ferron conjugate-THD grid protocol
 
 - Added case 00d, a pre-registered G5/G6/G7 film-plane grid check of the final

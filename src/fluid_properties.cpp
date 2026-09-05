@@ -93,22 +93,8 @@ double interpolate_property_table(const std::vector<PropertyTablePoint>& table,
     return fallback;
 }
 
-/// Under-relaxation weight for the free-gas state. Damps the two-way
-/// alpha_gas <-> theta_full <-> theta feedback that otherwise limit-cycles under
-/// VOID_COUPLED (the rupture front oscillates with no flag flips, so the Elrod
-/// loop stalls at a finite mass residual). The fixed point is unchanged, so the
-/// converged solution is identical -- only the path to it is damped.
-///
-/// FBNS + TWO_PHASE feeds the same loop through the complementarity bound
-/// theta <= 1 - alpha_gas, so it takes the same lever. Measured on
-/// `config_r290_pz68_quick.txt`: the saturated feed releases enough propane in one
-/// 5 us step to fill ~23% of the gap, the ceiling drops by that much at once, and
-/// the resulting d(theta)/dt sink swings the load between 5.8e2 N and 2.4e5 N on
-/// alternate steps. Relaxing alpha_gas spreads the same release over several
-/// steps and the swing goes away.
-///
-/// Returns 1 (no relaxation) whenever the free gas is volumetrically inert, which
-/// is every other combination and keeps them bit-identical.
+/// Numerical relaxation for the steady feed-flash iteration only. Transient
+/// phase exchange is physical time integration and must not use this factor.
 double gas_state_relaxation(const SimulationConfig& cfg) {
     const bool gas_is_volumetric =
         cfg.gas_pressure_coupling == GasPressureCoupling::VOID_COUPLED ||
@@ -158,11 +144,12 @@ double liquid_solution_density(double dissolved_gas,
             rho_solution = cfg.rho;
             break;
         case DensityModel::MIXTURE: {
-            // Dissolved gas occupies ~its liquid-phase molar volume, not the gas phase.
-            // Use the configured liquid-phase density when given; else fall back to ideal gas.
-            const double dg_rho = cfg.dissolved_gas_liquid_density > 0.0
-                ? cfg.dissolved_gas_liquid_density
-                : std::max(gas_density(pressure, temperature, cfg), kMinPositive);
+            if (c_g == 0.0) break;
+            // The dissolved species occupies its partial liquid volume. The free
+            // gas EOS cannot supply this property.
+            if (!(cfg.dissolved_gas_liquid_density > 0.0))
+                throw std::invalid_argument("MIXTURE density requires dissolved_gas_liquid_density > 0.");
+            const double dg_rho = cfg.dissolved_gas_liquid_density;
             const double specific_volume =
                 (1.0 - c_g) / std::max(cfg.rho, kMinPositive) + c_g / std::max(dg_rho, kMinPositive);
             rho_solution = 1.0 / std::max(specific_volume, kMinPositive);
@@ -239,7 +226,13 @@ double liquid_solution_viscosity(double dissolved_gas,
             break;
         }
         case LiquidViscosityModel::TABLE:
-            mu_solution = interpolate_property_table(cfg.viscosity_table, c_g, cfg.mu);
+            if (!cfg.viscosity_table_2d.empty()) {
+                const double rho_l = liquid_solution_density(c_g, pressure, temperature, cfg);
+                mu_solution = rho_l * cfg.viscosity_table_2d.interpolate(
+                    pressure, bounded_temperature(temperature, cfg), cfg.mu / rho_l);
+            } else {
+                mu_solution = interpolate_property_table(cfg.viscosity_table, c_g, cfg.mu);
+            }
             break;
     }
     return std::max(mu_solution, kMinPositive);
@@ -289,21 +282,11 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
 
             const double rho_liquid = liquid_solution_density(dissolved, pressure, temperature, cfg);
             double mu_liquid = liquid_solution_viscosity(dissolved, pressure, temperature, cfg);
-            // 2-D table viscosity is the KINEMATIC nu(p,T) [m^2/s]; convert per cell to
-            // dynamic mu = nu * rho_solution (the supplier chart carries no density column).
-            if (cfg.liquid_viscosity_model == LiquidViscosityModel::TABLE && !cfg.viscosity_table_2d.empty()) {
-                const double nu = cfg.viscosity_table_2d.interpolate(
-                    pressure, bounded_temperature(temperature, cfg),
-                    cfg.mu / std::max(rho_liquid, kMinPositive));
-                mu_liquid = std::max(nu * rho_liquid, kMinPositive);
-            }
             const double cp_liquid = cfg.rho_cp / std::max(rho_liquid, kMinPositive);
             const double rho_g = gas_density(pressure, temperature, cfg);
 
-            // Effective film viscosity. The dissolved gas already thinned mu_liquid;
-            // free gas modifies the mixture per the configured model (Einstein dilute
-            // thickening, void/quality-weighted thinning toward mu_gas, or
-            // Krieger-Dougherty packing).
+            // Dissolved gas modifies the liquid viscosity; free gas enters through
+            // the selected void-fraction or mass-quality mixture law.
             double mu_mixture = mu_liquid;
             if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
                 fields.has("alpha_gas")) {
@@ -356,27 +339,26 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
                 dissolved = clamp_mass_fraction(dissolved, cfg);
                 free_mass = std::max(free_mass, 0.0);
                 const double equilibrium = equilibrium_dissolved_gas(pressure, temperature, cfg);
-                const double liquid_mass_area =
-                    std::max(rho_liquid * h * std::max(theta, cfg.theta_min), kMinPositive);
-
-                if (dissolved > equilibrium && release_mass_cap > free_mass) {
-                    const double fraction_release =
-                        std::min((dissolved - equilibrium) * cfg.gas_mass_transfer_rate * dt,
-                                 dissolved);
-                    const double mass_release = std::min(fraction_release * liquid_mass_area,
-                                                         release_mass_cap - free_mass);
-                    dissolved -= mass_release / liquid_mass_area;
-                    free_mass += mass_release;
-                    source = mass_release / (h * dt);
-                } else if (dissolved < equilibrium && free_mass > 0.0) {
-                    const double available_capacity =
-                        std::max(0.0, (std::min(equilibrium, cfg.dissolved_gas_max) - dissolved) *
-                                      liquid_mass_area);
-                    const double kinetic_limit = available_capacity * cfg.gas_mass_transfer_rate * dt;
-                    const double mass_resorb = std::min({kinetic_limit, available_capacity, free_mass});
-                    dissolved += mass_resorb / liquid_mass_area;
-                    free_mass -= mass_resorb;
-                    source = -mass_resorb / (h * dt);
+                const double liquid_mass_area = std::max(rho_liquid * h * theta, kMinPositive);
+                // dM_l/dt = dM_d/dt = -k (M_d - c_eq M_l), with oil M_l-M_d
+                // invariant. Integrate exactly at frozen p,T; expm1 retains small steps.
+                const double rate_dt = cfg.gas_mass_transfer_rate * dt;
+                const double exponent = (1.0 - equilibrium) * rate_dt;
+                const double kinetic_time = exponent > 1e-8
+                    ? -std::expm1(-exponent) / (1.0 - equilibrium)
+                    : rate_dt * (1.0 - 0.5 * exponent);
+                double transfer = liquid_mass_area * (dissolved - equilibrium) * kinetic_time;
+                transfer = std::clamp(transfer, -free_mass,
+                    std::min(dissolved * liquid_mass_area, std::max(release_mass_cap - free_mass, 0.0)));
+                const double remaining = liquid_mass_area - transfer;
+                if (remaining > kMinPositive) {
+                    dissolved = (dissolved * liquid_mass_area - transfer) / remaining;
+                    free_mass += transfer;
+                    const double rho_new = liquid_solution_density(dissolved, pressure, temperature, cfg);
+                    if (fields.has("theta")) fields["theta"](i, j) = remaining / (rho_new * h);
+                    if (fields.has("rho_liquid_solution")) fields["rho_liquid_solution"](i, j) = rho_new;
+                    if (fields.has("rho")) fields["rho"](i, j) = remaining / h;
+                    source = transfer / (h * dt);
                 }
             } else if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) {
                 free_mass = 0.0;
@@ -387,13 +369,11 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
                 ? std::clamp(free_mass / (rho_g * h), 0.0, alpha_max)
                 : 0.0;
 
-            const double w = gas_state_relaxation(cfg);
             if (fields.has("dissolved_gas")) fields["dissolved_gas"](i, j) = clamp_mass_fraction(dissolved, cfg);
-            if (fields.has("free_gas_mass"))
-                fields["free_gas_mass"](i, j) =
-                    (1.0 - w) * fields["free_gas_mass"](i, j) + w * free_mass;
-            if (fields.has("alpha_gas"))
-                fields["alpha_gas"](i, j) = (1.0 - w) * fields["alpha_gas"](i, j) + w * alpha;
+            // Physical timesteps have no iterative relaxation: applying it to only
+            // one phase destroys mass and invents a pressure-dependent delay.
+            if (fields.has("free_gas_mass")) fields["free_gas_mass"](i, j) = free_mass;
+            if (fields.has("alpha_gas")) fields["alpha_gas"](i, j) = alpha;
             if (fields.has("gas_mass_transfer")) fields["gas_mass_transfer"](i, j) = source;
             if (fields.has("rho_gas")) fields["rho_gas"](i, j) = rho_g;
         }
@@ -425,21 +405,24 @@ void equilibrate_gas(Fields& fields, const Mesh& mesh, const SimulationConfig& c
             // Local flash from the feed composition: gas above the saturation limit comes out.
             const double alpha_max = std::clamp(cfg.gas_alpha_max, 0.0, 1.0);
             const double c_eq = equilibrium_dissolved_gas(pressure, temperature, cfg);
-            const double dissolved = std::min(c_eq, c_feed);
-            const double released = std::max(0.0, c_feed - dissolved);
+            double dissolved = std::min(c_eq, c_feed);
             const double liquid_mass_area = rho_liquid * std::max(theta, 0.0) * h;
-            double free_mass = std::min(released * liquid_mass_area, alpha_max * rho_g * h);
+            // Feed mass fraction is defined relative to solution + free gas.
+            // c_feed = (c_d M_l + M_g)/(M_l + M_g). A volume cap must leave
+            // unreleased gas dissolved; it cannot discard the excess inventory.
+            double free_mass = std::min((c_feed - dissolved) * liquid_mass_area /
+                std::max(1.0 - c_feed, kMinPositive), alpha_max * rho_g * h);
             free_mass = std::max(free_mass, 0.0);
-            const double alpha = (rho_g > 0.0 && h > 0.0)
-                ? std::clamp(free_mass / (rho_g * h), 0.0, alpha_max) : 0.0;
 
             const double w = gas_state_relaxation(cfg);
+            free_mass = (1.0 - w) * center_field_value(fields, "free_gas_mass", 0.0, i, j) + w * free_mass;
+            free_mass = std::clamp(free_mass, 0.0, std::min(alpha_max * rho_g * h,
+                c_feed * liquid_mass_area / std::max(1.0 - c_feed, kMinPositive)));
+            dissolved = c_feed - (1.0 - c_feed) * free_mass / std::max(liquid_mass_area, kMinPositive);
+            const double alpha = std::clamp(free_mass / (rho_g * h), 0.0, alpha_max);
             if (fields.has("dissolved_gas")) fields["dissolved_gas"](i, j) = dissolved;
-            if (fields.has("free_gas_mass"))
-                fields["free_gas_mass"](i, j) =
-                    (1.0 - w) * fields["free_gas_mass"](i, j) + w * free_mass;
-            if (fields.has("alpha_gas"))
-                fields["alpha_gas"](i, j) = (1.0 - w) * fields["alpha_gas"](i, j) + w * alpha;
+            if (fields.has("free_gas_mass")) fields["free_gas_mass"](i, j) = free_mass;
+            if (fields.has("alpha_gas")) fields["alpha_gas"](i, j) = alpha;
             if (fields.has("gas_mass_transfer")) fields["gas_mass_transfer"](i, j) = 0.0;
             if (fields.has("rho_gas")) fields["rho_gas"](i, j) = rho_g;
         }

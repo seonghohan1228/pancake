@@ -9,6 +9,30 @@ snapshots and do not override this file.
 Snapshot: 2026-08-07, solver commit `df0802b` on
 `codex/ferron-cht-grid-check`.
 
+## 2026-09-06 audit addendum
+
+The August campaign evidence below is retained as a dated snapshot. Current
+code/physics repairs and later branch evidence are reconciled in
+[the September audit](../docs/PHYSICS_AUDIT_2026-09.md).
+
+- Full native Windows and Ubuntu WSL CTest suites: **40/40 pass** on the repaired
+  source, including conservation on MPI-1/2/4 and a forced solver failure.
+- The existing exact 1-D FBNS cases were rerun: both fronts within one cell on
+  120/240/480/960 grids; finest peak error +0.0701%, load error -0.0361%.
+- Synthetic oil-air transport/reaction agrees across 1/2/4 ranks and conserves
+  gas to less than 2e-11 relative step residual. It also exhibits about 2.7e-4
+  excess gap volume after the split update. Numerical conservation therefore
+  does **not** validate its pressure-volume model.
+- Later local D-series Ferron campaign artifacts report passing grid and dt
+  comparisons for their revised setups. They remain in the separate dirty
+  campaign checkout and explicitly deny temperature-validation eligibility.
+  This does not replace the earlier failed grid check with a passing verdict.
+- No experimental gas-release or vaporous/gaseous mixture validation is added.
+  R410A is unsupported and now rejected explicitly. The old scored Etsion cases
+  still have zero released gas and cannot validate finite-rate cavitation.
+
+Reproduction: [audit case and evidence](90_diagnostics/physics_audit/README.md).
+
 ## Reproducible baseline
 
 | Host | Toolchain | Result |

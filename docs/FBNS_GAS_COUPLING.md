@@ -1,5 +1,11 @@
 # FBNS + gaseous cavitation: design memo
 
+2026-09-06 correction: the historical transient free-gas relaxation below lost
+species mass and has been removed. Conservative phase exchange, explicit volume
+error diagnostics and current limitations are in [the physics audit](PHYSICS_AUDIT_2026-09.md)
+and [PHYSICS §18](../PHYSICS.md#18-conservative-gas-update-and-experimental-scope-2026-09-06).
+The historical tests here do not establish post-step volume admissibility.
+
 Status: **implemented** (2026-08-05, branch `codex/fbns-gas`).
 `cavitation_model = FBNS` with `fluid_property_model = TWO_PHASE` now runs; see
 PHYSICS.md §7.3.7 for the landed model and §8 below for what this memo got right,

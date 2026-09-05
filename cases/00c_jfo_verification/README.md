@@ -32,9 +32,10 @@ cell of the mid-z row, same estimator for both solvers:
 | 480 | 0.750 deg | -10.27 deg | -13.7 | -0.517 deg | -0.69 | +0.49 deg | +0.66 |
 | 960 | 0.375 deg | -5.02 deg | -13.4 | -0.142 deg | -0.38 | +0.12 deg | +0.32 |
 
-The JFO error shrinks in degrees but **grows** in cell widths: it is a
-first-order error with a prefactor of roughly 7 cells, i.e. the front is not
-converging with the mesh. Integrated quantities follow: JFO p_max is +50.4% /
+The JFO error shrinks in degrees but spans approximately 8-14 cell widths.
+This is consistent with first-order convergence and a large error coefficient;
+it fails the one-cell accuracy criterion, not a mathematical convergence test.
+Integrated quantities follow: JFO p_max is +50.4% /
 +39.9% / +24.0% / +12.2% above the exact 7.597141 MPa and W' is +42.0% / +41.0% /
 +31.1% / +17.8% above 495463.6 N/m, while FBNS is +0.54% / +0.28% / +0.14% /
 +0.07% and +0.70% / +0.27% / +0.07% / -0.04%.

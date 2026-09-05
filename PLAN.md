@@ -1,5 +1,42 @@
 # Development Plan
 
+## 2026-09-06 audit: oil-air and oil-R410A target
+
+The [physics audit](docs/PHYSICS_AUDIT_2026-09.md) is the current assessment of
+this target. The earlier roadmap and completed items are retained below.
+
+- [x] Review accessible branches, reachable history and recorded validation;
+  isolate work from the dirty Ferron campaign branches.
+- [x] Repair old/new liquid storage, conservative gas transport, phase-exchange
+  mass fractions, reservoir sources and actual gas boundary-flux accounting.
+- [x] Remove transient gas relaxation and kinetic overshoot; correct steady
+  flash mass fractions without claiming a steady transport solution.
+- [x] Reject unsupported species and unphysical dissolved partial volume;
+  unify mean/cross-film table viscosity and expose gas convergence/volume errors.
+- [x] Fail the CLI on nonconvergence; preserve unrelated output-directory files.
+- [x] Verify 40 tests on native Windows and Linux, exact 1-D FBNS fronts and
+  integrated quantities, and a synthetic oil-air transient across MPI counts.
+- [ ] Close pressure, phase inventories, EOS and gap volume simultaneously.
+  Require both conservation and volume residuals; no post-step mass-destroying
+  theta/alpha clipping. Keep FBNS as the verified zero-gas limit.
+- [x] Fix transient timestamps, final partial intervals and moving-geometry time
+  levels. Verify initial output, integrated heating and rigid-body acceleration
+  against exact CLI reference cases, including zero-duration initial output.
+- [ ] Rerun transient campaigns with corrected time levels and establish
+  fluid-force/thermal/species splitting accuracy before fitting time constants.
+- [ ] Obtain the oil grade, operating ranges and initial dissolved/entrained gas
+  state. Validate oil-air pressure, flow, load and void history independently.
+- [ ] Add oil-specific R32/R125 solubility/partitioning, liquid properties and
+  vapor EOS for R410A. Justify any reduced blend approximation with data.
+- [ ] Separate vapor and noncondensable inventories where both are present;
+  include latent/dissolution enthalpy when it affects the thermal balance.
+- [ ] Complete discrete-flux consistency for energy, free-gas velocity and JFO
+  transport; verify steady species transport rather than a local feed flash.
+- [ ] Reconcile later Ferron thermal branches on their own task; preserve their
+  measured-observable, boundary-condition and validation-eligibility caveats.
+- [ ] Profile representative verified cases before optimizing KSP, assembly,
+  allocation or MPI layout. The present small-case timings are not scaling data.
+
 ## Roadmap — refined 2026-08-05 (post-campaign consolidation)
 
 Inputs: `cases/INDEX.md` (campaign map), `docs/UNFINISHED_BUSINESS.md`

@@ -25,9 +25,9 @@
 /// Known accounting limits (deliberately visible, they motivate WP-1/WP-2):
 ///  - variable-property runs recompute rho_l after the solve, so the balance
 ///    reflects the property lag of the segregated sweep;
-///  - the dissolved-gas transport is solved in material (non-conservative)
-///    form, so r_gas in advecting cases includes that discretization choice;
-///  - inlet sources are evaluated for the JFO path only (GUMBEL is not
+///  - JFO gas transport retains a reconstructed carrier velocity; FBNS uses
+///    the exact discrete liquid flux;
+///  - inlet sources are evaluated for JFO and FBNS only (GUMBEL is not
 ///    mass-conserving by construction, which the residual then shows).
 namespace Diagnostics {
 
@@ -42,6 +42,8 @@ struct MassBalance {
     double liquid_residual = 0.0;      // normalized step-closure residual r_l
     double gas_residual = 0.0;         // normalized step-closure residual r_gas
     double cavitated_fraction = 0.0;   // fraction of cells with theta < 1 (cavitation extent)
+    double gas_volume_excess = 0.0;    // max(0, theta + m_g/(rho_g h) - 1), gap fraction
+    double gas_eos_defect = 0.0;       // max |alpha_gas - m_g/(rho_g h)|, including clipping
 };
 
 /// Global mass balance for the step just completed. dt is the step size used by
@@ -57,7 +59,8 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
 /// MassBalance rate. For one cell,
 ///
 ///   r = (Poiseuille + Couette flux out of the four faces)
-///     + d(rho_l h theta)/dt + rho_l theta_old dh/dt        [transient only]
+///     + d(rho_l h theta)/dt                             [transient only]
+///     + gas_mass_transfer * h * cell_area              [transient two-phase]
 ///     - m_clamp / step,
 ///
 /// formed from the same expressions solve_elrod assembles: harmonically averaged
@@ -74,7 +77,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
 /// solver tolerance; a larger value is a defect in the assembled operator rather
 /// than a physical source.
 ///
-/// JFO only. Under GUMBEL the solved variable is pressure, not the theta balance
+/// JFO and FBNS. Under GUMBEL the solved variable is pressure, not the theta balance
 /// this residual describes, so the field is left at zero (validate() warns).
 ///
 /// Same placement rule as mass_balance(): call after the step's solves but BEFORE

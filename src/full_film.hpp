@@ -33,13 +33,13 @@ namespace FullFilm {
 /// out even under TWO_PHASE:
 ///
 /// - With `gas_pressure_coupling = NONE` its free gas is volumetrically inert by
-///   construction (PHYSICS.md 13.2.1) -- that is the shipped, validated model of
-///   validation case 05, not an oversight to be corrected in passing.
+///   construction (PHYSICS.md 13.2.1). Case 05 had alpha_gas = 0 and does not
+///   validate this gas-volume approximation.
 /// - With `VOID_COUPLED` the Elrod operator already carries the moved ceiling in
 ///   `Reynolds`'s `VoidParams::theta_full`, where it feeds the barotropic EOS and
 ///   the switch function. Dropping the fifteen Poiseuille gates onto it as well
-///   is a second, separate modelling change to a validated path and needs its own
-///   validation; it is not free.
+///   changes the formulation and requires separate verification. VOID_COUPLED
+///   remains experimental and has no converged experimental validation.
 ///
 /// Merging the two ceilings therefore stays open work. When it lands, this
 /// predicate loses its `cavitation_model` term and `VoidParams::theta_full`

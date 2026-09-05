@@ -86,6 +86,14 @@ namespace FBNS {
     /// raised to cover any supplied overpressure.
     double pressure_scale(const SimulationConfig& cfg);
 
+    /// Signed liquid mass flux [kg/s], positive toward increasing theta / z.
+    /// theta index i denotes its east face; z index j denotes its north face,
+    /// with j=-1 and j=n_z-1 the south and north physical boundaries.
+    double mass_flux_theta(const Fields& fields, const Mesh& mesh,
+                           const SimulationConfig& cfg, int i, int j);
+    double mass_flux_z(const Fields& fields, const Mesh& mesh,
+                       const SimulationConfig& cfg, int i, int j);
+
     /// Net liquid mass outflow [kg/s] of one cell under the FBNS operator:
     /// Poiseuille diffusion of p, upwind Couette transport of theta, and the
     /// backward-Euler storage of (rho h theta). Interior faces telescope between

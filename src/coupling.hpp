@@ -2,6 +2,9 @@
 
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include "config.hpp"
 #include "field.hpp"
@@ -37,8 +40,10 @@ namespace Coupling {
 /// Scalar used to rank iterates. Both residuals are normalized and both are
 /// tested against the same coupling_tolerance, so the max is the natural metric:
 /// it is exactly the quantity that has to fall below the tolerance.
-inline double residual_metric(double R_p, double R_T) {
-    return R_p > R_T ? R_p : R_T;
+inline double residual_metric(double R_p, double R_T, double R_g = 0.0) {
+    if (!std::isfinite(R_p) || !std::isfinite(R_T) || !std::isfinite(R_g))
+        return std::numeric_limits<double>::infinity();
+    return std::max({R_p, R_T, R_g});
 }
 
 /// Outcome of one outer loop, reported to the log, the diagnostics CSV and the
@@ -48,18 +53,20 @@ struct Status {
     int    max_iters = 0;          ///< the cap that was in force
     double R_p = 0.0;              ///< residuals of the LAST sweep
     double R_T = 0.0;
+    double R_g = 0.0;              ///< dissolved concentration / gas-volume change
     bool   converged = false;      ///< the last sweep met coupling_tolerance
     bool   cap_exhausted = false;  ///< the loop stopped because it ran out of iterations
     int    best_iter = 0;          ///< 1-based index of the lowest-residual sweep
     double best_R_p = 0.0;
     double best_R_T = 0.0;
+    double best_R_g = 0.0;
     double best_residual = 0.0;    ///< residual_metric at best_iter
     bool   restored_best = false;  ///< the delivered state was rolled back to best_iter
     double relaxation = 1.0;       ///< relaxation factor in force at the end
     double relaxation_min_used = 1.0;
 
     /// Residual of the last sweep under the ranking metric.
-    double last_residual() const { return residual_metric(R_p, R_T); }
+    double last_residual() const { return residual_metric(R_p, R_T, R_g); }
     /// How much worse the final iterate is than the best one found.
     double best_to_last_ratio() const {
         return best_residual > 0.0 ? last_residual() / best_residual : 1.0;
@@ -78,7 +85,7 @@ public:
 
     /// Record the residuals of the sweep numbered `outer` (0-based). Returns true
     /// when the loop should stop because coupling_tolerance is met.
-    bool record(int outer, double R_p, double R_T);
+    bool record(int outer, double R_p, double R_T, double R_g = 0.0);
 
     /// True when the sweep just recorded is the best seen so far, i.e. the caller
     /// should snapshot it. Always true for the first sweep.
@@ -142,6 +149,7 @@ private:
         std::string name;
         std::vector<double> data;
         std::vector<double> old_data;
+        bool history_initialized = false;
     };
     std::vector<Entry> entries_;
     bool valid_ = false;

@@ -103,6 +103,12 @@ deleted anywhere: every move was `mv`, every script pull was `cp`.
 
 ## Known provenance inconsistencies
 
+September 2026 addition: [physics audit verification](90_diagnostics/physics_audit/README.md)
+contains exact 1-D FBNS reruns, a synthetic oil-air MPI comparison, and the
+40-test native Windows/Linux evidence. Its [summary](90_diagnostics/physics_audit/SUMMARY.md)
+separates conservation from the still-failing gas-volume closure. Runs live in
+isolated build directories and do not replace the archived Ferron campaign.
+
 - `00_grid_dt_independence/dt_fbns_analysis.json` records `end_t = 0.15` for
   `dt_T2_fbns`, `dt_T3_fbns` and `dt_T4_fbns`, while the `config.txt` now on disk
   in those directories says `end_t = 0.06`. The JSON is the record of the run as

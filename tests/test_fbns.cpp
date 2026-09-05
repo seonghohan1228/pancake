@@ -1221,9 +1221,12 @@ struct GasCase {
 
     // Flow solve only, leaving the gas state exactly as the previous step left it.
     // The complementarity assertions have to be made here: after the gas update
-    // alpha_gas has moved and theta has not, so the pair is one lag out of phase
-    // by construction (that lag is what makes alpha_gas a coefficient).
+    // gas volume and liquid inventory then change at lagged pressure, so the
+    // post-reaction state need not satisfy the inner complementarity constraint.
     void solve_flow() {
+        // No reaction has occurred in this step yet. The diagnostic now includes
+        // phase exchange and must not count the previous step's source again.
+        fields["gas_mass_transfer"].fill(0);
         FluidProperties::update_solution_fields(fields, mesh, cfg);
         comm.update_ghosts(fields);
         if (FBNS::active(cfg)) {

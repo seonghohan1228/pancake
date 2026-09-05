@@ -60,6 +60,18 @@ int main(int argc, char** argv) {
     fields.add("velocity_z", mesh, 2, GridLocation::FACE_Z).fill(3.0);
 
     IO::prepare_output_directory(cfg);
+    if (mesh.rank == 0) {
+        std::ofstream(fs::path(cfg.output_dir) / "experiment_notes.txt") << "preserve me";
+        std::ofstream(fs::path(cfg.output_dir) / "io_999.pvts") << "old solver output";
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    IO::prepare_output_directory(cfg);
+    if (mesh.rank == 0) {
+        check(fs::exists(fs::path(cfg.output_dir) / "experiment_notes.txt"),
+              "rerunning must preserve unrelated output-directory files");
+        check(!fs::exists(fs::path(cfg.output_dir) / "io_999.pvts"),
+              "rerunning must remove stale solver products");
+    }
     IO::write_timestep(0.0, 0, mesh, fields, cfg);
     MPI_Barrier(MPI_COMM_WORLD);
 

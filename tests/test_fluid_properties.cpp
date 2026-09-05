@@ -174,6 +174,7 @@ void test_solution_property_models() {
     check(c_high > c_low, "Henry dissolved gas concentration should increase with pressure");
 
     cfg.density_model = DensityModel::MIXTURE;
+    cfg.dissolved_gas_liquid_density = 500.0;
     const double gas_rho = FluidProperties::gas_density(1.0e5, 300.0, cfg);
     const double mixture_rho = FluidProperties::liquid_solution_density(0.03, 1.0e5, 300.0, cfg);
     check(mixture_rho > gas_rho && mixture_rho < cfg.rho,

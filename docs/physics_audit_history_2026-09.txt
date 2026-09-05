@@ -1,0 +1,116 @@
+Baseline refs before the September 2026 audit commit (local/cached remote refs):
+codex/cavitation-physics-audit b9dcaf3fce020860d01d3fe24aaf05d7969c1d3a
+codex/ferron-fig6-flow 446327ca4643e8806104a167ae2075759e38b4e6
+codex/ferron-rerun-terra da81b063abda01fb22d68314e391c63ac262582f
+main b9dcaf3fce020860d01d3fe24aaf05d7969c1d3a
+origin 87df724ad95ee49600704ce89419f69b373b28f2
+origin/feature/bubble 72736c67591f1daa3a642063ea28330abe41d6e0
+origin/feature/journal_bearing e6742b56e1a0be138731683dbc89fabd8b056c3b
+origin/main 87df724ad95ee49600704ce89419f69b373b28f2
+
+Reachable commit inventory (newest traversal order):
+446327ca4643e8806104a167ae2075759e38b4e6 | 2026-08-09T20:15:16+09:00 | Add Ferron Figure 6 flow campaign
+da81b063abda01fb22d68314e391c63ac262582f | 2026-08-09T19:33:29+09:00 | Reorder Ferron thermal comparison
+63948bf9326a49a6db1f41387e6e81b5cf6db290 | 2026-08-09T19:09:58+09:00 | Expand Ferron thermal model comparison
+55e9a78639d49c8eb21c5e09ba24c10c86d6e846 | 2026-08-09T19:00:40+09:00 | Add Ferron temperature comparison
+1ed0e2c27a8a0f8591aab36cf4e8edf5532773d4 | 2026-08-09T18:46:44+09:00 | Revert "Plot Ferron comparison at 40 C"
+e17293e7df3d8ccda378e6492f4fdf4698cdafe7 | 2026-08-09T18:44:16+09:00 | Plot Ferron comparison at 40 C
+318c1acb11a323e81ce20313e62c3802c40cf856 | 2026-08-09T18:24:32+09:00 | Widen mean eccentricity plot range
+8c96e012924872152626a806e1562b7d2b927771 | 2026-08-09T18:13:25+09:00 | Queue extended timestep run after G8
+23bdc61e3933d1186ae2b972aba00fe0dda217e5 | 2026-08-09T18:08:23+09:00 | Add G8 and extended timestep verification
+60a61b99e5ee6f07e764899335db50b5cce93db0 | 2026-08-09T16:35:03+09:00 | Show coarse timestep stability results
+257b03d4156308ee31cd2da76ff4983c801ee364 | 2026-08-09T16:29:59+09:00 | Allow timestep launch recovery
+53f259d587eb9fb7e0aa034ca79747e7b674f9b0 | 2026-08-09T16:26:27+09:00 | Add coarse Ferron timestep probes
+c3bef84453238f899b9c69e2e4d02f8dee7b96e7 | 2026-08-09T16:25:01+09:00 | Extend Ferron grid ladder to coarse meshes
+c56f6a77662b967a5f537e2f0d77f679b3dfddc1 | 2026-08-09T16:21:22+09:00 | Add Ferron verification report plots
+3a35acd205517c2927b99101e2e8bd104762d0bc | 2026-08-09T01:52:55+09:00 | Add Ferron rerun field plots
+e25af9fd45929d88e28bc037fb315fd326b48810 | 2026-08-09T01:47:06+09:00 | Continue timestep ladder after coarse failure
+286a96de70e6f725b0435b3616f21f4bed01d3f7 | 2026-08-09T01:28:58+09:00 | Add repaired legacy Ferron grid reproduction
+a04b5ff4222bb23449c363163a599341393227b5 | 2026-08-07T18:37:19+09:00 | Add Ferron discretization rerun ladder
+2ec817b0ebd97626f2fdc7dc8d0baf392291d9df | 2026-08-07T17:48:46+09:00 | Add isolated Ferron Terra rerun protocol
+b9dcaf3fce020860d01d3fe24aaf05d7969c1d3a | 2026-08-07T16:57:58+09:00 | Compare Claude and corrected Ferron results
+ca2cffe5a69083ae66f826964217732c65b099ab | 2026-08-07T12:33:43+09:00 | Add Ferron CHT validation visuals
+768c6de92a00e280cd1c2009187db00598f199e9 | 2026-08-07T10:13:26+09:00 | Record corrected Ferron CHT grid verdict
+df0802be6b4a3d456de8cbd6c85283943367450b | 2026-08-07T09:37:56+09:00 | Fix full-length groove source accounting
+54b457d92d38c62e84cd63f7e00d6c46c294b499 | 2026-08-07T09:15:58+09:00 | Add Ferron conjugate THD grid protocol
+42472baffefb38a9081a41b820d2bcba556f3108 | 2026-08-07T09:08:38+09:00 | Reconcile validation evidence and cross-platform baseline
+ad533842a34e95558613e0acc85080f8249c58e1 | 2026-08-06T09:57:45+09:00 | Update campaign docs: case 05a status, index and reference-data entries
+6953a865c7b89f7a36a6a4b54bedfc30e2a59b70 | 2026-08-06T09:44:25+09:00 | Record the Picard-cap measurement: the archived CHT numbers do not move
+f940851c2ab78357dd6d89f7bb93245acb77e500 | 2026-08-05T23:08:26+09:00 | Let the conjugate force-balance drivers take the coupling schedule from the environment
+d726408467b55bbcfd8a7c2c27f3b18bf72ef319 | 2026-08-05T22:57:17+09:00 | Return the best coupling iterate and flag non-converged Picard loops
+16b7c55567053d22df1a0004829553402064b8eb | 2026-08-05T23:32:04+09:00 | Add the audit quick-win batch report (docs/reports/QUICKWINS_2026-08.md)
+13cab1d3d56d1638ee5727a5c15159e20866f65d | 2026-08-05T23:29:10+09:00 | Route energy axial boundaries and gas transport through ReynoldsCoeff (audit A / S1)
+e953c188eddf2acd3c3a1d57979846b7b2ccf54c | 2026-08-05T23:17:30+09:00 | Ship config.txt with cavitation_model = FBNS (audit Q5)
+3b0a3e399d5be245a9e0aa36135d2771bbf4e0b1 | 2026-08-05T23:15:24+09:00 | Stop the GUI rewriting motion settings on load and save (audit 3.5 / S9)
+1c4e5fa293cdf721a08fbf43cdb05a11bee74cfa | 2026-08-05T23:11:46+09:00 | Make the van Leer far-upwind cell follow the face flux sign (D1 / F4)
+9beb61d4902c7a1374bb94e104b5a9dbe104c8ca | 2026-08-05T22:57:56+09:00 | Make an unrecognized config key a hard error (audit Q1)
+79ddbeefb1d2426442d3190df8c7650e17bb1eca | 2026-08-05T22:33:19+09:00 | Add refined post-campaign roadmap to PLAN.md (priority queue, old-plan reconciliation)
+4b9f3b8a684f9ce6ff249eb8c77c0bc6445ff635 | 2026-08-05T22:32:54+09:00 | Track validation case inputs: configs, drivers, figures for 01_*/02_*/90_* (results stay ignored)
+e9ccc140f69fdde48d468e3b42d22f568bbb5b47 | 2026-08-05T21:51:00+09:00 | Consolidate the validation cases into cases/ and give them an index
+f0e772d3854a79131a60e7060e9f196a87192e9c | 2026-08-05T16:43:29+09:00 | Make the linear solves rank-independent: ASM preconditioning + fallback ladder
+c3f7b090770874d8d50507986cce7f06f7d3044d | 2026-08-05T14:54:52+09:00 | Add optional 2-D (r, theta) conduction in the conjugate bush
+b74db9498e17bc0226e0d5e40f5d6f61a2769bfb | 2026-08-05T12:40:26+09:00 | Expose the film-surface temperatures and wall heat fluxes as output fields
+e487c253b1d2d0ee87c06dbc43729b00d8f24337 | 2026-08-05T10:45:53+09:00 | Put the cross-film Dowson coefficients into the FBNS operator
+6dacec0013f24a2d864f494b55e57c1d355634d1 | 2026-08-05T09:27:16+09:00 | Add the Ferron polynomial viscosity law as a selectable model
+69a9011e8491937e28bfebd120c429ecefe6d596 | 2026-08-05T00:40:23+09:00 | Move the FBNS complementarity bound to 1 - alpha_gas (phase 3)
+28ac88a05acddc4d712e4ef065d528d199769abf | 2026-08-05T00:08:14+09:00 | Route every full-film test through one shared predicate
+94edb45ab70f8cceb33fe7a3bfef6e91ea8947c6 | 2026-08-04T23:49:46+09:00 | Couple the energy equation and single-phase properties into FBNS (phase 2)
+fd2b0eae05ca3c09003bbc3a41bac54041b4a5a9 | 2026-08-04T21:34:21+09:00 | Add FBNS complementarity cavitation (cavitation_model = FBNS)
+b2efd10619f3234be76be19ee81f34b304ceeeea | 2026-08-04T20:50:57+09:00 | Add validation campaign cases: 00 grid/dt independence, 00c JFO verification
+c214ee49ad87c1a8f27217d25722f621224c10d0 | 2026-08-04T20:50:53+09:00 | Add per-cell mass_residual output field for flux verification
+81dd9538aba34dbc14ba8637f2f92b81d033151f | 2026-08-04T17:01:44+09:00 | Brito Fig. 6 independently re-digitised: polar reading confirmed, verdict re-scored
+2282350de797744bc438239f5b607c52c144b404 | 2026-08-02T21:30:10+09:00 | Phase 2 cross-film thermal model: lands, defaults off, does NOT meet its goal
+dfbab54bb425b6b2b6943fb3fddde016459488de | 2026-08-02T19:45:00+09:00 | Weight every cavitated thermal term by the liquid fraction (defect D14)
+02a7af1ed4973f8b4b593e11525c5ac71c0ebc3b | 2026-08-02T19:02:04+09:00 | Record the end-to-end rank-independence check
+5cf1c5f0ef6905ad31c537e641084c5241223639 | 2026-08-02T18:56:30+09:00 | Record the Brito verdict, MPI support and the case archive in CHANGES.md
+c9862358aa2ece12a00816173fc6e2d62af71480 | 2026-08-02T18:56:09+09:00 | Brito: report the load comparison as not scoreable, with the evidence
+204af76776de924170096231a2d56be074a9dc92 | 2026-08-02T18:18:45+09:00 | Stitch per-rank VTK output when reading fields
+5142c0a710b257b7506e6ae30133b73c7b5227cb | 2026-08-02T18:05:10+09:00 | Let the validation harnesses run on multiple ranks, and verify it is exact
+4c9516500548c2fc019fee37f1564d8300dd4f1c | 2026-08-02T18:03:32+09:00 | Archive the case data behind each validation verdict
+eb2c3e3670e92e098f0c2ec96b5057d7925a1675 | 2026-08-02T14:46:07+09:00 | Explain the cross-solver residual: mesh convergence, not a defect
+feb3b9da3049db928d7ebb6206a0c8351dfdca32 | 2026-08-02T14:38:43+09:00 | Add a consolidated validation report and the two report figures
+57028a26b7808e58a4a3a342e3afa9d87d787bcb | 2026-08-02T13:53:22+09:00 | Phase 1: rule out the solver as the cause of the load over-prediction
+79ad73b0e6f0295af8cb34d28c1e08b11c32d975 | 2026-08-02T13:27:17+09:00 | Diagnose the validation mismatches and land the Phase 0 guardrails
+b23ac92ca4a2ee4d58228bce2e1a1fd273dc222d | 2026-07-31T13:47:42+09:00 | Bound the Ferron load error: rule out expansion and groove, size the inlet term
+60370c97ea633f623086c646001c0cfbb336eb42 | 2026-07-31T13:12:40+09:00 | Verify the Ferron angular convention against the source
+fb204b1ce00552e1d656d36b9443705c8d66b7c9 | 2026-07-31T12:19:51+09:00 | Validate the cavitation model and energy equation against published data
+cb9f21988aa341308f92922653efc08865bd256f | 2026-07-31T07:48:13+09:00 | Record deferred modelling gaps from the optical-rig study
+a026d0991920df50322f44fd0cc367fac504a7d4 | 2026-07-31T01:53:16+09:00 | Correct VOID_COUPLED status: still does not converge
+b59d3d84462002cb855af24e7fe4b92bba8aa702 | 2026-07-31T01:28:28+09:00 | Add analytical journal-bearing benchmarks
+9485a01d3bfc6ebef34e586c68d90d18dc71d543 | 2026-07-31T01:03:19+09:00 | Fix VOID_COUPLED divergence and limit cycle
+4bfd96a444d451f9d09095271efbf4cd908554de | 2026-07-14T00:51:56+09:00 | chore: consolidate latest repository state
+87df724ad95ee49600704ce89419f69b373b28f2 | 2026-06-15T13:06:42+09:00 | Merge pull request #2 from seonghohan1228/feature/journal_bearing
+e6742b56e1a0be138731683dbc89fabd8b056c3b | 2026-06-15T12:10:37+09:00 | Config model-surface cleanup: rename, reorder, prune; add LINEAR scheme
+334ca028df9d346f9af5af7766a10b2d980cbee0 | 2026-06-15T10:25:30+09:00 | WP-11 follow-up: reformation reflood carries reservoir T and composition
+ee8f77de994bc0d128e9a75c7c826703c3d09fbe | 2026-06-15T08:55:47+09:00 | WP-1: add coupled pressure-cap acceptance gate
+277dc6ed1a3d86411c4f72c9a446b0b63b77b053 | 2026-06-15T00:27:48+09:00 | WP-1 acceptance gates + WP-11 shared boundary flux
+5d0db94d8af870ac54646d8f655b9ac31127723a | 2026-06-15T00:12:52+09:00 | Remove legacy raw-Win32 GUI (gui_win32.cpp)
+6da2d9a8d601bdfa34635f936414707f1eb3fe3a | 2026-06-15T00:12:07+09:00 | Oil-refrigerant cavitation model + audit-doc consolidation
+ae567d60c46da8e2c71b089a78b83d8f07ce17d0 | 2026-06-14T22:05:11+09:00 | Preserve audit/review working docs before consolidation
+eb7b84224a5ceba638e7fb6ceb311946b8c429b1 | 2026-06-12T18:59:11+09:00 | Sync GUI architecture doc with light theme / Monitors round
+8777891b2501925b03d790d6925f39341cd0a629 | 2026-06-12T18:58:19+09:00 | Light theme, regrouped form, physical Monitors panel, pruned schemes
+ecaf40a087a575e625b7cff24adab976d83ea6da | 2026-06-12T18:02:36+09:00 | Add inlet zone overlay toggle to the field map
+c8f1ac6535e86a8748150a6bc205cdcf09caf10a | 2026-06-12T17:55:49+09:00 | Contour: clamp view to the domain, move Fit into the toolbar
+85b678035798e23a1922264a3e4c0661a673fed2 | 2026-06-12T17:49:08+09:00 | Sync GUI architecture doc with UI refinements
+18389d869a36866c61ccead6c39f8029972d97ea | 2026-06-12T17:48:12+09:00 | GUI refinements: units, equal-aspect contour, MPI by Run, option help
+ef5294fb4cff532b721fc72191b8f6da15ac7fc6 | 2026-06-11T21:34:32+09:00 | Add GUI build/architecture docs, retire legacy GUI resources
+3700ae275dde6e8e5f0a32c653ed1f188eacf473 | 2026-06-11T21:32:27+09:00 | Align GUI validation with solver, verify against real output
+9d26c96e6aa8611c4e17139e6ad02160b60d2008 | 2026-06-11T21:22:39+09:00 | Rebuild GUI on Dear ImGui docking + ImPlot (Win32 + D3D11)
+55ed58eb3b5a3b12459f28d26ea9ffa398026074 | 2026-06-11T20:56:22+09:00 | Add Phase 0 GUI modernization scan report
+99dfbca0936ea4412291ab9444d02d79a108e51e | 2026-06-04T18:23:11+09:00 | Add moving bearing and energy equation
+a6235d42fcc66af93a595816ce7b31f0e5f6f4a1 | 2026-05-29T14:51:00+09:00 | Add native Windows GUI workflow
+ca69aa37326bbf8896274d3955eabe2c38b9038c | 2026-05-27T10:59:15+09:00 | Add macroscopic outputs and Windows port docs
+72736c67591f1daa3a642063ea28330abe41d6e0 | 2026-05-15T16:03:23+09:00 | WIP: bubble solver rewrite (work in progress, not final)
+270653d8908d14c6cc9e8e9d82567e3e73cffa7c | 2026-04-16T16:45:57+09:00 | add: created plan for bubble simulation
+96d92500f3711d69ae0eee52081dd42c5fe9671d | 2026-04-13T20:20:48+09:00 | edit: minor changes
+4a50caff2c306920dbcf674b690d6ae12889f51c | 2026-04-12T21:50:04+09:00 | add: Elrod-Adams algorithm to implement JFO theory (mass conserving cavitation algorithm)
+27509caff324ddc2ab9dfc6d0587a51e8b3e36fe | 2026-04-11T13:13:54+09:00 | fix: stencil description
+08a64ddf741fe63cfe2ca7f4e1eba4fd252bf486 | 2026-04-11T13:00:52+09:00 | add: reynolds equation solver and PETSc support; fix: fvm bug;
+4ff14707e77550cfcfe3fa8d895791baae95acc6 | 2026-04-10T14:03:23+09:00 | Merge pull request #1 from seonghohan1228/feature/journal_bearing
+433c40d2ec4636b1c09b67bf4d6021f4cfe0e4da | 2026-02-19T00:27:10+09:00 | edit: code refactoring
+c573ac703f26766ccc1705e0a4ecbe6226add3e7 | 2026-02-16T19:41:14+09:00 | feat: create field and field manager (fields) with parallel communication for syncing ghost cells
+6a069a43e7c18a8cea50fcae4a6b9250ba80937a | 2026-02-16T18:38:45+09:00 | Added logger with color, indentation, rank control.
+a16cc26342010610d62a2553746dfc4ef1510a4f | 2026-02-16T18:09:00+09:00 | Added Installation and Usage guide.
+aa13779b9a44f4aad3a3bc0d563f9699eaf5c414 | 2026-02-13T18:28:20+09:00 | Initial basic code with mesh generation, mesh & solution write in parallel.
+7be18b51b0c4248c13477ebd542402f13b099ba1 | 2026-02-13T18:27:18+09:00 | Added build and clangd ignore.
+a219d7de441d32d81822597f8917c89b7124d89d | 2026-01-29T18:19:16+09:00 | Initial commit

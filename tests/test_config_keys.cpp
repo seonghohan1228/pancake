@@ -96,7 +96,7 @@ void test_legacy_branches_still_parse() {
 void test_manifest_matches_parser() {
     for (const std::string& key : SimulationConfig::known_config_keys()) {
         SimulationConfig cfg;
-        cfg.load_from_text(key + " = 1\n");
+        cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");
     }

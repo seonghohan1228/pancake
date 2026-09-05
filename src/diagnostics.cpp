@@ -9,6 +9,7 @@
 #include "equation_of_state.hpp"
 #include "fbns.hpp"
 #include "full_film.hpp"
+#include "gas_transport.hpp"
 #include "reynolds_coefficients.hpp"
 
 namespace Diagnostics {
@@ -158,14 +159,10 @@ double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
     outflow += flux_e * couette_face_theta(fields, cfg, flux_e, i, j);
     outflow -= flux_w * couette_face_theta(fields, cfg, flux_w, i - 1, j);
 
-    // Liquid-content storage plus the explicit squeeze term, mirroring assembly.
+    // Conservative storage, using the same old inventory as assembly.
     if (cfg.solution_mode != SolutionMode::STEADY_STATE && dt > 0.0) {
-        const double rho_l = base_density(fields, cfg, i, j);
-        outflow += rho_l * fields["h"](i, j) * mesh.cell_volume() *
-            (theta(i, j) - theta.old(i, j)) / dt;
-        if (fields.has("dh_dt")) {
-            outflow += rho_l * theta.old(i, j) * fields["dh_dt"](i, j) * mesh.cell_volume();
-        }
+        outflow += (ReynoldsCoeff::liquid_mass_area(fields, cfg, i, j) -
+                    ReynoldsCoeff::old_liquid_mass_area(fields, cfg, dt, i, j)) * mesh.cell_volume() / dt;
     }
     return outflow;
 }
@@ -243,79 +240,7 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
 // composition with zero free gas; outflow convects local values out).
 double gas_boundary_inflow(const Fields& fields, const Mesh& mesh,
                            const SimulationConfig& cfg) {
-    if (cfg.fluid_property_model != FluidPropertyModel::TWO_PHASE) return 0.0;
-    if (!fields.has("dissolved_gas")) return 0.0;
-
-    const Field& pressure = fields["pressure"];
-    const Field& h = fields["h"];
-    const Field& theta = fields["theta"];
-    const Field& c = fields["dissolved_gas"];
-    const int n_z = mesh.n_z_local;
-    const double d_z = mesh.get_d_z();
-    const double c_in = std::clamp(cfg.dissolved_gas_initial, 0.0, cfg.dissolved_gas_max);
-
-    auto pressure_boundary = [](BCType type) {
-        return type == BCType::DIRICHLET || type == BCType::INLET_OUTLET;
-    };
-
-    double inflow = 0.0;
-    for (int i = 0; i < mesh.n_theta_local; ++i) {
-        // South face: u_z > 0 is inflow.
-        if (pressure_boundary(cfg.bc_z_south_type)) {
-            const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
-            const double mu_face = dynamic_viscosity(fields, cfg, i, 0);
-            double u_z;
-            double rho_face;
-            if (cfg.is_reformation_boundary(theta(i, 0), FullFilm::bound(fields, cfg, i, 0))) {
-                // Mirror the gas-transport reflood: full-density reservoir liquid.
-                u_z = cfg.reformation_boundary_velocity(cfg.bc_z_south_val, h_face, mu_face,
-                                                        0.5 * d_z, true);
-                rho_face = std::max(field_value(fields, "rho_liquid_solution", cfg.rho, i, 0), 1.0e-30);
-            } else {
-                const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_south_val);
-                const double dp_dz = (pressure(i, 0) - p_bc) / (0.5 * d_z);
-                const double g_face = FullFilm::gate(fields, cfg, i, 0);
-                u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
-                rho_face = field_value(fields, "rho", cfg.rho, i, 0);
-            }
-            const double volume_flux = u_z * mesh.R * mesh.get_d_theta();
-            const double mass_flux = rho_face * h_face * volume_flux;
-            if (mass_flux >= 0.0) {
-                inflow += mass_flux * c_in;  // reservoir composition, zero free gas
-            } else {
-                inflow += mass_flux * c(i, 0) +
-                    volume_flux * field_value(fields, "free_gas_mass", 0.0, i, 0);
-            }
-        }
-        // North face: u_z > 0 is outflow.
-        if (pressure_boundary(cfg.bc_z_north_type)) {
-            const int j = n_z - 1;
-            const double h_face = std::max(h(i, j), cfg.min_film_thickness);
-            const double mu_face = dynamic_viscosity(fields, cfg, i, j);
-            double u_z;
-            double rho_face;
-            if (cfg.is_reformation_boundary(theta(i, j), FullFilm::bound(fields, cfg, i, j))) {
-                u_z = cfg.reformation_boundary_velocity(cfg.bc_z_north_val, h_face, mu_face,
-                                                        0.5 * d_z, false);
-                rho_face = std::max(field_value(fields, "rho_liquid_solution", cfg.rho, i, j), 1.0e-30);
-            } else {
-                const double p_bc = cfg.elrod_boundary_pressure(cfg.bc_z_north_val);
-                const double dp_dz = (p_bc - pressure(i, j)) / (0.5 * d_z);
-                const double g_face = FullFilm::gate(fields, cfg, i, j);
-                u_z = -g_face * h_face * h_face * dp_dz / (12.0 * mu_face);
-                rho_face = field_value(fields, "rho", cfg.rho, i, j);
-            }
-            const double volume_flux = u_z * mesh.R * mesh.get_d_theta();
-            const double mass_flux = rho_face * h_face * volume_flux;
-            if (mass_flux < 0.0) {
-                inflow += -mass_flux * c_in;
-            } else {
-                inflow -= mass_flux * c(i, j) +
-                    volume_flux * field_value(fields, "free_gas_mass", 0.0, i, j);
-            }
-        }
-    }
-    return inflow;
+    return GasTransport::axial_gas_inflow(fields, mesh, cfg);
 }
 
 }  // namespace
@@ -333,8 +258,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
         cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
         fields.has("dissolved_gas") && fields.has("free_gas_mass");
 
-    // Storage terms mirror the assembled capacity (current rho_l h times the
-    // theta change) plus the explicit squeeze source when dynamic h is present.
+    // Difference the complete inventories. Phase transfer is an internal source.
     double liquid_storage_rate = 0.0;  // kg/s
     double gas_storage_rate = 0.0;
     double cavitated_cells = 0.0;
@@ -346,21 +270,27 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             if (!FullFilm::is_full_film(fields, cfg, i, j)) cavitated_cells += 1.0;
 
             if (transient) {
-                liquid_storage_rate += rho_l * h(i, j) * cell_area *
-                    (theta(i, j) - theta.old(i, j)) / dt;
-                if (fields.has("dh_dt")) {
-                    liquid_storage_rate += rho_l * theta.old(i, j) *
-                        fields["dh_dt"](i, j) * cell_area;
-                }
+                liquid_storage_rate += (rho_h -
+                    ReynoldsCoeff::old_liquid_mass_area(fields, cfg, dt, i, j)) * cell_area / dt;
+                if (gas_active) liquid_storage_rate +=
+                    field_value(fields, "gas_mass_transfer", 0.0, i, j) * h(i, j) * cell_area;
             }
 
             if (gas_active) {
                 const double c_val = fields["dissolved_gas"](i, j);
                 const double m_g = fields["free_gas_mass"](i, j);
                 balance.gas_mass += (c_val * rho_h + m_g) * cell_area;
+                if (fields.has("rho_gas") && fields["rho_gas"](i, j) > 0 && h(i, j) > 0) {
+                    const double alpha_eos = m_g / (fields["rho_gas"](i, j) * h(i, j));
+                    balance.gas_volume_excess = std::max(balance.gas_volume_excess,
+                        theta(i, j) + alpha_eos - 1.0);
+                    balance.gas_eos_defect = std::max(balance.gas_eos_defect,
+                        std::abs(field_value(fields, "alpha_gas", 0, i, j) - alpha_eos));
+                }
                 if (transient) {
-                    gas_storage_rate += (rho_l * theta(i, j) * h(i, j) *
-                                             (c_val - fields["dissolved_gas"].old(i, j)) +
+                    gas_storage_rate += (rho_h * c_val -
+                                         ReynoldsCoeff::old_liquid_mass_area(fields, cfg, dt, i, j) *
+                                             fields["dissolved_gas"].old(i, j) +
                                          (m_g - fields["free_gas_mass"].old(i, j))) *
                         cell_area / dt;
                 }
@@ -395,6 +325,10 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
         balance.clamp_mass_liquid, balance.clamp_mass_gas,
         liquid_storage_rate, gas_storage_rate, cavitated_cells};
     MPI_Allreduce(MPI_IN_PLACE, sums, 10, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    double volume_errors[2] = {balance.gas_volume_excess, balance.gas_eos_defect};
+    MPI_Allreduce(MPI_IN_PLACE, volume_errors, 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    balance.gas_volume_excess = volume_errors[0];
+    balance.gas_eos_defect = volume_errors[1];
     balance.liquid_mass = sums[0];
     balance.gas_mass = sums[1];
     balance.liquid_boundary_flux = sums[2];
@@ -437,6 +371,10 @@ void mass_residual(Fields& fields, const Mesh& mesh,
             for (int j = 0; j < mesh.n_z_local; ++j) {
                 residual(i, j) = inlet_cell(mesh, cfg, i, j)
                     ? 0.0 : FBNS::cell_outflow(fields, mesh, cfg, dt, i, j);
+                if (dt > 0 && !inlet_cell(mesh, cfg, i, j) &&
+                    cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE)
+                    residual(i, j) += field_value(fields, "gas_mass_transfer", 0, i, j) *
+                        fields["h"](i, j) * mesh.cell_volume();
             }
         }
         return;
@@ -456,6 +394,10 @@ void mass_residual(Fields& fields, const Mesh& mesh,
                 ? 0.0 : elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
             residual(i, j) = outflow -
                 field_value(fields, "cavitation_clamp_mass", 0.0, i, j) / step;
+            if (transient && !inlet_cell(mesh, cfg, i, j) &&
+                cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE)
+                residual(i, j) += field_value(fields, "gas_mass_transfer", 0, i, j) *
+                    fields["h"](i, j) * mesh.cell_volume();
         }
     }
 }
@@ -477,7 +419,7 @@ void append_csv(const std::filesystem::path& path, double time, int step,
                "cavitated_fraction,"
                "coupling_iters,coupling_R_p,coupling_R_T,coupling_converged,"
                "coupling_best_iter,coupling_best_residual,coupling_restored_best,"
-               "coupling_relaxation\n";
+               "coupling_relaxation,coupling_R_g,gas_volume_excess,gas_eos_defect\n";
     }
     csv.precision(15);
     csv << step << ',' << time << ',' << stats.outer_iters << ',' << stats.flag_flips << ','
@@ -492,11 +434,11 @@ void append_csv(const std::filesystem::path& path, double time, int step,
             << ',' << (coupling->converged ? 1 : 0)
             << ',' << coupling->best_iter << ',' << coupling->best_residual
             << ',' << (coupling->restored_best ? 1 : 0)
-            << ',' << coupling->relaxation;
+            << ',' << coupling->relaxation << ',' << coupling->R_g;
     } else {
-        csv << ",,,,,,,";
+        csv << ",,,,,,,,,";
     }
-    csv << '\n';
+    csv << ',' << balance.gas_volume_excess << ',' << balance.gas_eos_defect << '\n';
 }
 
 }  // namespace Diagnostics
