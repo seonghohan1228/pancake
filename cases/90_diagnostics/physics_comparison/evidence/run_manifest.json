@@ -1,0 +1,111 @@
+{
+  "previous_commit": "b9dcaf3",
+  "current_commit": "2bc4d3c",
+  "mpi_ranks": 1,
+  "runs": [
+    {
+      "case": "exchange",
+      "revision": "previous",
+      "return_code": 0,
+      "elapsed_s": 0.4177451999858022,
+      "executable_sha256": "b09c98d65bd0cafbea2feb5394d1d827eb5354660ff6e11da4bdb986be4b9b18",
+      "input_sha256": "31a88b6f11e9d6de049721dc4b1965067cca763eb473f33b087abc75f642036e"
+    },
+    {
+      "case": "ferron",
+      "revision": "previous",
+      "return_code": 0,
+      "elapsed_s": 10.985182499978691,
+      "executable_sha256": "5b69589f0dfafff4f23c500a4189bc62598825f6aade40d2337f78f553edde77",
+      "input_sha256": "1967a4660afcf55a49c4e3f3e0951ac054db454e604303b57b3699c6c4503063",
+      "diagnostic_rows": 1,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": true
+    },
+    {
+      "case": "optical",
+      "revision": "previous",
+      "return_code": 0,
+      "elapsed_s": 31.22024799999781,
+      "executable_sha256": "5b69589f0dfafff4f23c500a4189bc62598825f6aade40d2337f78f553edde77",
+      "input_sha256": "5e07f0e57a27825e7ec92148d1810897eadd19a3df9f160b7699c974def538a3",
+      "diagnostic_rows": 1,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": true
+    },
+    {
+      "case": "air",
+      "revision": "previous",
+      "return_code": 0,
+      "elapsed_s": 1.6890604999789502,
+      "executable_sha256": "5b69589f0dfafff4f23c500a4189bc62598825f6aade40d2337f78f553edde77",
+      "input_sha256": "e230fed000e53a0667bb6a662745ab5635775e357699705209e62cff03ea2ab8",
+      "diagnostic_rows": 101,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": null
+    },
+    {
+      "case": "timing",
+      "revision": "previous",
+      "return_code": 0,
+      "elapsed_s": 0.05819429998518899,
+      "executable_sha256": "5b69589f0dfafff4f23c500a4189bc62598825f6aade40d2337f78f553edde77",
+      "input_sha256": "41f79dd8c71c4adec5aec40b70691011ac12fcb370d4d0137c4e04f01cf80b86",
+      "diagnostic_rows": 2,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": null
+    },
+    {
+      "case": "exchange",
+      "revision": "current",
+      "return_code": 0,
+      "elapsed_s": 0.4174306000059005,
+      "executable_sha256": "995dd95393c0b86f7460e8713fa5dc681642ce2d73a4373d1c8f0927e8cb3f46",
+      "input_sha256": "31a88b6f11e9d6de049721dc4b1965067cca763eb473f33b087abc75f642036e"
+    },
+    {
+      "case": "ferron",
+      "revision": "current",
+      "return_code": 0,
+      "elapsed_s": 11.040180799987866,
+      "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+      "input_sha256": "1967a4660afcf55a49c4e3f3e0951ac054db454e604303b57b3699c6c4503063",
+      "diagnostic_rows": 1,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": true
+    },
+    {
+      "case": "optical",
+      "revision": "current",
+      "return_code": 0,
+      "elapsed_s": 28.259321999998065,
+      "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+      "input_sha256": "5e07f0e57a27825e7ec92148d1810897eadd19a3df9f160b7699c974def538a3",
+      "diagnostic_rows": 1,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": true
+    },
+    {
+      "case": "air",
+      "revision": "current",
+      "return_code": 0,
+      "elapsed_s": 2.316030799993314,
+      "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+      "input_sha256": "e230fed000e53a0667bb6a662745ab5635775e357699705209e62cff03ea2ab8",
+      "diagnostic_rows": 100,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": null
+    },
+    {
+      "case": "timing",
+      "revision": "current",
+      "return_code": 0,
+      "elapsed_s": 0.05547099999967031,
+      "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+      "input_sha256": "41f79dd8c71c4adec5aec40b70691011ac12fcb370d4d0137c4e04f01cf80b86",
+      "diagnostic_rows": 2,
+      "all_reynolds_converged": true,
+      "all_coupling_converged": null
+    }
+  ]
+}

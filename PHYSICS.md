@@ -2389,3 +2389,30 @@ $T(t)=T_0+\mu(\omega R/h)^2t/(\rho c_p)$ and a decoupled constant axial load
 $z(t)=F_z t^2/(2m)$, including a half-sized final interval. Initial values,
 integrated heating and saved geometry therefore test physical elapsed time,
 not only the labels written to the PVD file.
+
+### 18.6 Measured consequence and transient coupling failure
+
+The [paired comparison](cases/90_diagnostics/physics_comparison/SUMMARY.md)
+holds input data fixed between pre-audit `b9dcaf3` and repaired `2bc4d3c`.
+Steady pure-oil Ferron and optical-rig pressure, temperature and liquid-content
+fields are unchanged at saved precision. A closed fixed-p,T reaction test
+loses 11.548% of total gas in the old implementation after 20 ms; the repaired
+maximum relative inventory drift is 1.33e-15 and follows the analytic law in
+section 18.2. This isolates mass loss from boundary transport.
+
+The extended synthetic air bearing test is a failed acceptance case for the
+present pressure/volume closure. At 1 ms, maximum gas volume fraction changes
+from 0.4966% to 1.6558% after repair. Gas conservation improves, but pressure
+and load alternate between physical timesteps. Refining from 10 to 5 to
+2.5 microseconds makes the oscillation faster and slightly larger, while
+maximum gas fraction changes by only 0.00088 percentage points. A converged
+inner Newton solve therefore does not establish a converged transient.
+
+The pressure solve uses lagged alpha in its full-film ceiling; the subsequent
+species step changes alpha without re-solving pressure and gap occupancy.
+This splitting is consistent with the observed instability, though the paired
+case does not isolate every feedback term. At 10 microseconds, excess gas plus
+liquid volume reaches 0.003358 of the gap even while the gas mass residual
+stays below 1.4e-12. No stable physical load increment, oscillation frequency
+or gas-pressure validation can be inferred from those histories. The coupled
+pressure, EOS, volume and species acceptance problem remains open.

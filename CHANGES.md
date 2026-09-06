@@ -2,6 +2,26 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-09-06 - Measure the effect of the physics repairs
+
+- Rebuild pre-audit `b9dcaf3` and compare with repaired `2bc4d3c` on identical
+  frozen Ferron, optical-rig, synthetic oil-air and analytic timing inputs.
+  Add a common direct-inventory reaction probe without modifying either core.
+- Archive hashes, configurations, full diagnostics, portable profiles and
+  histories, and five publication-style comparison figures in
+  `cases/90_diagnostics/physics_comparison`. Both steady cases retain their
+  pressure/temperature fields at saved precision. The old closed reaction
+  loses 11.548% of total gas in 20 ms; the repair conserves it to roundoff.
+- Align static transient histories by actual elapsed time and demonstrate
+  the old excess heating and missing final motion state with exact solutions.
+- Extend the air test to 1 ms, then halve the timestep twice. Inner solves
+  converge and gas inventory is conserved, but load alternation persists and
+  grows. Record this failed timestep check explicitly in PHYSICS, PLAN and
+  validation status; do not turn a terminal-sample difference into a physical
+  load claim. No pressure/volume-coupling repair is claimed by this comparison.
+- Keep production output and the dirty campaign checkout untouched. Plot
+  dependencies were installed under ignored build output, not globally.
+
 ### 2026-09-06 - Conserve cavitating-mixture inventories and audit readiness
 
 - Audited all accessible branches, reachable history and validation evidence

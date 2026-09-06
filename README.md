@@ -24,6 +24,14 @@ validation evidence, and records conservation/property repairs. Both native
 Windows and Linux pass 40 regression tests. This is numerical verification,
 not validation of either proposed experimental fluid system.
 
+[Previous-versus-repaired plots](cases/90_diagnostics/physics_comparison/SUMMARY.md)
+show unchanged steady Ferron/optical pressure and temperature fields, but a
+closed release test loses 11.55% of its gas in the old solver. The repair
+conserves that inventory. A longer oil-air run exposes alternating pressure
+and load that do not disappear when the timestep is halved twice. Do not use
+those gas-coupled load histories as experimental predictions. The comparison
+scripts use NumPy/Matplotlib, installed in a task-local directory for this run.
+
 Two-phase runs should enable `diagnostics_interval = 1` and inspect
 `gas_volume_excess` and `gas_eos_defect` alongside mass residuals: a converged
 pressure solve can still leave inconsistent gas volume after the split update.

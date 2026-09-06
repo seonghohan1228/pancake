@@ -1,0 +1,9 @@
+[0mLoaded configuration from: C:\Dev\pancake-physics-audit\build\physics-comparison\timing\current\config.txt[0m
+[33m  Config warning: temperature_model = ENERGY_EQUATION with fluid_property_model = CONSTANT: viscosity is frozen at mu, so the temperature field has NO effect on pressure or load. Set fluid_property_model to a variable-property model for a coupled THD run.[0m
+[33m  Config warning: journal_heat_transfer = bearing_heat_transfer = 0: the film is fully adiabatic and the configured wall temperatures are inert. Quote any temperature result together with this wall condition.[0m
+[0mStarting Simulation...[0m
+fbns iter=0 |G|=1.037926e-17 |FB|=0.000000e+00
+[32m  Step 1 t=0.010000  [saved][0m
+fbns iter=0 |G|=8.795078e-16 |FB|=0.000000e+00
+[32m  Step 2 t=0.015000  [saved][0m
+[32mSimulation finished successfully.[0m

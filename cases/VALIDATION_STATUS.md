@@ -33,6 +33,22 @@ code/physics repairs and later branch evidence are reconciled in
 
 Reproduction: [audit case and evidence](90_diagnostics/physics_audit/README.md).
 
+## 2026-09-06 paired-result addendum
+
+[Paired runs and five figures](90_diagnostics/physics_comparison/SUMMARY.md)
+compare `b9dcaf3` with `2bc4d3c` on identical inputs. The tested pure-oil steady
+Ferron and optical-rig fields are unchanged at output precision. This does not
+change their experimental-validation status. A closed reaction probe directly
+shows the old 11.548% gas loss and repaired conservation to roundoff.
+
+**The extended gas transient fails timestep acceptance for pressure/load.**
+The 1 ms synthetic air case has alternating pressure and force at 10, 5 and
+2.5 us; refinement does not suppress the oscillation. All inner solves
+converge, but transient outer coupling is not iterated. Maximum gas fraction
+is comparatively insensitive while excess gap volume remains nonzero.
+Do not quote the terminal force difference as a physical load change or infer
+experimental readiness from the earlier 0.1 ms conservation check.
+
 ## Reproducible baseline
 
 | Host | Toolchain | Result |

@@ -1,0 +1,18 @@
+[
+  {
+    "name": "dt5us",
+    "dt": 5e-06,
+    "return_code": 0,
+    "elapsed_s": 4.917079699982423,
+    "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+    "input_sha256": "3cb058959bfa244ed01515d7f9ede23972ac047ffd991bf4deb547818bc92401"
+  },
+  {
+    "name": "dt2p5us",
+    "dt": 2.5e-06,
+    "return_code": 0,
+    "elapsed_s": 10.198499400023138,
+    "executable_sha256": "9c905d99efff042d17ecf4b1987e25d4bc9cb8e114da85c18d4f8b2c6ceaae90",
+    "input_sha256": "0f4f265d6829c954f55fa3a5b61209dde221dbd45cfbb97ec43f314dc527e504"
+  }
+]

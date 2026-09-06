@@ -1,0 +1,3 @@
+reported_time_s,comparison_time_s,temperature_max_K,bearing_z_m
+0.0,0.0,300.105,0.0
+0.01,0.01,300.211,0.0001

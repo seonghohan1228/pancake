@@ -1,0 +1,279 @@
+{
+  "revisions": {
+    "previous": "b9dcaf3",
+    "current": "2bc4d3c"
+  },
+  "claims": {
+    "experimental_oil_air_validated": false,
+    "experimental_oil_r410a_validated": false,
+    "gas_transient_load_timestep_accepted": false,
+    "direct_closed_exchange_conservation_verified": true
+  },
+  "ferron": {
+    "previous": {
+      "temperature_max_K": 321.505,
+      "pressure_max_Pa": 1421960.0,
+      "pressure_min_Pa": 100000.0,
+      "load_N": 3985.689195104149,
+      "force_x_N": 8.5614,
+      "force_y_N": -3985.68,
+      "pressure_load_N": 4000.270001070042,
+      "pressure_force_x_N": 0.0925252,
+      "pressure_force_y_N": -4000.27,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 96.0,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 106.0,
+      "film_content_min": 0.323515,
+      "T_bearing_max": 321.234,
+      "mass_residual_max": 4.20301e-10
+    },
+    "current": {
+      "temperature_max_K": 321.505,
+      "pressure_max_Pa": 1421960.0,
+      "pressure_min_Pa": 100000.0,
+      "load_N": 3985.689195104149,
+      "force_x_N": 8.5614,
+      "force_y_N": -3985.68,
+      "pressure_load_N": 4000.270001070042,
+      "pressure_force_x_N": 0.0925252,
+      "pressure_force_y_N": -4000.27,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 96.0,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 106.0,
+      "film_content_min": 0.323515,
+      "T_bearing_max": 321.234,
+      "mass_residual_max": 4.20301e-10
+    },
+    "snapshot_count": {
+      "previous": 1,
+      "current": 1
+    },
+    "max_abs_field_change": {
+      "cross_film_core_rise": 0.0,
+      "cross_film_t_bush": 0.0,
+      "cross_film_t_shaft": 0.0,
+      "friction_torque": 0.0,
+      "h": 0.0,
+      "q_bearing": 0.0,
+      "q_journal": 0.0,
+      "mass_residual": 1.0000000000602773e-16,
+      "mu": 0.0,
+      "p": 0.0,
+      "T": 0.0,
+      "T_bearing": 0.0,
+      "T_journal": 0.0,
+      "film_content": 0.0,
+      "theta_rad": 0.0,
+      "z_m": 0.0,
+      "Fp": 0.0,
+      "F": 1.0000000000085785e-15
+    }
+  },
+  "optical": {
+    "previous": {
+      "temperature_max_K": 293.15,
+      "pressure_max_Pa": 204238.0,
+      "pressure_min_Pa": 80000.0,
+      "load_N": 148.91699924575434,
+      "force_x_N": 63.7344,
+      "force_y_N": -134.589,
+      "pressure_load_N": 151.43218995458,
+      "pressure_force_x_N": 64.2188,
+      "pressure_force_y_N": -137.141,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 147.5,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 148.0,
+      "film_content_min": 0.374917,
+      "mass_residual_max": 9.83913e-18
+    },
+    "current": {
+      "temperature_max_K": 293.15,
+      "pressure_max_Pa": 204238.0,
+      "pressure_min_Pa": 80000.0,
+      "load_N": 148.91699924575434,
+      "force_x_N": 63.7344,
+      "force_y_N": -134.589,
+      "pressure_load_N": 151.43218995458,
+      "pressure_force_x_N": 64.2188,
+      "pressure_force_y_N": -137.141,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 147.5,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 148.0,
+      "film_content_min": 0.374917,
+      "mass_residual_max": 1.10889e-17
+    },
+    "snapshot_count": {
+      "previous": 1,
+      "current": 1
+    },
+    "max_abs_field_change": {
+      "friction_torque": 0.0,
+      "h": 0.0,
+      "mass_residual": 1.69407e-17,
+      "mu": 0.0,
+      "p": 0.0,
+      "T": 0.0,
+      "film_content": 0.0,
+      "theta_rad": 0.0,
+      "z_m": 0.0,
+      "Fp": 0.0,
+      "F": 3.72364e-15
+    }
+  },
+  "air": {
+    "previous": {
+      "temperature_max_K": 313.322,
+      "pressure_max_Pa": 893109.0,
+      "pressure_min_Pa": 100000.0,
+      "load_N": 565.86863934309,
+      "force_x_N": -505.184,
+      "force_y_N": -254.944,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 142.5,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 202.5,
+      "film_content_min": 0.944359,
+      "alpha_gas_max": 0.00496569,
+      "dissolved_gas_max": 0.002,
+      "mass_residual_max": 2.61685e-08,
+      "diagnostic_max_abs_gas_residual": 0.000240316288233615
+    },
+    "current": {
+      "temperature_max_K": 313.321,
+      "pressure_max_Pa": 917098.0,
+      "pressure_min_Pa": 100000.0,
+      "load_N": 592.9532922085854,
+      "force_x_N": -535.846,
+      "force_y_N": -253.895,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 150.0,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 225.0,
+      "film_content_min": 0.944341,
+      "alpha_gas_max": 0.0165577,
+      "dissolved_gas_max": 0.00200002,
+      "mass_residual_max": 9.17932e-08,
+      "diagnostic_max_abs_gas_residual": 1.39856615972139e-12,
+      "diagnostic_max_gas_volume_excess": 0.0033581876464186,
+      "diagnostic_max_gas_eos_defect": 0.0
+    },
+    "snapshot_count": {
+      "previous": 101,
+      "current": 101
+    },
+    "max_abs_field_change": {
+      "alpha_gas": 0.011670690000000001,
+      "dissolved_gas": 2.1499999999998083e-06,
+      "friction_torque": 0.005714999999999998,
+      "h": 0.0,
+      "mass_residual": 1.3941202e-07,
+      "mu": 0.0017971000000000029,
+      "p": 81377.0,
+      "rho_liquid_solution": 0.0,
+      "T": 0.002999999999985903,
+      "film_content": 0.018442999999999987,
+      "theta_rad": 0.0,
+      "z_m": 0.0,
+      "F": 30.661999999999978
+    },
+    "time_alignment": "previous physical time = label + 10 us; current = label",
+    "compared_final_time_s": 0.001,
+    "unshifted_previous_at_1ms_label": {
+      "reported_time_s": 0.001,
+      "comparison_time_s": 0.00101,
+      "temperature_max_K": 313.323,
+      "pressure_max_Pa": 893107.0,
+      "pressure_min_Pa": 100000.0,
+      "load_N": 565.872235336741,
+      "force_x_N": -505.185,
+      "force_y_N": -254.95,
+      "liquid_deficit_midplane_arc_deg_theta_below_0p999": 142.5,
+      "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 202.5,
+      "film_content_min": 0.943821,
+      "alpha_gas_max": 0.00501344,
+      "dissolved_gas_max": 0.002,
+      "mass_residual_max": 2.61965e-08
+    },
+    "max_abs_aligned_history_change": {
+      "pressure_max_Pa": 23989.0,
+      "load_N": 27.0846528654954,
+      "temperature_max_K": 0.0010000000000331966,
+      "alpha_gas_max": 0.011592010000000002
+    }
+  },
+  "timing": {
+    "previous": {
+      "temperature_max_K": 300.211,
+      "bearing_z_m": 0.0001
+    },
+    "current": {
+      "temperature_max_K": 300.158,
+      "bearing_z_m": 0.000225
+    },
+    "snapshot_count": {
+      "previous": 2,
+      "current": 3
+    }
+  },
+  "exchange": {
+    "previous": {
+      "final_alpha_gas": 0.04226402360196555,
+      "total_gas_area_final_relative_error": -0.11548193519176253,
+      "total_gas_area_max_relative_error": 0.11548193519176253,
+      "oil_mass_area_final_relative_error": 0.0003306096054731533,
+      "oil_mass_area_max_relative_error": 0.0003306096054731533,
+      "total_mass_area_final_relative_error": 9.898451587853074e-05,
+      "total_mass_area_max_relative_error": 9.898451587853074e-05
+    },
+    "current": {
+      "final_alpha_gas": 0.14079174908546038,
+      "total_gas_area_final_relative_error": 8.881784197001252e-16,
+      "total_gas_area_max_relative_error": 1.3322676295501878e-15,
+      "oil_mass_area_final_relative_error": -5.551115123125783e-16,
+      "oil_mass_area_max_relative_error": 8.881784197001252e-16,
+      "total_mass_area_final_relative_error": -5.551115123125783e-16,
+      "total_mass_area_max_relative_error": 8.881784197001252e-16,
+      "analytic_dissolved_max_abs_error_kg_m2": 1.0842021724855044e-19
+    }
+  },
+  "air_refinement": {
+    "dt5us": {
+      "final": {
+        "time_s": 0.001,
+        "temperature_max_K": 313.321,
+        "pressure_max_Pa": 920493.0,
+        "pressure_min_Pa": 100000.0,
+        "load_N": 596.7425969997449,
+        "force_x_N": -541.715,
+        "force_y_N": -250.293,
+        "liquid_deficit_midplane_arc_deg_theta_below_0p999": 150.0,
+        "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 225.0,
+        "film_content_min": 0.944331,
+        "alpha_gas_max": 0.0165525,
+        "dissolved_gas_max": 0.00200001,
+        "mass_residual_max": 4.36051e-08
+      },
+      "load_range_last_0p2ms_N": [
+        534.5005823205435,
+        597.460708496383
+      ],
+      "max_gas_volume_excess": 0.00298751139857734,
+      "max_abs_gas_residual": 8.92621597049638e-14
+    },
+    "dt2p5us": {
+      "final": {
+        "time_s": 0.001,
+        "temperature_max_K": 313.321,
+        "pressure_max_Pa": 923611.0,
+        "pressure_min_Pa": 100000.0,
+        "load_N": 602.3590808023068,
+        "force_x_N": -548.124,
+        "force_y_N": -249.793,
+        "liquid_deficit_midplane_arc_deg_theta_below_0p999": 150.0,
+        "liquid_deficit_any_axial_arc_deg_theta_below_0p999": 232.5,
+        "film_content_min": 0.944326,
+        "alpha_gas_max": 0.0165489,
+        "dissolved_gas_max": 0.00200001,
+        "mass_residual_max": 2.18182e-08
+      },
+      "load_range_last_0p2ms_N": [
+        529.6968106351028,
+        602.3590808023068
+      ],
+      "max_gas_volume_excess": 0.00173063477049973,
+      "max_abs_gas_residual": 5.68062581929671e-15
+    }
+  }
+}

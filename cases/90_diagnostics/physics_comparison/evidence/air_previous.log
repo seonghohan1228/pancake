@@ -1,0 +1,418 @@
+[0mLoaded configuration from: C:\Dev\pancake-physics-audit\build\physics-comparison\air\previous\config.txt[0m
+[33m  Config warning: temperature_model = ENERGY_EQUATION with liquid_viscosity_model = CONSTANT: viscosity is frozen at mu, so the temperature field has NO effect on pressure or load. Use a temperature-dependent liquid_viscosity_model for a coupled THD run.[0m
+[33m  Config warning: Gaseous-cavitation context: p_sat(T_init, c_d_init) = 200000 Pa, p_cav / p_sat = 0.5.[0m
+[33m  Config warning: inlet[0].p_supply / p_sat = 1 >= 1: boundary oil enters saturated and releases gas on any pressure drop.[0m
+[0mStarting Simulation...[0m
+fbns iter=0 |G|=6.131745e-04 |FB|=0.000000e+00
+fbns iter=1 |G|=7.014742e-04 |FB|=0.000000e+00
+fbns iter=2 |G|=4.472385e-04 |FB|=0.000000e+00
+fbns iter=3 |G|=3.926888e-04 |FB|=0.000000e+00
+fbns iter=4 |G|=1.822355e-04 |FB|=0.000000e+00
+fbns iter=5 |G|=1.612667e-04 |FB|=0.000000e+00
+fbns iter=6 |G|=1.105044e-05 |FB|=0.000000e+00
+fbns iter=7 |G|=6.590456e-15 |FB|=0.000000e+00
+[32m  Step 0 t=0.000000  [saved][0m
+fbns iter=0 |G|=1.974141e-04 |FB|=4.914107e-05
+fbns iter=1 |G|=7.004262e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=5.366326e-07 |FB|=0.000000e+00
+fbns iter=3 |G|=1.000190e-16 |FB|=0.000000e+00
+[32m  Step 1 t=0.000010  [saved][0m
+fbns iter=0 |G|=1.974173e-04 |FB|=9.511071e-05
+fbns iter=1 |G|=2.135223e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=2.223803e-15 |FB|=0.000000e+00
+[32m  Step 2 t=0.000020  [saved][0m
+fbns iter=0 |G|=1.974203e-04 |FB|=9.724983e-05
+fbns iter=1 |G|=1.029837e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=5.493776e-16 |FB|=0.000000e+00
+[32m  Step 3 t=0.000030  [saved][0m
+fbns iter=0 |G|=1.974231e-04 |FB|=6.081156e-05
+fbns iter=1 |G|=2.859554e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.861730e-16 |FB|=0.000000e+00
+[32m  Step 4 t=0.000040  [saved][0m
+fbns iter=0 |G|=1.974256e-04 |FB|=1.019033e-04
+fbns iter=1 |G|=7.345192e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=1.086301e-15 |FB|=0.000000e+00
+[32m  Step 5 t=0.000050  [saved][0m
+fbns iter=0 |G|=1.974280e-04 |FB|=6.139964e-05
+fbns iter=1 |G|=2.655574e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=7.906169e-16 |FB|=0.000000e+00
+[32m  Step 6 t=0.000060  [saved][0m
+fbns iter=0 |G|=1.974301e-04 |FB|=6.328615e-05
+fbns iter=1 |G|=2.683027e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=7.798111e-16 |FB|=0.000000e+00
+[32m  Step 7 t=0.000070  [saved][0m
+fbns iter=0 |G|=1.974320e-04 |FB|=6.534822e-05
+fbns iter=1 |G|=2.679077e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=8.258881e-16 |FB|=0.000000e+00
+[32m  Step 8 t=0.000080  [saved][0m
+fbns iter=0 |G|=1.974338e-04 |FB|=6.817810e-05
+fbns iter=1 |G|=2.656144e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=8.237745e-16 |FB|=0.000000e+00
+[32m  Step 9 t=0.000090  [saved][0m
+fbns iter=0 |G|=1.974352e-04 |FB|=7.211997e-05
+fbns iter=1 |G|=2.604419e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=6.761271e-16 |FB|=0.000000e+00
+[32m  Step 10 t=0.000100  [saved][0m
+fbns iter=0 |G|=1.974365e-04 |FB|=7.786223e-05
+fbns iter=1 |G|=2.515240e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=4.577183e-16 |FB|=0.000000e+00
+[32m  Step 11 t=0.000110  [saved][0m
+fbns iter=0 |G|=1.974376e-04 |FB|=8.646582e-05
+fbns iter=1 |G|=2.377228e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.987421e-07 |FB|=0.000000e+00
+fbns iter=3 |G|=2.533567e-07 |FB|=0.000000e+00
+fbns iter=4 |G|=1.173465e-16 |FB|=0.000000e+00
+[32m  Step 12 t=0.000120  [saved][0m
+fbns iter=0 |G|=1.974384e-04 |FB|=9.926499e-05
+fbns iter=1 |G|=2.176331e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.120520e-16 |FB|=0.000000e+00
+[32m  Step 13 t=0.000130  [saved][0m
+fbns iter=0 |G|=1.974391e-04 |FB|=9.755766e-05
+fbns iter=1 |G|=2.076085e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.705373e-16 |FB|=0.000000e+00
+[32m  Step 14 t=0.000140  [saved][0m
+fbns iter=0 |G|=1.974395e-04 |FB|=8.649526e-05
+fbns iter=1 |G|=3.211902e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.241793e-16 |FB|=0.000000e+00
+[32m  Step 15 t=0.000150  [saved][0m
+fbns iter=0 |G|=1.974397e-04 |FB|=8.241054e-05
+fbns iter=1 |G|=5.311215e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.385527e-16 |FB|=0.000000e+00
+[32m  Step 16 t=0.000160  [saved][0m
+fbns iter=0 |G|=1.974397e-04 |FB|=8.808723e-05
+fbns iter=1 |G|=7.960846e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=8.507402e-16 |FB|=0.000000e+00
+[32m  Step 17 t=0.000170  [saved][0m
+fbns iter=0 |G|=1.974395e-04 |FB|=9.521345e-05
+fbns iter=1 |G|=1.115707e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=3.397285e-16 |FB|=0.000000e+00
+[32m  Step 18 t=0.000180  [saved][0m
+fbns iter=0 |G|=1.974390e-04 |FB|=1.013022e-04
+fbns iter=1 |G|=2.184095e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.165683e-16 |FB|=0.000000e+00
+[32m  Step 19 t=0.000190  [saved][0m
+fbns iter=0 |G|=1.974384e-04 |FB|=9.569436e-05
+fbns iter=1 |G|=2.197727e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.269469e-16 |FB|=0.000000e+00
+[32m  Step 20 t=0.000200  [saved][0m
+fbns iter=0 |G|=1.974375e-04 |FB|=8.543178e-05
+fbns iter=1 |G|=3.324731e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.726671e-16 |FB|=0.000000e+00
+[32m  Step 21 t=0.000210  [saved][0m
+fbns iter=0 |G|=1.974364e-04 |FB|=7.056466e-05
+fbns iter=1 |G|=5.335819e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=4.452666e-16 |FB|=0.000000e+00
+[32m  Step 22 t=0.000220  [saved][0m
+fbns iter=0 |G|=1.974351e-04 |FB|=6.555855e-05
+fbns iter=1 |G|=7.821905e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.629805e-16 |FB|=0.000000e+00
+[32m  Step 23 t=0.000230  [saved][0m
+fbns iter=0 |G|=1.974336e-04 |FB|=6.823734e-05
+fbns iter=1 |G|=1.078012e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=3.570263e-16 |FB|=0.000000e+00
+[32m  Step 24 t=0.000240  [saved][0m
+fbns iter=0 |G|=1.974319e-04 |FB|=7.193798e-05
+fbns iter=1 |G|=1.445623e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=1.792591e-16 |FB|=0.000000e+00
+[32m  Step 25 t=0.000250  [saved][0m
+fbns iter=0 |G|=1.974299e-04 |FB|=7.723560e-05
+fbns iter=1 |G|=9.364338e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=4.379880e-16 |FB|=0.000000e+00
+[32m  Step 26 t=0.000260  [saved][0m
+fbns iter=0 |G|=1.974278e-04 |FB|=8.502275e-05
+fbns iter=1 |G|=3.290299e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.480690e-16 |FB|=0.000000e+00
+[32m  Step 27 t=0.000270  [saved][0m
+fbns iter=0 |G|=1.974254e-04 |FB|=9.645185e-05
+fbns iter=1 |G|=3.305533e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.691535e-16 |FB|=0.000000e+00
+[32m  Step 28 t=0.000280  [saved][0m
+fbns iter=0 |G|=1.974228e-04 |FB|=9.938683e-05
+fbns iter=1 |G|=9.607705e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.144925e-16 |FB|=0.000000e+00
+[32m  Step 29 t=0.000290  [saved][0m
+fbns iter=0 |G|=1.974200e-04 |FB|=9.088934e-05
+fbns iter=1 |G|=2.089235e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=2.234874e-16 |FB|=0.000000e+00
+[32m  Step 30 t=0.000300  [saved][0m
+fbns iter=0 |G|=1.974170e-04 |FB|=7.711924e-05
+fbns iter=1 |G|=3.659437e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.625616e-16 |FB|=0.000000e+00
+[32m  Step 31 t=0.000310  [saved][0m
+fbns iter=0 |G|=1.974138e-04 |FB|=5.818589e-05
+fbns iter=1 |G|=5.663934e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.228780e-16 |FB|=0.000000e+00
+[32m  Step 32 t=0.000320  [saved][0m
+fbns iter=0 |G|=1.974104e-04 |FB|=4.821442e-05
+fbns iter=1 |G|=8.097130e-06 |FB|=0.000000e+00
+fbns iter=2 |G|=3.065167e-16 |FB|=0.000000e+00
+[32m  Step 33 t=0.000330  [saved][0m
+fbns iter=0 |G|=1.974067e-04 |FB|=4.824273e-05
+fbns iter=1 |G|=1.095500e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=3.923137e-16 |FB|=0.000000e+00
+[32m  Step 34 t=0.000340  [saved][0m
+fbns iter=0 |G|=1.974028e-04 |FB|=4.827140e-05
+fbns iter=1 |G|=3.407334e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.276388e-16 |FB|=0.000000e+00
+[32m  Step 35 t=0.000350  [saved][0m
+fbns iter=0 |G|=1.973987e-04 |FB|=4.830036e-05
+fbns iter=1 |G|=3.423040e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.200278e-16 |FB|=0.000000e+00
+[32m  Step 36 t=0.000360  [saved][0m
+fbns iter=0 |G|=1.973944e-04 |FB|=4.832959e-05
+fbns iter=1 |G|=3.439059e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.158763e-16 |FB|=0.000000e+00
+[32m  Step 37 t=0.000370  [saved][0m
+fbns iter=0 |G|=1.973899e-04 |FB|=4.835907e-05
+fbns iter=1 |G|=3.455395e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.082653e-16 |FB|=0.000000e+00
+[32m  Step 38 t=0.000380  [saved][0m
+fbns iter=0 |G|=1.973852e-04 |FB|=4.838877e-05
+fbns iter=1 |G|=3.472050e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=2.034219e-16 |FB|=0.000000e+00
+[32m  Step 39 t=0.000390  [saved][0m
+fbns iter=0 |G|=1.973803e-04 |FB|=4.841869e-05
+fbns iter=1 |G|=3.489031e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.992705e-16 |FB|=0.000000e+00
+[32m  Step 40 t=0.000400  [saved][0m
+fbns iter=0 |G|=1.973751e-04 |FB|=4.844881e-05
+fbns iter=1 |G|=3.506343e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.937352e-16 |FB|=0.000000e+00
+[32m  Step 41 t=0.000410  [saved][0m
+fbns iter=0 |G|=1.973697e-04 |FB|=4.847913e-05
+fbns iter=1 |G|=3.523989e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.909675e-16 |FB|=0.000000e+00
+[32m  Step 42 t=0.000420  [saved][0m
+fbns iter=0 |G|=1.973642e-04 |FB|=4.850964e-05
+fbns iter=1 |G|=3.541977e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.840484e-16 |FB|=0.000000e+00
+[32m  Step 43 t=0.000430  [saved][0m
+fbns iter=0 |G|=1.973584e-04 |FB|=4.854034e-05
+fbns iter=1 |G|=3.560313e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.805889e-16 |FB|=0.000000e+00
+[32m  Step 44 t=0.000440  [saved][0m
+fbns iter=0 |G|=1.973523e-04 |FB|=4.857122e-05
+fbns iter=1 |G|=3.579002e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.771293e-16 |FB|=0.000000e+00
+[32m  Step 45 t=0.000450  [saved][0m
+fbns iter=0 |G|=1.973461e-04 |FB|=4.860229e-05
+fbns iter=1 |G|=3.598052e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.729778e-16 |FB|=0.000000e+00
+[32m  Step 46 t=0.000460  [saved][0m
+fbns iter=0 |G|=1.973397e-04 |FB|=4.863354e-05
+fbns iter=1 |G|=3.617468e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.681345e-16 |FB|=0.000000e+00
+[32m  Step 47 t=0.000470  [saved][0m
+fbns iter=0 |G|=1.973330e-04 |FB|=4.866497e-05
+fbns iter=1 |G|=3.637259e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.653668e-16 |FB|=0.000000e+00
+[32m  Step 48 t=0.000480  [saved][0m
+fbns iter=0 |G|=1.973261e-04 |FB|=4.869659e-05
+fbns iter=1 |G|=3.657432e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.612153e-16 |FB|=0.000000e+00
+[32m  Step 49 t=0.000490  [saved][0m
+fbns iter=0 |G|=1.973191e-04 |FB|=4.872839e-05
+fbns iter=1 |G|=3.677994e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.563720e-16 |FB|=0.000000e+00
+[32m  Step 50 t=0.000500  [saved][0m
+fbns iter=0 |G|=1.973118e-04 |FB|=4.876038e-05
+fbns iter=1 |G|=3.698953e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.542962e-16 |FB|=0.000000e+00
+[32m  Step 51 t=0.000510  [saved][0m
+fbns iter=0 |G|=1.973042e-04 |FB|=4.879255e-05
+fbns iter=1 |G|=3.720318e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.480690e-16 |FB|=0.000000e+00
+[32m  Step 52 t=0.000520  [saved][0m
+fbns iter=0 |G|=1.972965e-04 |FB|=4.882491e-05
+fbns iter=1 |G|=3.742097e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.439176e-16 |FB|=0.000000e+00
+[32m  Step 53 t=0.000530  [saved][0m
+fbns iter=0 |G|=1.972886e-04 |FB|=4.885746e-05
+fbns iter=1 |G|=3.764299e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.432257e-16 |FB|=0.000000e+00
+[32m  Step 54 t=0.000540  [saved][0m
+fbns iter=0 |G|=1.972804e-04 |FB|=4.889020e-05
+fbns iter=1 |G|=3.786933e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.390742e-16 |FB|=0.000000e+00
+[32m  Step 55 t=0.000550  [saved][0m
+fbns iter=0 |G|=1.972720e-04 |FB|=4.892314e-05
+fbns iter=1 |G|=3.810008e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.369985e-16 |FB|=0.000000e+00
+[32m  Step 56 t=0.000560  [saved][0m
+fbns iter=0 |G|=1.972635e-04 |FB|=4.895627e-05
+fbns iter=1 |G|=3.833534e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.342308e-16 |FB|=0.000000e+00
+[32m  Step 57 t=0.000570  [saved][0m
+fbns iter=0 |G|=1.972547e-04 |FB|=4.898959e-05
+fbns iter=1 |G|=3.857521e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.300793e-16 |FB|=0.000000e+00
+[32m  Step 58 t=0.000580  [saved][0m
+fbns iter=0 |G|=1.972456e-04 |FB|=4.902312e-05
+fbns iter=1 |G|=3.881979e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.273117e-16 |FB|=0.000000e+00
+[32m  Step 59 t=0.000590  [saved][0m
+fbns iter=0 |G|=1.972364e-04 |FB|=4.905685e-05
+fbns iter=1 |G|=3.906920e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.245440e-16 |FB|=0.000000e+00
+[32m  Step 60 t=0.000600  [saved][0m
+fbns iter=0 |G|=1.972270e-04 |FB|=4.909078e-05
+fbns iter=1 |G|=3.932353e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.231602e-16 |FB|=0.000000e+00
+[32m  Step 61 t=0.000610  [saved][0m
+fbns iter=0 |G|=1.972173e-04 |FB|=4.912492e-05
+fbns iter=1 |G|=3.958292e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.231602e-16 |FB|=0.000000e+00
+[32m  Step 62 t=0.000620  [saved][0m
+fbns iter=0 |G|=1.972075e-04 |FB|=4.915926e-05
+fbns iter=1 |G|=3.984747e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.162411e-16 |FB|=0.000000e+00
+[32m  Step 63 t=0.000630  [saved][0m
+fbns iter=0 |G|=1.971974e-04 |FB|=4.919382e-05
+fbns iter=1 |G|=4.011730e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.141654e-16 |FB|=0.000000e+00
+[32m  Step 64 t=0.000640  [saved][0m
+fbns iter=0 |G|=1.971871e-04 |FB|=4.922860e-05
+fbns iter=1 |G|=4.039256e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.120896e-16 |FB|=0.000000e+00
+[32m  Step 65 t=0.000650  [saved][0m
+fbns iter=0 |G|=1.971766e-04 |FB|=4.926359e-05
+fbns iter=1 |G|=4.067336e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.100139e-16 |FB|=0.000000e+00
+[32m  Step 66 t=0.000660  [saved][0m
+fbns iter=0 |G|=1.971658e-04 |FB|=4.929880e-05
+fbns iter=1 |G|=4.095984e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.075111e-16 |FB|=0.000000e+00
+[32m  Step 67 t=0.000670  [saved][0m
+fbns iter=0 |G|=1.971549e-04 |FB|=4.933424e-05
+fbns iter=1 |G|=4.125215e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.156195e-16 |FB|=0.000000e+00
+[32m  Step 68 t=0.000680  [saved][0m
+fbns iter=0 |G|=1.971437e-04 |FB|=4.936991e-05
+fbns iter=1 |G|=4.155044e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.261603e-16 |FB|=0.000000e+00
+[32m  Step 69 t=0.000690  [saved][0m
+fbns iter=0 |G|=1.971324e-04 |FB|=4.940580e-05
+fbns iter=1 |G|=4.185484e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.358417e-16 |FB|=0.000000e+00
+[32m  Step 70 t=0.000700  [saved][0m
+fbns iter=0 |G|=1.971208e-04 |FB|=4.944193e-05
+fbns iter=1 |G|=4.216553e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.445716e-16 |FB|=0.000000e+00
+[32m  Step 71 t=0.000710  [saved][0m
+fbns iter=0 |G|=1.971090e-04 |FB|=4.947830e-05
+fbns iter=1 |G|=4.248265e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.509340e-16 |FB|=0.000000e+00
+[32m  Step 72 t=0.000720  [saved][0m
+fbns iter=0 |G|=1.970970e-04 |FB|=4.951491e-05
+fbns iter=1 |G|=4.280640e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.587937e-16 |FB|=0.000000e+00
+[32m  Step 73 t=0.000730  [saved][0m
+fbns iter=0 |G|=1.970848e-04 |FB|=4.955177e-05
+fbns iter=1 |G|=4.313693e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.655506e-16 |FB|=0.000000e+00
+[32m  Step 74 t=0.000740  [saved][0m
+fbns iter=0 |G|=1.970723e-04 |FB|=4.958888e-05
+fbns iter=1 |G|=4.347443e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.701886e-16 |FB|=0.000000e+00
+[32m  Step 75 t=0.000750  [saved][0m
+fbns iter=0 |G|=1.970597e-04 |FB|=4.962624e-05
+fbns iter=1 |G|=4.381909e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.735184e-16 |FB|=0.000000e+00
+[32m  Step 76 t=0.000760  [saved][0m
+fbns iter=0 |G|=1.970468e-04 |FB|=4.966387e-05
+fbns iter=1 |G|=4.417110e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.772482e-16 |FB|=0.000000e+00
+[32m  Step 77 t=0.000770  [saved][0m
+fbns iter=0 |G|=1.970337e-04 |FB|=4.970176e-05
+fbns iter=1 |G|=4.453067e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.788807e-16 |FB|=0.000000e+00
+[32m  Step 78 t=0.000780  [saved][0m
+fbns iter=0 |G|=1.970204e-04 |FB|=4.973991e-05
+fbns iter=1 |G|=4.489802e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.795672e-16 |FB|=0.000000e+00
+[32m  Step 79 t=0.000790  [saved][0m
+fbns iter=0 |G|=1.970069e-04 |FB|=4.977835e-05
+fbns iter=1 |G|=4.527335e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.774266e-16 |FB|=0.000000e+00
+[32m  Step 80 t=0.000800  [saved][0m
+fbns iter=0 |G|=1.969932e-04 |FB|=4.981706e-05
+fbns iter=1 |G|=4.565691e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.757887e-16 |FB|=0.000000e+00
+[32m  Step 81 t=0.000810  [saved][0m
+fbns iter=0 |G|=1.969793e-04 |FB|=4.985606e-05
+fbns iter=1 |G|=4.604892e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.724643e-16 |FB|=0.000000e+00
+[32m  Step 82 t=0.000820  [saved][0m
+fbns iter=0 |G|=1.969651e-04 |FB|=4.989535e-05
+fbns iter=1 |G|=4.644964e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.690480e-16 |FB|=0.000000e+00
+[32m  Step 83 t=0.000830  [saved][0m
+fbns iter=0 |G|=1.969508e-04 |FB|=4.993493e-05
+fbns iter=1 |G|=4.685932e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.648317e-16 |FB|=0.000000e+00
+[32m  Step 84 t=0.000840  [saved][0m
+fbns iter=0 |G|=1.969362e-04 |FB|=4.997483e-05
+fbns iter=1 |G|=4.727824e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.592099e-16 |FB|=0.000000e+00
+[32m  Step 85 t=0.000850  [saved][0m
+fbns iter=0 |G|=1.969214e-04 |FB|=5.001503e-05
+fbns iter=1 |G|=4.770666e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.536422e-16 |FB|=0.000000e+00
+[32m  Step 86 t=0.000860  [saved][0m
+fbns iter=0 |G|=1.969064e-04 |FB|=5.005555e-05
+fbns iter=1 |G|=4.814489e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.487988e-16 |FB|=0.000000e+00
+[32m  Step 87 t=0.000870  [saved][0m
+fbns iter=0 |G|=1.968912e-04 |FB|=5.009640e-05
+fbns iter=1 |G|=4.859322e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.424851e-16 |FB|=0.000000e+00
+[32m  Step 88 t=0.000880  [saved][0m
+fbns iter=0 |G|=1.968758e-04 |FB|=5.013757e-05
+fbns iter=1 |G|=4.905198e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.357173e-16 |FB|=0.000000e+00
+[32m  Step 89 t=0.000890  [saved][0m
+fbns iter=0 |G|=1.968601e-04 |FB|=5.017909e-05
+fbns iter=1 |G|=4.952149e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.282252e-16 |FB|=0.000000e+00
+[32m  Step 90 t=0.000900  [saved][0m
+fbns iter=0 |G|=1.968443e-04 |FB|=5.022096e-05
+fbns iter=1 |G|=5.000209e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.212899e-16 |FB|=0.000000e+00
+[32m  Step 91 t=0.000910  [saved][0m
+fbns iter=0 |G|=1.968282e-04 |FB|=5.026319e-05
+fbns iter=1 |G|=5.049415e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.140465e-16 |FB|=0.000000e+00
+[32m  Step 92 t=0.000920  [saved][0m
+fbns iter=0 |G|=1.968119e-04 |FB|=5.030578e-05
+fbns iter=1 |G|=5.099805e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=1.064516e-16 |FB|=0.000000e+00
+[32m  Step 93 t=0.000930  [saved][0m
+fbns iter=0 |G|=1.967954e-04 |FB|=5.034876e-05
+fbns iter=1 |G|=5.151417e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=9.814871e-17 |FB|=0.000000e+00
+[32m  Step 94 t=0.000940  [saved][0m
+fbns iter=0 |G|=1.967787e-04 |FB|=5.039211e-05
+fbns iter=1 |G|=5.204293e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=8.845114e-17 |FB|=0.000000e+00
+[32m  Step 95 t=0.000950  [saved][0m
+fbns iter=0 |G|=1.967618e-04 |FB|=5.043587e-05
+fbns iter=1 |G|=5.258475e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=8.510510e-17 |FB|=0.000000e+00
+[32m  Step 96 t=0.000960  [saved][0m
+fbns iter=0 |G|=1.967446e-04 |FB|=5.048003e-05
+fbns iter=1 |G|=5.314009e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=8.302936e-17 |FB|=0.000000e+00
+[32m  Step 97 t=0.000970  [saved][0m
+fbns iter=0 |G|=1.967273e-04 |FB|=5.052462e-05
+fbns iter=1 |G|=5.370941e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=8.441319e-17 |FB|=0.000000e+00
+[32m  Step 98 t=0.000980  [saved][0m
+fbns iter=0 |G|=1.967097e-04 |FB|=5.056963e-05
+fbns iter=1 |G|=5.429322e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=8.856466e-17 |FB|=0.000000e+00
+[32m  Step 99 t=0.000990  [saved][0m
+fbns iter=0 |G|=1.966919e-04 |FB|=5.061509e-05
+fbns iter=1 |G|=5.489201e-07 |FB|=0.000000e+00
+fbns iter=2 |G|=9.064039e-17 |FB|=0.000000e+00
+[32m  Step 100 t=0.001000  [saved][0m
+[0mSimulation finished successfully.[0m

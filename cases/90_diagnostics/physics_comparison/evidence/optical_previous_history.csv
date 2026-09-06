@@ -1,0 +1,2 @@
+reported_time_s,comparison_time_s,temperature_max_K,pressure_max_Pa,pressure_min_Pa,load_N,force_x_N,force_y_N,pressure_load_N,pressure_force_x_N,pressure_force_y_N,liquid_deficit_midplane_arc_deg_theta_below_0p999,liquid_deficit_any_axial_arc_deg_theta_below_0p999,film_content_min,mass_residual_max
+0.0,0.0,293.15,204238.0,80000.0,148.91699924575434,63.7344,-134.589,151.43218995458,64.2188,-137.141,147.5,148.0,0.374917,9.83913e-18

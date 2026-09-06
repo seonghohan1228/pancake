@@ -16,9 +16,17 @@ this target. The earlier roadmap and completed items are retained below.
 - [x] Fail the CLI on nonconvergence; preserve unrelated output-directory files.
 - [x] Verify 40 tests on native Windows and Linux, exact 1-D FBNS fronts and
   integrated quantities, and a synthetic oil-air transient across MPI counts.
+- [x] Compare pre-audit and repaired solvers on frozen steady and transient
+  inputs, with direct inventory/time checks and publication-style figures.
+  [Evidence](cases/90_diagnostics/physics_comparison/SUMMARY.md): steady curves
+  unchanged; old closed reaction loses 11.548% of its gas. A 1 ms air transient
+  fails the 10/5/2.5 us timestep check for pressure/load despite converged inner
+  solves. Gas fraction alone is not a sufficient acceptance metric.
 - [ ] Close pressure, phase inventories, EOS and gap volume simultaneously.
   Require both conservation and volume residuals; no post-step mass-destroying
-  theta/alpha clipping. Keep FBNS as the verified zero-gas limit.
+  theta/alpha clipping. Keep FBNS as the verified zero-gas limit. Use the
+  archived air timestep failure as an acceptance case; require removal of the
+  timestep-linked load alternation without averaging or lost species mass.
 - [x] Fix transient timestamps, final partial intervals and moving-geometry time
   levels. Verify initial output, integrated heating and rigid-body acceleration
   against exact CLI reference cases, including zero-duration initial output.

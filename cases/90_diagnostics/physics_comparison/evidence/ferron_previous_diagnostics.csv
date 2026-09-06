@@ -1,0 +1,2 @@
+step,time,outer_iters,flag_flips,max_theta_change,converged,liquid_mass,liquid_boundary_flux,inlet_mass_source,clamp_mass_liquid,liquid_residual,gas_mass,gas_boundary_flux,clamp_mass_gas,gas_residual,cavitated_fraction,coupling_iters,coupling_R_p,coupling_R_T,coupling_converged,coupling_best_iter,coupling_best_residual,coupling_restored_best,coupling_relaxation
+0,0,0,0,0,1,0.00296456980588065,-0.0717071286767659,0.0717071235980031,0,1.71315339008301e-11,0,0,0,0,0.275925925925926,67,0,1.11219952784122e-07,1,67,1.11219952784122e-07,0,1

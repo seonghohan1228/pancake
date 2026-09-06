@@ -1,0 +1,33 @@
+[0mLoaded configuration from: C:\Dev\pancake-physics-audit\build\physics-comparison\optical\previous\config.txt[0m
+[0mStarting Simulation...[0m
+fbns iter=0 |G|=1.323092e-04 |FB|=0.000000e+00
+fbns iter=1 |G|=1.499959e-04 |FB|=0.000000e+00
+fbns iter=2 |G|=9.714213e-03 |FB|=0.000000e+00
+fbns iter=3 |G|=8.541512e-03 |FB|=0.000000e+00
+fbns iter=4 |G|=9.745123e-03 |FB|=0.000000e+00
+fbns iter=5 |G|=1.104224e-02 |FB|=0.000000e+00
+[33m[WARN] linear solve 'fbns schur complement' failed after 259 iterations: KSP diverged (DIVERGED_BREAKDOWN, reason -5); retrying on fallback solver 1/2[0m
+[33m[WARN] linear solve 'fbns schur complement' recovered on fallback solver 1 after 98 iterations[0m
+fbns iter=6 |G|=1.003866e-02 |FB|=0.000000e+00
+fbns iter=7 |G|=8.951951e-03 |FB|=0.000000e+00
+fbns iter=8 |G|=7.890402e-03 |FB|=0.000000e+00
+fbns iter=9 |G|=6.847497e-03 |FB|=0.000000e+00
+fbns iter=10 |G|=5.828588e-03 |FB|=0.000000e+00
+fbns iter=11 |G|=4.836947e-03 |FB|=0.000000e+00
+fbns iter=12 |G|=3.875682e-03 |FB|=0.000000e+00
+fbns iter=13 |G|=3.266127e-03 |FB|=0.000000e+00
+fbns iter=14 |G|=2.791316e-03 |FB|=0.000000e+00
+fbns iter=15 |G|=2.328217e-03 |FB|=0.000000e+00
+fbns iter=16 |G|=1.876988e-03 |FB|=0.000000e+00
+fbns iter=17 |G|=1.438173e-03 |FB|=0.000000e+00
+fbns iter=18 |G|=1.011841e-03 |FB|=0.000000e+00
+fbns iter=19 |G|=5.989531e-04 |FB|=0.000000e+00
+fbns iter=20 |G|=2.641293e-04 |FB|=0.000000e+00
+fbns iter=21 |G|=5.946814e-05 |FB|=0.000000e+00
+fbns iter=22 |G|=2.607619e-06 |FB|=0.000000e+00
+fbns iter=23 |G|=7.971449e-09 |FB|=0.000000e+00
+fbns iter=24 |G|=2.906125e-17 |FB|=0.000000e+00
+fbns iter=0 |G|=2.906125e-17 |FB|=0.000000e+00
+[36m  Coupling: 2 outer iters, R_p=0 R_T=0 | CONVERGED (tol=1e-06) | omega=1 (min 1)[0m
+[32m  Step 0 t=0.000000  [saved][0m
+[0mSimulation finished successfully.[0m

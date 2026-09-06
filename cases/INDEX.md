@@ -109,6 +109,12 @@ contains exact 1-D FBNS reruns, a synthetic oil-air MPI comparison, and the
 separates conservation from the still-failing gas-volume closure. Runs live in
 isolated build directories and do not replace the archived Ferron campaign.
 
+[Physics repair comparison](90_diagnostics/physics_comparison/README.md)
+adds frozen previous/current runs, direct closed-inventory checks, physical-time
+alignment and five figures. It preserves the tested steady pure-oil profiles
+and records a failed gas-coupled pressure/load timestep check. Portable data
+and logs are local; no remote mirror was performed for this task.
+
 - `00_grid_dt_independence/dt_fbns_analysis.json` records `end_t = 0.15` for
   `dt_T2_fbns`, `dt_T3_fbns` and `dt_T4_fbns`, while the `config.txt` now on disk
   in those directories says `end_t = 0.06`. The JSON is the record of the run as
