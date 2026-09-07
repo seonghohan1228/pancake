@@ -13,6 +13,21 @@ For a feature-level record of substantive project contributions, see
 
 ## Cavitation readiness (2026-09-06)
 
+**2026-09-07 update:** the target fluid is FW68D with air or R410A, at 20–80 °C,
+with reservoirs up to 20 bar absolute and R410A charging near 10 bar. See the
+[detailed physics and boundary review](docs/FW68D_CAVITATION_REVIEW.md) for
+mechanisms, literature comparisons, remaining model gaps and additional plots.
+Axial reverse-flow reservoirs now have independent temperature, dissolved
+concentration and entrained-gas inputs. Absorption can have a separate rate
+through `gas_absorption_rate`. Conflicting pressure reservoirs below the
+`LOCAL_PSAT` effective floor are rejected rather than silently raised.
+
+The new [material/kinetic diagnostics](cases/90_diagnostics/cavitation_requirements/README.md)
+use task-local CoolProp 7.2.0, NumPy and Matplotlib. CoolProp supplies independent
+pure-R410A property checks only; no R410A EOS backend or FW68D dataset has been
+added to the bearing solver. All 40 regression tests execute successfully on
+both Windows and Linux, including the new boundary and kinetic assertions.
+
 Use **FBNS** as the equilibrium, mass-conserving Reynolds baseline. It is
 numerically verified against the exact 1-D free-boundary problem. The oil-air
 gas model is experimental; **R410A is not implemented** and is now rejected

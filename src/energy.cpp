@@ -301,10 +301,9 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
 void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Field& h,
                                    const Field& theta, const Mesh& mesh,
                                    const Fields& fields, const SimulationConfig& cfg) {
-    // RESERVOIR: fluid entering through the boundary carries temperature_reference
-    //   (an actual fed inlet/outlet to a reservoir).
-    // OPEN: the entering fluid is the same recirculating film oil, so the boundary
-    //   face is zero-gradient for temperature regardless of flow direction. The
+    // CONSTANT: entering fluid carries that end reservoir's temperature.
+    // ZERO_GRADIENT: entering fluid extrapolates the adjacent film temperature.
+    //   This assumes thermal recirculation, rather than a specified reservoir. The
     //   non-conservative correction below already accounts for div(F) at the cell,
     //   so the open boundary face contributes no net source — no spurious heating
     //   or cooling. flux_south is the +z-flux at the south face (>0 means inflow at
@@ -315,7 +314,7 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         const double flux_south = south_boundary_flux(p, h, theta, fields, mesh, cfg, i);
         if (flux_south >= 0.0 && south_reservoir) {
-            sys.source(i, 0) += flux_south * cfg.temperature_reference;  // fed inflow
+            sys.source(i, 0) += flux_south * cfg.axial_inflow_temperature(true);
         } else {
             sys.a_p(i, 0) += -flux_south;  // outflow, or open zero-gradient inflow
         }
@@ -323,7 +322,7 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
         const int j = mesh.n_z_local - 1;
         const double flux_north = north_boundary_flux(p, h, theta, fields, mesh, cfg, i);
         if (flux_north < 0.0 && north_reservoir) {
-            sys.source(i, j) += -flux_north * cfg.temperature_reference;  // fed inflow
+            sys.source(i, j) += -flux_north * cfg.axial_inflow_temperature(false);
         } else {
             sys.a_p(i, j) += flux_north;  // outflow, or open zero-gradient inflow
         }

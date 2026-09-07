@@ -582,6 +582,59 @@ static void test_elrod_axial_boundary_uses_pressure_value() {
           "ELROD axial boundary should use bc_z_val-derived pressure; legacy theta must not suppress inflow");
 }
 
+static void test_distinct_end_temperatures_with_flow_reversal() {
+    for (bool south_inflow : {true, false}) {
+        SimulationConfig cfg;
+        cfg.n_theta_global = 24;
+        cfg.n_z_global = 8;
+        cfg.cavitation_model = CavitationModel::FBNS;
+        cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+        cfg.solution_mode = SolutionMode::TRANSIENT;
+        cfg.dt = 0.01;
+        cfg.omega = 0;
+        cfg.thermal_conductivity = 0;
+        cfg.journal_heat_transfer = 0;
+        cfg.bearing_heat_transfer = 0;
+        cfg.bc_z_south_val = south_inflow ? 3e5 : 2e5;
+        cfg.bc_z_north_val = south_inflow ? 2e5 : 3e5;
+        cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+        cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
+        cfg.bc_z_south_temperature = 310;
+        cfg.bc_z_north_temperature = 350;
+        cfg.temperature_initial = 300;
+        cfg.temperature_reference = 280;
+        cfg.linear_rtol = 1e-13;
+        Mesh mesh(cfg);
+        Communicator comm(mesh);
+        Fields fields;
+        add_energy_fields(fields, mesh, cfg);
+        for (int i = 0; i < mesh.n_theta_local; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j)
+                fields["pressure"](i, j) = cfg.bc_z_south_val +
+                    (cfg.bc_z_north_val - cfg.bc_z_south_val) * (j + 0.5) / mesh.n_z_local;
+        comm.update_ghosts(fields);
+        LinearSystem sys(mesh);
+        Energy::solve(fields, sys, mesh, cfg);
+        const double speed = cfg.c * cfg.c * 1e5 / (12 * cfg.mu * cfg.L);
+        const double courant = speed * cfg.dt / mesh.get_d_z();
+        double error = 0;
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            double expected = cfg.axial_inflow_temperature(south_inflow);
+            for (int k = 0; k < mesh.n_z_local; ++k) {
+                const int j = south_inflow ? k : mesh.n_z_local - 1 - k;
+                // Dissipation is evaluated by the energy operator, so include
+                // its saved source in this independent advection recurrence.
+                const double heating = fields["heat_generation"](i, j) * cfg.dt /
+                    (cfg.rho_cp * cfg.c);
+                expected = (300 + heating + courant * expected) / (1 + courant);
+                error = std::max(error, std::abs(fields["temperature"](i, j) - expected));
+            }
+        }
+        check(global_max_abs(error) < 1e-7,
+              "thermal advection must select the correct end reservoir after flow reversal");
+    }
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
 
@@ -596,6 +649,7 @@ int main(int argc, char** argv) {
     test_boundary_heat_is_bounded_and_uses_field_viscosity();
     test_cavitation_front_heat_uses_active_face_average();
     test_elrod_axial_boundary_uses_pressure_value();
+    test_distinct_end_temperatures_with_flow_reversal();
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);

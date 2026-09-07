@@ -315,7 +315,7 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
 
 void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg, double dt) {
     const bool active = cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE &&
-        dt > 0.0 && cfg.gas_mass_transfer_rate > 0.0;
+        dt > 0.0 && (cfg.gas_mass_transfer_rate > 0.0 || cfg.effective_gas_absorption_rate() > 0.0);
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         for (int j = 0; j < mesh.n_z_local; ++j) {
@@ -342,7 +342,8 @@ void update_gas_state(Fields& fields, const Mesh& mesh, const SimulationConfig& 
                 const double liquid_mass_area = std::max(rho_liquid * h * theta, kMinPositive);
                 // dM_l/dt = dM_d/dt = -k (M_d - c_eq M_l), with oil M_l-M_d
                 // invariant. Integrate exactly at frozen p,T; expm1 retains small steps.
-                const double rate_dt = cfg.gas_mass_transfer_rate * dt;
+                const double rate_dt = dt * (dissolved >= equilibrium
+                    ? cfg.gas_mass_transfer_rate : cfg.effective_gas_absorption_rate());
                 const double exponent = (1.0 - equilibrium) * rate_dt;
                 const double kinetic_time = exponent > 1e-8
                     ? -std::expm1(-exponent) / (1.0 - equilibrium)

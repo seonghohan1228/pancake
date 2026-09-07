@@ -1,5 +1,31 @@
 # Development Plan
 
+## 2026-09-07 clarification: FW68D, pressure reservoirs and phase identity
+
+- [x] Record FW68D, 20–80 °C, reservoirs to 20 bar absolute, R410A charge near
+  10 bar, and the independent oil-air requirement in the
+  [detailed review](docs/FW68D_CAVITATION_REVIEW.md).
+- [x] Verify that pressure ends admit reverse flow and that groove, circular
+  hole and no-internal-inlet geometries have distinct meanings. Add per-end
+  inflow state and conservative bidirectional species/thermal tests.
+- [x] Reject silent boundary-pressure replacement under `LOCAL_PSAT`.
+- [x] Separate absorption rate from release and verify compression without
+  fictitious gas loss. Do not transfer paraffin kinetics to FW68D.
+- [x] Compare published mechanisms and recorded numerical results; correct
+  the Etsion uncertainty-count and gas-validation overstatements. Quantify the
+  pure-R410A ideal-gas error using a traceable EOS diagnostic.
+- [ ] Obtain charge temperature and measured/sourced FW68D-air and
+  FW68D-R410A material data. Do not substitute R290/PZ68S or R410A/FVS50.
+- [ ] Implement and verify coupled pressure/species/EOS/volume closure; the
+  1-ms air-bearing timestep failure below remains unresolved.
+- [ ] Implement physical R410A component thermodynamics or an assessed
+  fixed-blend approximation, including phase identity and thermal terms.
+- [ ] Generalize internal reservoir species treatment for reverse flow and
+  independently characterized groove/hole reservoirs.
+- [ ] Reproduce gaseous and vaporous bearing benchmarks with the completed
+  formulation, then validate FW68D experiments and measure runtime at fixed
+  accuracy. A property diagnostic is not a bearing validation.
+
 ## 2026-09-06 audit: oil-air and oil-R410A target
 
 The [physics audit](docs/PHYSICS_AUDIT_2026-09.md) is the current assessment of

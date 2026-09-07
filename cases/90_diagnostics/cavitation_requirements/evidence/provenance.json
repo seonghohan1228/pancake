@@ -1,0 +1,57 @@
+{
+  "base_revision": "e20877117e9777c6f1ae99047c66a30cdf40738b",
+  "tested_source": "base revision plus source files identified below; written before commit",
+  "binary_sha256": {
+    "build-windows-mingw/pancake.exe": "fdc095ca888ecaaf1c399aa073f3cb549674ef34a7b4ac0033e36d06f952988f",
+    "build-windows-mingw/kinetics_probe.exe": "ba14f5bea82aae9c1554d400e4244079a618e389cd92df5623501178158e56b8",
+    "build-linux/pancake": "34dee90385e7858f64a12899966490c16ff9f733e1fa040517148db1d1da82a9"
+  },
+  "windows_tests": {
+    "registered": 40,
+    "passed": 40,
+    "additional_gas_transport_ranks": [
+      1,
+      4
+    ]
+  },
+  "linux_tests": {
+    "registered": 40,
+    "initial_passed": 37,
+    "initial_launch_rejections": [
+      "test_elrod_a2_mpi6",
+      "test_fbns_mpi6",
+      "test_schemes_mpi6"
+    ],
+    "retry_passed": 3,
+    "retry_environment": {
+      "OMPI_MCA_rmaps_base_oversubscribe": "1"
+    }
+  },
+  "operating_requirements": {
+    "oil": "FW68D",
+    "temperature_C": [
+      20,
+      80
+    ],
+    "reservoir_pressure_max_bar_absolute": 20,
+    "R410A_charge_pressure_bar_absolute_approx": 10,
+    "charge_temperature_C": null,
+    "other_species_case": "air"
+  },
+  "production_R410A_supported": false,
+  "pressure_volume_coupling_fixed": false,
+  "source_sha256_lf_normalized": {
+    "src/config.hpp": "584979fcd5cb313f277b078387062238a23322a9c2a2ba9eef71d09ecf0e03dd",
+    "src/energy.cpp": "34d9fbaf850bd63b5cfc8ba4b7af67b990ca4fcdb981750c348d37288502bb80",
+    "src/fluid_properties.cpp": "efb5ea6b9ebf973ada53a70f3aa9012b8f2f771ec2acd4fdcc50013cee5dffaf",
+    "src/gas_transport.cpp": "826316ffe231e1e295cd20b192a8150519a5f3b8b946776691a7ab0a1f19cfd3",
+    "tests/test_config_keys.cpp": "39717f2a2dd7e8637767584a08051646f12541b277d30c97927c02e4fb39e163",
+    "tests/test_energy.cpp": "eeb7e7a5bacd85b71177dd9b07181e9039e54bb95769ed6dd71d112d0554fb0e",
+    "tests/test_gas_transport.cpp": "65b2fecec8bb4f8b6fd3e4be3a16e905742192282e9bd8537b7fa516e13dd022",
+    "tests/test_physics_audit.cpp": "5e47e2c9fb9dc7486b8f1bafdf3ff92a7a8ee81c9d152316a386635495582ec3",
+    "cases/90_diagnostics/cavitation_requirements/kinetics_probe.cpp": "9a8a92b749c180b4de182305aef9b7374f8d55ceee43870fca000eaf8be22836",
+    "cases/90_diagnostics/cavitation_requirements/plot_checks.py": "20e4c98d38f902e1fc6e0e4c8c08a1815790ce6947b30dbed80415ea69c5b3cd",
+    "cases/05_etsion_extent/comparison.csv": "14b10eb9ea57ef464fb02faac23380f347a74b72884fd6aaa6469797da4e44ca",
+    "cases/ref_data/etsion1982_table2_extent.csv": "4ae033886e91a961993a7b92b168c7420f762306812876a9f13513806ac8d7ba"
+  }
+}

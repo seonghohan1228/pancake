@@ -119,6 +119,37 @@ void test_phase_exchange(const Mesh& mesh) {
           "pressure changes must update gas volume without a fictitious relaxation time");
 }
 
+void test_separate_absorption(const Mesh& mesh) {
+    auto cfg = config();
+    cfg.dissolved_gas_species = DissolvedGasSpecies::AIR;
+    cfg.dissolved_gas_henry_coeff = 1e-8;
+    cfg.gas_absorption_rate = 0;
+    auto f = fields_for(mesh, cfg);
+    f["pressure"].fill(1e5);
+    FluidProperties::update_gas_state(f, mesh, cfg, 0.01);
+    const double free = f["free_gas_mass"](0, 0);
+    const double alpha = f["alpha_gas"](0, 0);
+    const double oil = liquid_mass(f) * (1 - f["dissolved_gas"](0, 0));
+    const double gas = liquid_mass(f) * f["dissolved_gas"](0, 0) + free;
+    check(free > 0, "zero absorption must still allow supersaturated oil to release air");
+    f["pressure"].fill(4e5);
+    FluidProperties::update_gas_state(f, mesh, cfg, 0.01);
+    check(close(f["free_gas_mass"](0, 0), free), "compression at zero absorption must conserve free gas mass");
+    check(close(f["alpha_gas"](0, 0), alpha / 4), "quadrupling ideal-gas pressure must quarter its volume");
+    cfg.gas_mass_transfer_rate = 0;
+    cfg.gas_absorption_rate = 3;
+    const double ml = liquid_mass(f);
+    const double md = f["dissolved_gas"](0, 0) * ml;
+    const double ceq = 0.004;
+    const double transfer = (md - ceq * ml) * (-std::expm1(-(1-ceq) * 3 * 0.01)) / (1-ceq);
+    FluidProperties::update_gas_state(f, mesh, cfg, 0.01);
+    check(close(f["free_gas_mass"](0, 0), free + transfer),
+          "absorption-only kinetics must match the exact conservative reaction");
+    check(close(liquid_mass(f) * (1 - f["dissolved_gas"](0, 0)), oil), "absorption must conserve oil");
+    check(close(liquid_mass(f) * f["dissolved_gas"](0, 0) + f["free_gas_mass"](0, 0), gas),
+          "absorption must conserve dissolved plus free gas");
+}
+
 void test_conservative_transport(const Mesh& mesh) {
     auto cfg = config();
     auto f = fields_for(mesh, cfg);
@@ -282,6 +313,7 @@ int main(int argc, char** argv) {
         const auto cfg = config();
         Mesh mesh(cfg);
         test_phase_exchange(mesh);
+        test_separate_absorption(mesh);
         test_conservative_transport(mesh);
         test_carrier_storage(mesh);
         test_closed_bearing_gas_inventory(mesh);

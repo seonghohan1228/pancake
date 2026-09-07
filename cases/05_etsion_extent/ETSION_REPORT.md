@@ -19,9 +19,9 @@ because `alpha_gas` is identically zero on every scored run.
 
 | | |
 |---|---|
-| **FBNS rupture angle θ_st** | mean \|error\| **5.9°**, max 15.0°. **4 of 8** conditions inside the reference's own ±5° angular uncertainty; **all four 1840 rpm conditions** inside it (+1.5, −5.5, −4.0, −3.0°) |
+| **FBNS rupture angle θ_st** | mean \|error\| **5.9°**, max 15.0°. **4 of 8** conditions inside the reference's own ±5° angular uncertainty: three at 1840 rpm and one at 3000 rpm. The −5.5° condition at 1840 rpm is outside it. |
 | **FBNS reformation angle θ_end** | systematically **late**: +7.5 to +10° at 1840 rpm, +24.5 to +34.5° at 3000 rpm. The cavity is too long, and the error is a speed effect, not a pressure effect |
-| **The control variable is reproduced** | measured θ_end retreats **80.0°** as p_s goes 13.6 → 54.4 kPa at 1840 rpm; FBNS gives **78.0°** (2.5 % error). The physics the paper exists to demonstrate is captured |
+| **Ambient-pressure dependence of extent** | measured θ_end retreats **80.0°** as p_s goes 13.6 → 54.4 kPa at 1840 rpm; FBNS gives **78.0°** (2.5 % error). This agreement does not reproduce the measured pressure variation inside the cavity, which the constant-pressure model cannot resolve. |
 | **JFO / Elrod fails this case** | θ_st **18–36° early**, θ_end **77–122° late**, extent error **95–158°**, and its load collapses to 1/10 of the FBNS value at low ambient |
 | **Three structural findings** | the gas model is provably **inert** on the configuration the case brief specifies; p_min is **structurally unreachable**; the alternative datum is both physically degenerate and **numerically singular**. §5 |
 

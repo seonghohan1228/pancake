@@ -162,6 +162,46 @@ void test_shipped_configs_parse() {
 #endif
 }
 
+void test_reservoir_states() {
+    SimulationConfig cfg;
+    cfg.load_from_text("bc_z_south_thermal = CONSTANT\nbc_z_north_thermal = CONSTANT\n"
+        "bc_z_south_temperature = 310\nbc_z_north_temperature = 350\n"
+        "bc_z_south_dissolved_gas = 0.01\nbc_z_north_dissolved_gas = 0.02\n"
+        "bc_z_south_free_gas_mass_fraction = 0.001\nbc_z_north_free_gas_mass_fraction = 0.002\n"
+        "gas_absorption_rate = 0\n");
+    cfg.p_cav = 100;
+    cfg.bc_z_south_val = cfg.bc_z_north_val = 1e5;
+    cfg.dissolved_gas_max = 0.5;
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.axial_inflow_temperature(true) == 310 && copy.axial_inflow_temperature(false) == 350,
+          "distinct end temperatures must survive serialization");
+    check(copy.axial_inflow_dissolved_gas(true) == 0.01 && copy.axial_inflow_dissolved_gas(false) == 0.02,
+          "distinct end concentrations must survive serialization");
+    check(copy.bc_z_south_free_gas_mass_fraction == 0.001 && copy.bc_z_north_free_gas_mass_fraction == 0.002,
+          "entrained gas states must survive serialization");
+    check(copy.effective_gas_absorption_rate() == 0, "zero absorption must survive serialization");
+    std::vector<std::string> errors, warnings;
+    cfg.validate(errors, warnings);
+    check(errors.empty(), "valid end states must pass validation");
+    cfg.bc_z_south_free_gas_mass_fraction = 1;
+    cfg.validate(errors, warnings);
+    check(mentions(errors, "bc_z_south_free_gas_mass_fraction"), "pure-gas inflow needs another transport closure");
+    cfg.bc_z_south_free_gas_mass_fraction = 0;
+    cfg.bc_z_south_thermal = ThermalInflowMode::ZERO_GRADIENT;
+    cfg.validate(errors, warnings);
+    check(mentions(errors, "bc_z_south_temperature"), "an explicit reservoir temperature must not be ignored");
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.cavitation_threshold = CavitationThreshold::LOCAL_PSAT;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.solubility_model = SolubilityModel::HENRY;
+    cfg.dissolved_gas_henry_coeff = 1e-8;
+    cfg.dissolved_gas_initial = 0.01;
+    cfg.validate(errors, warnings);
+    check(mentions(errors, "bc_z_south_val") && mentions(errors, "bc_z_north_val"),
+          "a charge bubble point must not silently raise either reservoir pressure");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -175,6 +215,7 @@ int main(int argc, char** argv) {
     test_manifest_matches_parser();
     test_written_config_round_trips();
     test_shipped_configs_parse();
+    test_reservoir_states();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();

@@ -2,6 +2,32 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-09-07 - Correct reservoir states and separate gas absorption
+
+- Give each axial pressure reservoir an independent inflow temperature,
+  dissolved mass fraction and entrained free-gas mass fraction. Outflow uses
+  the interior state. Record actual incoming free-species flux as the liquid
+  carrier flux times `q/(1-q)`. Defaults reproduce the previous boundary state.
+- Reject explicit end temperatures paired with thermal extrapolation, invalid
+  reservoir fractions, and reservoir pressures below the effective cavity
+  floor. Previously `LOCAL_PSAT` could silently raise a requested outlet to
+  the initial charge's bubble point. Remove the advice equating atmospheric
+  reservoir pressure with a universal cavitation pressure.
+- Add independent `gas_absorption_rate`, including absorption-only and zero
+  absorption limits, while retaining conservative analytical exchange.
+  The historical equal-rate choice remains the default, not a calibrated law.
+- Verify pressure-gradient reversal against discrete analytical species and
+  energy profiles, gas inventory against boundary flux, independent absorption
+  against the exact reaction, and compression against the ideal-gas volume law.
+  All 40 tests execute successfully on Windows and Linux; retain the Linux
+  six-rank launch failure and successful resource-setting retry in the evidence.
+- Write the detailed FW68D/air/R410A physics review, distinguishing corrected
+  code from unresolved pressure/species/volume coupling and missing material
+  data. Add reproducible kinetic and pure-R410A EOS diagnostic figures.
+  Correct two overstatements in the archived Etsion report and replot its
+  measured/archived reformation angles with the stated uncertainty.
+  No validated R410A bearing capability is claimed.
+
 ### 2026-09-06 - Measure the effect of the physics repairs
 
 - Rebuild pre-audit `b9dcaf3` and compare with repaired `2bc4d3c` on identical

@@ -805,7 +805,12 @@ struct SimulationConfig {
     double dissolved_gas_henry_coeff = 0.0;      // Henry slope H at the reference T [1/Pa]: c_sat = H(T) p
     double dissolved_gas_henry_temp_coeff = 0.0; // van't Hoff slope E_H [K]: H(T)=H_ref exp(E_H(1/T-1/T_ref))
     double dissolved_gas_liquid_density = 0.0;   // Partial liquid-volume density [kg/m^3]; required by MIXTURE
-    double gas_mass_transfer_rate = 0.0;         // Finite-rate release/resorption [1/s]
+    double gas_mass_transfer_rate = 0.0;         // Release rate [1/s]; legacy absorption fallback.
+    double gas_absorption_rate = -1.0;          // -1 inherits release rate; 0 disables absorption.
+    /// Separate absorption kinetics; bubble compression alone exchanges no mass.
+    double effective_gas_absorption_rate() const {
+        return gas_absorption_rate >= 0 ? gas_absorption_rate : gas_mass_transfer_rate;
+    }
     double dissolved_gas_diffusivity = 0.0;      // Effective Fickian diffusivity of dissolved gas [m^2/s]
     double solution_density_gas_coeff = 0.0;     // Optional density correction by concentration
     double solution_viscosity_gas_coeff = 0.0;   // Log-mixing viscosity exponent a_c [-]: mu_l = mu_oil exp(a_c c_d)
@@ -883,6 +888,30 @@ struct SimulationConfig {
     double bc_z_north_val  = 0.0;
     double bc_z_north_theta = 1.0; // Deprecated compatibility input; Elrod derives theta from bc_z_north_val.
     ThermalInflowMode bc_z_north_thermal = ThermalInflowMode::ZERO_GRADIENT; // Energy inflow temperature treatment
+    // Pressure reservoirs allow both flow directions. These states apply only
+    // to inflow; outflow transports the adjacent interior state.
+    double bc_z_south_temperature = 0.0; // 0 inherits temperature_reference [K].
+    double bc_z_north_temperature = 0.0;
+    double bc_z_south_dissolved_gas = -1.0; // -1 inherits dissolved_gas_initial.
+    double bc_z_north_dissolved_gas = -1.0;
+    double bc_z_south_free_gas_mass_fraction = 0.0; // Free gas / total mixture mass.
+    double bc_z_north_free_gas_mass_fraction = 0.0;
+
+    /// Temperature carried by fluid entering from the selected end reservoir.
+    double axial_inflow_temperature(bool south) const {
+        const double value = south ? bc_z_south_temperature : bc_z_north_temperature;
+        return value > 0 ? value : temperature_reference;
+    }
+    /// Dissolved-species mass fraction within incoming liquid solution.
+    double axial_inflow_dissolved_gas(bool south) const {
+        const double value = south ? bc_z_south_dissolved_gas : bc_z_north_dissolved_gas;
+        return value >= 0 ? value : dissolved_gas_initial;
+    }
+    /// Incoming free-gas mass per liquid-solution mass, for a common velocity.
+    double axial_inflow_free_gas_ratio(bool south) const {
+        const double value = south ? bc_z_south_free_gas_mass_fraction : bc_z_north_free_gas_mass_fraction;
+        return value / (1.0 - value);
+    }
 
     // Inlets
     std::vector<InletConfig> inlets;
@@ -1084,6 +1113,7 @@ struct SimulationConfig {
             }
             else if (key == "dissolved_gas_liquid_density") dissolved_gas_liquid_density = std::stod(value);
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
+            else if (key == "gas_absorption_rate") gas_absorption_rate = std::stod(value);
             else if (key == "dissolved_gas_diffusivity") dissolved_gas_diffusivity = std::stod(value);
             else if (key == "solution_density_gas_coeff") solution_density_gas_coeff = std::stod(value);
             else if (key == "solution_viscosity_gas_coeff") solution_viscosity_gas_coeff = std::stod(value);
@@ -1152,6 +1182,12 @@ struct SimulationConfig {
             else if (key == "bc_z_north_val") bc_z_north_val = std::stod(value);
             else if (key == "bc_z_north_theta") bc_z_north_theta = std::stod(value);
             else if (key == "bc_z_north_thermal") bc_z_north_thermal = thermal_inflow_from_config(value);
+            else if (key == "bc_z_south_temperature") bc_z_south_temperature = std::stod(value);
+            else if (key == "bc_z_north_temperature") bc_z_north_temperature = std::stod(value);
+            else if (key == "bc_z_south_dissolved_gas") bc_z_south_dissolved_gas = std::stod(value);
+            else if (key == "bc_z_north_dissolved_gas") bc_z_north_dissolved_gas = std::stod(value);
+            else if (key == "bc_z_south_free_gas_mass_fraction") bc_z_south_free_gas_mass_fraction = std::stod(value);
+            else if (key == "bc_z_north_free_gas_mass_fraction") bc_z_north_free_gas_mass_fraction = std::stod(value);
             else if (key == "cavitation_model") {
                 if (value == "FULL_SOMMERFELD" || value == "SOMMERFELD")
                     cavitation_model = CavitationModel::FULL_SOMMERFELD;
@@ -1297,8 +1333,11 @@ struct SimulationConfig {
             if (type == BCType::NEUMANN) return;
             if (!finite(pressure) || pressure <= 0.0) {
                 error(std::string(label) + " must be a positive absolute pressure in Pa.");
-            } else if (finite(p_cav) && p_cav > 0.0 && pressure < p_cav) {
-                error(std::string(label) + " must be >= p_cav; pressure inputs are absolute.");
+            } else if (finite(p_cav) && p_cav > 0.0 && pressure < effective_p_cav()) {
+                error(std::string(label) + " is below the effective cavitation pressure. "
+                      "The selected pressure-floor model cannot impose this reservoir; "
+                      "LOCAL_PSAT uses the initial charge bubble point as a global floor. "
+                      "Do not raise the reservoir pressure to hide this conflict.");
             }
         };
         auto require_table = [&](const std::vector<PropertyTablePoint>& table,
@@ -1349,7 +1388,8 @@ struct SimulationConfig {
         require_positive(theta_min, "theta_min");
         require_positive(min_film_thickness, "min_film_thickness");
         if (!finite(p_cav) || p_cav <= 0.0) {
-            error("p_cav must be an absolute pressure > 0 Pa. Use about 101325 Pa for atmospheric cavitation, not 0 gauge.");
+            error("p_cav must be an absolute pressure > 0 Pa. Use a justified cavity pressure; "
+                  "the reservoir pressure belongs in bc_z_south_val / bc_z_north_val.");
         }
         if (!finite(omega_ramp_time) || omega_ramp_time < 0.0) {
             error("omega_ramp_time must be finite and non-negative.");
@@ -1461,6 +1501,22 @@ struct SimulationConfig {
 
         require_pressure(bc_z_south_type, bc_z_south_val, "bc_z_south_val");
         require_pressure(bc_z_north_type, bc_z_north_val, "bc_z_north_val");
+        for (bool south : {true, false}) {
+            const std::string prefix = south ? "bc_z_south_" : "bc_z_north_";
+            const double temperature = south ? bc_z_south_temperature : bc_z_north_temperature;
+            const double concentration = south ? bc_z_south_dissolved_gas : bc_z_north_dissolved_gas;
+            const double quality = south ? bc_z_south_free_gas_mass_fraction : bc_z_north_free_gas_mass_fraction;
+            const auto thermal = south ? bc_z_south_thermal : bc_z_north_thermal;
+            if (!finite(temperature) || temperature < 0)
+                error(prefix + "temperature must be positive kelvin, or 0 to inherit temperature_reference.");
+            if (temperature > 0 && thermal != ThermalInflowMode::CONSTANT)
+                error(prefix + "temperature requires " + prefix + "thermal = CONSTANT.");
+            if (!finite(concentration) || (concentration != -1.0 &&
+                (concentration < 0 || concentration > dissolved_gas_max || concentration >= 1)))
+                error(prefix + "dissolved_gas must be -1 (inherit), or a liquid mass fraction in [0,1).");
+            if (!finite(quality) || quality < 0 || quality >= 1)
+                error(prefix + "free_gas_mass_fraction must lie in [0,1).");
+        }
         for (size_t idx = 0; idx < inlets.size(); ++idx) {
             const InletConfig& inlet = inlets[idx];
             const std::string prefix = "inlet[" + std::to_string(idx) + "]";
@@ -1470,8 +1526,9 @@ struct SimulationConfig {
             }
             if (!finite(inlet.p_supply) || inlet.p_supply <= 0.0) {
                 error(prefix + ".p_supply must be a positive absolute pressure in Pa.");
-            } else if (finite(p_cav) && p_cav > 0.0 && inlet.p_supply < p_cav) {
-                error(prefix + ".p_supply must be >= p_cav; pressure inputs are absolute.");
+            } else if (finite(p_cav) && p_cav > 0.0 && inlet.p_supply < effective_p_cav()) {
+                error(prefix + ".p_supply is below the effective cavitation pressure; "
+                      "the pressure-floor model cannot impose this inlet reservoir.");
             }
             // t_supply defaults to 0 K and feeds_fresh_oil is set by the mere presence
             // of the optional token, so a stray or mistyped value would silently pin the
@@ -1779,8 +1836,10 @@ struct SimulationConfig {
                 warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
             }
             if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate < 0.0) {
-                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables phase exchange).");
+                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables release).");
             }
+            if (!finite(gas_absorption_rate) || (gas_absorption_rate < 0 && gas_absorption_rate != -1))
+                error("gas_absorption_rate must be -1 (inherit release rate) or >= 0 [1/s].");
             if (solution_mode == SolutionMode::STEADY_STATE &&
                 steady_gas_model == SteadyGasModel::FROZEN && !allow_frozen_gas_steady) {
                 error("TWO_PHASE in STEADY_STATE with steady_gas_model = FROZEN "
@@ -2191,6 +2250,8 @@ struct SimulationConfig {
             << "dissolved_gas_henry_temp_coeff = " << dissolved_gas_henry_temp_coeff << "\n"
             << "dissolved_gas_liquid_density = " << dissolved_gas_liquid_density << "\n"
             << "gas_mass_transfer_rate = " << gas_mass_transfer_rate << "\n"
+            << "# gas_absorption_rate: -1 inherits release rate; 0 disables absorption\n"
+            << "gas_absorption_rate = " << gas_absorption_rate << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
             << "solution_density_gas_coeff = " << solution_density_gas_coeff << "\n"
             << "solution_viscosity_gas_coeff = " << solution_viscosity_gas_coeff << "\n"
@@ -2244,18 +2305,26 @@ struct SimulationConfig {
             << "min_film_thickness = " << min_film_thickness << "\n"
             << "stop_on_nonpositive_film = " << (stop_on_nonpositive_film ? "true" : "false") << "\n\n";
 
-        out << "# Axial Boundary Conditions (Outlets)\n"
+        out << "# Axial pressure reservoirs (inflow and outflow are both permitted)\n"
             << "# Options: DIRICHLET, NEUMANN, INLET_OUTLET\n"
             << "# For JFO, boundary film content is derived from bc_z_*_val,\n"
             << "# p_cav, and bulk_modulus; legacy bc_z_*_theta inputs are ignored.\n"
-            << "# bc_z_*_thermal options: ZERO_GRADIENT (submerged/same-oil inflow),\n"
-            << "#   CONSTANT (fed inlet, carries temperature_reference on inflow)\n"
+            << "# bc_z_*_thermal: CONSTANT uses the reservoir temperature on inflow only;\n"
+            << "#   ZERO_GRADIENT extrapolates interior temperature even during reverse flow.\n"
+            << "# Temperature 0 and dissolved_gas -1 inherit their global reference/initial values.\n"
+            << "# Free-gas mass fraction is free gas / (liquid solution + free gas), not void fraction.\n"
             << "bc_z_south_type = " << to_config_value(bc_z_south_type) << "\n"
             << "bc_z_south_val = " << bc_z_south_val << "\n"
             << "bc_z_south_thermal = " << to_config_value(bc_z_south_thermal) << "\n"
+            << "bc_z_south_temperature = " << bc_z_south_temperature << "\n"
+            << "bc_z_south_dissolved_gas = " << bc_z_south_dissolved_gas << "\n"
+            << "bc_z_south_free_gas_mass_fraction = " << bc_z_south_free_gas_mass_fraction << "\n"
             << "bc_z_north_type = " << to_config_value(bc_z_north_type) << "\n"
             << "bc_z_north_val = " << bc_z_north_val << "\n"
-            << "bc_z_north_thermal = " << to_config_value(bc_z_north_thermal) << "\n\n";
+            << "bc_z_north_thermal = " << to_config_value(bc_z_north_thermal) << "\n"
+            << "bc_z_north_temperature = " << bc_z_north_temperature << "\n"
+            << "bc_z_north_dissolved_gas = " << bc_z_north_dissolved_gas << "\n"
+            << "bc_z_north_free_gas_mass_fraction = " << bc_z_north_free_gas_mass_fraction << "\n\n";
 
         out << "# Cavitation\n"
             << "# Options: FULL_SOMMERFELD, GUMBEL, JFO, FBNS\n"
@@ -2370,7 +2439,7 @@ struct SimulationConfig {
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
-            "gas_mass_transfer_rate", "dissolved_gas_diffusivity",
+            "gas_mass_transfer_rate", "gas_absorption_rate", "dissolved_gas_diffusivity",
             "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
             "viscosity_temperature_coeff", "viscosity_pressure_coeff",
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",
@@ -2390,6 +2459,9 @@ struct SimulationConfig {
             "bc_z_south_val", "bc_z_south_theta", "bc_z_south_thermal",
             "bc_z_north_type", "bc_z_north_val", "bc_z_north_theta",
             "bc_z_north_thermal", "cavitation_model", "cavitation_threshold",
+            "bc_z_south_temperature", "bc_z_north_temperature",
+            "bc_z_south_dissolved_gas", "bc_z_north_dissolved_gas",
+            "bc_z_south_free_gas_mass_fraction", "bc_z_north_free_gas_mass_fraction",
             "cavitated_film_model", "consistent_boundary_flux",
             "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
             "steady_gas_model",

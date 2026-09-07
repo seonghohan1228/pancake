@@ -2416,3 +2416,78 @@ liquid volume reaches 0.003358 of the gap even while the gas mass residual
 stays below 1.4e-12. No stable physical load increment, oscillation frequency
 or gas-pressure validation can be inferred from those histories. The coupled
 pressure, EOS, volume and species acceptance problem remains open.
+
+### 18.7 End reservoirs and asymmetric kinetics (2026-09-07)
+
+The specified experimental target is now FW68D with air or R410A at 20–80 °C,
+reservoirs up to 20 bar absolute, and refrigerant charging near 10 bar. Charge
+temperature and FW68D mixture data remain required. The full physical
+interpretation and literature comparison are in
+[FW68D cavitation review](docs/FW68D_CAVITATION_REVIEW.md).
+
+An axial pressure outlet is a bidirectional reservoir. With outward liquid
+mass flux $F_l$, the dissolved-species flux is
+
+$$
+F_d=\max(F_l,0)c_{d,\mathrm{cell}}+
+    \min(F_l,0)c_{d,\mathrm{reservoir}}.
+$$
+
+Each end now has its own `bc_z_*_dissolved_gas` (negative sentinel −1 inherits
+the global initial concentration), `bc_z_*_temperature` (0 inherits reference
+temperature) and `bc_z_*_free_gas_mass_fraction` (default 0). Temperature is in
+kelvin. The temperature state is used on inflow only when `bc_z_*_thermal =
+CONSTANT`; `ZERO_GRADIENT` extrapolates the interior temperature. An explicit
+temperature with `ZERO_GRADIENT` is rejected. The outgoing state remains the
+interior state under either thermal mode.
+
+For incoming free-species mass fraction $q_r=M_g/(M_g+M_l)$ and common phase
+transport velocity, the incoming free-species mass flux is
+$F_g=F_l q_r/(1-q_r)$. This ratio is not a void fraction. Outgoing free-species
+flux uses the solved free mass per area and the same carrier velocity. Boundary
+diagnostics retain the actual terms used by the linear solves.
+
+The species boundary inputs apply to transient `TWO_PHASE` transport; the
+steady local feed flash has no conservative species transport operator. These
+inputs do not make different steady reservoir compositions physically supported.
+
+`LOCAL_PSAT` still denotes a global initial bubble-point pressure floor, not a
+coupled local thermodynamic state. Previously the boundary helper's maximum
+with that floor could alter a specified reservoir pressure even after config
+validation. Both end and internal reservoir pressures are now validated
+against the **effective** floor. A conflict is rejected. This prevents solving
+a different reservoir problem; it does not provide a desorption-pressure EOS.
+
+The local reaction of section 18.2 now uses
+
+$$
+k=\begin{cases}k_r,&c_d\ge c_{d,eq},\\k_a,&c_d<c_{d,eq},\end{cases}
+\qquad \dot M_l=\dot M_d=-k(M_d-c_{d,eq}M_l),\quad \dot M_g=-\dot M_d.
+$$
+
+`gas_mass_transfer_rate` is $k_r$; `gas_absorption_rate` is $k_a$, with −1
+inheriting $k_r$ for compatibility. Either rate can be zero independently.
+For frozen $p,T,c_{d,eq}$, the transferred mass over a timestep remains
+
+$$
+\Delta M=(M_d-c_{d,eq}M_l)
+\frac{1-\exp[-(1-c_{d,eq})k\Delta t]}{1-c_{d,eq}},
+$$
+
+limited by available donor inventory and the documented release cap. The limit
+as $c_{d,eq}\to1$ is evaluated without cancellation. Updating $M_l$, $M_d$ and
+$M_g$ with equal and opposite transfers conserves oil and total species mass.
+Pressure-dependent gas volume is then evaluated from the EOS, even if both
+rates vanish. Thus compression can shrink a bubble without absorbing gas.
+Separate rates are needed to test short-cycle observations of release followed
+by compression with negligible reabsorption; the literature's paraffin rates
+are not assigned to FW68D (Reinke et al.,
+*[Fluids](https://doi.org/10.3390/fluids7050159)*, 2022).
+
+R410A remains unimplemented in the production solver. The independent
+[EOS diagnostic](cases/90_diagnostics/cavitation_requirements/README.md) uses
+CoolProp 7.2.0 to demonstrate that even an ideal R410A gas has material density
+errors in the specified operating window, and that phase identity matters.
+It provides no FW68D solubility or off-equilibrium solution properties.
+The classical equilibrium JFO vapor limit remains available, but no general
+joint gas/vapor component-and-energy model is claimed by this addition.

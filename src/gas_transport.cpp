@@ -164,15 +164,14 @@ void add_dissolved_axial_boundary_convection(LinearSystem& sys, const Field& p,
                                              const Fields& fields,
                                              const Mesh& mesh,
                                              const SimulationConfig& cfg) {
-    const double c_in = std::clamp(cfg.dissolved_gas_initial, 0.0, cfg.dissolved_gas_max);
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         const double flux_s = south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_s >= 0.0) sys.source(i, 0) += flux_s * c_in;  // inflow
+        if (flux_s >= 0.0) sys.source(i, 0) += flux_s * cfg.axial_inflow_dissolved_gas(true);
         else sys.a_p(i, 0) += -flux_s;                         // outflow
 
         const int j = mesh.n_z_local - 1;
         const double flux_n = north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_n < 0.0) sys.source(i, j) += -flux_n * c_in;  // inflow
+        if (flux_n < 0.0) sys.source(i, j) += -flux_n * cfg.axial_inflow_dissolved_gas(false);
         else sys.a_p(i, j) += flux_n;                          // outflow
     }
 }
@@ -184,11 +183,15 @@ void add_free_gas_axial_boundary_convection(LinearSystem& sys, const Field& p,
                                             const SimulationConfig& cfg) {
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         const double flux_s = south_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_s < 0.0) sys.a_p(i, 0) += -flux_s;  // south outflow; inflow has zero free gas
+        if (flux_s < 0.0) sys.a_p(i, 0) += -flux_s;
+        else sys.source(i, 0) += south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i) *
+                                    cfg.axial_inflow_free_gas_ratio(true);
 
         const int j = mesh.n_z_local - 1;
         const double flux_n = north_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_n > 0.0) sys.a_p(i, j) += flux_n;   // north outflow; inflow has zero free gas
+        if (flux_n > 0.0) sys.a_p(i, j) += flux_n;
+        else sys.source(i, j) -= north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i) *
+                                    cfg.axial_inflow_free_gas_ratio(false);
     }
 }
 
@@ -377,8 +380,8 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
         const double fs = south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
         const int j = n_z - 1;
         const double fn = north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i);
-        saved_boundary(i, 0) += fs * (fs >= 0 ? c_in : c(i, 0));
-        saved_boundary(i, j) -= fn * (fn < 0 ? c_in : c(i, j));
+        saved_boundary(i, 0) += fs * (fs >= 0 ? cfg.axial_inflow_dissolved_gas(true) : c(i, 0));
+        saved_boundary(i, j) -= fn * (fn < 0 ? cfg.axial_inflow_dissolved_gas(false) : c(i, j));
     }
 
     const double c_max = std::max(0.0, cfg.dissolved_gas_max);
@@ -408,7 +411,11 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh,
             const double fs = south_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
             const double fn = north_boundary_volume_flux(p, h, theta, fields, mesh, cfg, i);
             if (fs < 0) saved_boundary(i, 0) += fs * free_gas_mass(i, 0);
+            else saved_boundary(i, 0) += south_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i) *
+                                            cfg.axial_inflow_free_gas_ratio(true);
             if (fn > 0) saved_boundary(i, n_z - 1) -= fn * free_gas_mass(i, n_z - 1);
+            else saved_boundary(i, n_z - 1) -= north_boundary_mass_flux(p, h, theta, fields, mesh, cfg, i) *
+                                                 cfg.axial_inflow_free_gas_ratio(false);
         }
 
         for (int i = 0; i < n_theta; ++i) {

@@ -1,0 +1,1297 @@
+Start testing: Sep 07 13:49 Korea Standard Time
+----------------------------------------------------------
+1/40 Testing: test_linear_system
+1/40 Test: test_linear_system
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_linear_system.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_linear_system" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_linear_system...
+  test_diagonal PASS
+  helmholtz_1d max_err = 1.01301e-13
+  test_helmholtz_1d PASS
+PASS: test_linear_system
+<end of output>
+Test time =   0.22 sec
+----------------------------------------------------------
+Test Passed.
+"test_linear_system" end time: Sep 07 13:49 Korea Standard Time
+"test_linear_system" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/40 Testing: test_fvm
+2/40 Test: test_fvm
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fvm.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fvm" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_fvm...
+  test_ddt PASS
+  test_laplacian_2d max_err = 0.000760041
+  test_laplacian_2d PASS  (max_err = 0.000760041)
+  test_divergence_upwind PASS
+PASS: test_fvm
+<end of output>
+Test time =   0.20 sec
+----------------------------------------------------------
+Test Passed.
+"test_fvm" end time: Sep 07 13:49 Korea Standard Time
+"test_fvm" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/40 Testing: test_eos
+3/40 Test: test_eos
+Command: "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_eos.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_eos" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_eos
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"test_eos" end time: Sep 07 13:49 Korea Standard Time
+"test_eos" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/40 Testing: test_elrod_a1
+4/40 Test: test_elrod_a1
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_elrod_a1.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_elrod_a1" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+outer=0 mc=2.034e-07 ns=0 th=[1.000000,1.000000]
+outer=0 mc=9.831e-05 ns=2220 th=[0.999984,1.000016]
+Running test_elrod_a1...
+  uniform-film max |θ−1| = 2.03394e-07
+  test_uniform_film PASS
+  Gumbel peak p = 98284.8  Elrod A.1 peak p = 98307.3
+  relative peak-p error = 0.00022947
+  test_regression_vs_gumbel PASS
+PASS: test_elrod_a1
+<end of output>
+Test time =   0.22 sec
+----------------------------------------------------------
+Test Passed.
+"test_elrod_a1" end time: Sep 07 13:49 Korea Standard Time
+"test_elrod_a1" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/40 Testing: test_elrod_a2
+5/40 Test: test_elrod_a2
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_elrod_a2.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_elrod_a2" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_elrod_a2...
+  post-solve theta ghost mismatch = 0
+  complementarity max g·(1−θ)+ = 0
+  theta range = [0.112318, 1.01334]
+  cavitated cells: 4560  in diverging half: 2360  fraction: 0.517544
+  liquid content prev=0.116318  last=0.116318  rel drift=0
+  min pressure = 0 Pa
+  test_journal_bearing PASS
+PASS: test_elrod_a2
+<end of output>
+Test time =   2.64 sec
+----------------------------------------------------------
+Test Passed.
+"test_elrod_a2" end time: Sep 07 13:49 Korea Standard Time
+"test_elrod_a2" time elapsed: 00:00:02
+----------------------------------------------------------
+
+6/40 Testing: test_elrod_a2_mpi6
+6/40 Test: test_elrod_a2_mpi6
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "6" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_elrod_a2.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_elrod_a2_mpi6" start time: Sep 07 13:49 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_elrod_a2...
+  post-solve theta ghost mismatch = 0
+  complementarity max g·(1−θ)+ = 0
+  theta range = [0.112318, 1.01334]
+  cavitated cells: 4560  in diverging half: 2360  fraction: 0.517544
+  liquid content prev=0.116318  last=0.116318  rel drift=0
+  min pressure = 0 Pa
+  test_journal_bearing PASS
+PASS: test_elrod_a2
+<end of output>
+Test time =   6.18 sec
+----------------------------------------------------------
+Test Passed.
+"test_elrod_a2_mpi6" end time: Sep 07 13:50 Korea Standard Time
+"test_elrod_a2_mpi6" time elapsed: 00:00:06
+----------------------------------------------------------
+
+7/40 Testing: test_elrod_a2_mpi4
+7/40 Test: test_elrod_a2_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_elrod_a2.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_elrod_a2_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_elrod_a2...
+  post-solve theta ghost mismatch = 0
+  complementarity max g·(1−θ)+ = 0
+  theta range = [0.112318, 1.01334]
+  cavitated cells: 4560  in diverging half: 2360  fraction: 0.517544
+  liquid content prev=0.116318  last=0.116318  rel drift=0
+  min pressure = 0 Pa
+  test_journal_bearing PASS
+PASS: test_elrod_a2
+<end of output>
+Test time =   1.56 sec
+----------------------------------------------------------
+Test Passed.
+"test_elrod_a2_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_elrod_a2_mpi4" time elapsed: 00:00:01
+----------------------------------------------------------
+
+8/40 Testing: test_elrod_bc
+8/40 Test: test_elrod_bc
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_elrod_bc.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_elrod_bc" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_elrod_bc...
+  pressure-derived theta for pressure=1.5e6: expected=1.0015 range=[1.0015, 1.0015]
+  pressure range: [1.49988e+06, 1.49999e+06] Pa
+  legacy theta ignored: expected pressure-derived theta=1.0015 range=[1.0015, 1.0015]
+  recovered pressure expected=1.5e+06 actual max=1.49999e+06 Pa
+  realistic-beta supply theta expected=1.0015 field range=[1.0015, 1.0015]
+  explicit pressure capacity theta range: [0.5, 0.5]
+PASS: test_elrod_bc
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_elrod_bc" end time: Sep 07 13:50 Korea Standard Time
+"test_elrod_bc" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/40 Testing: test_inlets
+9/40 Test: test_inlets
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_inlets.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_inlets" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_inlets
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_inlets" end time: Sep 07 13:50 Korea Standard Time
+"test_inlets" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/40 Testing: test_velocity
+10/40 Test: test_velocity
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_velocity.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_velocity" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_velocity
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_velocity" end time: Sep 07 13:50 Korea Standard Time
+"test_velocity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/40 Testing: test_bc
+11/40 Test: test_bc
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_bc.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_bc" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+  max error vs uniform p0 = 1.06137e-07
+  max error vs linear profile = 1.12857e-08
+PASS: test_bc
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"test_bc" end time: Sep 07 13:50 Korea Standard Time
+"test_bc" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/40 Testing: test_journal_motion
+12/40 Test: test_journal_motion
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_journal_motion.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_journal_motion" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_journal_motion
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"test_journal_motion" end time: Sep 07 13:50 Korea Standard Time
+"test_journal_motion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/40 Testing: test_forces
+13/40 Test: test_forces
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_forces.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_forces" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_forces
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_forces" end time: Sep 07 13:50 Korea Standard Time
+"test_forces" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/40 Testing: test_energy
+14/40 Test: test_energy
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_energy.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_energy" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_energy
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"test_energy" end time: Sep 07 13:50 Korea Standard Time
+"test_energy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/40 Testing: test_energy_mpi4
+15/40 Test: test_energy_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_energy.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_energy_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_energy
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"test_energy_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_energy_mpi4" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/40 Testing: test_io
+16/40 Test: test_io
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_io.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_io" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_io
+<end of output>
+Test time =   0.16 sec
+----------------------------------------------------------
+Test Passed.
+"test_io" end time: Sep 07 13:50 Korea Standard Time
+"test_io" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/40 Testing: test_fluid_properties
+17/40 Test: test_fluid_properties
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fluid_properties.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fluid_properties" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+[33mWARNING: POLYNOMIAL viscosity fell to mubar = -7.171250 at T = 326.850000 degC and was floored at 0.001000 mu. The polynomial is being extrapolated outside its fitted temperature range; check viscosity_poly_k0/k1/k2 and the film temperatures. Reported once per run.[0m
+PASS: test_fluid_properties
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"test_fluid_properties" end time: Sep 07 13:50 Korea Standard Time
+"test_fluid_properties" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/40 Testing: test_gas_transport
+18/40 Test: test_gas_transport
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_gas_transport.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_gas_transport" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+PASS: test_gas_transport
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"test_gas_transport" end time: Sep 07 13:50 Korea Standard Time
+"test_gas_transport" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/40 Testing: test_diagnostics
+19/40 Test: test_diagnostics
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_diagnostics.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_diagnostics" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_diagnostics...
+  closed-domain worst |r_l| = 0.000000
+  open-domain worst |r_l| = 0.000000
+  inlet-case worst |r_l| = 0.000000, inlet source = 0.047631
+  clamp case worst |r_l| = 0.000000, clamp seen = 1
+  gas closure: worst |r_gas| = 0.000000, total drift = 0.000000, released m_g = 0.001694
+  reformation BC: c_boundary OFF=0.050000 ON=0.500000 (c_in=0.2175); gas_boundary_flux OFF=0.000000 ON=0.078716
+PASS: test_diagnostics
+<end of output>
+Test time =   0.22 sec
+----------------------------------------------------------
+Test Passed.
+"test_diagnostics" end time: Sep 07 13:50 Korea Standard Time
+"test_diagnostics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/40 Testing: test_mass_residual
+20/40 Test: test_mass_residual
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_mass_residual.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_mass_residual" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_mass_residual...
+  steady groove: clean cells = 464, worst clean |r|/row = 8.896e-15, worst clean |r|/flux = 1.547e-09
+  steady groove r_l from field = -1.180e-11, from diagnostics = -1.180e-11, |difference| = 3.595e-18
+  open ends: worst clean |r|/row = 1.124e-14, boundary flux = 1.522e-12
+  open ends r_l from field = -1.337e-12, from diagnostics = -1.337e-12, |difference| = 5.762e-18
+  perturbed cell: |r|_hit/flux = 2.133e+03, |r|_elsewhere/flux = 3.811e-10
+  global r_l before = -1.180e-11, after = -1.180e-11
+  perturbed r_l from field = -1.175e-11, from diagnostics = -1.180e-11, |difference| = 4.135e-14
+  absent field: no-op confirmed
+PASS: test_mass_residual
+<end of output>
+Test time =   0.18 sec
+----------------------------------------------------------
+Test Passed.
+"test_mass_residual" end time: Sep 07 13:50 Korea Standard Time
+"test_mass_residual" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/40 Testing: test_fbns
+21/40 Test: test_fbns
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fbns.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fbns" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_fbns...
+  complementarity: 4 Newton iterations, residual = 2.335e-17
+  complementarity: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-1) = 0.000e+00, max product = 0.000e+00, min theta = 3.124e-01
+  mass residual: max |r|/flux = 4.608e-15 (away from the groove 4.608e-15)
+  cavitated flux invariant over 91 cells: relative spread = 7.194e-16
+  rupture: exact 3.028e+02 deg, FBNS 3.015e+02 deg (-8.444e-01 cells), Elrod 2.850e+02 deg (-1.184e+01 cells)
+  reformation: exact 7.901e+01 deg, FBNS 7.950e+01 deg (3.288e-01 cells)
+  transient squeeze: worst |r|/flux = 5.087e-12
+  Dirichlet ends: worst boundary |r|/flux = 2.079e-16, boundary flux = -7.858e-02, sum(field) = -6.610e-18
+  Dirichlet ends: inlet source = 7.858e-02, telescoping closure = 8.327e-17
+  full-length groove: source(nz=8) = 1.599e-01, source(nz=16) = 1.599e-01, rel = 0.000e+00
+  scope: phase-2 configurations accepted, out-of-scope ones rejected
+  inert coupling: max |dp| = 0.000e+00 Pa, max |dtheta| = 0.000e+00
+  frozen-mu replay: max |dp|/p_ref = 1.125e-09, max |dtheta| = 5.825e-09, max |mu - mu_ref|/mu_ref = 4.068e-01
+  THD coupling: FBNS 10 Picard iters, Elrod 11 Picard iters
+  THD coupling: heating moves the rupture front by 4.000e+00 cells (FBNS) and 0.000e+00 cells (Elrod); the FBNS-Elrod gap goes 2.300e+01 -> 2.700e+01 cells
+  THD coupling: T_max 3.214e+02 K vs 3.217e+02 K; max |dT| = 4.386e-01 K over 465 shared full-film cells (4.386e-01 K everywhere)
+  THD coupling: mu in [2.043e-02, 2.770e-02] Pa s, W = 1.653e+04 N thermal vs 1.807e+04 N isothermal
+  cross-film: max |F2/(h^3/12mu) - 1| = 9.691e-02, max |2F1/F0/h - 1| = 8.779e-02, max core rise = 4.545e+00 K
+  cross-film: 11 Picard iters (FBNS) vs 12 (Elrod); T_max 3.220e+02 K vs 3.223e+02 K; max |dT| = 4.791e-01 K, max |dT_bush| = 5.012e-01 K over 454 shared full-film cells
+  cross-film FBNS: worst |r|/flux = 9.146e-10 over all non-groove cells, 1.877e-10 on the 16 front cells
+  cross-film Elrod: worst |r|/flux = 8.846e-11 over all non-groove cells, 1.454e-11 on the 16 front cells
+  Ferron polynomial (FBNS):  max |mu - mu_ref|/mu_ref = 4.364e-01, max |dp|/p_ref vs frozen mu = 2.249e-01
+  Ferron polynomial (Elrod): max |mu - mu_ref|/mu_ref = 4.771e-01, max |dp|/p_ref vs frozen mu = 1.292e+00
+  POLYNOMIAL vs EMPIRICAL: max |dmu|/mu_ref = 2.973e-02, max |dp|/p_ref = 1.201e-02
+  gaseous FBNS: max Newton = 12, max alpha_gas = 7.524e-02 (JFO 8.113e-02)
+  gaseous FBNS: max free_gas_mass = 2.266e-05 kg/m^2 (JFO 2.792e-05)
+  gaseous FBNS: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-(1-alpha_gas)) = 0.000e+00, max product = 0.000e+00
+  gaseous FBNS: max |r|/flux away from the groove = 4.608e-15
+  gaseous fronts (logged, not asserted): FBNS rupture 298.500000 deg reformation 307.500000 deg over 92 cavitated cells | JFO rupture 285.000000 deg reformation 81.000000 deg
+  zero-gas identity: 3 steps, pressure and theta bit-identical to phase 2
+  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)
+PASS: test_fbns
+<end of output>
+Test time =   4.73 sec
+----------------------------------------------------------
+Test Passed.
+"test_fbns" end time: Sep 07 13:50 Korea Standard Time
+"test_fbns" time elapsed: 00:00:04
+----------------------------------------------------------
+
+22/40 Testing: test_fbns_mpi6
+22/40 Test: test_fbns_mpi6
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "6" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fbns.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fbns_mpi6" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_fbns...
+  complementarity: 4 Newton iterations, residual = 1.981e-17
+  complementarity: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-1) = 0.000e+00, max product = 0.000e+00, min theta = 3.124e-01
+  mass residual: max |r|/flux = 3.909e-15 (away from the groove 3.909e-15)
+  cavitated flux invariant over 91 cells: relative spread = 7.194e-16
+  rupture: exact 3.028e+02 deg, FBNS 3.015e+02 deg (-8.444e-01 cells), Elrod 2.850e+02 deg (-1.184e+01 cells)
+  reformation: exact 7.901e+01 deg, FBNS 7.950e+01 deg (3.288e-01 cells)
+  transient squeeze: worst |r|/flux = 3.200e-12
+  Dirichlet ends: worst boundary |r|/flux = 1.881e-16, boundary flux = -7.858e-02, sum(field) = -3.174e-17
+  Dirichlet ends: inlet source = 7.858e-02, telescoping closure = 2.776e-17
+  full-length groove: source(nz=8) = 1.599e-01, source(nz=16) = 1.599e-01, rel = 0.000e+00
+  scope: phase-2 configurations accepted, out-of-scope ones rejected
+  inert coupling: max |dp| = 0.000e+00 Pa, max |dtheta| = 0.000e+00
+  frozen-mu replay: max |dp|/p_ref = 1.126e-09, max |dtheta| = 5.826e-09, max |mu - mu_ref|/mu_ref = 4.068e-01
+  THD coupling: FBNS 10 Picard iters, Elrod 10 Picard iters
+  THD coupling: heating moves the rupture front by 4.000e+00 cells (FBNS) and 0.000e+00 cells (Elrod); the FBNS-Elrod gap goes 2.300e+01 -> 2.700e+01 cells
+  THD coupling: T_max 3.214e+02 K vs 3.217e+02 K; max |dT| = 4.386e-01 K over 465 shared full-film cells (4.386e-01 K everywhere)
+  THD coupling: mu in [2.043e-02, 2.770e-02] Pa s, W = 1.653e+04 N thermal vs 1.807e+04 N isothermal
+  cross-film: max |F2/(h^3/12mu) - 1| = 9.691e-02, max |2F1/F0/h - 1| = 8.779e-02, max core rise = 4.545e+00 K
+  cross-film: 11 Picard iters (FBNS) vs 13 (Elrod); T_max 3.220e+02 K vs 3.223e+02 K; max |dT| = 4.791e-01 K, max |dT_bush| = 5.012e-01 K over 454 shared full-film cells
+  cross-film FBNS: worst |r|/flux = 9.146e-10 over all non-groove cells, 1.877e-10 on the 16 front cells
+  cross-film Elrod: worst |r|/flux = 1.066e-10 over all non-groove cells, 8.676e-12 on the 16 front cells
+  Ferron polynomial (FBNS):  max |mu - mu_ref|/mu_ref = 4.364e-01, max |dp|/p_ref vs frozen mu = 2.249e-01
+  Ferron polynomial (Elrod): max |mu - mu_ref|/mu_ref = 4.771e-01, max |dp|/p_ref vs frozen mu = 1.292e+00
+  POLYNOMIAL vs EMPIRICAL: max |dmu|/mu_ref = 2.973e-02, max |dp|/p_ref = 1.201e-02
+  gaseous FBNS: max Newton = 12, max alpha_gas = 7.524e-02 (JFO 8.113e-02)
+  gaseous FBNS: max free_gas_mass = 2.266e-05 kg/m^2 (JFO 2.792e-05)
+  gaseous FBNS: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-(1-alpha_gas)) = 0.000e+00, max product = 0.000e+00
+  gaseous FBNS: max |r|/flux away from the groove = 5.162e-15
+  gaseous fronts (logged, not asserted): FBNS rupture 298.500000 deg reformation 307.500000 deg over 92 cavitated cells | JFO rupture 285.000000 deg reformation 81.000000 deg
+  zero-gas identity: 3 steps, pressure and theta bit-identical to phase 2
+  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)
+PASS: test_fbns
+<end of output>
+Test time =   7.63 sec
+----------------------------------------------------------
+Test Passed.
+"test_fbns_mpi6" end time: Sep 07 13:50 Korea Standard Time
+"test_fbns_mpi6" time elapsed: 00:00:07
+----------------------------------------------------------
+
+23/40 Testing: test_fbns_mpi1
+23/40 Test: test_fbns_mpi1
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "1" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fbns.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fbns_mpi1" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_fbns...
+  complementarity: 4 Newton iterations, residual = 2.090e-17
+  complementarity: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-1) = 0.000e+00, max product = 0.000e+00, min theta = 3.124e-01
+  mass residual: max |r|/flux = 4.124e-15 (away from the groove 4.124e-15)
+  cavitated flux invariant over 91 cells: relative spread = 7.194e-16
+  rupture: exact 3.028e+02 deg, FBNS 3.015e+02 deg (-8.444e-01 cells), Elrod 2.850e+02 deg (-1.184e+01 cells)
+  reformation: exact 7.901e+01 deg, FBNS 7.950e+01 deg (3.288e-01 cells)
+  transient squeeze: worst |r|/flux = 3.684e-12
+  Dirichlet ends: worst boundary |r|/flux = 3.564e-16, boundary flux = -7.858e-02, sum(field) = -6.321e-18
+  Dirichlet ends: inlet source = 7.858e-02, telescoping closure = 9.714e-17
+  full-length groove: source(nz=8) = 1.599e-01, source(nz=16) = 1.599e-01, rel = 0.000e+00
+  scope: phase-2 configurations accepted, out-of-scope ones rejected
+  inert coupling: max |dp| = 0.000e+00 Pa, max |dtheta| = 0.000e+00
+  frozen-mu replay: max |dp|/p_ref = 1.125e-09, max |dtheta| = 5.825e-09, max |mu - mu_ref|/mu_ref = 4.068e-01
+  THD coupling: FBNS 10 Picard iters, Elrod 9 Picard iters
+  THD coupling: heating moves the rupture front by 4.000e+00 cells (FBNS) and 0.000e+00 cells (Elrod); the FBNS-Elrod gap goes 2.300e+01 -> 2.700e+01 cells
+  THD coupling: T_max 3.214e+02 K vs 3.217e+02 K; max |dT| = 4.386e-01 K over 465 shared full-film cells (4.386e-01 K everywhere)
+  THD coupling: mu in [2.043e-02, 2.770e-02] Pa s, W = 1.653e+04 N thermal vs 1.807e+04 N isothermal
+  cross-film: max |F2/(h^3/12mu) - 1| = 9.691e-02, max |2F1/F0/h - 1| = 8.779e-02, max core rise = 4.545e+00 K
+  cross-film: 11 Picard iters (FBNS) vs 12 (Elrod); T_max 3.220e+02 K vs 3.223e+02 K; max |dT| = 4.791e-01 K, max |dT_bush| = 5.012e-01 K over 454 shared full-film cells
+  cross-film FBNS: worst |r|/flux = 9.146e-10 over all non-groove cells, 1.877e-10 on the 16 front cells
+  cross-film Elrod: worst |r|/flux = 2.222e-11 over all non-groove cells, 1.099e-11 on the 16 front cells
+  Ferron polynomial (FBNS):  max |mu - mu_ref|/mu_ref = 4.364e-01, max |dp|/p_ref vs frozen mu = 2.249e-01
+  Ferron polynomial (Elrod): max |mu - mu_ref|/mu_ref = 4.771e-01, max |dp|/p_ref vs frozen mu = 1.292e+00
+  POLYNOMIAL vs EMPIRICAL: max |dmu|/mu_ref = 2.973e-02, max |dp|/p_ref = 1.201e-02
+  gaseous FBNS: max Newton = 12, max alpha_gas = 7.524e-02 (JFO 8.113e-02)
+  gaseous FBNS: max free_gas_mass = 2.266e-05 kg/m^2 (JFO 2.792e-05)
+  gaseous FBNS: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-(1-alpha_gas)) = 0.000e+00, max product = 0.000e+00
+  gaseous FBNS: max |r|/flux away from the groove = 5.234e-15
+  gaseous fronts (logged, not asserted): FBNS rupture 298.500000 deg reformation 307.500000 deg over 92 cavitated cells | JFO rupture 285.000000 deg reformation 81.000000 deg
+  zero-gas identity: 3 steps, pressure and theta bit-identical to phase 2
+  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)
+PASS: test_fbns
+<end of output>
+Test time =   5.35 sec
+----------------------------------------------------------
+Test Passed.
+"test_fbns_mpi1" end time: Sep 07 13:50 Korea Standard Time
+"test_fbns_mpi1" time elapsed: 00:00:05
+----------------------------------------------------------
+
+24/40 Testing: test_fbns_mpi4
+24/40 Test: test_fbns_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_fbns.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_fbns_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_fbns...
+  complementarity: 4 Newton iterations, residual = 2.492e-17
+  complementarity: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-1) = 0.000e+00, max product = 0.000e+00, min theta = 3.124e-01
+  mass residual: max |r|/flux = 4.918e-15 (away from the groove 4.918e-15)
+  cavitated flux invariant over 91 cells: relative spread = 3.597e-16
+  rupture: exact 3.028e+02 deg, FBNS 3.015e+02 deg (-8.444e-01 cells), Elrod 2.850e+02 deg (-1.184e+01 cells)
+  reformation: exact 7.901e+01 deg, FBNS 7.950e+01 deg (3.288e-01 cells)
+  transient squeeze: worst |r|/flux = 8.506e-13
+  Dirichlet ends: worst boundary |r|/flux = 1.980e-16, boundary flux = -7.858e-02, sum(field) = 5.218e-18
+  Dirichlet ends: inlet source = 7.858e-02, telescoping closure = -2.776e-17
+  full-length groove: source(nz=8) = 1.599e-01, source(nz=16) = 1.599e-01, rel = 1.736e-16
+  scope: phase-2 configurations accepted, out-of-scope ones rejected
+  inert coupling: max |dp| = 0.000e+00 Pa, max |dtheta| = 0.000e+00
+  frozen-mu replay: max |dp|/p_ref = 1.125e-09, max |dtheta| = 5.825e-09, max |mu - mu_ref|/mu_ref = 4.068e-01
+  THD coupling: FBNS 10 Picard iters, Elrod 10 Picard iters
+  THD coupling: heating moves the rupture front by 4.000e+00 cells (FBNS) and 0.000e+00 cells (Elrod); the FBNS-Elrod gap goes 2.300e+01 -> 2.700e+01 cells
+  THD coupling: T_max 3.214e+02 K vs 3.217e+02 K; max |dT| = 4.386e-01 K over 465 shared full-film cells (4.386e-01 K everywhere)
+  THD coupling: mu in [2.043e-02, 2.770e-02] Pa s, W = 1.653e+04 N thermal vs 1.807e+04 N isothermal
+  cross-film: max |F2/(h^3/12mu) - 1| = 9.691e-02, max |2F1/F0/h - 1| = 8.779e-02, max core rise = 4.545e+00 K
+  cross-film: 11 Picard iters (FBNS) vs 14 (Elrod); T_max 3.220e+02 K vs 3.223e+02 K; max |dT| = 4.791e-01 K, max |dT_bush| = 5.012e-01 K over 454 shared full-film cells
+  cross-film FBNS: worst |r|/flux = 9.146e-10 over all non-groove cells, 1.877e-10 on the 16 front cells
+  cross-film Elrod: worst |r|/flux = 1.130e-10 over all non-groove cells, 1.319e-11 on the 16 front cells
+  Ferron polynomial (FBNS):  max |mu - mu_ref|/mu_ref = 4.364e-01, max |dp|/p_ref vs frozen mu = 2.249e-01
+  Ferron polynomial (Elrod): max |mu - mu_ref|/mu_ref = 4.771e-01, max |dp|/p_ref vs frozen mu = 1.292e+00
+  POLYNOMIAL vs EMPIRICAL: max |dmu|/mu_ref = 2.973e-02, max |dp|/p_ref = 1.201e-02
+  gaseous FBNS: max Newton = 12, max alpha_gas = 7.524e-02 (JFO 8.113e-02)
+  gaseous FBNS: max free_gas_mass = 2.266e-05 kg/m^2 (JFO 2.792e-05)
+  gaseous FBNS: max(-(p-p_cav)/p_ref) = 0.000e+00, max(theta-(1-alpha_gas)) = 0.000e+00, max product = 0.000e+00
+  gaseous FBNS: max |r|/flux away from the groove = 5.425e-15
+  gaseous fronts (logged, not asserted): FBNS rupture 298.500000 deg reformation 307.500000 deg over 92 cavitated cells | JFO rupture 285.000000 deg reformation 81.000000 deg
+  zero-gas identity: 3 steps, pressure and theta bit-identical to phase 2
+  ceiling: 1.0 exactly for every model but FBNS + TWO_PHASE (24 combinations)
+PASS: test_fbns
+<end of output>
+Test time =   4.38 sec
+----------------------------------------------------------
+Test Passed.
+"test_fbns_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_fbns_mpi4" time elapsed: 00:00:04
+----------------------------------------------------------
+
+25/40 Testing: test_schemes
+25/40 Test: test_schemes
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_schemes.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_schemes" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_schemes...
+  step advection L1: upwind=0.0408041 tvd=0.0266008 tvd range=[0.2, 1]
+  directional L1: forward=0.0266008 backward=0.0266008 backward range=[0.2, 1]
+  observed orders: upwind=1.0868 tvd=1.99438
+  type-differencing peak p: gumbel=1.01189e+06 elrod=1.01193e+06 rel err=3.09507e-05 p floor=988036
+  one tiny step max |theta - start| = 0.000119892
+  long transient max |theta - 1| = 9.54244e-05
+PASS: test_schemes
+<end of output>
+Test time =   1.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_schemes" end time: Sep 07 13:50 Korea Standard Time
+"test_schemes" time elapsed: 00:00:01
+----------------------------------------------------------
+
+26/40 Testing: test_schemes_mpi6
+26/40 Test: test_schemes_mpi6
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "6" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_schemes.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_schemes_mpi6" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_schemes...
+  step advection L1: upwind=0.0408041 tvd=0.0266008 tvd range=[0.2, 1]
+  directional L1: forward=0.0266008 backward=0.0266008 backward range=[0.2, 1]
+  observed orders: upwind=1.0868 tvd=1.99438
+  type-differencing peak p: gumbel=1.01189e+06 elrod=1.01206e+06 rel err=0.000168007 p floor=987927
+  one tiny step max |theta - start| = 0.000119892
+  long transient max |theta - 1| = 9.54275e-05
+PASS: test_schemes
+<end of output>
+Test time =   1.07 sec
+----------------------------------------------------------
+Test Passed.
+"test_schemes_mpi6" end time: Sep 07 13:50 Korea Standard Time
+"test_schemes_mpi6" time elapsed: 00:00:01
+----------------------------------------------------------
+
+27/40 Testing: test_schemes_mpi4
+27/40 Test: test_schemes_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_schemes.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_schemes_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_schemes...
+  step advection L1: upwind=0.0408041 tvd=0.0266008 tvd range=[0.2, 1]
+  directional L1: forward=0.0266008 backward=0.0266008 backward range=[0.2, 1]
+  observed orders: upwind=1.0868 tvd=1.99438
+  type-differencing peak p: gumbel=1.01189e+06 elrod=1.01207e+06 rel err=0.000171479 p floor=987928
+  one tiny step max |theta - start| = 0.000119892
+  long transient max |theta - 1| = 9.54268e-05
+PASS: test_schemes
+<end of output>
+Test time =   0.80 sec
+----------------------------------------------------------
+Test Passed.
+"test_schemes_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_schemes_mpi4" time elapsed: 00:00:00
+----------------------------------------------------------
+
+28/40 Testing: test_property_tables
+28/40 Test: test_property_tables
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_property_tables.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_property_tables" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+test_property_tables: OK
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"test_property_tables" end time: Sep 07 13:50 Korea Standard Time
+"test_property_tables" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/40 Testing: test_bush_conduction
+29/40 Test: test_bush_conduction
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_bush_conduction.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_bush_conduction" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+test_bush_conduction: all checks passed
+<end of output>
+Test time =   0.23 sec
+----------------------------------------------------------
+Test Passed.
+"test_bush_conduction" end time: Sep 07 13:50 Korea Standard Time
+"test_bush_conduction" time elapsed: 00:00:00
+----------------------------------------------------------
+
+30/40 Testing: test_cross_film
+30/40 Test: test_cross_film
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_cross_film.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_cross_film" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+test_cross_film: all checks passed
+<end of output>
+Test time =   0.18 sec
+----------------------------------------------------------
+Test Passed.
+"test_cross_film" end time: Sep 07 13:50 Korea Standard Time
+"test_cross_film" time elapsed: 00:00:00
+----------------------------------------------------------
+
+31/40 Testing: test_cross_film_mpi4
+31/40 Test: test_cross_film_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_cross_film.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_cross_film_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+test_cross_film: all checks passed
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"test_cross_film_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_cross_film_mpi4" time elapsed: 00:00:00
+----------------------------------------------------------
+
+32/40 Testing: test_config_keys
+32/40 Test: test_config_keys
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_config_keys.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_config_keys" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_config_keys...
+PASS: test_config_keys
+<end of output>
+Test time =   0.46 sec
+----------------------------------------------------------
+Test Passed.
+"test_config_keys" end time: Sep 07 13:50 Korea Standard Time
+"test_config_keys" time elapsed: 00:00:00
+----------------------------------------------------------
+
+33/40 Testing: test_coupling
+33/40 Test: test_coupling
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_coupling.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_coupling" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+test_coupling: OK
+<end of output>
+Test time =   0.16 sec
+----------------------------------------------------------
+Test Passed.
+"test_coupling" end time: Sep 07 13:50 Korea Standard Time
+"test_coupling" time elapsed: 00:00:00
+----------------------------------------------------------
+
+34/40 Testing: test_gas_coupling
+34/40 Test: test_gas_coupling
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_gas_coupling.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_gas_coupling" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+outer=0 mc=9.831e-05 ns=2220 th=[0.999984,1.000016]
+outer=1 mc=8.884e-01 ns=538 th=[0.111566,1.000015]
+outer=2 mc=8.887e-01 ns=350 th=[0.111285,1.000012]
+outer=3 mc=8.843e-01 ns=293 th=[0.111285,1.115693]
+outer=4 mc=8.831e-01 ns=252 th=[0.111285,1.205396]
+outer=5 mc=8.843e-01 ns=221 th=[0.111283,1.247129]
+outer=6 mc=8.870e-01 ns=186 th=[0.111283,1.000000]
+outer=7 mc=8.862e-01 ns=163 th=[0.111282,1.000000]
+outer=8 mc=8.853e-01 ns=125 th=[0.111282,1.000000]
+outer=9 mc=8.843e-01 ns=90 th=[0.111282,1.000000]
+outer=10 mc=8.831e-01 ns=76 th=[0.111281,1.000000]
+outer=11 mc=8.817e-01 ns=46 th=[0.111281,1.000000]
+outer=12 mc=8.801e-01 ns=38 th=[0.111281,1.000000]
+outer=13 mc=8.784e-01 ns=31 th=[0.111281,1.000000]
+outer=14 mc=8.765e-01 ns=2 th=[0.111281,1.000000]
+outer=15 mc=8.744e-01 ns=2 th=[0.111281,1.000000]
+outer=16 mc=8.721e-01 ns=2 th=[0.111281,1.000000]
+outer=17 mc=8.695e-01 ns=2 th=[0.111281,1.000000]
+outer=18 mc=8.668e-01 ns=2 th=[0.111281,1.000000]
+outer=19 mc=8.638e-01 ns=2 th=[0.111281,1.000000]
+outer=20 mc=8.605e-01 ns=2 th=[0.111281,1.000000]
+outer=21 mc=8.569e-01 ns=2 th=[0.111281,1.000000]
+outer=22 mc=8.531e-01 ns=2 th=[0.111281,1.000000]
+outer=23 mc=8.489e-01 ns=2 th=[0.111281,1.000000]
+outer=24 mc=8.443e-01 ns=2 th=[0.111281,1.000000]
+outer=25 mc=8.394e-01 ns=2 th=[0.111281,1.000000]
+outer=26 mc=8.341e-01 ns=4 th=[0.111281,1.000000]
+outer=27 mc=8.283e-01 ns=4 th=[0.111281,1.000000]
+outer=28 mc=8.152e-01 ns=4 th=[0.111281,1.000000]
+outer=29 mc=7.997e-01 ns=4 th=[0.111281,1.000000]
+outer=30 mc=7.815e-01 ns=4 th=[0.111281,1.000000]
+outer=31 mc=7.598e-01 ns=6 th=[0.111281,1.000000]
+outer=32 mc=7.340e-01 ns=8 th=[0.111281,1.000000]
+outer=33 mc=7.032e-01 ns=8 th=[0.111281,1.000000]
+outer=34 mc=6.663e-01 ns=8 th=[0.111281,1.000000]
+outer=35 mc=6.221e-01 ns=8 th=[0.111281,1.000000]
+outer=36 mc=5.692e-01 ns=8 th=[0.111281,1.000000]
+outer=37 mc=5.063e-01 ns=8 th=[0.111281,1.000000]
+outer=38 mc=4.327e-01 ns=8 th=[0.111281,1.000000]
+outer=39 mc=3.485e-01 ns=7 th=[0.111281,1.000000]
+outer=40 mc=2.566e-01 ns=6 th=[0.111281,1.000000]
+outer=41 mc=2.096e-01 ns=2 th=[0.111281,1.000000]
+outer=42 mc=1.635e-01 ns=4 th=[0.111281,1.000000]
+outer=43 mc=1.198e-01 ns=38 th=[0.111281,1.000000]
+outer=44 mc=8.025e-02 ns=2 th=[0.111281,1.000000]
+outer=45 mc=4.686e-02 ns=34 th=[0.111280,1.000000]
+outer=46 mc=2.140e-02 ns=0 th=[0.111280,1.000000]
+outer=47 mc=0.000e+00 ns=0 th=[0.111280,1.000000]
+outer=0 mc=9.831e-05 ns=2220 th=[0.999984,1.000016]
+outer=1 mc=8.884e-01 ns=538 th=[0.111566,1.000015]
+outer=2 mc=8.887e-01 ns=350 th=[0.111285,1.000012]
+outer=3 mc=8.843e-01 ns=293 th=[0.111285,1.115693]
+outer=4 mc=8.831e-01 ns=252 th=[0.111285,1.205396]
+outer=5 mc=8.843e-01 ns=221 th=[0.111283,1.247129]
+outer=6 mc=8.870e-01 ns=186 th=[0.111283,1.000000]
+outer=7 mc=8.862e-01 ns=163 th=[0.111282,1.000000]
+outer=8 mc=8.853e-01 ns=125 th=[0.111282,1.000000]
+outer=9 mc=8.843e-01 ns=90 th=[0.111282,1.000000]
+outer=10 mc=8.831e-01 ns=76 th=[0.111281,1.000000]
+outer=11 mc=8.817e-01 ns=46 th=[0.111281,1.000000]
+outer=12 mc=8.801e-01 ns=38 th=[0.111281,1.000000]
+outer=13 mc=8.784e-01 ns=31 th=[0.111281,1.000000]
+outer=14 mc=8.765e-01 ns=2 th=[0.111281,1.000000]
+outer=15 mc=8.744e-01 ns=2 th=[0.111281,1.000000]
+outer=16 mc=8.721e-01 ns=2 th=[0.111281,1.000000]
+outer=17 mc=8.695e-01 ns=2 th=[0.111281,1.000000]
+outer=18 mc=8.668e-01 ns=2 th=[0.111281,1.000000]
+outer=19 mc=8.638e-01 ns=2 th=[0.111281,1.000000]
+outer=20 mc=8.605e-01 ns=2 th=[0.111281,1.000000]
+outer=21 mc=8.569e-01 ns=2 th=[0.111281,1.000000]
+outer=22 mc=8.531e-01 ns=2 th=[0.111281,1.000000]
+outer=23 mc=8.489e-01 ns=2 th=[0.111281,1.000000]
+outer=24 mc=8.443e-01 ns=2 th=[0.111281,1.000000]
+outer=25 mc=8.394e-01 ns=2 th=[0.111281,1.000000]
+outer=26 mc=8.341e-01 ns=4 th=[0.111281,1.000000]
+outer=27 mc=8.283e-01 ns=4 th=[0.111281,1.000000]
+outer=28 mc=8.152e-01 ns=4 th=[0.111281,1.000000]
+outer=29 mc=7.997e-01 ns=4 th=[0.111281,1.000000]
+outer=30 mc=7.815e-01 ns=4 th=[0.111281,1.000000]
+outer=31 mc=7.598e-01 ns=6 th=[0.111281,1.000000]
+outer=32 mc=7.340e-01 ns=8 th=[0.111281,1.000000]
+outer=33 mc=7.032e-01 ns=8 th=[0.111281,1.000000]
+outer=34 mc=6.663e-01 ns=8 th=[0.111281,1.000000]
+outer=35 mc=6.221e-01 ns=8 th=[0.111281,1.000000]
+outer=36 mc=5.692e-01 ns=8 th=[0.111281,1.000000]
+outer=37 mc=5.063e-01 ns=8 th=[0.111281,1.000000]
+outer=38 mc=4.327e-01 ns=8 th=[0.111281,1.000000]
+outer=39 mc=3.485e-01 ns=7 th=[0.111281,1.000000]
+outer=40 mc=2.566e-01 ns=6 th=[0.111281,1.000000]
+outer=41 mc=2.096e-01 ns=2 th=[0.111281,1.000000]
+outer=42 mc=1.635e-01 ns=4 th=[0.111281,1.000000]
+outer=43 mc=1.198e-01 ns=38 th=[0.111281,1.000000]
+outer=44 mc=8.025e-02 ns=2 th=[0.111281,1.000000]
+outer=45 mc=4.686e-02 ns=34 th=[0.111280,1.000000]
+outer=46 mc=2.140e-02 ns=0 th=[0.111280,1.000000]
+outer=47 mc=0.000e+00 ns=0 th=[0.111280,1.000000]
+outer=0 mc=1.045e-03 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=1.234e-03 ns=362 th=[1.000848,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000848,1.000963]
+outer=0 mc=8.468e-04 ns=46 th=[1.000854,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000854,1.000962]
+outer=0 mc=6.826e-04 ns=0 th=[1.000858,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000858,1.000962]
+outer=0 mc=5.811e-04 ns=0 th=[1.000861,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000861,1.000962]
+outer=0 mc=5.102e-04 ns=0 th=[1.000863,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000863,1.000962]
+outer=0 mc=4.564e-04 ns=0 th=[1.000865,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000865,1.000962]
+outer=0 mc=4.152e-04 ns=0 th=[1.000867,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000867,1.000962]
+outer=0 mc=3.785e-04 ns=0 th=[1.000868,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000868,1.000962]
+outer=0 mc=3.498e-04 ns=0 th=[1.000869,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000869,1.000962]
+outer=0 mc=3.234e-04 ns=0 th=[1.000870,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000870,1.000962]
+outer=0 mc=3.001e-04 ns=0 th=[1.000871,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000871,1.000962]
+outer=0 mc=2.785e-04 ns=0 th=[1.000872,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000872,1.000963]
+outer=0 mc=2.637e-04 ns=0 th=[1.000873,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000873,1.000962]
+outer=0 mc=2.445e-04 ns=0 th=[1.000874,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000874,1.000962]
+outer=0 mc=2.295e-04 ns=0 th=[1.000874,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000874,1.000962]
+outer=0 mc=2.158e-04 ns=0 th=[1.000875,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000875,1.000962]
+outer=0 mc=2.040e-04 ns=0 th=[1.000875,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000875,1.000962]
+outer=0 mc=1.939e-04 ns=0 th=[1.000876,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000876,1.000962]
+outer=0 mc=1.836e-04 ns=0 th=[1.000876,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000876,1.000962]
+outer=0 mc=1.741e-04 ns=0 th=[1.000877,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000877,1.000962]
+outer=0 mc=1.643e-04 ns=0 th=[1.000877,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000877,1.000962]
+outer=0 mc=1.554e-04 ns=0 th=[1.000877,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000877,1.000962]
+outer=0 mc=1.473e-04 ns=0 th=[1.000878,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000878,1.000962]
+outer=0 mc=1.407e-04 ns=0 th=[1.000878,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000878,1.000962]
+outer=0 mc=1.336e-04 ns=0 th=[1.000878,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000878,1.000962]
+outer=0 mc=1.283e-04 ns=0 th=[1.000878,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000878,1.000962]
+outer=0 mc=1.210e-04 ns=0 th=[1.000878,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000878,1.000963]
+outer=0 mc=1.184e-04 ns=0 th=[1.000879,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000879,1.000962]
+outer=0 mc=1.098e-04 ns=0 th=[1.000879,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000879,1.000962]
+outer=0 mc=1.047e-04 ns=0 th=[1.000879,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000879,1.000963]
+outer=0 mc=1.030e-04 ns=0 th=[1.000879,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000879,1.000962]
+outer=0 mc=9.696e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=9.241e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=8.825e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=8.420e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=8.030e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=7.649e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=7.377e-05 ns=0 th=[1.000880,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000880,1.000962]
+outer=0 mc=7.010e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=6.716e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=6.460e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=6.133e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=5.862e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=5.606e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=5.383e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=5.201e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=4.980e-05 ns=0 th=[1.000881,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000962]
+outer=0 mc=4.740e-05 ns=0 th=[1.000881,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000963]
+outer=0 mc=4.813e-05 ns=0 th=[1.000881,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000963]
+outer=0 mc=4.539e-05 ns=0 th=[1.000881,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000881,1.000963]
+outer=0 mc=4.389e-05 ns=0 th=[1.000882,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000963]
+outer=0 mc=4.200e-05 ns=0 th=[1.000882,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000963]
+outer=0 mc=4.056e-05 ns=0 th=[1.000882,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000962]
+outer=0 mc=3.628e-05 ns=0 th=[1.000882,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000963]
+outer=0 mc=3.705e-05 ns=0 th=[1.000882,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000962]
+outer=0 mc=3.486e-05 ns=0 th=[1.000882,1.000963]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000963]
+outer=0 mc=3.413e-05 ns=0 th=[1.000882,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000962]
+outer=0 mc=3.045e-05 ns=0 th=[1.000882,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000962]
+outer=0 mc=2.902e-05 ns=0 th=[1.000882,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000882,1.000962]
+outer=0 mc=1.045e-03 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.419e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.419e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.419e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.419e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.419e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.419e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.419e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.419e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.418e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.418e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.417e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.417e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.416e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.416e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.415e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.415e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.415e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+outer=0 mc=7.415e-04 ns=0 th=[1.000838,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000838,1.000962]
+outer=0 mc=7.415e-04 ns=56 th=[1.000439,1.000962]
+outer=1 mc=0.000e+00 ns=0 th=[1.000439,1.000962]
+  pressure cap: min_p NONE=970880 VOID=1.00003e+06 (p_sat=1e6), max_alpha NONE=0.334462
+PASS: test_gas_coupling
+<end of output>
+Test time =  23.14 sec
+----------------------------------------------------------
+Test Passed.
+"test_gas_coupling" end time: Sep 07 13:50 Korea Standard Time
+"test_gas_coupling" time elapsed: 00:00:23
+----------------------------------------------------------
+
+35/40 Testing: test_physics_audit
+35/40 Test: test_physics_audit
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_physics_audit.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_physics_audit" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+outer=0 mc=1.875e-01 ns=0 th=[0.312500,0.312500]
+outer=1 mc=1.676e-14 ns=0 th=[0.312500,0.312500]
+fbns iter=0 |G|=1.874954e-01 |FB|=0.000000e+00
+fbns iter=1 |G|=0.000000e+00 |FB|=0.000000e+00
+fbns iter=0 |G|=1.001383e-04 |FB|=4.833518e-01
+fbns iter=1 |G|=3.182364e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=9.434600e-17 |FB|=0.000000e+00
+fbns iter=0 |G|=2.238242e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=1.119351e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=7.463875e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=5.599059e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=4.480171e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.734247e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.201445e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.801844e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.491044e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.242405e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.038974e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.869448e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.726004e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.603052e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.496495e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.403257e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.320989e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.247862e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.182434e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=7.752211e-15 |FB|=0.000000e+00
+Closed bearing worst relative inventory drift: 5.55112e-16
+Physics audit failures: 0
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"test_physics_audit" end time: Sep 07 13:50 Korea Standard Time
+"test_physics_audit" time elapsed: 00:00:00
+----------------------------------------------------------
+
+36/40 Testing: test_physics_audit_mpi1
+36/40 Test: test_physics_audit_mpi1
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "1" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_physics_audit.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_physics_audit_mpi1" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+outer=0 mc=1.875e-01 ns=0 th=[0.312500,0.312500]
+outer=1 mc=3.331e-15 ns=0 th=[0.312500,0.312500]
+fbns iter=0 |G|=1.874954e-01 |FB|=0.000000e+00
+fbns iter=1 |G|=0.000000e+00 |FB|=0.000000e+00
+fbns iter=0 |G|=1.001383e-04 |FB|=4.833518e-01
+fbns iter=1 |G|=3.182364e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=8.462051e-17 |FB|=0.000000e+00
+fbns iter=0 |G|=2.238242e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=1.119351e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=7.463875e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=5.599059e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=4.480171e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.734247e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.201445e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.801844e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.491044e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.242405e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.038974e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.869448e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.726004e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.603052e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.496495e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.403257e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.320989e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.247862e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.182434e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.580367e-15 |FB|=0.000000e+00
+Closed bearing worst relative inventory drift: 7.82707e-12
+Physics audit failures: 0
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"test_physics_audit_mpi1" end time: Sep 07 13:50 Korea Standard Time
+"test_physics_audit_mpi1" time elapsed: 00:00:00
+----------------------------------------------------------
+
+37/40 Testing: test_physics_audit_mpi4
+37/40 Test: test_physics_audit_mpi4
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "4" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_physics_audit.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_physics_audit_mpi4" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+outer=0 mc=1.875e-01 ns=0 th=[0.312500,0.312500]
+outer=1 mc=1.660e-14 ns=0 th=[0.312500,0.312500]
+fbns iter=0 |G|=1.874954e-01 |FB|=0.000000e+00
+fbns iter=1 |G|=0.000000e+00 |FB|=0.000000e+00
+fbns iter=0 |G|=1.001383e-04 |FB|=4.833518e-01
+fbns iter=1 |G|=3.182364e-05 |FB|=0.000000e+00
+fbns iter=2 |G|=9.382691e-17 |FB|=0.000000e+00
+fbns iter=0 |G|=2.238242e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=1.119351e-25 |FB|=0.000000e+00
+fbns iter=0 |G|=7.463875e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=5.599059e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=4.480171e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.734247e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=3.201445e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.801844e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.491044e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.242405e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.038974e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.869448e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.726004e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.603052e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.496495e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.403257e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.320989e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.247862e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=1.182434e-26 |FB|=0.000000e+00
+fbns iter=0 |G|=2.142164e-14 |FB|=0.000000e+00
+Closed bearing worst relative inventory drift: 4.44089e-16
+Physics audit failures: 0
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"test_physics_audit_mpi4" end time: Sep 07 13:50 Korea Standard Time
+"test_physics_audit_mpi4" time elapsed: 00:00:00
+----------------------------------------------------------
+
+38/40 Testing: test_solver_failure
+38/40 Test: test_solver_failure
+Command: "C:/msys64/mingw64/bin/cmake.exe" "-DSOLVER=C:/Dev/pancake-physics-audit/build-windows-mingw/pancake.exe" "-DTEST_DIR=C:/Dev/pancake-physics-audit/build-windows-mingw/tests/solver_failure" "-P" "C:/Dev/pancake-physics-audit/tests/test_solver_failure.cmake"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_solver_failure" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"test_solver_failure" end time: Sep 07 13:50 Korea Standard Time
+"test_solver_failure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+39/40 Testing: test_transient_time
+39/40 Test: test_transient_time
+Command: "C:/msys64/mingw64/bin/cmake.exe" "-DSOLVER=C:/Dev/pancake-physics-audit/build-windows-mingw/pancake.exe" "-DTEST_DIR=C:/Dev/pancake-physics-audit/build-windows-mingw/tests/transient_time" "-P" "C:/Dev/pancake-physics-audit/tests/test_transient_time.cmake"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_transient_time" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"test_transient_time" end time: Sep 07 13:50 Korea Standard Time
+"test_transient_time" time elapsed: 00:00:00
+----------------------------------------------------------
+
+40/40 Testing: test_ksp_guard
+40/40 Test: test_ksp_guard
+Command: "C:/Program Files/Microsoft MPI/Bin/mpiexec.exe" "-n" "2" "C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_ksp_guard.exe"
+Directory: C:/Dev/pancake-physics-audit/build-windows-mingw/tests
+"test_ksp_guard" start time: Sep 07 13:50 Korea Standard Time
+Output:
+----------------------------------------------------------
+Running test_ksp_guard...
+[33m[WARN] linear solve 'ksp guard probe' failed after 0 iterations: KSP diverged (DIVERGED_NANORINF, reason -9); retrying on fallback solver 1/2[0m
+[33m[WARN] linear solve 'ksp guard probe' failed after 0 iterations: KSP diverged (DIVERGED_NANORINF, reason -9); retrying on fallback solver 2/2[0m
+[31m[FATAL] linear solve 'ksp guard probe' failed after 0 iterations: KSP diverged (
+job aborted:
+[ranks] message
+
+[0] terminated
+
+[1] application aborted
+aborting MPI_COMM_WORLD (comm=0x44000000), error 1, comm rank 1
+
+---- error analysis -----
+
+[1] on ATLAS
+C:/Dev/pancake-physics-audit/build-windows-mingw/tests/test_ksp_guard.exe aborted the job. abort code 1
+
+---- error analysis -----
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Pass Reason:
+Required regular expression found. Regex=[linear solve 'ksp guard probe' failed]
+"test_ksp_guard" end time: Sep 07 13:50 Korea Standard Time
+"test_ksp_guard" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 07 13:50 Korea Standard Time

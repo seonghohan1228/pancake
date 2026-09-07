@@ -321,6 +321,61 @@ static void test_axial_outflow_removes_free_gas() {
     check(gmin >= -1e-14, "axial free gas outflow should keep free_gas_mass non-negative");
 }
 
+// A pressure-driven channel reverses direction without changing its boundary
+// types. Compare every cell to the backward-Euler upwind recurrence, including
+// the outgoing reservoir (whose composition must have no influence).
+static void test_distinct_reservoirs_with_flow_reversal() {
+    for (bool south_inflow : {true, false}) {
+        auto cfg = mixture_config();
+        cfg.cavitation_model = CavitationModel::FBNS;
+        cfg.omega = 0.0;
+        cfg.dt = 0.01;
+        cfg.linear_rtol = 1e-13;
+        cfg.bc_z_south_val = south_inflow ? 3e5 : 2e5;
+        cfg.bc_z_north_val = south_inflow ? 2e5 : 3e5;
+        cfg.bc_z_south_dissolved_gas = 0.2;
+        cfg.bc_z_north_dissolved_gas = 0.35;
+        cfg.bc_z_south_free_gas_mass_fraction = 0.01;
+        cfg.bc_z_north_free_gas_mass_fraction = 0.02;
+        Mesh mesh(cfg);
+        Communicator comm(mesh);
+        Fields fields;
+        add_fields(fields, mesh, cfg);
+        const double mass = cfg.rho * cfg.c;
+        const double speed = cfg.c * cfg.c * 1e5 / (12 * cfg.mu * cfg.L);
+        const double courant = speed * cfg.dt / mesh.get_d_z();
+        fields["dissolved_gas"].fill(0.1);
+        fields["free_gas_mass"].fill(0.001 * mass);
+        for (int i = 0; i < mesh.n_theta_local; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j)
+                fields["pressure"](i, j) = cfg.bc_z_south_val +
+                    (cfg.bc_z_north_val - cfg.bc_z_south_val) * (j + 0.5) / mesh.n_z_local;
+        fields["dissolved_gas"].store_old_time();
+        fields["free_gas_mass"].store_old_time();
+        comm.update_ghosts(fields);
+        LinearSystem sys(mesh);
+        GasTransport::solve(fields, sys, mesh, cfg, cfg.dt);
+        double error = 0, delta = 0, inflow = 0;
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            double cd = cfg.axial_inflow_dissolved_gas(south_inflow);
+            double mg = mass * cfg.axial_inflow_free_gas_ratio(south_inflow);
+            for (int k = 0; k < mesh.n_z_local; ++k) {
+                const int j = south_inflow ? k : mesh.n_z_local - 1 - k;
+                cd = (0.1 + courant * cd) / (1 + courant);
+                mg = (0.001 * mass + courant * mg) / (1 + courant);
+                error = std::max({error, std::abs(fields["dissolved_gas"](i, j) - cd),
+                                  std::abs(fields["free_gas_mass"](i, j) - mg) / mass});
+                delta += (mass * (fields["dissolved_gas"](i, j) - 0.1) +
+                          fields["free_gas_mass"](i, j) - 0.001 * mass) * mesh.cell_volume();
+                inflow += fields["gas_boundary_mass_flux"](i, j) * cfg.dt;
+            }
+        }
+        check(global_max_abs(error) < 1e-10, "both directions must use the upstream reservoir state");
+        check(std::abs(global_sum(delta - inflow)) < 1e-13,
+              "species inventory change must equal the actual net boundary flux");
+    }
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
     test_preserves_uniform();
@@ -331,6 +386,7 @@ int main(int argc, char** argv) {
     test_supply_cells_impose_initial_composition();
     test_axial_inflow_uses_initial_dissolved_gas();
     test_axial_outflow_removes_free_gas();
+    test_distinct_reservoirs_with_flow_reversal();
     int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) std::cout << "PASS: test_gas_transport\n";
     PetscFinalize();

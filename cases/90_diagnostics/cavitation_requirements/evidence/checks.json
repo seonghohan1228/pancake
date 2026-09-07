@@ -1,0 +1,23 @@
+{
+  "CoolProp_version": "7.2.0",
+  "CoolProp_git_revision": "98b3523d5daa98454618d381d2ae53f7471d216b",
+  "EOS": "HEOS::R410A (fixed nominal blend, pseudo-pure)",
+  "EOS_reference": "https://doi.org/10.1023/A:1025048800563",
+  "oil": "none; these are pure-refrigerant properties, not FW68D/R410A VLE",
+  "kinetics": "prescribed-pressure parcel; rates illustrative, not calibrated",
+  "gas_constant_J_kg_K": 114.54744342526182,
+  "kinetic_invariants": {
+    "20": {
+      "max_relative_oil_drift": 8.881784197001252e-16,
+      "max_relative_gas_drift": 1.3322676295501878e-15,
+      "final_free_mass_kg_m2": 0.0,
+      "final_alpha": 0.0
+    },
+    "0": {
+      "max_relative_oil_drift": 8.881784197001252e-16,
+      "max_relative_gas_drift": 1.3322676295501878e-15,
+      "final_free_mass_kg_m2": 1.6324065702631247e-05,
+      "final_alpha": 0.036684137280507616
+    }
+  }
+}
