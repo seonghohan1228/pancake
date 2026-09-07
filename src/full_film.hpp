@@ -102,12 +102,14 @@ inline bool is_full_film_face(const Fields& fields, const SimulationConfig& cfg,
 
 /// The cell test as the 1/0 switch `g` the flux expressions multiply through.
 inline double gate(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    if (cfg.cavitation_model == CavitationModel::COUPLED) return 1.0;
     return is_full_film(fields, cfg, i, j) ? 1.0 : 0.0;
 }
 
 /// The face test as the 1/0 switch `g_face` the flux expressions multiply through.
 inline double face_gate(const Fields& fields, const SimulationConfig& cfg,
                         int i0, int j0, int i1, int j1) {
+    if (cfg.cavitation_model == CavitationModel::COUPLED) return 1.0;
     return is_full_film_face(fields, cfg, i0, j0, i1, j1) ? 1.0 : 0.0;
 }
 

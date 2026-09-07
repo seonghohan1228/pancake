@@ -33,7 +33,7 @@
 //                     resolved gas phase and 1 - alpha_gas with one (FullFilm::bound).
 //                     Scope: ISOTHERMAL or ENERGY_EQUATION, fluid_property_model
 //                     CONSTANT / SINGLE_PHASE / TWO_PHASE. See PHYSICS.md 7.3.
-enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO, FBNS };
+enum class CavitationModel { FULL_SOMMERFELD, GUMBEL, JFO, FBNS, COUPLED };
 enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 /// Thermal treatment of fluid entering through a pressure boundary.
 ///   ZERO_GRADIENT - submerged / open end: the entering oil is the same
@@ -67,7 +67,7 @@ enum class TemperatureModel { ISOTHERMAL, ENERGY_EQUATION };
 //   TWO_PHASE    - adds finite-rate gas release/resorption and a free-gas phase
 //                  in cavitated zones (the full gaseous-cavitation model).
 enum class FluidPropertyModel { CONSTANT, SINGLE_PHASE, TWO_PHASE };
-enum class DissolvedGasSpecies { AIR, PROPANE };
+enum class DissolvedGasSpecies { AIR, PROPANE, R410A };
 // Saturation / solubility law c_sat(p,T), simplest -> measured:
 //   HENRY - c_sat = H(T) p (linear; optional van't Hoff T-dependence).
 //   TABLE - measured c_sat(p,T) surface (1-D or 2-D PTSV data).
@@ -87,7 +87,7 @@ enum class DensityModel { CONSTANT, MIXTURE, TABLE };
 //               see viscosity_poly_k0 and PHYSICS.md. Pure temperature law: it
 //               carries no pressure or dissolved-gas dependence.
 //   TABLE     - measured kinematic nu(p,T), converted to dynamic per cell.
-enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE };
+enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE, COMPOSITION_TABLE };
 // Per-timestep terminal/log verbosity. Both modes print every timestep; DETAILED
 // adds per-step diagnostics (film thickness, temperature range, fluid force, torque).
 enum class OutputVerbosity { SIMPLIFIED, DETAILED };
@@ -242,6 +242,25 @@ struct PropertyTable2D {
     }
 };
 
+/// Dynamic liquid viscosity as a function of actual composition and temperature.
+/// Log interpolation preserves positivity. No extrapolation is permitted.
+struct CompositionViscosityTable {
+    std::vector<double> concentration, temperature, log_viscosity;
+    bool empty() const { return concentration.empty() || temperature.empty() || log_viscosity.empty(); }
+    bool contains(double c,double t) const {
+        return !empty() && c>=concentration.front() && c<=concentration.back() &&
+            t>=temperature.front() && t<=temperature.back();
+    }
+    double interpolate(double c,double t) const {
+        if (!contains(c,t)) throw std::domain_error("Composition viscosity table queried outside its measured c,T range");
+        std::size_t c0,c1,t0,t1; double fc,ft;
+        PropertyTable2D::bracket(concentration,c,c0,c1,fc);
+        PropertyTable2D::bracket(temperature,t,t0,t1,ft);
+        const auto at=[&](std::size_t i,std::size_t j) { return log_viscosity[i*temperature.size()+j]; };
+        return std::exp((1-fc)*((1-ft)*at(c0,t0)+ft*at(c0,t1))+fc*((1-ft)*at(c1,t0)+ft*at(c1,t1)));
+    }
+};
+
 /// Invert a monotone-rising-then-flat saturation curve c_sat(p): return the
 /// smallest p at which c_sat reaches c_d (the bubble point). A first-crossing
 /// scan from low p makes it robust to the flat saturated tail and to small
@@ -307,6 +326,7 @@ inline const char* to_config_value(CavitationModel model) {
         case CavitationModel::GUMBEL: return "GUMBEL";
         case CavitationModel::JFO: return "JFO";
         case CavitationModel::FBNS: return "FBNS";
+        case CavitationModel::COUPLED: return "COUPLED";
     }
     return "JFO";
 }
@@ -431,6 +451,7 @@ inline const char* to_config_value(DissolvedGasSpecies species) {
     switch (species) {
         case DissolvedGasSpecies::AIR: return "AIR";
         case DissolvedGasSpecies::PROPANE: return "PROPANE";
+        case DissolvedGasSpecies::R410A: return "R410A";
     }
     return "PROPANE";
 }
@@ -458,6 +479,7 @@ inline const char* to_config_value(LiquidViscosityModel model) {
         case LiquidViscosityModel::EMPIRICAL: return "EMPIRICAL";
         case LiquidViscosityModel::POLYNOMIAL: return "POLYNOMIAL";
         case LiquidViscosityModel::TABLE: return "TABLE";
+        case LiquidViscosityModel::COMPOSITION_TABLE: return "COMPOSITION_TABLE";
     }
     return "CONSTANT";
 }
@@ -622,9 +644,9 @@ inline DissolvedGasSpecies dissolved_gas_species_from_config(std::string value) 
     value = normalise_config_token(value);
     if (value == "AIR") return DissolvedGasSpecies::AIR;
     if (value == "PROPANE" || value == "R290") return DissolvedGasSpecies::PROPANE;
+    if (value == "R410A") return DissolvedGasSpecies::R410A;
     throw std::invalid_argument("Unsupported dissolved_gas_species '" + value +
-        "'. Supported species: AIR, PROPANE (R290). R410A is an R32/R125 blend; "
-        "its oil solubility and phase properties are not provided by the propane model.");
+        "'. Supported species: AIR, PROPANE (R290), R410A.");
 }
 
 inline SolubilityModel solubility_model_from_config(std::string value) {
@@ -646,6 +668,7 @@ inline DensityModel density_model_from_config(std::string value) {
 
 inline LiquidViscosityModel liquid_viscosity_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "COMPOSITION_TABLE") return LiquidViscosityModel::COMPOSITION_TABLE;
     if (value == "TABLE" || value == "TABULATED") return LiquidViscosityModel::TABLE;
     if (value == "POLYNOMIAL" || value == "POLY" || value == "FERRON") {
         return LiquidViscosityModel::POLYNOMIAL;
@@ -677,6 +700,8 @@ struct InletConfig {
     // Volumetric fresh-oil supply rate through this feature [m^3/s]. Used only when
     // groove_mixing_model = FLOW_WEIGHTED, where lambda = Q_supply/(Q_supply + Q_up).
     double supply_flow_rate = 0.0;
+    double dissolved_gas = -1.0; // Incoming liquid composition; -1 inherits initial charge.
+    double free_gas_mass_fraction = 0.0; // Incoming free species / total mixture mass.
 };
 
 struct SimulationConfig {
@@ -729,6 +754,10 @@ struct SimulationConfig {
     double mu = 0.01;
     double rho = 900.0;
     double p_cav = 0.0;
+    double oil_vapor_temperature_coeff = 0.0; // Clausius-Clapeyron slope [K], zero holds p_cav fixed.
+    double oil_vapor_pressure(double temperature) const {
+        return p_cav*std::exp(oil_vapor_temperature_coeff*(1/property_reference_temperature-1/temperature));
+    }
     double bulk_modulus = 1e9;
 
     // Misalignment (tilt)
@@ -743,6 +772,10 @@ struct SimulationConfig {
     double bearing_wall_temperature = 300.0;
     double rho_cp = 1.92e6;              // Volumetric heat capacity [J/(m^3 K)]
     double thermal_conductivity = 0.15;  // Lubricant thermal conductivity [W/(m K)]
+    double gas_heat_capacity_cv = -1.0; // Ideal free gas [J/(kg K)]; R410A uses its EOS.
+    double dissolved_heat_capacity = -1.0; // Dissolved species [J/(kg K)].
+    double desorption_internal_energy = std::numeric_limits<double>::quiet_NaN(); // u_g-u_d at property reference T,p [J/kg].
+    double gas_thermal_conductivity = 0.0; // Explicit dilute-phase conductivity [W/(m K)].
     double journal_heat_transfer = 0.0;  // Wall heat-transfer coefficient [W/(m^2 K)]
     double bearing_heat_transfer = 0.0;  // Wall heat-transfer coefficient [W/(m^2 K)]
 
@@ -807,6 +840,7 @@ struct SimulationConfig {
     double dissolved_gas_liquid_density = 0.0;   // Partial liquid-volume density [kg/m^3]; required by MIXTURE
     double gas_mass_transfer_rate = 0.0;         // Release rate [1/s]; legacy absorption fallback.
     double gas_absorption_rate = -1.0;          // -1 inherits release rate; 0 disables absorption.
+    bool coupled_phase_equilibrium = false;    // COUPLED: equilibrium instead of finite-rate exchange.
     /// Separate absorption kinetics; bubble compression alone exchanges no mass.
     double effective_gas_absorption_rate() const {
         return gas_absorption_rate >= 0 ? gas_absorption_rate : gas_mass_transfer_rate;
@@ -852,6 +886,8 @@ struct SimulationConfig {
     PropertyTable2D density_table_2d;
     std::filesystem::path solubility_table_file;
     std::filesystem::path viscosity_table_file;
+    std::filesystem::path viscosity_composition_file;
+    CompositionViscosityTable viscosity_composition_table;
     std::filesystem::path density_table_file;
     // Directory of the loaded config file; relative *_table_file paths resolve
     // against it first, then the CWD. Set by load_from_file().
@@ -1068,6 +1104,7 @@ struct SimulationConfig {
             else if (key == "mu") mu = std::stod(value);
             else if (key == "rho") rho = std::stod(value);
             else if (key == "p_cav") p_cav = std::stod(value);
+            else if (key == "oil_vapor_temperature_coeff") oil_vapor_temperature_coeff = std::stod(value);
             else if (key == "bulk_modulus") bulk_modulus = std::stod(value);
             else if (key == "tilt_slope_x") tilt_slope_x = std::stod(value);
             else if (key == "tilt_slope_y") tilt_slope_y = std::stod(value);
@@ -1078,6 +1115,10 @@ struct SimulationConfig {
             else if (key == "bearing_wall_temperature") bearing_wall_temperature = std::stod(value);
             else if (key == "rho_cp") rho_cp = std::stod(value);
             else if (key == "thermal_conductivity") thermal_conductivity = std::stod(value);
+            else if (key == "gas_heat_capacity_cv") gas_heat_capacity_cv = std::stod(value);
+            else if (key == "dissolved_heat_capacity") dissolved_heat_capacity = std::stod(value);
+            else if (key == "desorption_internal_energy") desorption_internal_energy = std::stod(value);
+            else if (key == "gas_thermal_conductivity") gas_thermal_conductivity = std::stod(value);
             else if (key == "journal_heat_transfer") journal_heat_transfer = std::stod(value);
             else if (key == "bearing_heat_transfer") bearing_heat_transfer = std::stod(value);
             else if (key == "cross_film_thermal_model") cross_film_thermal_model = cross_film_model_from_config(value);
@@ -1114,6 +1155,7 @@ struct SimulationConfig {
             else if (key == "dissolved_gas_liquid_density") dissolved_gas_liquid_density = std::stod(value);
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
             else if (key == "gas_absorption_rate") gas_absorption_rate = std::stod(value);
+            else if (key == "coupled_phase_equilibrium") coupled_phase_equilibrium = is_true(value);
             else if (key == "dissolved_gas_diffusivity") dissolved_gas_diffusivity = std::stod(value);
             else if (key == "solution_density_gas_coeff") solution_density_gas_coeff = std::stod(value);
             else if (key == "solution_viscosity_gas_coeff") solution_viscosity_gas_coeff = std::stod(value);
@@ -1139,6 +1181,7 @@ struct SimulationConfig {
             else if (key == "viscosity_table") viscosity_table = parse_property_table(value);
             else if (key == "solubility_table_file") solubility_table_file = value;
             else if (key == "viscosity_table_file") viscosity_table_file = value;
+            else if (key == "viscosity_composition_file") viscosity_composition_file = value;
             else if (key == "density_table_file") density_table_file = value;
             else if (key == "motion_model") motion_model = motion_model_from_config(value);
             else if (key == "bearing_initial_from_attitude") {
@@ -1196,6 +1239,7 @@ struct SimulationConfig {
                     cavitation_model = CavitationModel::JFO;
                 else if (value == "FBNS" || value == "COMPLEMENTARITY")
                     cavitation_model = CavitationModel::FBNS;
+                else if (value == "COUPLED") cavitation_model = CavitationModel::COUPLED;
             }
             else if (key == "cavitation_threshold") {
                 if (value == "LOCAL_PSAT" || value == "PSAT")
@@ -1287,6 +1331,16 @@ struct SimulationConfig {
                 if (ss >> token) inlet.mixing_lambda = token;
                 if (ss >> token) inlet.supply_flow_rate = token;
                 inlets.push_back(inlet);
+            }
+            else if (key == "inlet_species") {
+                std::stringstream ss(value);
+                std::size_t index; double concentration, quality;
+                if (!(ss >> index >> concentration >> quality) || index >= inlets.size())
+                    parse_errors.push_back("inlet_species requires an existing zero-based inlet index, dissolved fraction and free mass fraction");
+                else {
+                    inlets[index].dissolved_gas = concentration;
+                    inlets[index].free_gas_mass_fraction = quality;
+                }
             }
             // Terminal branch: an unrecognized key is a hard error, not silence.
             // Without it a misspelling parses as a no-op and the run proceeds with
@@ -1559,7 +1613,7 @@ struct SimulationConfig {
 
         if (output_field_enabled("mass_residual") &&
             cavitation_model != CavitationModel::JFO &&
-            cavitation_model != CavitationModel::FBNS) {
+            cavitation_model != CavitationModel::FBNS && cavitation_model != CavitationModel::COUPLED) {
             warn("output field mass_residual is the residual of the mass-conserving "
                  "cavitation balance (JFO or FBNS); under the selected cavitation model "
                  "it is written as zero.");
@@ -1618,6 +1672,51 @@ struct SimulationConfig {
                 error("fbns_pressure_scale must be >= 0 (0 = derive it from the operating point).");
             }
         }
+
+        if (cavitation_model == CavitationModel::COUPLED) {
+            require_nonnegative(oil_vapor_temperature_coeff,"oil_vapor_temperature_coeff");
+            if (cavitation_threshold != CavitationThreshold::SCALAR_PCAV || gas_pressure_coupling != GasPressureCoupling::NONE)
+                error("COUPLED requires SCALAR_PCAV and gas_pressure_coupling = NONE; pressure follows the gas EOS and gap volume.");
+            if (cross_film_thermal_model != CrossFilmModel::NONE)
+                error("COUPLED uses a common film temperature with prescribed wall heat transfer; cross_film_thermal_model must be NONE.");
+            if (mixture_viscosity_model != MixtureViscosityModel::DUKLER)
+                error("COUPLED currently requires DUKLER volume-weighted mixture viscosity.");
+            if (temperature_model == TemperatureModel::ENERGY_EQUATION) {
+                if (thermal_convection_scheme != ConvectionScheme::UPWIND)
+                    error("COUPLED energy transport requires UPWIND.");
+                require_nonnegative(gas_thermal_conductivity,"gas_thermal_conductivity");
+                if (solution_density_gas_coeff != 0)
+                    error("COUPLED energy requires additive, incompressible partial liquid volumes: solution_density_gas_coeff = 0.");
+                if (fluid_property_model != FluidPropertyModel::CONSTANT) {
+                    require_positive(dissolved_heat_capacity,"dissolved_heat_capacity");
+                    if (!finite(desorption_internal_energy))
+                        error("COUPLED energy requires measured or explicitly assumed desorption_internal_energy; no oil-specific heat of solution is supplied.");
+                    if (dissolved_gas_species != DissolvedGasSpecies::R410A)
+                        require_positive(gas_heat_capacity_cv,"gas_heat_capacity_cv");
+                }
+                if (groove_mixing_model != GrooveMixingModel::PINNED)
+                    error("COUPLED conserves inlet enthalpy using the resolved supply mass; empirical groove mixing factors are not supported.");
+            }
+            if (solution_mode == SolutionMode::STEADY_STATE && inlets.empty() &&
+                bc_z_south_type == BCType::NEUMANN && bc_z_north_type == BCType::NEUMANN)
+                error("A closed COUPLED domain requires transient inventory evolution; steady pressure/composition has no reservoir datum.");
+            if (bc_z_south_type == BCType::INLET_OUTLET || bc_z_north_type == BCType::INLET_OUTLET)
+                error("COUPLED uses DIRICHLET for a pressure reservoir with reverse flow, or NEUMANN for a sealed end.");
+            if (theta_convection_scheme != ConvectionScheme::UPWIND || gas_convection_scheme != ConvectionScheme::UPWIND)
+                error("COUPLED currently requires UPWIND species and film convection.");
+            if (density_model == DensityModel::TABLE || liquid_viscosity_model == LiquidViscosityModel::TABLE)
+                error("COUPLED cannot use saturated p,T density/viscosity tables for off-equilibrium composition; use a concentration-dependent constitutive law.");
+            for (const auto& inlet : inlets) {
+                if (!finite(inlet.dissolved_gas) || (inlet.dissolved_gas < 0 && inlet.dissolved_gas != -1) || inlet.dissolved_gas >= 1)
+                    error("inlet_species dissolved fraction must be -1 (inherit) or in [0,1).");
+                if (!finite(inlet.free_gas_mass_fraction) || inlet.free_gas_mass_fraction < 0 || inlet.free_gas_mass_fraction >= 1)
+                    error("inlet_species free mass fraction must be in [0,1).");
+            }
+        }
+        if (dissolved_gas_species == DissolvedGasSpecies::R410A && cavitation_model != CavitationModel::COUPLED)
+            error("R410A requires COUPLED; the legacy segregated gas closures assume an ideal gas.");
+        if (oil_vapor_temperature_coeff != 0 && cavitation_model != CavitationModel::COUPLED)
+            error("Temperature-dependent oil vapor pressure currently requires COUPLED.");
 
         // Outer (Picard) coupling schedule.
         if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
@@ -1788,6 +1887,10 @@ struct SimulationConfig {
                 case LiquidViscosityModel::TABLE:
                     if (viscosity_table_2d.empty()) require_table(viscosity_table, "viscosity_table");
                     break;
+                case LiquidViscosityModel::COMPOSITION_TABLE:
+                    if (viscosity_composition_table.empty()) error("COMPOSITION_TABLE requires viscosity_composition_file (c_mass_fraction,T_C,mu_Pa_s).");
+                    if (viscosity_pressure_coeff != 0) error("COMPOSITION_TABLE has no pressure axis; supply a justified pressure-independent viscosity table, with viscosity_pressure_coeff = 0.");
+                    break;
             }
         }
 
@@ -1841,7 +1944,7 @@ struct SimulationConfig {
             if (!finite(gas_absorption_rate) || (gas_absorption_rate < 0 && gas_absorption_rate != -1))
                 error("gas_absorption_rate must be -1 (inherit release rate) or >= 0 [1/s].");
             if (solution_mode == SolutionMode::STEADY_STATE &&
-                steady_gas_model == SteadyGasModel::FROZEN && !allow_frozen_gas_steady) {
+                steady_gas_model == SteadyGasModel::FROZEN && !allow_frozen_gas_steady && cavitation_model != CavitationModel::COUPLED) {
                 error("TWO_PHASE in STEADY_STATE with steady_gas_model = FROZEN "
                       "silently freezes the gas model. Set steady_gas_model = EQUILIBRIUM, or "
                       "allow_frozen_gas_steady = true to accept the frozen behaviour.");
@@ -1850,8 +1953,9 @@ struct SimulationConfig {
                 error("gas_alpha_max must be in (0, 1] for TWO_PHASE.");
             }
             if (finite(dt) && finite(gas_mass_transfer_rate) && dt * gas_mass_transfer_rate > 1.0) {
-                warn("dt * gas_mass_transfer_rate > 1; local exchange is integrated analytically, "
-                     "but transport/pressure splitting still requires a timestep study.");
+                warn(cavitation_model==CavitationModel::COUPLED ?
+                     "dt * gas_mass_transfer_rate > 1; backward Euler is implicit, but exchange accuracy still requires a timestep study." :
+                     "dt * gas_mass_transfer_rate > 1; local exchange is integrated analytically, but transport/pressure splitting still requires a timestep study.");
             }
 
             switch (mixture_viscosity_model) {
@@ -1864,8 +1968,7 @@ struct SimulationConfig {
                     break;
             }
 
-            // Saturation context (gaseous onset): boundary oil entering at or
-            // above p_sat is already saturated and will outgas on any pressure drop.
+            // The charge bubble point is not the current reservoir saturation state.
             const double p_sat = saturation_pressure(dissolved_gas_initial, temperature_initial);
             if (finite(p_sat) && p_sat > 0.0) {
                 std::ostringstream context;
@@ -1878,7 +1981,8 @@ struct SimulationConfig {
                     if (ratio >= 1.0) {
                         std::ostringstream msg;
                         msg << label << " / p_sat = " << ratio
-                            << " >= 1: boundary oil enters saturated and releases gas on any pressure drop.";
+                            << " >= 1: the initial charge is at or below equilibrium solubility at this pressure. "
+                               "Release requires crossing its temperature-dependent bubble point; reservoir composition may differ.";
                         warn(msg.str());
                     }
                 };
@@ -1935,6 +2039,7 @@ struct SimulationConfig {
         switch (dissolved_gas_species) {
             case DissolvedGasSpecies::AIR: return 287.05;
             case DissolvedGasSpecies::PROPANE: return 188.55;
+            case DissolvedGasSpecies::R410A: return 8.314472 / 0.0725854;
         }
         return 188.55;
     }
@@ -2008,7 +2113,7 @@ struct SimulationConfig {
     /// maintains a physical film content theta in [theta_min, 1].
     bool mass_conserving_cavitation() const {
         return cavitation_model == CavitationModel::JFO ||
-               cavitation_model == CavitationModel::FBNS;
+               cavitation_model == CavitationModel::FBNS || cavitation_model == CavitationModel::COUPLED;
     }
 
     double initial_pressure() const {
@@ -2197,6 +2302,7 @@ struct SimulationConfig {
             << "mu = " << mu << "\n"
             << "rho = " << rho << "\n"
             << "p_cav = " << p_cav << "\n"
+            << "oil_vapor_temperature_coeff = " << oil_vapor_temperature_coeff << "\n"
             << "bulk_modulus = " << bulk_modulus << "\n\n";
 
         out << "# Energy Equation\n"
@@ -2208,6 +2314,10 @@ struct SimulationConfig {
             << "bearing_wall_temperature = " << bearing_wall_temperature << "\n"
             << "rho_cp = " << rho_cp << "\n"
             << "thermal_conductivity = " << thermal_conductivity << "\n"
+            << "gas_heat_capacity_cv = " << gas_heat_capacity_cv << "\n"
+            << "dissolved_heat_capacity = " << dissolved_heat_capacity << "\n"
+            << "desorption_internal_energy = " << desorption_internal_energy << "\n"
+            << "gas_thermal_conductivity = " << gas_thermal_conductivity << "\n"
             << "journal_heat_transfer = " << journal_heat_transfer << "\n"
             << "bearing_heat_transfer = " << bearing_heat_transfer << "\n"
             << "# cross_film_thermal_model options: NONE, POLYNOMIAL. POLYNOMIAL turns on the\n"
@@ -2236,7 +2346,7 @@ struct SimulationConfig {
         out << "# Fluid Properties\n"
             << "# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE\n"
             << "fluid_property_model = " << to_config_value(fluid_property_model) << "\n"
-            << "# dissolved_gas_species options: AIR, PROPANE\n"
+            << "# dissolved_gas_species options: AIR, PROPANE, R410A\n"
             << "dissolved_gas_species = " << to_config_value(dissolved_gas_species) << "\n"
             << "# solubility_model options: HENRY, TABLE\n"
             << "solubility_model = " << to_config_value(solubility_model) << "\n"
@@ -2252,6 +2362,7 @@ struct SimulationConfig {
             << "gas_mass_transfer_rate = " << gas_mass_transfer_rate << "\n"
             << "# gas_absorption_rate: -1 inherits release rate; 0 disables absorption\n"
             << "gas_absorption_rate = " << gas_absorption_rate << "\n"
+            << "coupled_phase_equilibrium = " << (coupled_phase_equilibrium ? "true" : "false") << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
             << "solution_density_gas_coeff = " << solution_density_gas_coeff << "\n"
             << "solution_viscosity_gas_coeff = " << solution_viscosity_gas_coeff << "\n"
@@ -2280,6 +2391,7 @@ struct SimulationConfig {
             << "# tables above. Relative paths resolve against this config file's directory.\n"
             << "solubility_table_file = " << solubility_table_file.generic_string() << "\n"
             << "viscosity_table_file = " << viscosity_table_file.generic_string() << "\n"
+            << "viscosity_composition_file = " << viscosity_composition_file.generic_string() << "\n"
             << "density_table_file = " << density_table_file.generic_string() << "\n\n";
 
         out << "# Bearing Motion\n"
@@ -2378,6 +2490,10 @@ struct SimulationConfig {
         }
         out << "\n";
 
+        for (std::size_t index = 0; index < inlets.size(); ++index)
+            if (inlets[index].dissolved_gas != -1 || inlets[index].free_gas_mass_fraction != 0)
+                out << "inlet_species = " << index << " " << inlets[index].dissolved_gas << " " << inlets[index].free_gas_mass_fraction << "\n";
+
         out << "# Output\n"
             << "# output_fields accepts comma-separated field names.\n"
             << "# Options: pressure, film_content, h, rho, mu,\n"
@@ -2423,10 +2539,10 @@ struct SimulationConfig {
             "thermal_convection_scheme", "gas_convection_scheme", "linear_rtol",
             "linear_ksp_type", "linear_pc_type", "linear_pc_overlap",
             "linear_solver_fallbacks", "omega", "omega_ramp_time", "mu", "rho",
-            "p_cav", "bulk_modulus", "tilt_slope_x", "tilt_slope_y",
+            "p_cav", "oil_vapor_temperature_coeff", "bulk_modulus", "tilt_slope_x", "tilt_slope_y",
             "temperature_model", "temperature_initial", "temperature_reference",
             "journal_wall_temperature", "bearing_wall_temperature", "rho_cp",
-            "thermal_conductivity", "journal_heat_transfer",
+            "thermal_conductivity", "gas_heat_capacity_cv", "dissolved_heat_capacity", "desorption_internal_energy", "gas_thermal_conductivity", "journal_heat_transfer",
             "bearing_heat_transfer", "cross_film_thermal_model",
             "cross_film_profile_order", "cross_film_quadrature_points",
             "cross_film_relaxation", "shaft_ambient_heat_transfer",
@@ -2439,7 +2555,7 @@ struct SimulationConfig {
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
-            "gas_mass_transfer_rate", "gas_absorption_rate", "dissolved_gas_diffusivity",
+            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "inlet_species", "dissolved_gas_diffusivity",
             "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
             "viscosity_temperature_coeff", "viscosity_pressure_coeff",
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",
@@ -2448,7 +2564,7 @@ struct SimulationConfig {
             "void_coupling_relaxation", "mu_gas", "diagnostics_interval",
             "property_reference_pressure", "property_reference_temperature",
             "solubility_table", "density_table", "viscosity_table",
-            "solubility_table_file", "viscosity_table_file", "density_table_file",
+            "solubility_table_file", "viscosity_table_file", "viscosity_composition_file", "density_table_file",
             "motion_model", "bearing_initial_from_attitude", "bearing_initial_x",
             "bearing_initial_y", "bearing_initial_z", "bearing_initial_vx",
             "bearing_initial_vy", "bearing_initial_vz", "bearing_mass",

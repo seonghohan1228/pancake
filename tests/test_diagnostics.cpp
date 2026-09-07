@@ -434,8 +434,10 @@ void test_regime_and_saturation_guards() {
           "p_sat for the shipped R290 constants must be 1.0 MPa");
     check(contains_text(warnings, "p_sat"),
           "validate() must log the saturation-pressure context");
-    check(contains_text(warnings, "saturated"),
-          "validate() must warn when boundary oil enters saturated");
+    check(contains_text(warnings, "at or below equilibrium solubility"),
+          "validate() must distinguish charge bubble point from reservoir saturation");
+    check(!contains_text(warnings, "any pressure drop"),
+          "an undersaturated reservoir does not release gas for every pressure drop");
 }
 
 }  // namespace

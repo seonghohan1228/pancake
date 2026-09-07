@@ -38,12 +38,16 @@ foreach(mode IN ITEMS zero partial)
         endif()
         file(READ "${output_dir}/flat/processor0/solution_2_0.vts" final)
         # Uniform insulated Couette heating: delta T = mu (omega R/h)^2 t / rho_cp.
-        # 300 + 10.526315789... * 0.015 = 300.1578947 K (VTK stores 6 digits).
-        if(NOT final MATCHES "Name=\"T\"[^>]*>[ \r\n]*300\\.158[ \r\n]")
+        # Compare numerically; output retains double precision.
+        string(REGEX MATCH "Name=\"T\"[^>]*>[ \r\n]*([0-9.eE+-]+)" temperature_match "${final}")
+        set(final_temperature "${CMAKE_MATCH_1}")
+        if(NOT temperature_match OR final_temperature LESS 300.157894 OR final_temperature GREATER 300.157896)
             message(FATAL_ERROR "Final temperature does not reflect 0.015 s of heating")
         endif()
         # Decoupled axial rigid-body acceleration: z = (F_z / (2 m)) t^2.
-        if(NOT final MATCHES "Name=\"xB\"[^>]*>[ \r\n]*[^ ]+ [^ ]+ 0\\.000225[ \r\n]")
+        string(REGEX MATCH "Name=\"xB\"[^>]*>[ \r\n]*[^ ]+ [^ ]+ ([0-9.eE+-]+)" position_match "${final}")
+        set(final_position "${CMAKE_MATCH_1}")
+        if(NOT position_match OR final_position LESS 0.0002249999 OR final_position GREATER 0.0002250001)
             message(FATAL_ERROR "Saved rigid-body position lags the reported time")
         endif()
     endif()

@@ -1,8 +1,44 @@
 # Physics and Numerical Methods
 
-Current conservation and gas-model scope: [September 2026 update](#18-conservative-gas-update-and-experimental-scope-2026-09-06).
-That section supersedes historical transient exchange, relaxation and storage
-descriptions below. Oil-air is experimental; R410A is not implemented.
+Current mixture formulation: [coupled mass and volume](docs/COUPLED_CAVITATION.md),
+[thermal energy](docs/COUPLED_ENERGY.md), and [R410A EOS](docs/R410A_EOS.md).
+These describe `cavitation_model = COUPLED`, including its phase and material
+limits, and supersede the earlier split-mixture descriptions below. Historical
+sections are retained for understanding previous results and other solvers.
+Neither proposed FW68D mixture is experimentally validated.
+
+## Current coupled formulation (2026-09-07)
+
+The state is absolute pressure $p$, oil inventory $M_o$, dissolved inventory
+$M_d$, free inventory $M_g$ (kg/m²), and optional common film temperature $T$.
+Define $c_d=M_d/(M_o+M_d)$ and $\theta_l=(M_o+M_d)/(\rho_l h)$.
+Oil and total dissolved/free species obey separate finite-volume conservation
+equations. A third species equation supplies finite-rate release/absorption,
+or local equilibrium complementarity when explicitly selected. The same
+nonlinear system imposes
+
+$$M_g=\rho_g(p-p_v(T),T)h(1-\theta_l),\quad p\ge p_v(T),\quad 0\le\theta_l\le1.$$
+
+Gas-free cells recover JFO complementarity. A gas-containing cavity has
+variable pressure from its inventory, temperature and available volume;
+the initial dissolved charge's bubble point is not a universal cavity
+pressure. `film_content` is the liquid volume fraction on this path, not
+the compressible Elrod universal variable of the older solvers.
+
+Thermal mode conserves $\mathcal U=\sum_i M_i u_i$ using the component
+mass fluxes, compression work $-p(\partial_t h+\nabla_s\cdot q)$,
+Couette/Poiseuille dissipation, wall heat transfer and in-plane conduction.
+Supply mass carries enthalpy. The dissolved and free energy reference
+difference accounts for desorption cooling/absorption heating once.
+The linked derivations give the discrete equations, constitutive assumptions,
+input conventions, tests and remaining thermal vapor limitations.
+
+Axial pressure boundaries select reservoir temperature/composition only for
+inflow. Outflow uses the interior state, including the mobility properties.
+Internal pressure patches use their net mass source to select incoming or
+outgoing composition and enthalpy. No patch is required for an end-fed bearing.
+Grooves currently extend across the axial length; holes are circular film
+patches. Neither resolves three-dimensional feed plumbing.
 
 ## 1. Problem Overview
 

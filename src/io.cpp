@@ -200,6 +200,7 @@ void write_flat_vts(int step, const Mesh& mesh, Fields& fields, const Simulation
     ss << cfg.output_dir << "/flat/processor" << mesh.rank << "/" << cfg.filename_prefix << "_" << step << "_" << mesh.rank << ".vts";
 
     std::ofstream file(ss.str());
+    file.precision(17);
     file << "<?xml version=\"1.0\"?>\n"
          << "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
          << "  <StructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\">\n"
@@ -258,6 +259,7 @@ void write_flat_pvts(int step, int total_ranks, Fields& fields, const Simulation
     ss << cfg.output_dir << "/flat/" << cfg.filename_prefix << "_" << step << ".pvts";
     std::string path = ss.str();
     std::ofstream file(path);
+    file.precision(17);
     const bool write_velocity = cfg.output_field_enabled("velocity") &&
         fields.has("velocity_theta") && fields.has("velocity_z");
 
@@ -307,6 +309,7 @@ void write_vts(int step, const Mesh& mesh, Fields& fields, const SimulationConfi
 
     // Headers
     std::ofstream file(ss.str());
+    file.precision(17);
     file << "<?xml version=\"1.0\"?>\n"
          << "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
          << "  <StructuredGrid WholeExtent=\"0 " << cfg.n_theta_global << " 0 " << cfg.n_z_global << " 0 0\">\n"
@@ -378,6 +381,7 @@ void write_pvts(int step, int total_ranks, Fields& fields, const SimulationConfi
     ss << cfg.output_dir << "/" << cfg.filename_prefix << "_" << step << ".pvts";
 
     std::ofstream file(ss.str());
+    file.precision(17);
     const bool write_velocity = cfg.output_field_enabled("velocity") &&
         fields.has("velocity_theta") && fields.has("velocity_z");
 

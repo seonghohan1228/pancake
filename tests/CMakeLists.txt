@@ -3,7 +3,7 @@ function(add_pancake_test name)
     target_link_libraries(${name} PRIVATE pancake_core)
     target_compile_features(${name} PRIVATE cxx_std_20)
     pancake_deploy_mingw_runtime(${name})
-    if(name STREQUAL "test_eos")
+    if(name STREQUAL "test_eos" OR name STREQUAL "test_r410a")
         add_test(NAME ${name} COMMAND ${name})
     else()
         add_test(NAME ${name}
@@ -66,6 +66,23 @@ target_compile_definitions(test_config_keys PRIVATE
 add_pancake_test(test_coupling)
 add_pancake_test(test_gas_coupling)
 add_pancake_test(test_physics_audit)
+add_pancake_test(test_coupled_cavitation)
+add_pancake_test(test_coupled_boundaries)
+add_pancake_test(test_coupled_energy)
+add_pancake_test(test_r410a)
+add_executable(test_composition_viscosity test_composition_viscosity.cpp)
+target_link_libraries(test_composition_viscosity PRIVATE pancake_core)
+target_compile_definitions(test_composition_viscosity PRIVATE PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+pancake_deploy_mingw_runtime(test_composition_viscosity)
+add_test(NAME test_composition_viscosity COMMAND test_composition_viscosity)
+foreach(ranks 1 4)
+    add_test(NAME test_coupled_energy_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_coupled_energy>)
+    add_test(NAME test_coupled_cavitation_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_coupled_cavitation>)
+    add_test(NAME test_coupled_boundaries_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_coupled_boundaries>)
+endforeach()
 add_test(NAME test_physics_audit_mpi1
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:test_physics_audit>)
 add_test(NAME test_physics_audit_mpi4

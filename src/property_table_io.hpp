@@ -19,6 +19,8 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
                                   const std::string& value_header,
                                   double value_scale,
                                   std::string& error_out);
+/// Load actual-composition viscosity (c_mass_fraction,T_C,mu_Pa_s), not saturated p,T data.
+CompositionViscosityTable load_viscosity_composition_csv(const std::filesystem::path& path,std::string& error_out);
 
 /// Resolve and load every configured `*_table_file` into cfg's 2-D tables.
 /// Relative paths resolve against `cfg.config_dir` first, then the CWD. Any load

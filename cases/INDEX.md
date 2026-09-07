@@ -9,6 +9,12 @@ anything actually is.
 
 Last reconciled: 2026-08-07 (`codex/validation-reconciliation`).
 
+2026-09-07 addition: [coupled cavitation and heating](90_diagnostics/coupled_validation/README.md)
+contains conservative mixture verification, the native R410A EOS checks,
+workstation timing/refinement and a gas-cavity experiment comparison. See
+[its results report](90_diagnostics/coupled_validation/SUMMARY.md) for the
+successful mathematical limits and remaining experimental mismatch.
+
 ## Stage numbering
 
 The directory prefix is the campaign stage, and it deliberately matches the case

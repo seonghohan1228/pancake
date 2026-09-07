@@ -44,6 +44,8 @@ struct MassBalance {
     double cavitated_fraction = 0.0;   // fraction of cells with theta < 1 (cavitation extent)
     double gas_volume_excess = 0.0;    // max(0, theta + m_g/(rho_g h) - 1), gap fraction
     double gas_eos_defect = 0.0;       // max |alpha_gas - m_g/(rho_g h)|, including clipping
+    double energy_residual_w = std::numeric_limits<double>::quiet_NaN(); // COUPLED thermal balance; otherwise unavailable.
+    double internal_energy_j = std::numeric_limits<double>::quiet_NaN();
 };
 
 /// Global mass balance for the step just completed. dt is the step size used by

@@ -1,5 +1,18 @@
 # Journal-bearing physics and implementation audit
 
+Later implementation: [COUPLED conservation](COUPLED_CAVITATION.md),
+[thermal energy](COUPLED_ENERGY.md) and [R410A](R410A_EOS.md) supersede the
+capability gaps identified here. This dated audit preserves the original
+branch/history findings and failures; it is not a current capability list.
+
+Remote follow-up on 2026-09-07: `/home/user/pancake` on `afml-r6` is detached
+at `f0e772d` and contains unfinished campaign output. Its 69 reachable commits
+are all present in the already audited local object database. The remote
+branch tips include `case05_79ddbee`, `codex/conjugate-bush`, `codex/fbns-gas`,
+`codex/thermal-ksp-robustness` and `ksp-fix-f0e772d`. No remote Git history
+was rewritten or fetched. New runs use a separate source snapshot; see
+[the workstation results](../cases/90_diagnostics/coupled_validation/SUMMARY.md).
+
 Date: 2026-09-06. Baseline: local `main` at `b9dcaf3`. Scope: accessible
 branches, reachable history, test evidence, governing equations and the target
 oil-air / oil-R410A experiments. Work was isolated from the dirty Ferron checkout.

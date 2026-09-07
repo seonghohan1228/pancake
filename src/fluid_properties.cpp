@@ -5,6 +5,7 @@
 #include <string>
 
 #include "full_film.hpp"
+#include "r410a.hpp"
 #include "utils.hpp"
 
 namespace FluidProperties {
@@ -64,11 +65,14 @@ double gas_specific_constant(DissolvedGasSpecies species) {
     switch (species) {
         case DissolvedGasSpecies::AIR: return 287.05;
         case DissolvedGasSpecies::PROPANE: return 188.55;
+        case DissolvedGasSpecies::R410A: return R410A::gas_constant;
     }
     return 188.55;
 }
 
 double gas_density(double pressure, double temperature, const SimulationConfig& cfg) {
+    if (cfg.dissolved_gas_species == DissolvedGasSpecies::R410A)
+        return R410A::gas_density(pressure,temperature);
     const double p_abs = std::max(pressure, cfg.gas_pressure_floor);
     const double T = bounded_temperature(temperature, cfg);
     return p_abs / (gas_specific_constant(cfg.dissolved_gas_species) * T);
@@ -178,6 +182,8 @@ double liquid_solution_viscosity(double dissolved_gas,
     const double c_g = clamp_mass_fraction(dissolved_gas, cfg);
     double mu_solution = cfg.mu;
     switch (cfg.liquid_viscosity_model) {
+        case LiquidViscosityModel::COMPOSITION_TABLE:
+            return cfg.viscosity_composition_table.interpolate(c_g,temperature);
         case LiquidViscosityModel::CONSTANT:
             mu_solution = cfg.mu;
             break;

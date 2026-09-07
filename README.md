@@ -11,7 +11,47 @@ energy equation for lubricant temperature and viscous heat generation.
 For a feature-level record of substantive project contributions, see
 `docs/PROJECT_CONTRIBUTIONS.md`.
 
-## Cavitation readiness (2026-09-06)
+## Coupled cavitation and heating (2026-09-07)
+
+`cavitation_model = COUPLED` solves pressure, oil mass, dissolved and free
+species mass, and optionally film temperature together. It supports ideal
+air and a native fixed-blend R410A Helmholtz EOS. Gas compressibility, release,
+absorption, viscous heating, compression work and phase-transfer energy use
+the same conserved state and face fluxes. Both pressure ends allow reverse
+flow; a groove, circular hole or no internal inlet is supported.
+
+Read [the conservation model](docs/COUPLED_CAVITATION.md),
+[the energy equation](docs/COUPLED_ENERGY.md) and
+[R410A thermodynamics](docs/R410A_EOS.md) before preparing a mixture run.
+Use `temperature_model = ENERGY_EQUATION` to predict heating. Mixture
+caloric properties must be supplied explicitly; example campaign constants
+are synthetic and must not be treated as an FW68D calibration.
+
+The [detailed implementation review](docs/COUPLED_IMPLEMENTATION_REVIEW.md)
+explains the defects and their consequences. The
+[workstation comparison report](cases/90_diagnostics/coupled_validation/SUMMARY.md)
+contains before/after curves, thermal results and the failed gas-cavity
+experimental comparison.
+
+The current implementation passes all 51 CTest checks on native Windows,
+local WSL Linux and the remote Linux workstation, including MPI checks. These establish conservation,
+analytic limits and thermodynamic implementation. They do not establish
+experimental accuracy for FW68D. Oil vapor uses the negligible-mass JFO
+limit; separate condensed refrigerant, blend fractionation, cross-film
+temperature and conjugate solid conduction are not resolved by COUPLED.
+
+`COMPOSITION_TABLE` viscosity uses actual dissolved mass fraction and
+temperature, with strict table bounds. A traceable
+[FVC68B–R410A table](cases/ref_data/fvc68b_r410a_1999_viscosity.md) tests this
+path; **FVC68B is not FW68D**, and its 23–65°C data do not cover 20–80°C.
+No CoolProp runtime dependency is added to the C++ solver. Python validation
+scripts use NumPy and Matplotlib and record the run machine and MPI count.
+
+## Earlier audit and repaired segregated model
+
+The dated paragraphs below record the state before COUPLED was implemented.
+Their statements that R410A is unavailable and that pressure/volume coupling
+is unresolved describe that earlier implementation.
 
 **2026-09-07 update:** the target fluid is FW68D with air or R410A, at 20–80 °C,
 with reservoirs up to 20 bar absolute and R410A charging near 10 bar. See the

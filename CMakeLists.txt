@@ -163,6 +163,8 @@ if(PANCAKE_BUILD_SOLVER)
     message(STATUS "MPI C++ Compiler: ${MPI_CXX_COMPILER}")
 
     set(PANCAKE_CORE_SOURCES
+        src/coupled_cavitation.cpp
+        src/r410a.cpp
         src/bush_conduction.cpp
         src/communicator.cpp
         src/coupling.cpp

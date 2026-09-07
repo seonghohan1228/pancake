@@ -9,6 +9,24 @@ snapshots and do not override this file.
 Snapshot: 2026-08-07, solver commit `df0802b` on
 `codex/ferron-cht-grid-check`.
 
+## 2026-09-07 coupled thermal implementation
+
+The new [conservation model](../docs/COUPLED_CAVITATION.md),
+[thermal model](../docs/COUPLED_ENERGY.md) and
+[native R410A EOS](../docs/R410A_EOS.md) supersede the corresponding missing
+capabilities in the older entries below. Current source passes **51/51 tests
+on native Windows, local WSL Linux and the remote Linux workstation**,
+including MPI checks. The workstation has separate source/binary provenance.
+
+The [coupled campaign](90_diagnostics/coupled_validation/SUMMARY.md) preserves
+intermediate local and final-source workstation comparisons. The oil-air
+timestep instability is removed in the coupled runs, and the pure-vapor solution approaches an
+independent JFO solution under refinement. The Etsion gaseous-cavity extent
+still disagrees substantially with the photographed cavity. Neither FW68D
+mixture is experimentally validated. The final-source runs include the
+face-gap and outflow-property corrections. Some 20-bar R410A cases fail;
+their numerical and phase-domain failure records remain part of the evidence.
+
 ## 2026-09-06 audit addendum
 
 The August campaign evidence below is retained as a dated snapshot. Current

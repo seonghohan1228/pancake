@@ -274,7 +274,7 @@ void test_gas_volume_diagnostics(const Mesh& mesh) {
 }
 
 void test_species_and_mass_fraction() {
-    for (const char* species : {"R410A", "NITROGEN", "AR", "PROAPNE"}) {
+    for (const char* species : {"NITROGEN", "AR", "PROAPNE"}) {
         SimulationConfig cfg;
         cfg.load_from_text(std::string("dissolved_gas_species = ") + species + "\n");
         std::vector<std::string> errors, warnings;

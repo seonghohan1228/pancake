@@ -96,7 +96,9 @@ void test_legacy_branches_still_parse() {
 void test_manifest_matches_parser() {
     for (const std::string& key : SimulationConfig::known_config_keys()) {
         SimulationConfig cfg;
-        cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
+        if (key == "inlet_species")
+            cfg.load_from_text("inlet_groove = 90 10 2e5\ninlet_species = 0 .001 0\n");
+        else cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");
     }

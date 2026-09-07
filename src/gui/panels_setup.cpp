@@ -160,7 +160,7 @@ void apply_dissolved_gas_species_preset(SimulationConfig& config, DissolvedGasSp
             config.dissolved_gas_max = 0.01;
             config.dissolved_gas_henry_coeff = 1.2e-9;     // 1/Pa, from a Bunsen coefficient ~0.09
             config.dissolved_gas_henry_temp_coeff = 0.0;   // weak T-dependence
-            config.dissolved_gas_liquid_density = 1.2;     // air density [kg/m^3]
+            config.dissolved_gas_liquid_density = 0.0;     // Unknown dissolved partial volume; never substitute free-air density.
             config.gas_mass_transfer_rate = 500.0;
             config.dissolved_gas_diffusivity = 1e-9;
             config.solution_density_gas_coeff = 0.0;
@@ -172,6 +172,31 @@ void apply_dissolved_gas_species_preset(SimulationConfig& config, DissolvedGasSp
             config.gas_pressure_floor = 1e5;
             config.property_reference_pressure = 101325.0;
             config.property_reference_temperature = 300.0;
+            break;
+        case DissolvedGasSpecies::R410A:
+            // Changing species must not relabel the previous oil/species fit.
+            config.dissolved_gas_initial = 0;
+            config.dissolved_gas_henry_coeff = 0;
+            config.dissolved_gas_henry_temp_coeff = 0;
+            config.dissolved_gas_liquid_density = 0;
+            config.solubility_table.clear();
+            config.solubility_table_2d = {};
+            config.solubility_table_file.clear();
+            config.gas_mass_transfer_rate = 0;
+            config.gas_absorption_rate = -1;
+            config.solution_viscosity_gas_coeff = 0;
+            config.mu_gas = 0;
+            config.viscosity_table.clear(); config.viscosity_table_2d={}; config.viscosity_table_file.clear();
+            config.viscosity_composition_table={}; config.viscosity_composition_file.clear();
+            config.density_table.clear(); config.density_table_2d={}; config.density_table_file.clear();
+            config.density_model=DensityModel::CONSTANT;
+            config.liquid_viscosity_model=LiquidViscosityModel::CONSTANT;
+            config.cavitation_model=CavitationModel::COUPLED;
+            config.cavitation_threshold=CavitationThreshold::SCALAR_PCAV;
+            config.gas_pressure_coupling=GasPressureCoupling::NONE;
+            config.mixture_viscosity_model=MixtureViscosityModel::DUKLER;
+            config.desorption_internal_energy=std::numeric_limits<double>::quiet_NaN();
+            config.dissolved_heat_capacity=-1;
             break;
     }
 }
@@ -500,12 +525,17 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                       "film-content algorithm: rupture AND reformation are physical. The "
                       "recommended production model for accurate extent and oil transport."},
                      {CavitationModel::FBNS, "JFO (FBNS complementarity)",
-                      "The same JFO conditions solved as a complementarity problem in (p, theta) "
-                      "by the Fischer-Burmeister-Newton-Schur algorithm. No artificial bulk "
-                      "modulus and no switch function, so the rupture front is placed far more "
-                      "accurately than Elrod-Adams at the same grid. Supports the energy "
-                      "equation and SINGLE_PHASE liquid properties; two-phase free gas, the "
-                      "cross-film thermal model and INLET_OUTLET ends still need JFO."}});
+                      "Mass-conserving pressure/film-content complementarity without an artificial "
+                      "bulk modulus. Supports thermal liquid-film calculations. Its segregated "
+                      "free-gas extension fails coupled volume closure; use COUPLED for gas."},
+                     {CavitationModel::COUPLED, "Coupled gas and vapor",
+                      "Conserves oil and gas while solving pressure and gap volume together. "
+                      "Supports bidirectional pressure reservoirs, grooves and holes. "
+                      "Supports a common film energy balance; material and caloric data must be supplied separately."}});
+                if (config_.cavitation_model==CavitationModel::COUPLED) {
+                    row("Local phase equilibrium", "Instantaneous dissolution/release. Disable to use the specified finite transfer rates.");
+                    changed |= ImGui::Checkbox("##coupled_phase_equilibrium",&config_.coupled_phase_equilibrium);
+                }
                 row("Cavitation threshold", "Pressure the ruptured (cavitated) film is held at.");
                 changed |= enum_combo<CavitationThreshold>(
                     "##cavitation_threshold", config_.cavitation_threshold,
@@ -614,10 +644,15 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                           "calibrated R-290-in-PZ68S coefficient set."},
                          {DissolvedGasSpecies::AIR, "Air",
                           "Air dissolved in oil (conventional aerated lubricant). Fills a generic "
-                          "air-in-mineral-oil coefficient set."}});
+                          "air-in-mineral-oil coefficient set; it is not an FW68D calibration."},
+                         {DissolvedGasSpecies::R410A, "R-410A",
+                          "Fixed-composition real-fluid EOS. Requires the coupled model. "
+                          "Clears the previous solubility fit; supply oil-specific measurements."}});
                     if (species_changed && config_.dissolved_gas_species != previous_species) {
                         apply_dissolved_gas_species_preset(config_, config_.dissolved_gas_species);
-                        set_status(std::string("Filled ") +
+                        if (config_.dissolved_gas_species == DissolvedGasSpecies::R410A)
+                            set_status("R410A selected. Enter oil-specific solubility, liquid properties and gas exchange parameters.");
+                        else set_status(std::string("Filled ") +
                                    (config_.dissolved_gas_species == DissolvedGasSpecies::PROPANE
                                         ? "propane (R-290 in PZ68S)"
                                         : "air-in-oil") +
@@ -660,17 +695,18 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                           "Their VG32 set is k0=3.287, k1=3.064, k2=0.777 with mu=0.0277 "
                           "Pa.s and the reference temperature at 313.15 K (40 C)."},
                          {LiquidViscosityModel::TABLE, "Table",
-                          "Measured kinematic nu(p,T), converted to dynamic per cell."}});
+                          "Measured saturated kinematic nu(p,T), converted to dynamic per cell."},
+                         {LiquidViscosityModel::COMPOSITION_TABLE, "Composition and temperature table",
+                          "Dynamic viscosity at actual dissolved concentration and film temperature. Requires c_mass_fraction, T_C, mu_Pa_s; no extrapolation."}});
                     row("Mixture viscosity", "Effective viscosity once free gas appears.");
                     changed |= enum_combo<MixtureViscosityModel>(
                         "##mixture_viscosity_model", config_.mixture_viscosity_model,
-                        {{MixtureViscosityModel::DUKLER, "Dukler (legacy)",
+                        {{MixtureViscosityModel::DUKLER, "Volume-weighted (Dukler)",
                           "Void-fraction-weighted linear blend alpha*mu_g + (1-alpha)*mu_l; "
-                          "needs mu_gas. Legacy/deprecated - kept for comparison with prior "
-                          "results."},
+                          "needs mu_gas. Used by COUPLED as its homogeneous constitutive approximation."},
                          {MixtureViscosityModel::LINEAR, "Linear (Grando)",
                           "Mass-quality-weighted linear blend x*mu_g + (1-x)*mu_l (Grando "
-                          "2006); needs mu_gas. Refrigerant-oil validated."},
+                          "2006); needs mu_gas. Agreement for another oil does not validate FW68D."},
                          {MixtureViscosityModel::MCADAMS, "McAdams",
                           "Homogeneous two-phase standard: reciprocal blend by mass quality "
                           "1/mu = x/mu_g + (1-x)/mu_l; needs mu_gas. Correct asymptotes; the "
@@ -733,6 +769,14 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                                        "converted to dynamic per cell). Supplier file: "
                                        "data/R290_PZ68S/r290_pz68s.csv.",
                                        config_.viscosity_table_file, config_.viscosity_table_2d);
+                    }
+                    if (config_.liquid_viscosity_model == LiquidViscosityModel::COMPOSITION_TABLE) {
+                        row("Composition viscosity file", "CSV columns c_mass_fraction, T_C, mu_Pa_s. The oil and refrigerant identity must match the experiment.");
+                        std::string path=winutil::path_to_utf8(config_.viscosity_composition_file);
+                        if (input_text_string("##viscosity_composition_file",path)) {
+                            config_.viscosity_composition_file=winutil::utf8_to_path(path); dirty_=true;
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) reload_property_tables();
                     }
                 }
                 break;

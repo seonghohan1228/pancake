@@ -1,5 +1,42 @@
 # Development Plan
 
+## 2026-09-07 coupled cavitation and heating implementation
+
+- [x] Solve pressure, conserved oil/dissolved/free inventories and gas volume
+  simultaneously; retain the gas-free JFO limit and exact accepted face fluxes.
+- [x] Add native fixed-blend R410A density and caloric properties; check against
+  the published Helmholtz EOS through independent CoolProp reference calls.
+- [x] Predict film heating with conservative energy, compression work,
+  viscous dissipation and dissolved/free energy differences. Verify release,
+  compression, wall cooling and reservoir enthalpy independently.
+- [x] Support separate axial and internal reservoir compositions and directional
+  heat/species transport for groove, hole and absent internal supply.
+- [x] Add concentration/temperature viscosity tables with strict bounds and
+  a labeled FVC68B reference fixture. Do not relabel it as FW68D.
+- [x] Pass 51 CTest checks on native Windows and local WSL Linux; build the GUI.
+- [x] Complete paired oil-air, thermal and gas-cavity runs on the remote
+  workstation after the face-gap transport and outflow-property repairs.
+  Preserve failed R410A runs and distinguish numerical/domain failures.
+- [x] Repair the outgoing R410A Newton-trial domain gate exposed at 20°C.
+  Verify the formerly failing dissolved-solution case and complete the
+  four-temperature 20-bar equilibrium matrix without weakening accepted-state
+  phase checks. Retain the finite-rate condensation-domain failures.
+- [x] Establish spatial, temporal and MPI refinement evidence for the
+  synthetic acceptance cases. The workstation pilot matches 1/4/8-rank
+  loads with a 3.70× speedup on eight ranks. The final thermal mesh doubling
+  changes load by 0.234%; the finest independent JFO pressure error is 0.0432%.
+- [ ] Extend accuracy/runtime evidence to experimentally characterized FW68D
+  geometries and properties; these case-specific results are not universal.
+- [ ] Resolve the Etsion gas-cavity mismatch; retain failed comparisons as
+  evidence. A converged homogeneous model is not automatically validated.
+- [ ] Obtain FW68D mixture solubility, actual-concentration viscosity, partial
+  volume and caloric data, charge temperature and thermal boundary data.
+- [ ] Assess separate refrigerant-rich liquid, blend fractionation, oil-vapor
+  latent energy and cross-film/conjugate heating against the intended tests.
+
+The older dated plan entries below are preserved as development history;
+this section and the linked current physics documents control present scope.
+
 ## 2026-09-07 clarification: FW68D, pressure reservoirs and phase identity
 
 - [x] Record FW68D, 20–80 °C, reservoirs to 20 bar absolute, R410A charge near
@@ -16,11 +53,11 @@
   pure-R410A ideal-gas error using a traceable EOS diagnostic.
 - [ ] Obtain charge temperature and measured/sourced FW68D-air and
   FW68D-R410A material data. Do not substitute R290/PZ68S or R410A/FVS50.
-- [ ] Implement and verify coupled pressure/species/EOS/volume closure; the
-  1-ms air-bearing timestep failure below remains unresolved.
-- [ ] Implement physical R410A component thermodynamics or an assessed
-  fixed-blend approximation, including phase identity and thermal terms.
-- [ ] Generalize internal reservoir species treatment for reverse flow and
+- [x] Implement and verify coupled pressure/species/EOS/volume closure; use the
+  1-ms air-bearing timestep failure below as the comparison case.
+- [x] Implement R410A fixed-blend thermodynamics with explicit phase-domain
+  limits and caloric properties; mixture experimental assessment remains open.
+- [x] Generalize internal reservoir species treatment for reverse flow and
   independently characterized groove/hole reservoirs.
 - [ ] Reproduce gaseous and vaporous bearing benchmarks with the completed
   formulation, then validate FW68D experiments and measure runtime at fixed
@@ -48,7 +85,7 @@ this target. The earlier roadmap and completed items are retained below.
   unchanged; old closed reaction loses 11.548% of its gas. A 1 ms air transient
   fails the 10/5/2.5 us timestep check for pressure/load despite converged inner
   solves. Gas fraction alone is not a sufficient acceptance metric.
-- [ ] Close pressure, phase inventories, EOS and gap volume simultaneously.
+- [x] Close pressure, phase inventories, EOS and gap volume simultaneously.
   Require both conservation and volume residuals; no post-step mass-destroying
   theta/alpha clipping. Keep FBNS as the verified zero-gas limit. Use the
   archived air timestep failure as an acceptance case; require removal of the
@@ -64,7 +101,7 @@ this target. The earlier roadmap and completed items are retained below.
   vapor EOS for R410A. Justify any reduced blend approximation with data.
 - [ ] Separate vapor and noncondensable inventories where both are present;
   include latent/dissolution enthalpy when it affects the thermal balance.
-- [ ] Complete discrete-flux consistency for energy, free-gas velocity and JFO
+- [x] Complete discrete-flux consistency for energy, free-gas velocity and JFO
   transport; verify steady species transport rather than a local feed flash.
 - [ ] Reconcile later Ferron thermal branches on their own task; preserve their
   measured-observable, boundary-condition and validation-eligibility caveats.

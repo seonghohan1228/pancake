@@ -1,0 +1,7 @@
+# Generated evidence and figures stay separate from the implementation branch.
+evidence/
+*_evidence/
+pilot_mpi*/
+figures/
+remote_provenance/
+r410a_20C_diagnostics/

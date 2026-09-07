@@ -10,6 +10,7 @@
 #include "communicator.hpp"
 #include "config.hpp"
 #include "coupling.hpp"
+#include "coupled_cavitation.hpp"
 #include "diagnostics.hpp"
 #include "cross_film.hpp"
 #include "energy.hpp"
@@ -187,7 +188,8 @@ int main(int argc, char** argv) {
         // FBNS carries no bulk modulus, so its film content starts at the
         // full-film value; the solver detects that as a cold start and builds its
         // own uncavitated initial guess.
-        const double theta_initial = FBNS::active(cfg)
+        const bool coupled = cfg.cavitation_model == CavitationModel::COUPLED;
+        const double theta_initial = (FBNS::active(cfg) || coupled)
             ? 1.0
             : std::max(EOS::theta_from_pressure(pressure_initial, cfg.effective_p_cav(), cfg.bulk_modulus), cfg.theta_min);
         fields.add("pressure", mesh).fill(pressure_initial);
@@ -249,8 +251,14 @@ int main(int argc, char** argv) {
         JournalMotion::BearingState bearing_state = JournalMotion::initial_state(cfg);
         update_film_geometry(fields, mesh, cfg, bearing_state);
         FilmThickness::compute_inlet_indicator(fields["inlet_indicator"], mesh, cfg);
-        FluidProperties::update_solution_fields(fields, mesh, cfg);
+        if (!coupled) FluidProperties::update_solution_fields(fields, mesh, cfg);
         comm.update_ghosts(fields);
+
+        std::unique_ptr<CoupledCavitation::Solver> coupled_solver;
+        if (coupled) {
+            coupled_solver = std::make_unique<CoupledCavitation::Solver>(mesh,comm,cfg.temperature_model==TemperatureModel::ENERGY_EQUATION);
+            coupled_solver->initialize(fields,cfg);
+        }
 
         LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
         Field p_outer_prev("p_outer_prev", mesh);  // pre-sweep snapshots for the
@@ -315,6 +323,7 @@ int main(int argc, char** argv) {
             // point, reported in pressure space). TRANSIENT runs exactly one
             // sweep, identical to before.
             Reynolds::ElrodStats elrod_stats;
+            CoupledCavitation::Stats coupled_stats;
             Reynolds::ForceComponents forces;
             const double gas_dt = steady_state ? 0.0 : step_cfg.dt;
             const int max_coupling = steady_state ? std::max(1, cfg.coupling_max_iters) : 1;
@@ -338,6 +347,26 @@ int main(int argc, char** argv) {
                 steady_state && cfg.coupling_keep_best_iterate && max_coupling > 1;
 
             for (int outer = 0; outer < max_coupling; ++outer) {
+                if (coupled) {
+                    try {
+                        coupled_stats = coupled_solver->solve(fields,step_cfg,step_cfg.dt,cfg.coupled_phase_equilibrium);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(),Utils::Color::RED,1);
+                        break;
+                    }
+                    elrod_stats.converged = coupled_stats.converged;
+                    elrod_stats.outer_iters = coupled_stats.iterations;
+                    if (!coupled_stats.converged) {
+                        nonlinear_failed = true;
+                        Utils::log("Coupled conservation/volume solve failed; residual = " + std::to_string(coupled_stats.residual),Utils::Color::RED,1);
+                        break;
+                    }
+                    forces = Reynolds::calculate_macroscopic_properties(fields,mesh,step_cfg);
+                    JournalMotion::write_state_fields(fields,bearing_state,cfg);
+                    coupling_iters = 1;
+                    break;
+                }
                 if (steady_state) {
                     copy_physical(fields["pressure"], p_outer_prev, mesh);
                     copy_physical(fields["temperature"], T_outer_prev, mesh);
@@ -469,7 +498,7 @@ int main(int argc, char** argv) {
                     if (tolerance_met) break;
                 }
             }
-            if (steady_state) {
+            if (steady_state && !coupled) {
                 coupling_control.finish(coupling_iters);
                 if (coupling_control.status().restored_best && coupling_best.valid()) {
                     // Ghost layers are part of the snapshot, so the restored state
@@ -483,12 +512,15 @@ int main(int argc, char** argv) {
             // The non-convergence verdict is not optional output: a run that ends
             // on the cap without meeting coupling_tolerance must say so whether or
             // not log_outer_iters is on.
-            if (steady_state && !coupling_control.status().converged) {
+            if (steady_state && !coupled && !coupling_control.status().converged) {
                 nonlinear_failed = true;
                 Utils::log(coupling_control.summary_line(), Utils::Color::RED, 1);
                 Utils::log(coupling_control.rollback_line(), Utils::Color::RED, 1);
             }
             if (cfg.mass_conserving_cavitation() && !elrod_stats.converged) nonlinear_failed = true;
+            // A rejected coupled solve leaves inventories at the last accepted
+            // time. Do not label that retained state with the failed target time.
+            if (coupled && nonlinear_failed) break;
             if (steady_state && cfg.log_outer_iters) {
                 if (coupling_control.status().converged) {
                     Utils::log(coupling_control.summary_line(), Utils::Color::CYAN, 1);
@@ -508,18 +540,36 @@ int main(int argc, char** argv) {
             // store_old_time so the step's storage terms are still formed
             // against the previous timestep.
             // No-op unless mass_residual was selected as an output field.
-            Diagnostics::mass_residual(fields, mesh, step_cfg,
-                                       steady_state ? 0.0 : step_cfg.dt);
+            if (!coupled) Diagnostics::mass_residual(fields, mesh, step_cfg,
+                                                     steady_state ? 0.0 : step_cfg.dt);
             const bool diagnostics_now = cfg.diagnostics_interval > 0 &&
                 step % cfg.diagnostics_interval == 0;
             Diagnostics::MassBalance balance;
             if (diagnostics_now) {
-                balance = Diagnostics::mass_balance(fields, mesh, step_cfg,
-                                                    steady_state ? 0.0 : step_cfg.dt);
+                if (coupled) {
+                    balance.liquid_mass = coupled_stats.liquid_mass;
+                    balance.gas_mass = coupled_stats.gas_mass;
+                    balance.liquid_boundary_flux = coupled_stats.liquid_boundary_flux;
+                    balance.gas_boundary_flux = coupled_stats.gas_boundary_flux;
+                    balance.inlet_mass_source = coupled_stats.liquid_inlet_source;
+                    balance.liquid_residual = coupled_stats.liquid_balance*step_cfg.dt/std::max(coupled_stats.liquid_mass,1e-30);
+                    balance.gas_residual = coupled_stats.species_balance*step_cfg.dt/std::max(coupled_stats.gas_mass,1e-30);
+                    balance.gas_volume_excess = coupled_stats.volume_error;
+                    if (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION) {
+                        balance.energy_residual_w=coupled_stats.energy_balance;
+                        balance.internal_energy_j=coupled_stats.internal_energy;
+                    }
+                    double local_cavity = 0, total_cavity = 0;
+                    for (int i=0;i<mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j)
+                        if (fields["theta"](i,j)<1-1e-8) local_cavity += 1;
+                    MPI_Allreduce(&local_cavity,&total_cavity,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+                    balance.cavitated_fraction = total_cavity/(mesh.n_theta_global*mesh.n_z_global);
+                } else balance = Diagnostics::mass_balance(fields, mesh, step_cfg,
+                                                            steady_state ? 0.0 : step_cfg.dt);
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
                     t, step, balance, elrod_stats,
-                    steady_state ? &coupling_control.status() : nullptr);
+                    steady_state && !coupled ? &coupling_control.status() : nullptr);
             }
 
             // Output: write VTK at the configured save cadence ...
@@ -575,6 +625,7 @@ int main(int argc, char** argv) {
             fields["temperature"].store_old_time();
             fields["dissolved_gas"].store_old_time();
             fields["free_gas_mass"].store_old_time();
+            if (coupled) coupled_solver->store_old_time(fields);
             previous_forces = forces;
             if (steady_state) ++step;
         }

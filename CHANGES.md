@@ -2,6 +2,54 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-09-07 - Couple gas volume, conserved species and film heating
+
+- Add COUPLED pressure/oil/dissolved/free-species conservation and optional
+  temperature in one sparse nonlinear solve. The old split update could
+  converge pressure while leaving gas and liquid occupying incompatible
+  volumes. Keep previous physical storage fixed during nonlinear iteration.
+- Recover the pure-vapor JFO limit, permit finite release and separate
+  absorption, and offer explicit local phase equilibrium. Preserve all
+  inventories through the pressure/volume closure instead of capping gas
+  volume after transport. Rationalize complementarity residuals to avoid
+  cancellation near a disappearing phase.
+- Use the actual conservative component fluxes for energy and published
+  velocities. Evaluate known gap geometry at the face; upwind only the
+  transported state. Keep pressure and Couette donors independent.
+- Add internal energy with viscous dissipation, compression work, wall and
+  in-plane heat transfer, reservoir enthalpy and desorption energy. Do not
+  call the legacy liquid-only thermal update after the coupled solve.
+- Make both pressure ends and internal groove/hole reservoirs bidirectional
+  for composition and heat. Outflow extrapolates local properties as well
+  as transported state; a downstream temperature must not impose a false
+  cold discharge resistance. A draining groove does not pin film temperature.
+- Implement the fixed-composition R410A Helmholtz EOS with density, internal
+  energy and heat capacity. Reject a resolved subcritical free gas above its
+  dew line. Allow film pressure above the 20-bar reservoir range; do not
+  confuse reservoir operating limits with peak hydrodynamic pressure.
+- Correct an outlet-domain check exposed by the remote 20°C run: numerical
+  perturbations of an outgoing gas-free state need the same EOS continuation
+  as interior trials. Rejecting them as real bubbles broke the Jacobian before
+  iteration. Reproduce the failure with a high-pressure dissolved-solution
+  test, repair the gate, and retain strict checks on accepted free phases.
+- Add actual-concentration/temperature log-viscosity interpolation. Reject
+  extrapolation and saturated pressure/temperature property substitutions in
+  the coupled path. Label the DOE FVC68B table separately from FW68D.
+- Expose the solver, material table, independent kinetics and thermal inputs
+  in the GUI. Remove unsubstantiated mixture validation claims and inherited
+  propane material values from the R410A preset.
+- Correct the cavity-extent analysis to count total liquid deficit, including
+  gas cavities. Increase VTK numeric precision so output rounding does not
+  hide timestep differences. Update numeric output-time assertions.
+- Pass all 51 regression tests on native Windows, local WSL Linux and the
+  isolated remote Linux build. Run the paired and thermal campaigns on the
+  workstation, recording machine/MPI provenance. An eight-rank pilot gives
+  3.70× speedup with the same load as one rank. Retain the Etsion mismatch
+  and failed R410A cases in the comparison report.
+- Document the equations and limitations in COUPLED_CAVITATION.md,
+  COUPLED_ENERGY.md and R410A_EOS.md. Full FW68D validation, separate condensed
+  refrigerant, blend fractionation and general thermal evaporation remain open.
+
 ### 2026-09-07 - Correct reservoir states and separate gas absorption
 
 - Give each axial pressure reservoir an independent inflow temperature,

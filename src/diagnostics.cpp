@@ -419,7 +419,7 @@ void append_csv(const std::filesystem::path& path, double time, int step,
                "cavitated_fraction,"
                "coupling_iters,coupling_R_p,coupling_R_T,coupling_converged,"
                "coupling_best_iter,coupling_best_residual,coupling_restored_best,"
-               "coupling_relaxation,coupling_R_g,gas_volume_excess,gas_eos_defect\n";
+               "coupling_relaxation,coupling_R_g,gas_volume_excess,gas_eos_defect,energy_residual_W,internal_energy_J\n";
     }
     csv.precision(15);
     csv << step << ',' << time << ',' << stats.outer_iters << ',' << stats.flag_flips << ','
@@ -438,7 +438,11 @@ void append_csv(const std::filesystem::path& path, double time, int step,
     } else {
         csv << ",,,,,,,,,";
     }
-    csv << ',' << balance.gas_volume_excess << ',' << balance.gas_eos_defect << '\n';
+    csv << ',' << balance.gas_volume_excess << ',' << balance.gas_eos_defect << ',';
+    if (std::isfinite(balance.energy_residual_w)) csv << balance.energy_residual_w;
+    csv << ',';
+    if (std::isfinite(balance.internal_energy_j)) csv << balance.internal_energy_j;
+    csv << '\n';
 }
 
 }  // namespace Diagnostics

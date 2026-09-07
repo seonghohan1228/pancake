@@ -52,10 +52,11 @@ long axis_index(const std::vector<double>& axis, double v) {
 
 }  // namespace
 
-PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
+static PropertyTable2D load_rectangular_csv(const std::filesystem::path& path,
                                   const std::string& value_header,
                                   double value_scale,
-                                  std::string& error_out) {
+                                  std::string& error_out,
+                                  const std::string& axis_header, double axis_scale) {
     error_out.clear();
     PropertyTable2D table;
     const std::string where = "'" + path.string() + "'";
@@ -78,11 +79,11 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
             if (to_lower(header[i]) == want) return static_cast<long>(i);
         return -1;
     };
-    const long col_p = find_col("P_MPa");
+    const long col_p = find_col(axis_header);
     const long col_t = find_col("T_C");
     const long col_v = find_col(value_header);
     if (col_p < 0 || col_t < 0 || col_v < 0) {
-        error_out = where + " is missing a required header (need P_MPa, T_C, " + value_header + ")";
+        error_out = where + " is missing a required header (need " + axis_header + ", T_C, " + value_header + ")";
         return table;
     }
     const std::size_t need = static_cast<std::size_t>(std::max({col_p, col_t, col_v})) + 1;
@@ -103,7 +104,7 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
         }
         Row r{};
         try {
-            r.p = std::stod(cells[static_cast<std::size_t>(col_p)]) * 1.0e6;     // MPa -> Pa
+            r.p = std::stod(cells[static_cast<std::size_t>(col_p)]) * axis_scale;
             r.t = std::stod(cells[static_cast<std::size_t>(col_t)]) + 273.15;    // C  -> K
             r.v = std::stod(cells[static_cast<std::size_t>(col_v)]) * value_scale;  // -> SI
         } catch (const std::exception&) {
@@ -126,7 +127,7 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
     std::sort(p_vals.begin(), p_vals.end());
     std::sort(t_vals.begin(), t_vals.end());
     if (p_vals.size() < 2 || t_vals.size() < 2) {
-        error_out = where + " needs >= 2 distinct pressures and temperatures";
+        error_out = where + " needs >= 2 distinct first-axis values and temperatures";
         return table;
     }
     const std::size_t np = p_vals.size();
@@ -149,7 +150,7 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
         }
         const std::size_t idx = static_cast<std::size_t>(ip) * nt + static_cast<std::size_t>(it);
         if (filled[idx]) {
-            error_out = where + ": duplicate (P,T) entry";
+            error_out = where + ": duplicate (" + axis_header + ",T) entry";
             return table;
         }
         grid[idx] = r.v;
@@ -164,6 +165,21 @@ PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,
     table.t = std::move(t_vals);
     table.values = std::move(grid);
     return table;
+}
+
+PropertyTable2D load_table_2d_csv(const std::filesystem::path& path,const std::string& value_header,
+                               double value_scale,std::string& error_out) {
+    return load_rectangular_csv(path,value_header,value_scale,error_out,"P_MPa",1e6);
+}
+CompositionViscosityTable load_viscosity_composition_csv(const std::filesystem::path& path,std::string& error_out) {
+    auto grid=load_rectangular_csv(path,"mu_Pa_s",1,error_out,"c_mass_fraction",1);
+    if (!error_out.empty()) return {};
+    if (grid.p.front()<0 || grid.p.back()>=1 || grid.t.front()<=0 ||
+        std::any_of(grid.values.begin(),grid.values.end(),[](double mu) { return mu<=0; })) {
+        error_out="Composition viscosity requires 0 <= c < 1, T > 0 K and mu > 0 Pa s"; return {};
+    }
+    for (double& value : grid.values) value=std::log(value);
+    return {std::move(grid.p),std::move(grid.t),std::move(grid.values)};
 }
 
 void load_config_property_tables(SimulationConfig& cfg, std::vector<std::string>& errors) {
@@ -190,6 +206,11 @@ void load_config_property_tables(SimulationConfig& cfg, std::vector<std::string>
     load_one(cfg.solubility_table_file, "solubility_pct", 0.01, cfg.solubility_table_2d, "solubility");
     load_one(cfg.viscosity_table_file, "viscosity_mm2s", 1.0e-6, cfg.viscosity_table_2d, "viscosity");
     load_one(cfg.density_table_file, "density_kgm3", 1.0, cfg.density_table_2d, "density");
+    if (!cfg.viscosity_composition_file.empty()) {
+        std::string error;
+        cfg.viscosity_composition_table=load_viscosity_composition_csv(resolve(cfg.viscosity_composition_file),error);
+        if (!error.empty()) errors.push_back("viscosity_composition_file: "+error);
+    }
 }
 
 }  // namespace FluidProperties

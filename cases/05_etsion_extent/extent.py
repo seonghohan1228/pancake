@@ -1,10 +1,11 @@
 """Cavity-extent extraction from a finished case-05 run.
 
-The one thing this file must not get wrong: **the full-film ceiling is
-model-dependent.** Under FBNS + TWO_PHASE the ceiling is 1 - alpha_gas
-(PHYSICS.md 7.3.7), not 1. Testing `theta < 1` there would call every gassy cell
-cavitated and report a fully cavitated bearing. So the ceiling is read per cell
-from alpha_gas when that field is present.
+Photographed bubbles must be compared with TOTAL VOID, 1 - liquid content.
+The old test theta < 1 - alpha_gas counted only the additional vapor deficit;
+it excluded gas-filled cells even though the experiment concerns gaseous
+cavitation. Archived case-05 runs had alpha_gas = 0 and are unaffected.
+The threshold is a numerical void threshold, not a measured optical detection
+limit. Report threshold sensitivity when comparing diffuse gas fronts.
 
 Two cavity definitions are produced:
   * `any_z`   -- a theta station counts as cavitated if ANY cell at that theta is.
@@ -111,8 +112,7 @@ def cavity_metrics(run_dir):
     h = a["h"][0]
     alpha = a["alpha_gas"][0] if "alpha_gas" in a else [0.0] * len(fc)
 
-    # per-cell full-film ceiling: 1 - alpha_gas under TWO_PHASE, else 1
-    cav = [fc[k] < (1.0 - alpha[k]) - CEILING_TOL for k in range(len(fc))]
+    cav = [fc[k] < 1.0 - CEILING_TOL for k in range(len(fc))]
 
     theta_deg = [_wrap(math.degrees(t)) for t in theta_rad]
     z_sorted = sorted(set(z))
@@ -156,6 +156,7 @@ def cavity_metrics(run_dir):
         "p_min_fullfilm_midplane": p_min_full_mid,
         "theta_0_deg": theta_p_min,
         "alpha_gas_max": max(alpha),
+        "vapor_deficit_max": max(max(0.0, 1.0-fc[k]-alpha[k]) for k in range(len(fc))),
         "h_min": min(h),
         "z_mid": z_mid,
     }
@@ -204,7 +205,7 @@ def cavity_boundary(run_dir):
     theta = [_wrap(math.degrees(t)) for t in a["theta_rad"][0]]
     z = a["z_m"][0]
     pts = [(theta[k], z[k]) for k in range(len(fc))
-           if fc[k] < (1.0 - alpha[k]) - CEILING_TOL]
+           if fc[k] < 1.0 - CEILING_TOL]
     return pts
 
 

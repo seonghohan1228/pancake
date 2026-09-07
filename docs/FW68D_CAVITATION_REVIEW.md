@@ -1,5 +1,13 @@
 # FW68D journal bearings: physics, corrections, and remaining gaps
 
+**Implementation update:** the later COUPLED solver now includes conservative
+mass/volume closure, native R410A thermodynamics and film heating. See
+[the current mass/volume equations](COUPLED_CAVITATION.md),
+[energy equations](COUPLED_ENERGY.md) and [EOS scope](R410A_EOS.md).
+The assessment below is retained as the pre-implementation review; statements
+that those capabilities are absent refer to that earlier code. The absence
+of validated FW68D material data remains current.
+
 2026-09-07. This extends the [branch/history audit](PHYSICS_AUDIT_2026-09.md)
 and [paired solver comparison](../cases/90_diagnostics/physics_comparison/SUMMARY.md).
 Those contain the accessible branch inventory, commit provenance, old test
