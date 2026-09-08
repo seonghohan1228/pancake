@@ -1,5 +1,22 @@
 # Development Plan
 
+## 2026-09-08 model-selection discussion
+
+- [x] Explain physical versus numerical load fluctuations, coupled energy
+  changes, and model assumptions against current source.
+- [x] Map pressure, phase, property, thermal, boundary and motion options to
+  appropriate validation observables in [MODEL_SELECTION.md](docs/MODEL_SELECTION.md).
+- [x] Re-read Ferron's full paper; correct reduced-solid-model equivalence
+  claims and distinguish archived branch results from the new coupled path.
+- [x] Record the required local-to-remote simulation workflow in AGENTS.md.
+- [ ] Assess Ferron fresh mixing flow against pressure-derived inlet mass
+  supply with independently specified hydraulic and thermal conditions.
+- [ ] Quantify sensor-depth and reduced shaft/bush thermal-model errors before
+  claiming Ferron temperature validation. Do not equate film-average and wall
+  temperatures or apply a synthetic fixed-eccentricity load change to Ferron.
+- [ ] Assess resolved transient statistics and numerical damping if physical
+  unsteadiness is a validation target; smooth load alone is not evidence.
+
 ## 2026-09-07 coupled cavitation and heating implementation
 
 - [x] Solve pressure, conserved oil/dissolved/free inventories and gas volume

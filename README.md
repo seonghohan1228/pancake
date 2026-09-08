@@ -8,6 +8,16 @@ model where the shaft remains fixed while pressure and viscous film forces move
 the bearing housing. It also includes an optional first-pass film-averaged
 energy equation for lubricant temperature and viscous heat generation.
 
+The [model-selection guide](docs/MODEL_SELECTION.md) explains every main
+physics choice, the differences between the two thermal formulations, physical
+versus numerical unsteadiness, and the limits of comparisons with Ferron.
+It distinguishes the coupled main source from the separate Ferron branch.
+
+Simulation campaigns follow the user's local-to-remote workflow: edit, compile
+and run short checks locally; synchronize source and inputs to an isolated
+remote directory; compile and run there; bring results and provenance back
+locally. See [AGENTS.md](AGENTS.md#simulation-campaigns).
+
 For a feature-level record of substantive project contributions, see
 `docs/PROJECT_CONTRIBUTIONS.md`.
 

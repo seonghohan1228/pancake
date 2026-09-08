@@ -2,6 +2,24 @@
 
 ## Unreleased - Windows MSYS2 GUI Workflow
 
+### 2026-09-08 - Clarify model selection and Ferron comparison scope
+
+- Add a source-checked model guide covering all cavitation, material, thermal,
+  boundary and motion choices and their compatibility. Explain why timestep
+  consistency, not steady load, is the numerical criterion, and identify
+  bubble dynamics absent from the homogeneous model.
+- Derive the distinction between the older liquid-temperature equation and
+  coupled mixture energy. Separate fixed-position load changes from the
+  position changes needed to maintain an experimental applied load.
+- Re-read Ferron et al. (1983) and correct claims that the reduced bush and
+  shaft exactly reproduce its spatial heat-conduction models. Clarify end-face
+  versus outer-cylinder cooling, sensor temperature, and hot clearance.
+- Label the separate Ferron branch's archived thermal/mass-supply disagreement
+  explicitly; do not present those values as new coupled-model results.
+- Record the user's local edit/build/check, remote source/build/run, local
+  result-return workflow. Documentation-only review; no solver behavior or
+  campaign results changed and no CFD rerun claimed.
+
 ### 2026-09-07 - Couple gas volume, conserved species and film heating
 
 - Add COUPLED pressure/oil/dissolved/free-species conservation and optional

@@ -7,6 +7,11 @@ limits, and supersede the earlier split-mixture descriptions below. Historical
 sections are retained for understanding previous results and other solvers.
 Neither proposed FW68D mixture is experimentally validated.
 
+For the current choices across both new and older solver paths, use the
+[model-selection guide](docs/MODEL_SELECTION.md). It identifies active models,
+incompatible options, branch-specific Ferron work and proposed models that
+are not implemented. A smooth load is not a physical validation criterion.
+
 ## Current coupled formulation (2026-09-07)
 
 The state is absolute pressure $p$, oil inventory $M_o$, dissolved inventory
@@ -101,7 +106,10 @@ Inverse relations:
 
 $$\theta_{film}(p) = \begin{cases} \exp\!\left(\dfrac{p - p_{cav}}{\beta}\right) & p > p_{cav} \\ 1 & p \le p_{cav} \end{cases}$$
 
-where $\beta$ is the bulk modulus. The current solver uses the **Gumbel (half-Sommerfeld) cavitation condition**: after solving for pressure, all cells with $p < p_{cav}$ are clamped to $p_{cav}$. Density is then updated from the EOS.
+where $\beta$ is the bulk modulus. The **Gumbel (half-Sommerfeld) selection**
+clamps pressure below $p_{cav}$ after the pressure solve. Other solver
+selections impose different cavitation formulations as described in §7 and
+the current model-selection guide; clipping is not the universal algorithm.
 
 The VTK/GUI field named `film_content` writes this Elrod/JFO universal variable
 directly. It is not clamped for visualization: values below one indicate
@@ -222,12 +230,13 @@ flux to the stencil using a half-cell distance:
 
 $$a_P \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}, \qquad \text{source} \mathrel{+}= \frac{\gamma\,R\,\Delta\theta}{\Delta z/2}\,p_{bc}$$
 
-A truly open (vented) end corresponds to $p_{bc} = p_{cav}$; the shipped
-configurations are **submerged** ends with $p_{bc} > p_{cav}$ (e.g. a flooded
-sump or a pressurized refrigerant housing), which the Elrod path converts to a
-boundary film content $\theta_{bc} = \exp[(p_{bc}-p_{cav})/\beta] > 1$.
-`NEUMANN` selects zero-gradient ends; `INLET_OUTLET` applies the Dirichlet
-value only on inflow.
+A reservoir end uses the actual reservoir absolute pressure. A vented
+reservoir is approximately at atmospheric pressure, not generally at the
+oil vapor pressure. If $p_{bc}>p_{cav}$, the Elrod path converts it to boundary
+content $\theta_{bc}=\exp[(p_{bc}-p_{cav})/\beta]>1$. `DIRICHLET` already allows
+reverse flow; it does not prescribe flow direction. `NEUMANN` selects zero
+pressure gradient. Legacy `INLET_OUTLET` has solver-dependent semantics and
+is rejected by FBNS and COUPLED; see the current model-selection guide.
 
 **Cavity-pressure caveat.** The model holds the cavitated-zone pressure at the
 single constant `p_cav`. Measurements show the cavity pressure of gas-laden
@@ -261,10 +270,12 @@ boundary face reduces to the barotropic Dirichlet link above (default, unchanged
 
 ## 7. Reynolds Solvers
 
-Three solvers are available, selected by `cfg.cavitation_model`: the
-pressure-primary Gumbel/Sommerfeld solve (§7.1), the Elrod-Adams film-content
-solve (§7.2, `JFO`), and the FBNS complementarity solve (§7.3, `FBNS`). The last
-two both resolve the JFO free boundary; they differ in how.
+Five selections are available through `cfg.cavitation_model`: FULL_SOMMERFELD
+and GUMBEL share the pressure-primary routine (§7.1), JFO uses Elrod–Adams
+(§7.2), FBNS uses complementarity (§7.3), and COUPLED uses simultaneous
+conservation, phase volume and optional energy (the current formulation above).
+Gas-free JFO and FBNS impose the JFO free boundary with different numerical
+algorithms and different full-film compressibility treatment.
 
 Before the time loop, the pressure field is initialized from the first
 non-Neumann axial outlet pressure, not from a supply groove. For
@@ -1056,11 +1067,10 @@ advertise them as pressure or thermal methods.
 
 ## 13. Thermal and ETHD Model
 
-The current solver implements the first thermal step: an optional
-film-averaged lubricant energy equation with constant material properties,
-viscous heat generation, and wall heat transfer. Temperature-dependent
-viscosity, elastic deformation, and fully coupled ETHD remain planned follow-on
-models.
+The older liquid-temperature path described here supports temperature-dependent
+viscosity and optional polynomial cross-film/conjugate-wall closures. COUPLED
+has a separate mixture-energy formulation described at the start of this file.
+Elastic deformation and calculated thermal expansion of the gap remain planned.
 
 ### 13.1 Lubricant Energy Equation
 
@@ -1233,10 +1243,11 @@ hard pin used.
 
 ### 13.1.2 Cross-Film Temperature Profile and Conjugate Walls
 
-The depth-averaged energy equation of §13.1 assumes the film is isothermal across
-the gap. That requires $Br \ll 1$, reduced Peclet $\rho c U h^2/(kR) \ll 1$, and
-equal wall temperatures; on the Ferron and Brito rigs all three fail
-($Br \approx 2.6$, $\rho c U h^2/(kR) \approx 10\text{--}30$, walls unequal).
+The depth-averaged energy equation of §13.1 represents one temperature across
+the gap. Its adequacy depends on cross-film gradients from wall temperatures,
+viscous dissipation and convection. Brinkman number and reduced Peclet number
+$\rho c_p U h^2/(kR)$ help assess these effects; a converged depth-average
+solution alone cannot establish that those gradients are negligible.
 `cross_film_thermal_model = POLYNOMIAL` replaces the assumption with a
 reconstructed profile. `NONE` (the default) removes the entire model and is
 bit-identical to the previous solver.
@@ -1354,8 +1365,9 @@ saying so.
 #### 13.1.2.1 Conjugate Bush: 2-D (r, theta) Conduction
 
 `bush_thermal_model = CONDUCTION_2D` replaces the local closure by steady heat
-conduction in the bush annulus itself. This is Ferron, Frene & Boncompain's own
-bush model, and it supplies the one transport path the local closure cannot have:
+conduction in an axially collapsed bush annulus. This is a reduction of the
+three-dimensional bush equation used by Ferron et al., not its full spatial
+model. It supplies a transport path absent from the local closure:
 **circumferential redistribution inside the bush**. Heat picked up under the
 loaded arc can leave the bush at a different angular position, which is what
 turns the measured bush temperature down before the groove. With the local
@@ -1367,11 +1379,12 @@ groove, at about $348^\circ$ on the Ferron rig, against a measured $258^\circ$.
 $$\frac1r\frac{\partial}{\partial r}\!\left(r\,k_{bush}\frac{\partial T}{\partial r}\right)
   + \frac{1}{r^2}\frac{\partial}{\partial\theta}\!\left(k_{bush}\frac{\partial T}{\partial\theta}\right) = 0 .$$
 
-The bush is **$z$-collapsed**, exactly as Ferron's bush equation is: one
-temperature per $\theta$, no axial dependence. The axial end faces of the bush are
-therefore not modelled either; at the paper's $h = 80\ \mathrm{W/(m^2K)}$ over the
-two end rings that is of order 1 % of the heat, and it is stated rather than
-absorbed into a fitted coefficient.
+The implemented bush is **$z$-collapsed** with no axial dependence, while
+Ferron's equation includes the axial second derivative. Axial end-face cooling
+is also absent here. The paper's $h_b=80\ \mathrm{W/(m^2K)}$ applies to those
+end faces, not the outer cylinder, whose temperature is prescribed. No universal
+percentage bound on the neglected axial heat loss is established by this code
+(Ferron et al., *[J. Lubr. Technol.](https://doi.org/10.1115/1.3254632)*, 1983).
 
 **Inner boundary: flux continuity with the film.** The cross-film profile makes
 the film-side flux *linear* in the bore temperature. Writing $b$ from §13.1.2 and
@@ -1483,8 +1496,10 @@ visibly mobile quantity is the *argmax cell* of a nearly flat maximum, which hop
 $\pm1$ cell (0.5°). Details and the full residual traces:
 `cases/01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
 
-The shaft stays globally isothermal in both bush models; that is Ferron's
-assumption too.
+The shaft stays globally isothermal in both implemented bush models. Ferron's
+shaft is circumferentially uniform but varies in radius and axial position,
+with axial-end temperature 43°C. A global scalar shaft is a further reduction,
+not the same boundary-value problem.
 
 ### 13.1.3 Generalized (Dowson) Reynolds Equation
 
@@ -1774,6 +1789,10 @@ This is a segregated nonlinear JFO/property/gas update, not a PISO method. A
 true PISO label would require a Navier-Stokes pressure-velocity backend.
 
 ### 13.3 Elastic and Thermal Deformation
+
+This subsection describes proposed equations. The current geometry routine
+does not implement these deformation terms; a measured hot clearance can
+instead be supplied as a fixed geometric input.
 
 The effective film thickness for EHD/ETHD is:
 

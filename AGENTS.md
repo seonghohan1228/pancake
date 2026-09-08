@@ -24,6 +24,17 @@ mpirun -n <N> ./build-linux/pancake
 
 Dependencies: C++20 compiler, CMake, MPI, and the current PETSc backend. The strategic target notes Trilinos, but the checked-in source currently uses PETSc; see `ASSESSMENT.md`.
 
+### Simulation campaigns
+
+The user's required workflow is: edit code locally, compile locally, run simple
+short checks, synchronize the selected code/configuration snapshot to an
+isolated remote workstation directory, recompile there, run the cases remotely,
+and synchronize results back locally for analysis and plots. Record source,
+input and executable hashes, build/runtime versions, MPI ranks, return codes
+and convergence diagnostics. Preserve existing checkouts and prior results,
+including failed runs. Source/result transfer does not imply a Git push.
+Documentation-only changes do not require a new simulation campaign.
+
 ## Branching and Version Control
 
 The repository rule is: **one task, one branch, one verified merge, then delete
