@@ -703,3 +703,13 @@ tests/
 
 Linux remains supported from the same CMake source tree. Use `BUILDING.md` for
 Linux and portability notes; use this README as the current Windows quickstart.
+
+## Oil load and speed screening
+
+[Case 02b](cases/02b_oil_load_rpm/README.md) provides a reproducible remote
+steady-state scan for the optical rig at 0.210 Pa s and 937 kg/m3. It balances
+1--5 kN at 250--2000 rpm with 1 bar absolute end and groove pressure, saves
+pressure and filling-fraction contours, and checks selected points on a finer
+grid. Geometry and the prescribed 500 Pa cavity floor are explicit assumptions;
+the results rank rigid, isothermal model conditions rather than validate oil
+vaporization or certify experimental operating limits.

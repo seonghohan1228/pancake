@@ -2546,3 +2546,44 @@ errors in the specified operating window, and that phase identity matters.
 It provides no FW68D solubility or off-equilibrium solution properties.
 The classical equilibrium JFO vapor limit remains available, but no general
 joint gas/vapor component-and-energy model is claimed by this addition.
+
+## Steady optical-rig screening added 2026-09-11
+
+[Case 02b](cases/02b_oil_load_rpm/README.md) uses the existing isothermal FBNS
+closure. With circumferential coordinate $x=R\theta$, liquid filling fraction
+$\vartheta$, positive rotation $\omega$ and uniform viscosity $\mu$, the
+depth-integrated fluxes are
+
+\[
+q_\theta=-\frac{h^3}{12\mu R}\frac{\partial p}{\partial\theta}
+          +\frac{\omega R h\vartheta}{2},\qquad
+q_z=-\frac{h^3}{12\mu}\frac{\partial p}{\partial z},\qquad
+\frac{1}{R}\frac{\partial q_\theta}{\partial\theta}
+ +\frac{\partial q_z}{\partial z}=0.
+\]
+
+The full-film pressure and cavity fraction obey
+$p\ge p_c$, $0\le\vartheta\le1$ and
+$(p-p_c)(1-\vartheta)=0$. Both ends and the full-length axial groove impose
+$p=100000$ Pa. The assumed floor is $p_c=500$ Pa. The geometric law is
+$h=c-e\cos(\theta-\psi)$, and an outer damped Newton search adjusts
+$(e/c,\psi)$ to balance both pressure-force components against the applied load.
+This outer position search is distinct from the FBNS nonlinear solve and does
+not integrate a physical journal trajectory or use a physical timestep.
+
+Scaling with $P_\mu=\mu\omega(R/c)^2$ yields two useful coordinates for the
+fixed-geometry scan,
+
+\[
+S=\frac{\mu(N/60)}{W/(2RL)}(R/c)^2,\qquad
+\Pi_c=\frac{p_{\rm end}-p_c}{P_\mu}.
+\]
+
+Thus equal $N/W$ does not alone guarantee an equal cavity, because the absolute
+boundary-pressure margin is independently scaled by $N$. Constant density
+multiplies the mass flux but adds no inertial mechanism to this Reynolds model.
+The plotted $1-\vartheta$ is an equilibrium film-volume deficit. Assigning a low
+pressure floor does not calculate phase-change rates, latent heat or dissolved
+gas release. The constant 0.210 Pa s viscosity and rigid geometry also omit
+thermal and elastic feedback; the computed peak pressure and minimum gap must
+be checked before transferring high-load cases to the physical rig.

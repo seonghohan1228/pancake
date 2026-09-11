@@ -1,5 +1,18 @@
 # Change Log
 
+## 2026-09-11 - Screen steady oil cavitation across load and speed
+
+- Add case 02b with a standalone remote sweep driver, vector force-balance
+  continuation, coordinate-based VTK extraction, common-scale contour plots,
+  and an audit of residuals, physical fields, force closure and mass balance.
+- Use the requested 0.210 Pa s, 937 kg/m3 oil and 100000 Pa end/groove pressure.
+  Record inherited geometry, assumed groove, 500 Pa cavity threshold, executable
+  commit and binary hash so the scan can be reproduced without altering prior
+  campaigns. Retain solver source and runtime unchanged.
+- Add selected 480 by 128 repeats of the 240 by 64 matrix, a 100 rpm probe,
+  physical nondimensional axes and explicit limits on vapor/thermal/deformation
+  interpretation. Keep generated fields and images out of version control.
+
 ## Unreleased - Windows MSYS2 GUI Workflow
 
 ### 2026-09-08 - Clarify model selection and Ferron comparison scope

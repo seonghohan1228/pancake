@@ -1,0 +1,17 @@
+{
+  "R": 0.02465,
+  "c": 0.00035,
+  "L": 0.05,
+  "mu": 0.210,
+  "rho": 937.0,
+  "p_end": 100000.0,
+  "p_cav": 500.0,
+  "groove_angle": 90.0,
+  "groove_width": 10.0,
+  "target_force_angle": -90.0,
+  "grid": [240, 64],
+  "rpms": [250, 500, 1000, 1500, 2000],
+  "loads": [1000, 2000, 3000, 4000, 5000],
+  "executable": "/home/user/pancake_fig6_446327c/build-linux/pancake",
+  "ranks": 2
+}

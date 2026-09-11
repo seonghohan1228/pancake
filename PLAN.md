@@ -1,5 +1,16 @@
 # Development Plan
 
+## 2026-09-11 - Oil operating-window screening
+
+- [x] Add an isolated, reproducible steady force-balanced load/rpm scan using
+  the requested oil viscosity and density, 1 bar end/groove pressure, and the
+  existing remote FBNS executable. Preserve unrelated local and remote work.
+- [x] Cover 1--5 kN and 250--2000 rpm, record a lower-speed probe, export pressure
+  and liquid-filling contours, and audit selected mesh refinements in case 02b.
+- [ ] Confirm the current rig geometry, groove location/width and oil vapor
+  pressure before treating this assumed-geometry screening as an experiment
+  prediction. Assess deformation and viscosity change at high-load points.
+
 ## 2026-09-08 model-selection discussion
 
 - [x] Explain physical versus numerical load fluctuations, coupled energy
