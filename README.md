@@ -706,10 +706,12 @@ Linux and portability notes; use this README as the current Windows quickstart.
 
 ## Oil load and speed screening
 
-[Case 02b](cases/02b_oil_load_rpm/README.md) provides a reproducible remote
+[Case 02c](cases/02c_oil_corrected_geometry/README.md) provides a reproducible remote
 steady-state scan for the optical rig at 0.210 Pa s and 937 kg/m3. It balances
 1--5 kN at 250--2000 rpm with 1 bar absolute end and groove pressure, saves
 pressure and filling-fraction contours, and checks selected points on a finer
-grid. Geometry and the prescribed 500 Pa cavity floor are explicit assumptions;
+grid. The user-confirmed geometry is 43 mm journal diameter, 40 mm length and
+42.5 micrometre radial clearance. The groove geometry and prescribed 500 Pa
+cavity floor remain assumptions. Case 02b used superseded geometry;
 the results rank rigid, isothermal model conditions rather than validate oil
 vaporization or certify experimental operating limits.

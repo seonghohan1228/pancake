@@ -1,0 +1,17 @@
+runs/
+__pycache__/
+*.png
+*.npz
+*.csv
+*.tar.gz
+*.log
+scan_n*.json
+fine_n*.json
+low_n*.json
+floor_n*.json
+thermal_*.json
+temperature_summary.json
+temperature_grid_check.json
+sweep_summary.json
+validation.json
+provenance.json

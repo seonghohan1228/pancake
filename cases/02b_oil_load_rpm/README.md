@@ -1,5 +1,11 @@
 # Oil load and speed screening, 2026-09-11
 
+**Superseded for the user's rig.** The user corrected the journal diameter to
+43 mm, bearing length to 40 mm and radial clearance to 42.5 micrometres.
+[Case 02c](../02c_oil_corrected_geometry/README.md) reruns the scan with those
+dimensions. This case remains an archive of the original assumed geometry;
+its contour values and recommended sweep must not be used for the corrected rig.
+
 This is a steady, isothermal operating-window scan for the optical journal-bearing
 rig. It uses the user's oil properties, 0.210 Pa s and 937 kg/m3, and equal 100000 Pa
 absolute pressure at both ends and the full-length axial groove.

@@ -2549,6 +2549,14 @@ joint gas/vapor component-and-energy model is claimed by this addition.
 
 ## Steady optical-rig screening added 2026-09-11
 
+The initial case 02b geometry is superseded by the user-confirmed
+**D = 43 mm, L = 40 mm and radial clearance c = 42.5 micrometres** in
+[case 02c](cases/02c_oil_corrected_geometry/README.md). The equations below remain
+the same, but all forces, positions and cavities are recalculated on that
+geometry. No previous equilibrium field is rescaled or reused. The groove and
+500 Pa floor are retained assumptions, not newly confirmed dimensions or oil
+properties.
+
 [Case 02b](cases/02b_oil_load_rpm/README.md) uses the existing isothermal FBNS
 closure. With circumferential coordinate $x=R\theta$, liquid filling fraction
 $\vartheta$, positive rotation $\omega$ and uniform viscosity $\mu$, the
@@ -2587,3 +2595,18 @@ pressure floor does not calculate phase-change rates, latent heat or dissolved
 gas release. The constant 0.210 Pa s viscosity and rigid geometry also omit
 thermal and elastic feedback; the computed peak pressure and minimum gap must
 be checked before transferring high-load cases to the physical rig.
+
+### Temperature sensitivity requested for the corrected geometry
+
+Case 02c adds a steady energy solve while retaining constant viscosity and the
+previously balanced position. It uses the STRIATED liquid-energy closure with
+liquid depth $\vartheta h$, viscous dissipation and in-plane heat transport.
+For the prescribed wall-cooling branch, the depth-integrated sink is
+$H_j(T-T_j)+H_b(T-T_b)$, with $T_j=T_b=T_{\rm in}=293.15$ K and
+$H_j=H_b=10000$ W/(m2 K). The other branch uses $H_j=H_b=0$.
+The provisional $c_p=2000$ J/(kg K) and $k=0.13$ W/(m K) give
+$\rho c_p=1.874\times10^6$ J/(m3 K) for the user's density. Reservoir inflow
+and the pinned groove carry $T_{\rm in}$. These are cooling scenarios, not
+identified experimental boundary conditions. Since $\mu(T)$ is not supplied,
+this added temperature field has no viscosity feedback on pressure or position
+and must not be described as a coupled THD result.

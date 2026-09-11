@@ -7,8 +7,14 @@
   existing remote FBNS executable. Preserve unrelated local and remote work.
 - [x] Cover 1--5 kN and 250--2000 rpm, record a lower-speed probe, export pressure
   and liquid-filling contours, and audit selected mesh refinements in case 02b.
-- [ ] Confirm the current rig geometry, groove location/width and oil vapor
-  pressure before treating this assumed-geometry screening as an experiment
+- [x] Correct the geometry on user instruction to D = 43 mm, L = 40 mm and
+  radial clearance = 42.5 micrometres; rerun in case 02c and mark 02b superseded.
+- [x] Add requested temperature maps using the energy equation and two explicit
+  provisional cooling scenarios, with constant viscosity and checked force closure.
+- [ ] Replace provisional inlet/wall temperatures, cooling, heat capacity and
+  conductivity with rig/oil data before interpreting the thermal maps as predictions.
+- [ ] Confirm groove location/width and oil vapor
+  pressure before treating this screening as an experiment
   prediction. Assess deformation and viscosity change at high-load points.
 
 ## 2026-09-08 model-selection discussion

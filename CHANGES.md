@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-09-11 - Correct the oil screening geometry
+
+- Rerun the steady oil matrix as case 02c using the user's 43 mm journal
+  diameter, 40 mm bearing length and 42.5 micrometre radial clearance. Preserve
+  case 02b and explicitly mark its results and recommendations superseded.
+- Use a new local case and remote output directory so no old equilibrium or
+  field is reused after the geometry change. Keep the oil, end pressure,
+  prescribed groove and vapor-floor assumptions otherwise identical.
+- Reassess the load and speed cuts using cavity filling deficit as well as
+  extent. The much smaller clearance changes eccentricity and cavity fraction;
+  the original operating-point recommendation is not carried forward.
+- Add the subsequently requested energy-equation temperature plots for nine
+  equilibria under adiabatic and prescribed-cooling assumptions. Record
+  provisional heat capacity, conductivity and temperatures, keep viscosity
+  fixed, and explicitly separate this sensitivity calculation from coupled THD.
+
 ## 2026-09-11 - Screen steady oil cavitation across load and speed
 
 - Add case 02b with a standalone remote sweep driver, vector force-balance

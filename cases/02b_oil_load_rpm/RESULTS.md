@@ -1,5 +1,9 @@
 # Oil load and rpm scan results
 
+**Superseded.** These results used the wrong geometry for the user's rig.
+Use [the corrected 43 mm / 40 mm / 42.5 micrometre scan](../02c_oil_corrected_geometry/RESULTS.md).
+The numerical checks below apply only to the archived assumed geometry.
+
 The remote scan completed 25 force-balanced steady points and six selected
 mesh repeats, plus a 100 rpm / 1 kN probe. All 25 matrix points cavitate at the
 assumed 500 Pa absolute floor. This operating window compares established
