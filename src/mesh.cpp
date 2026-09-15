@@ -1,5 +1,8 @@
 #include "mesh.hpp"
 
+#include <cmath>
+#include <numbers>
+
 Mesh::Mesh(const SimulationConfig& cfg, MPI_Comm comm)
     : R(cfg.R), L(cfg.L) {
     MPI_Comm_rank(comm, &rank);
@@ -21,4 +24,20 @@ Mesh::Mesh(const SimulationConfig& cfg, MPI_Comm comm)
     } else {
         offset_theta += remainder;
     }
+}
+
+bool Mesh::inside_inlet(const InletConfig& inlet, int i, int j) const {
+    const double angle = (offset_theta + i + 0.5) * get_d_theta();
+    const double delta = std::remainder(angle - inlet.theta * std::numbers::pi / 180.0,
+                                        2.0 * std::numbers::pi);
+    if (inlet.type == InletConfig::Type::GROOVE)
+        return std::abs(delta) <= inlet.size * std::numbers::pi / 360.0;
+    const double dz = (j + 0.5) * get_d_z() - inlet.z;
+    return R * R * delta * delta + dz * dz <= inlet.size * inlet.size;
+}
+
+const InletConfig* Mesh::inlet_at(const SimulationConfig& cfg, int i, int j) const {
+    for (auto it = cfg.inlets.rbegin(); it != cfg.inlets.rend(); ++it)
+        if (inside_inlet(*it, i, j)) return &*it;
+    return nullptr;
 }

@@ -1,5 +1,7 @@
 #include "communicator.hpp"
 
+#include <stdexcept>
+
 Communicator::Communicator(const Mesh& mesh_ref) : mesh(mesh_ref) {}
 
 void Communicator::update_ghosts(Fields& fields) {
@@ -12,6 +14,11 @@ void Communicator::update_ghosts(Field& field) {
     int n_ghost = field.n_ghost;
     int n_z = field.n_z_phys;
     int n_theta = field.n_theta_phys;
+    // Check the smallest partition on every rank before any MPI call. Packing
+    // more layers than a rank owns would forward stale ghost data as real cells.
+    if (mesh.n_theta_global / mesh.size < n_ghost)
+        throw std::invalid_argument("Ghost exchange requires at least " + std::to_string(n_ghost) +
+                                    " theta cells per MPI rank; reduce ranks or increase n_theta_global");
     int buffer_count = n_z * n_ghost;
     auto buffer_size = static_cast<std::vector<double>::size_type>(buffer_count);
 

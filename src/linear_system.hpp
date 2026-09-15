@@ -71,6 +71,10 @@ public:
     /// Zero all stencil coefficients and source terms.
     void reset();
 
+    /// Replace one equation with a prescribed value, retaining its diagonal scale.
+    /// Neighbour equations still couple to this cell; no penalty parameter is used.
+    void set_dirichlet(int i, int j, double value);
+
     /// Accessors for stencil coefficients at local physical cell (i,j).
     double& a_p(int i, int j);
     double& a_e(int i, int j);

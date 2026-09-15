@@ -45,6 +45,12 @@ Steady mode removes storage from the species and energy equations together.
 The liquid components are treated as incompressible, with additive partial
 volumes and constant partial heat capacities. A concentration-only density
 correction that breaks those additive volumes is rejected in thermal mode.
+`LINEAR_TEMPERATURE` changes liquid volume while retaining this caloric
+approximation; it is not a complete thermal-expansion thermodynamic closure.
+Its incoming pressure-work term now uses the density at the supply temperature,
+as verified by the cold-feed balance in the
+[September 15 audit](SOLVER_AUDIT_2026_09_15.md). The validity policy for using
+this density law in thermal calculations remains an explicit model discussion.
 The reference convention is
 
 \[

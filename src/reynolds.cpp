@@ -89,49 +89,17 @@ double couette_face_value(double phi_uu, double phi_u, double phi_d,
 }
 }
 
-/// Apply internal Dirichlet boundary conditions for oil supply inlets using the penalty method.
+/// Replace inlet rows with their prescribed pressure or Elrod film content.
 static void apply_inlet_conditions(LinearSystem& sys, const Mesh& mesh, const SimulationConfig& cfg) {
     if (cfg.inlets.empty()) return;
-
-    const int n_theta = mesh.n_theta_local;
-    const int n_z = mesh.n_z_local;
-    const double d_theta = mesh.get_d_theta();
-    const double d_z = mesh.get_d_z();
-    const double R = mesh.R;
-
-    for (const auto& inlet : cfg.inlets) {
-        const double theta_in_rad = inlet.theta * M_PI / 180.0;
-        const double size_rad = inlet.size * M_PI / 180.0;
-        
-        for (int i = 0; i < n_theta; ++i) {
-            const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
-            
-            // Handle periodic wrap-around for theta distance
-            double dth = std::abs(theta_c - theta_in_rad);
-            if (dth > M_PI) dth = 2.0 * M_PI - dth;
-
-            for (int j = 0; j < n_z; ++j) {
-                const double z_c = (j + 0.5) * d_z;
-                bool inside = false;
-
-                if (inlet.type == InletConfig::Type::CIRCULAR) {
-                    const double dist_sq = (R * dth) * (R * dth) + (z_c - inlet.z) * (z_c - inlet.z);
-                    if (dist_sq <= inlet.size * inlet.size) inside = true;
-                } else if (inlet.type == InletConfig::Type::GROOVE) {
-                    if (dth <= 0.5 * size_rad) inside = true;
-                }
-
-                if (inside) {
-                    double val_sup = inlet.p_supply;
-                    if (cfg.cavitation_model == CavitationModel::JFO) {
-                        val_sup = EOS::theta_from_pressure(inlet.p_supply, cfg.effective_p_cav(), cfg.bulk_modulus);
-                    }
-                    
-                    const double penalty = 1e20;
-                    sys.a_p(i, j) = penalty;
-                    sys.source(i, j) = penalty * val_sup;
-                }
-            }
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const auto* inlet = mesh.inlet_at(cfg,i,j);
+            if (!inlet) continue;
+            const double value = cfg.cavitation_model == CavitationModel::JFO
+                ? EOS::theta_from_pressure(inlet->p_supply, cfg.effective_p_cav(), cfg.bulk_modulus)
+                : inlet->p_supply;
+            sys.set_dirichlet(i,j,value);
         }
     }
 }

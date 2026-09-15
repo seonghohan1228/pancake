@@ -1238,8 +1238,8 @@ of the incoming film survives the mixing. The leading edge is defined in the
 sense the shaft entrains ($\mathrm{sign}\,\omega$), and the sample cell may be
 owned by any rank, so both the temperature and the flux are gathered with a sum
 reduction over an array indexed by the (undecomposed) axial index. The mixed
-temperature is then imposed on the groove cells by the same penalty method the
-hard pin used.
+temperature is imposed on groove cells by replacing their linear-system rows
+with prescribed values at the existing diagonal scale.
 
 ### 13.1.2 Cross-Film Temperature Profile and Conjugate Walls
 
@@ -1909,8 +1909,8 @@ The liquid closure residual mirrors the discrete operators the Elrod solve
 actually assembles (units kg/s per cell): the storage term is formed from
 $\theta$ vs $\theta^n$ with the same $\rho_l h$ capacity weight and squeeze
 source, boundary fluxes use the same Dirichlet half-cell formulas built on
-$\Gamma_{base}$, and inlet penalty cells are re-evaluated as physical operator
-residuals (the mass the penalty row injects). The normalized residual
+$\Gamma_{base}$, and inlet reservoir cells are re-evaluated as physical operator
+residuals (the mass the prescribed-value row injects). The normalized residual
 
 $$r_l = \frac{\Delta t\,\big(S_{storage} - \Phi_{boundary} - S_{inlet}\big) - M_{clamp}}{\max(M_l, \epsilon)}$$
 
@@ -1949,7 +1949,7 @@ field over the whole domain returns the global closure exactly:
 $$\sum_P r_P \;=\; S_{storage} - \Phi_{boundary} - S_{inlet} - \frac{M_{clamp}}{\Delta t}
 \;=\; \frac{r_l\,M_l}{\Delta t}$$
 
-Inlet penalty cells carry only the clamp term. Their flux imbalance *is* the
+Inlet reservoir cells carry only the clamp term. Their flux imbalance *is* the
 modelled supply source, which the global balance already reports separately as
 $S_{inlet}$; leaving it in the field would double-count it in the sum above.
 The inlet row is applied after the axial boundary rows. At a full-length groove,
@@ -2713,3 +2713,64 @@ implemented. Its original full-model specification is preserved in
 [experimental/bubble/PHYSICS.md](experimental/bubble/PHYSICS.md), with an explicit
 implementation-status notice. The remaining momentum, thermal, evaporation,
 Marangoni, disjoining-pressure and rupture models are unfinished.
+
+## Solver audit corrections (2026-09-15)
+
+### Periodic inlet geometry and prescribed values
+
+All bearing paths now use one inlet membership calculation. For a cell angle
+$\theta_i$ and inlet angle $\theta_s$, the angular displacement is
+
+$$\Delta\theta=\operatorname{remainder}(\theta_i-\theta_s,2\pi).$$
+
+A groove includes a cell when $|\Delta\theta|$ is at most half its angular width.
+A circular inlet uses $R^2\Delta\theta^2+(z_j-z_s)^2\le r_s^2$.
+Equivalent full-revolution shifts therefore give the same pressure, thermal
+and diagnostic masks, including neighbour cells across MPI partitions.
+The last matching pressure reservoir retains precedence when inlets overlap.
+
+For a prescribed pressure, Elrod content or supply temperature $\phi_s$, replace
+the equation $a_P\phi_P=\sum_N a_N\phi_N+b$ by
+
+$$s\phi_P=s\phi_s,\qquad s=\max(|a_P|,10^{-30}),\qquad a_N=0.$$
+
+Only that row is replaced. Neighbour equations retain their coupling to the
+prescribed cell. This is the existing gas-transport boundary method; the previous
+$10^{20}$ pressure/temperature penalty is removed. Inlet mass supply remains the
+imbalance of the displaced physical balance, as described in the diagnostics
+sections. A prescribed reservoir row is not a closed-cell conservation equation.
+
+### Liquid supply enthalpy with linear density
+
+The coupled internal supply term remains
+$\sum_k\Delta M_{k,s}[u_k(T_s)+p_s v_k(T_s)]$ for inflow and uses the local
+film state for outflow. With composition-independent linear density,
+
+$$v_o(T_s)=v_d(T_s)=\frac{1}{954.9-0.7284(T_s-273.15)}.$$
+
+The configurable coefficients replace the numbers above when supplied. Previously,
+the pressure-work contribution used the receiving cell's liquid volume even
+when the injected fluid had a different temperature. It now uses $T_s$.
+A uniform pressure-fed cooling test checks the independent energy balance and
+the additional liquid mass drawn into the fixed gap.
+
+Temperature-dependent volume combined with the existing constant-partial-heat-
+capacity internal energies remains a caloric approximation. A complete
+thermodynamically consistent thermal-expansion model is not established by this
+boundary correction. That choice is recorded for discussion in
+[the audit](docs/SOLVER_AUDIT_2026_09_15.md).
+
+### Computation and stopping controls
+
+The coupled solver refills its cell-state buffer for each residual evaluation.
+Once the final residual satisfies convergence, the same states supply physical
+acceptance checks and output fluxes. Reuse introduces no interpolation or lag
+between Newton trials. EOS root bracketing also reuses the pressure derivative
+already calculated with pressure; its branch selection and tolerance are unchanged.
+
+PETSc runtime stopping controls override per-solve defaults. The coupled
+accepted-state infinity norm must still be below $10^{-10}$, with the existing
+positivity, table-domain and free-gas phase checks. Looser stopping options cannot
+turn a rejected state into an accepted solution. Failed solves now report their
+actual iteration count. Every MPI partition must own at least as many physical
+theta cells as the requested ghost depth before an exchange begins.

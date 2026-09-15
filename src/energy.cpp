@@ -329,29 +329,6 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
     }
 }
 
-/// Test whether the cell at global circumferential index `i_global` and axial
-/// index `j` lies inside an inlet feature. The global index is wrapped, so a
-/// neighbour index of -1 or n_theta_global (a cell owned by another rank) is
-/// answered without any communication.
-bool inside_inlet_global(const InletConfig& inlet, const Mesh& mesh, int i_global, int j) {
-    const int n = mesh.n_theta_global;
-    const int wrapped = ((i_global % n) + n) % n;
-    const double theta_c = (wrapped + 0.5) * mesh.get_d_theta();
-    double dth = std::abs(theta_c - inlet.theta * M_PI / 180.0);
-    if (dth > M_PI) dth = 2.0 * M_PI - dth;
-    if (inlet.type == InletConfig::Type::CIRCULAR) {
-        const double z_c = (j + 0.5) * mesh.get_d_z();
-        const double dist_sq = (mesh.R * dth) * (mesh.R * dth) +
-                               (z_c - inlet.z) * (z_c - inlet.z);
-        return dist_sq <= inlet.size * inlet.size;
-    }
-    return dth <= 0.5 * (inlet.size * M_PI / 180.0);
-}
-
-bool inside_inlet(const InletConfig& inlet, const Mesh& mesh, int i, int j) {
-    return inside_inlet_global(inlet, mesh, mesh.offset_theta + i, j);
-}
-
 /// Hot-oil carry-over at one fed inlet.
 ///
 /// A real groove does not deliver pure supply oil: the film sweeping into it
@@ -387,10 +364,10 @@ void groove_mixing_temperatures(const InletConfig& inlet, const Fields& fields,
     std::vector<double> gathered(static_cast<size_t>(2) * n_z, 0.0);
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
-            if (inside_inlet(inlet, mesh, i, j)) continue;
+            if (mesh.inside_inlet(inlet, i, j)) continue;
             // (i) is outside; it is the upstream sample only if the next cell
             // downstream is inside the feature.
-            if (!inside_inlet_global(inlet, mesh, mesh.offset_theta + i + downstream, j)) continue;
+            if (!mesh.inside_inlet(inlet, i + downstream, j)) continue;
             const double h_val = std::max(h(i, j), cfg.min_film_thickness);
             const double liquid = std::clamp(theta(i, j), 0.0, 1.0);
             // Volumetric Couette carry-over through this row, m^3/s.
@@ -423,7 +400,7 @@ void groove_mixing_temperatures(const InletConfig& inlet, const Fields& fields,
 }
 
 // Actual fed inlets (feeds_fresh_oil) pump fresh oil in at a fixed supply
-// temperature, so their cells are pinned via the penalty method. Under the default
+// temperature, so their rows impose that value directly. Under the default
 // groove_mixing_model = PINNED the pinned value is inlet.t_supply exactly; the
 // mixing models pin the groove to the hot-oil carry-over mixture instead.
 // Open large-clearance regions (feeds_fresh_oil == false) impose no thermal
@@ -443,10 +420,8 @@ void apply_inlet_thermal_conditions(LinearSystem& sys, const Fields& fields,
 
         for (int i = 0; i < n_theta; ++i) {
             for (int j = 0; j < n_z; ++j) {
-                if (!inside_inlet(inlet, mesh, i, j)) continue;
-                const double penalty = 1e20;
-                sys.a_p(i, j) = penalty;
-                sys.source(i, j) = penalty * t_mix[j];
+                if (!mesh.inside_inlet(inlet, i, j)) continue;
+                sys.set_dirichlet(i, j, t_mix[j]);
             }
         }
     }

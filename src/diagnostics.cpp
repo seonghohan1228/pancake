@@ -40,29 +40,6 @@ double gamma_base(const Fields& fields, const SimulationConfig& cfg, int i, int 
     return ReynoldsCoeff::elrod_gamma_base(fields, cfg, i, j);
 }
 
-// Geometric inlet membership, mirroring Reynolds::apply_inlet_conditions.
-bool inlet_cell(const Mesh& mesh, const SimulationConfig& cfg, int i, int j) {
-    if (cfg.inlets.empty()) return false;
-    const double d_theta = mesh.get_d_theta();
-    const double d_z = mesh.get_d_z();
-    const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
-    const double z_c = (j + 0.5) * d_z;
-    for (const auto& inlet : cfg.inlets) {
-        const double theta_in_rad = inlet.theta * M_PI / 180.0;
-        const double size_rad = inlet.size * M_PI / 180.0;
-        double dth = std::abs(theta_c - theta_in_rad);
-        if (dth > M_PI) dth = 2.0 * M_PI - dth;
-        if (inlet.type == InletConfig::Type::CIRCULAR) {
-            const double dist_sq = (mesh.R * dth) * (mesh.R * dth) +
-                (z_c - inlet.z) * (z_c - inlet.z);
-            if (dist_sq <= inlet.size * inlet.size) return true;
-        } else {
-            if (dth <= 0.5 * size_rad) return true;
-        }
-    }
-    return false;
-}
-
 double van_leer(double r) {
     return (r + std::abs(r)) / (1.0 + std::abs(r));
 }
@@ -108,8 +85,7 @@ bool axial_link_active(const Fields& fields, BCType type, double bc_val, int i, 
 // Net liquid mass outflow rate [kg/s] of one Elrod cell, evaluating the physical
 // operators solve_elrod assembles. Interior faces telescope between neighbours,
 // so summing this over the domain leaves only the axial boundary faces and the
-// storage terms. Used both for the inlet penalty cells (whose rows the penalty
-// replaced) and for the per-cell mass_residual field.
+// storage terms. Used both for the replaced inlet rows and for mass_residual.
 double elrod_cell_outflow(const Fields& fields, const Mesh& mesh,
                           const SimulationConfig& cfg, double dt, int i, int j,
                           bool include_axial_boundary_faces = true) {
@@ -188,12 +164,12 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
         };
         for (int i = 0; i < n_theta; ++i) {
             if (cfg.bc_z_south_type == BCType::DIRICHLET &&
-                !inlet_cell(mesh, cfg, i, 0)) {
+                !mesh.inlet_at(cfg, i, 0)) {
                 const double cs = gamma_p(i, 0) * R * d_theta / (0.5 * d_z);
                 inflow += cs * (std::max(cfg.bc_z_south_val, cfg.effective_p_cav()) - pressure(i, 0));
             }
             if (cfg.bc_z_north_type == BCType::DIRICHLET &&
-                !inlet_cell(mesh, cfg, i, n_z - 1)) {
+                !mesh.inlet_at(cfg, i, n_z - 1)) {
                 const double cn = gamma_p(i, n_z - 1) * R * d_theta / (0.5 * d_z);
                 inflow += cn * (std::max(cfg.bc_z_north_val, cfg.effective_p_cav()) - pressure(i, n_z - 1));
             }
@@ -203,13 +179,13 @@ double liquid_boundary_inflow(const Fields& fields, const Mesh& mesh,
     for (int i = 0; i < n_theta; ++i) {
         if (cfg.cavitation_model == CavitationModel::JFO) {
             const Field& theta = fields["theta"];
-            if (!inlet_cell(mesh, cfg, i, 0) &&
+            if (!mesh.inlet_at(cfg, i, 0) &&
                 axial_link_active(fields, cfg.bc_z_south_type, cfg.bc_z_south_val, i, 0)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, 0), theta(i, 0),
                                                      FullFilm::bound(fields, cfg, i, 0),
                                                      cfg.bc_z_south_val, R, d_theta, d_z);
             }
-            if (!inlet_cell(mesh, cfg, i, n_z - 1) &&
+            if (!mesh.inlet_at(cfg, i, n_z - 1) &&
                 axial_link_active(fields, cfg.bc_z_north_type, cfg.bc_z_north_val, i, n_z - 1)) {
                 inflow -= cfg.elrod_boundary_outflow(gamma_base(fields, cfg, i, n_z - 1), theta(i, n_z - 1),
                                                      FullFilm::bound(fields, cfg, i, n_z - 1),
@@ -299,7 +275,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
             balance.clamp_mass_liquid += field_value(fields, "cavitation_clamp_mass", 0.0, i, j);
             balance.clamp_mass_gas += field_value(fields, "gas_clamp_mass", 0.0, i, j);
 
-            if (inlet_cell(mesh, cfg, i, j)) {
+            if (mesh.inlet_at(cfg, i, j)) {
                 // Inlet row replacement occurs after axial-BC assembly, so an
                 // overlapping groove cell no longer owns an axial boundary
                 // link. Restoring that discarded face here makes a full-length
@@ -369,9 +345,9 @@ void mass_residual(Fields& fields, const Mesh& mesh,
     if (FBNS::active(cfg)) {
         for (int i = 0; i < mesh.n_theta_local; ++i) {
             for (int j = 0; j < mesh.n_z_local; ++j) {
-                residual(i, j) = inlet_cell(mesh, cfg, i, j)
+                residual(i, j) = mesh.inlet_at(cfg, i, j)
                     ? 0.0 : FBNS::cell_outflow(fields, mesh, cfg, dt, i, j);
-                if (dt > 0 && !inlet_cell(mesh, cfg, i, j) &&
+                if (dt > 0 && !mesh.inlet_at(cfg, i, j) &&
                     cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE)
                     residual(i, j) += field_value(fields, "gas_mass_transfer", 0, i, j) *
                         fields["h"](i, j) * mesh.cell_volume();
@@ -387,14 +363,14 @@ void mass_residual(Fields& fields, const Mesh& mesh,
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         for (int j = 0; j < mesh.n_z_local; ++j) {
-            // Inlet penalty cells: their flux imbalance IS the modelled supply
+            // Inlet reservoir cells: their flux imbalance IS the modelled supply
             // source (mass_balance reports it as inlet_mass_source), so only the
             // clamp correction is left here.
-            const double outflow = inlet_cell(mesh, cfg, i, j)
+            const double outflow = mesh.inlet_at(cfg, i, j)
                 ? 0.0 : elrod_cell_outflow(fields, mesh, cfg, dt, i, j);
             residual(i, j) = outflow -
                 field_value(fields, "cavitation_clamp_mass", 0.0, i, j) / step;
-            if (transient && !inlet_cell(mesh, cfg, i, j) &&
+            if (transient && !mesh.inlet_at(cfg, i, j) &&
                 cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE)
                 residual(i, j) += field_value(fields, "gas_mass_transfer", 0, i, j) *
                     fields["h"](i, j) * mesh.cell_volume();

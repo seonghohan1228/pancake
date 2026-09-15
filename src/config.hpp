@@ -1522,20 +1522,17 @@ struct SimulationConfig {
             require_nonnegative(journal_heat_transfer, "journal_heat_transfer");
             require_nonnegative(bearing_heat_transfer, "bearing_heat_transfer");
 
-            // Viscosity is the only route by which temperature reaches the Reynolds
-            // equation. With either of these set to CONSTANT the energy equation still
-            // runs and writes a plausible temperature field, but the flow is isothermal:
-            // a THD-looking result with no thermal feedback in it.
+            // A constant viscosity disables viscous thermal feedback. Density,
+            // gas compressibility and phase equilibrium may still depend on T.
             if (fluid_property_model == FluidPropertyModel::CONSTANT) {
                 warn("temperature_model = ENERGY_EQUATION with fluid_property_model = CONSTANT: "
-                     "viscosity is frozen at mu, so the temperature field has NO effect on "
-                     "pressure or load. Set fluid_property_model to a variable-property model "
-                     "for a coupled THD run.");
+                     "viscosity is frozen at mu, so viscosity feedback from temperature is disabled. "
+                     "Set fluid_property_model to a variable-property model to enable it.");
             } else if (liquid_viscosity_model == LiquidViscosityModel::CONSTANT) {
                 warn("temperature_model = ENERGY_EQUATION with liquid_viscosity_model = CONSTANT: "
-                     "viscosity is frozen at mu, so the temperature field has NO effect on "
-                     "pressure or load. Use a temperature-dependent liquid_viscosity_model "
-                     "for a coupled THD run.");
+                     "viscosity is frozen at mu, so viscosity feedback from temperature is disabled. "
+                     "Density and phase properties can still affect pressure or load. "
+                     "Use a temperature-dependent liquid_viscosity_model for viscosity feedback.");
             }
 
             if (journal_heat_transfer == 0.0 && bearing_heat_transfer == 0.0 &&
@@ -1649,6 +1646,7 @@ struct SimulationConfig {
         for (size_t idx = 0; idx < inlets.size(); ++idx) {
             const InletConfig& inlet = inlets[idx];
             const std::string prefix = "inlet[" + std::to_string(idx) + "]";
+            if (!finite(inlet.theta)) error(prefix + ".theta must be a finite angle in degrees.");
             require_positive(inlet.size, (prefix + ".size").c_str());
             if (inlet.type == InletConfig::Type::CIRCULAR) {
                 require_nonnegative(inlet.z, (prefix + ".z").c_str());

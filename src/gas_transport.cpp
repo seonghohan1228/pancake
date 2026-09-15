@@ -28,9 +28,7 @@ std::vector<ReservoirRow> impose_reservoir(LinearSystem& sys, const Fields& fiel
             if (fields["inlet_indicator"](i, j) <= 0.5) continue;
             rows.push_back({i, j, sys.a_p(i, j), sys.a_e(i, j), sys.a_w(i, j),
                             sys.a_n(i, j), sys.a_s(i, j), sys.source(i, j)});
-            sys.a_e(i, j) = sys.a_w(i, j) = sys.a_n(i, j) = sys.a_s(i, j) = 0;
-            sys.a_p(i, j) = std::max(std::abs(sys.a_p(i, j)), 1e-30);
-            sys.source(i, j) = sys.a_p(i, j) * value;
+            sys.set_dirichlet(i, j, value);
         }
     }
     return rows;

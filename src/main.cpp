@@ -139,7 +139,8 @@ int main(int argc, char** argv) {
     }
     argc = petsc_argc;
 
-    PetscInitialize(&argc, &argv, nullptr, nullptr);
+    const PetscErrorCode initialization_error=PetscInitialize(&argc, &argv, nullptr, nullptr);
+    if (initialization_error) return initialization_error;
 
     SimulationConfig cfg;
 

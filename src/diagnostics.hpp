@@ -12,7 +12,7 @@
 ///
 /// The liquid balance mirrors the discrete operators the Elrod solve assembles
 /// (units kg/s per cell): storage from theta vs theta.old, boundary fluxes from
-/// the same Dirichlet/INLET_OUTLET formulas, inlet penalty cells re-evaluated as
+/// the same Dirichlet/INLET_OUTLET formulas, inlet reservoir cells re-evaluated as
 /// physical operator residuals. In a closed domain the residual sits at the
 /// linear-solver tolerance, not O(1). Clamp/snap operations are accounted
 /// through the "cavitation_clamp_mass" / "gas_clamp_mass" accumulator fields
@@ -36,7 +36,7 @@ struct MassBalance {
     double gas_mass = 0.0;             // ∫ (c_d rho h + m_g) dA [kg]
     double liquid_boundary_flux = 0.0; // net liquid inflow through z boundaries [kg/s]
     double gas_boundary_flux = 0.0;    // net total-gas inflow through z boundaries [kg/s]
-    double inlet_mass_source = 0.0;    // net liquid injected by inlet penalty cells [kg/s]
+    double inlet_mass_source = 0.0;    // net liquid injected by inlet reservoir cells [kg/s]
     double clamp_mass_liquid = 0.0;    // liquid mass added by theta clamp/snap this step [kg]
     double clamp_mass_gas = 0.0;       // gas mass added by clamps/supply overwrites this step [kg]
     double liquid_residual = 0.0;      // normalized step-closure residual r_l
@@ -68,7 +68,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
 /// formed from the same expressions solve_elrod assembles: harmonically averaged
 /// Gamma_g = Gamma_base g(theta) on interior faces, cfg.elrod_boundary_outflow on
 /// active axial Dirichlet / INLET_OUTLET faces, and the scheme's Couette face
-/// value. Inlet penalty cells carry only the clamp term: their flux imbalance is
+/// value. Inlet reservoir cells carry only the clamp term: their flux imbalance is
 /// the deliberately modelled supply source, which mass_balance() reports
 /// separately as inlet_mass_source.
 ///

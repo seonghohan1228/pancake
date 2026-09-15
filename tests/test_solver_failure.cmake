@@ -10,3 +10,10 @@ endif()
 if(NOT output MATCHES "Simulation stopped" OR output MATCHES "Simulation finished successfully")
     message(FATAL_ERROR "Failure was reported as success: ${output}\n${errors}")
 endif()
+
+# A PETSc initialization error must stop before any configuration or time loop.
+execute_process(COMMAND "${SOLVER}" -c "${config}" -malloc_debug not_a_boolean
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors TIMEOUT 30)
+if(result EQUAL 0 OR output MATCHES "Starting Simulation" OR output MATCHES "Simulation finished successfully")
+    message(FATAL_ERROR "Solver continued after PETSc initialization failed: ${result}\n${output}\n${errors}")
+endif()

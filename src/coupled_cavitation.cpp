@@ -49,9 +49,11 @@ struct Solver::Impl {
     bool equilibrium = false;
     bool steady_initializing = false;
     Stats stats;
+    std::vector<State> states;
     std::vector<double> oil_residual, species_residual, liquid_residual, energy_residual, heat, reaction_field;
 
     Impl(const Mesh& m, Communicator& c, bool energy) : mesh(m), comm(c), thermal(energy), dof(energy ? 5 : 4) {
+        states.resize((mesh.n_theta_local+2)*mesh.n_z_local);
         for (auto name : names) trial.add(name,mesh);
         const PetscInt local = dof*mesh.n_theta_local*mesh.n_z_local;
         const PetscInt global = dof*mesh.n_theta_global*mesh.n_z_global;
@@ -147,6 +149,7 @@ struct Solver::Impl {
         properties(s);
         return s;
     }
+    const State& at(int i, int j) const { return states[(i+1)*mesh.n_z_local+j]; }
     void properties(State& s) const {
         if (!std::isfinite(s.t) || s.t<200 || s.t>500) throw std::domain_error("Coupled model requires 200 <= T <= 500 K");
         const double ml=s.mass[0]+s.mass[1];
@@ -191,18 +194,7 @@ struct Solver::Impl {
         properties(s);
         return s;
     }
-    const InletConfig* inlet(int i, int j) const {
-        const double angle=(mesh.offset_theta+i+.5)*mesh.get_d_theta();
-        const double z=(j+.5)*mesh.get_d_z();
-        const InletConfig* found=nullptr;
-        for (const auto& v : cfg->inlets) {
-            const double da=std::remainder(angle-v.theta*M_PI/180,2*M_PI);
-            const bool inside=v.type==InletConfig::Type::GROOVE ?
-                std::abs(da)<=v.size*M_PI/360 : mesh.R*mesh.R*da*da+(z-v.z)*(z-v.z)<=v.size*v.size;
-            if (inside) found=&v;
-        }
-        return found;
-    }
+    const InletConfig* inlet(int i, int j) const { return mesh.inlet_at(*cfg,i,j); }
     std::array<double,3> internal_energies(double t, double, double rg) const {
         const double cp=cfg->rho_cp/cfg->rho, delta=t-cfg->property_reference_temperature;
         if (cfg->fluid_property_model==FluidPropertyModel::CONSTANT) return {cp*delta,cp*delta,0};
@@ -264,10 +256,8 @@ struct Solver::Impl {
         stats={};
         const double dx=mesh.R*mesh.get_d_theta(), dz=mesh.get_d_z(), area=dx*dz;
         const double speed=cfg->omega*mesh.R/2;
-        std::vector<State> states((mesh.n_theta_local+2)*mesh.n_z_local);
         for (int i=-1;i<=mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j)
             states[(i+1)*mesh.n_z_local+j]=state(i,j);
-        const auto at=[&](int i,int j)->const State& { return states[(i+1)*mesh.n_z_local+j]; };
         int n=0;
         for (int i=0;i<mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j) {
             const State& s=at(i,j);
@@ -323,8 +313,11 @@ struct Solver::Impl {
                     const double rg=gas_density(pg,feed.t);
                     const auto u=internal_energies(feed.t,feed.p,rg);
                     const double gas_enthalpy=u[2]+(rg>0 ? feed.p/rg : 0);
-                    source_energy=source_o*(u[0]+feed.p*s.volume[0])+
-                        source_d*(u[1]+feed.p*s.volume[1])+source_g*gas_enthalpy;
+                    auto volume=s.volume;
+                    if (cfg->density_model==DensityModel::LINEAR_TEMPERATURE)
+                        volume[0]=volume[1]=1/FluidProperties::liquid_solution_density(0,feed.p,feed.t,*cfg);
+                    source_energy=source_o*(u[0]+feed.p*volume[0])+
+                        source_d*(u[1]+feed.p*volume[1])+source_g*gas_enthalpy;
                 }
                 const double storage=cfg->solution_mode==SolutionMode::TRANSIENT ?
                     s.energy-(*fields)["internal_energy"].old(i,j) : 0;
@@ -459,12 +452,25 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     check(VecRestoreArray(s.x,&values));
     // Early steady attempts only test whether continuation reached Newton's
     // basin. Long, slowly improving attempts delay the next useful warm step.
-    check(SNESSetTolerances(s.snes,1e-10,0,1e-14,cfg.solution_mode==SolutionMode::STEADY_STATE ? 30 : 100,10000));
+    PetscReal atol=1e-10, rtol=0, stol=1e-14;
+    PetscInt max_iterations=cfg.solution_mode==SolutionMode::STEADY_STATE ? 30 : 100, max_functions=10000;
+    // Read only the stopping controls here; repeating SNESSetFromOptions would
+    // reinstall monitors and reset solver/preconditioner options each timestep.
+    check(PetscOptionsGetReal(nullptr,"coupled_","-snes_atol",&atol,nullptr));
+    check(PetscOptionsGetReal(nullptr,"coupled_","-snes_rtol",&rtol,nullptr));
+    check(PetscOptionsGetReal(nullptr,"coupled_","-snes_stol",&stol,nullptr));
+    check(PetscOptionsGetInt(nullptr,"coupled_","-snes_max_it",&max_iterations,nullptr));
+    check(PetscOptionsGetInt(nullptr,"coupled_","-snes_max_funcs",&max_functions,nullptr));
+    check(SNESSetTolerances(s.snes,atol,rtol,stol,max_iterations,max_functions));
     check(SNESSolve(s.snes,nullptr,s.x));
     // Query failure before reevaluating: a rejected EOS trial may be outside its domain.
     SNESConvergedReason solve_reason;
     check(SNESGetConvergedReason(s.snes,&solve_reason));
-    if (solve_reason<=0) { Stats failure; failure.residual=INFINITY; return failure; }
+    if (solve_reason<=0) {
+        Stats failure; PetscInt iterations;
+        check(SNESGetIterationNumber(s.snes,&iterations));
+        failure.iterations=iterations; failure.residual=INFINITY; return failure;
+    }
     s.unpack(s.x); s.evaluate(s.residual);
     PetscReal norm; PetscInt iterations; SNESConvergedReason reason;
     check(VecNorm(s.residual,NORM_INFINITY,&norm));
@@ -487,7 +493,7 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     std::array<double,5> local_bounds{{1e300,1e300,1e300,1e300,1e300}}, global_bounds{};
     double local_volume_error=0;
     for (int i=0;i<s.mesh.n_theta_local;++i) for (int j=0;j<s.mesh.n_z_local;++j) {
-        const State cell=s.state(i,j);
+        const State& cell=s.at(i,j);
         const double pv=cfg.oil_vapor_pressure(cell.t);
         local_bounds[0]=std::min(local_bounds[0],cell.p-pv);
         local_bounds[1]=std::min(local_bounds[1],cell.mass[0]/s.m_scale);
@@ -521,7 +527,7 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
         throw std::domain_error(message.str());
     }
     for (int i=0;i<s.mesh.n_theta_local;++i) for (int j=0;j<s.mesh.n_z_local;++j) {
-        const State cell=s.state(i,j);
+        const State& cell=s.at(i,j);
         for (int k=0;k<s.dof;++k) fields[names[k]](i,j)=s.trial[names[k]](i,j);
         fields["theta"](i,j)=cell.theta;
         fields["dissolved_gas"](i,j)=cell.concentration();
@@ -541,21 +547,22 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     const double dx=s.mesh.R*s.mesh.get_d_theta(), dz=s.mesh.get_d_z();
     for (int i=0;i<s.mesh.n_theta_local;++i) {
         for (int j=0;j<s.mesh.n_z_local;++j) {
-            const auto a=s.state(i-1,j), b=s.state(i,j);
+            const auto& a=s.at(i-1,j);
+            const auto& b=s.at(i,j);
             const auto f=s.flux(a,b,dx,dz,cfg.omega*cfg.R/2);
             fields["mixture_mass_flux_theta"](i,j)=f[0]+f[1]+f[2];
             fields["mixture_volume_flux_theta"](i,j)=f.volume;
             if (fields.has("velocity_theta")) fields["velocity_theta"](i,j)=f.volume/(dz*.5*(a.h+b.h));
         }
         for (int j=0;j<=s.mesh.n_z_local;++j) {
-            const auto cell=s.state(i,std::min(j,s.mesh.n_z_local-1));
+            const auto& cell=s.at(i,std::min(j,s.mesh.n_z_local-1));
             Face f; double h_face=cell.h;
             if (j==0 && cfg.bc_z_south_type!=BCType::NEUMANN)
                 f=s.flux(s.reservoir(cell,true),cell,dz/2,dx,0);
             else if (j==s.mesh.n_z_local && cfg.bc_z_north_type!=BCType::NEUMANN)
                 f=s.flux(cell,s.reservoir(cell,false),dz/2,dx,0);
             else if (j>0 && j<s.mesh.n_z_local) {
-                const auto a=s.state(i,j-1);
+                const auto& a=s.at(i,j-1);
                 f=s.flux(a,cell,dz,dx,0); h_face=.5*(a.h+cell.h);
             }
             fields["mixture_mass_flux_z"](i,j)=f[0]+f[1]+f[2];

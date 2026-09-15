@@ -1,5 +1,23 @@
 # Development Plan
 
+## 2026-09-15 - Solver audit and measured repairs
+
+- [x] Trace the property, inlet, energy, linear-solver and MPI paths; consolidate
+  inlet geometry and prescribed-value row handling without removing models.
+- [x] Reuse final coupled states and eliminate duplicate EOS bracket evaluations.
+- [x] Honor runtime stopping controls, preserve failed-iteration counts, reject
+  undersized ghost exchanges and stop after PETSc initialization failure.
+- [x] Correct incoming liquid pressure work under temperature-dependent density.
+- [x] Complete and record 65 native and 65 workstation checks, matched output
+  comparisons and measured FW68D runtime reductions at 1/4 MPI ranks.
+- [ ] Discuss retention/labeling of approximate legacy gas closures with the user.
+- [ ] Decide the validity policy for linear density with coupled caloric properties.
+- [ ] Select a production workload and accuracy target before replacing the
+  numerical Jacobian or implementing higher-order conservative transport.
+
+See [the audit](docs/SOLVER_AUDIT_2026_09_15.md). Completed earlier work below
+remains part of the development record.
+
 ## 2026-09-11 - Oil operating-window screening
 
 - [x] Add an isolated, reproducible steady force-balanced load/rpm scan using

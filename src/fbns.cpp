@@ -56,31 +56,6 @@ double couette_face_flux(const Fields& fields, const Mesh& mesh,
     return ReynoldsCoeff::couette_face_flux(fields, mesh, cfg, i, j);
 }
 
-/// Inlet covering cell (i,j), or nullptr. Mirrors the geometric membership test
-/// in Reynolds::apply_inlet_conditions, including its "last matching inlet wins"
-/// overwrite order, so the two solvers pin identical cells.
-const InletConfig* inlet_at(const Mesh& mesh, const SimulationConfig& cfg, int i, int j) {
-    const InletConfig* found = nullptr;
-    const double d_theta = mesh.get_d_theta();
-    const double d_z = mesh.get_d_z();
-    const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
-    const double z_c = (j + 0.5) * d_z;
-    for (const auto& inlet : cfg.inlets) {
-        const double theta_in_rad = inlet.theta * M_PI / 180.0;
-        const double size_rad = inlet.size * M_PI / 180.0;
-        double dth = std::abs(theta_c - theta_in_rad);
-        if (dth > M_PI) dth = 2.0 * M_PI - dth;
-        if (inlet.type == InletConfig::Type::CIRCULAR) {
-            const double dist_sq = (mesh.R * dth) * (mesh.R * dth) +
-                (z_c - inlet.z) * (z_c - inlet.z);
-            if (dist_sq <= inlet.size * inlet.size) found = &inlet;
-        } else if (dth <= 0.5 * size_rad) {
-            found = &inlet;
-        }
-    }
-    return found;
-}
-
 /// Pressure imposed on an axial Dirichlet boundary. Config validation already
 /// requires bc values >= p_cav; the max is a guard, not a model choice.
 double axial_boundary_pressure(const SimulationConfig& cfg, double bc_val) {
@@ -299,7 +274,7 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
             }
             row_scale_max = std::max(row_scale_max, row_scale);
 
-            const InletConfig* inlet = inlet_at(mesh, cfg, i, j);
+            const InletConfig* inlet = mesh.inlet_at(cfg, i, j);
             if (inlet != nullptr) {
                 is_inlet[c] = 1;
                 inlet_pstar[c] = (inlet->p_supply - p_cav) / p_ref;

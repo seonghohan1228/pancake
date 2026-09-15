@@ -13,6 +13,12 @@ physics choice, the differences between the two thermal formulations, physical
 versus numerical unsteadiness, and the limits of comparisons with Ferron.
 It distinguishes the coupled main source from the separate Ferron branch.
 
+The [September 15 solver audit](docs/SOLVER_AUDIT_2026_09_15.md) records the
+current performance repairs, inlet and energy corrections, workstation
+measurements, and model choices still needing discussion. All model selectors
+are retained. PETSc stopping options now take precedence over per-solve defaults;
+the coupled accepted-state residual and physical-domain checks remain mandatory.
+
 Simulation campaigns follow the user's local-to-remote workflow: edit, compile
 and run short checks locally; synchronize source and inputs to an isolated
 remote directory; compile and run there; bring results and provenance back

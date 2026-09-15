@@ -93,8 +93,10 @@ double gas_density(double p, double t) {
     if (p == 0) return 0;
     // Follow the dilute branch and stop at the first mechanically unstable point.
     double lo = 0, hi = p / (gas_constant*t);
-    for (int n = 0; pressure(hi,t) < p; ++n) {
-        if (n > 100 || pressure_derivative(hi,t) <= 0)
+    for (int n = 0; ; ++n) {
+        const auto v = evaluate(hi,t);
+        if (v[0] >= p) break;
+        if (n > 100 || v[1] <= 0)
             throw std::domain_error("R410A stable gas root could not be bracketed");
         hi *= 1.08;
     }

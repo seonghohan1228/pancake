@@ -112,6 +112,30 @@ int main(int argc, char** argv) {
     test_diagonal(mesh);
     test_helmholtz_1d(mesh);
 
+    // Prescribed rows bound a source-free axial diffusion problem. Its exact
+    // cell values are linear, regardless of the dimensional coefficient scale.
+    {
+        auto axial_cfg=cfg; axial_cfg.n_z_global=8;
+        Mesh axial(axial_cfg); Field solution("prescribed",axial);
+        LinearSolverOptions options; options.pc_type=PCNONE; options.ksp_type=KSPGMRES;
+        LinearSystem sys(axial,options);
+        PetscOptionsSetValue(nullptr,"-ksp_rtol","1e-12");
+        for (double coefficient : {1e-12,1e12}) {
+            sys.reset();
+            for (int i=0;i<axial.n_theta_local;++i) for (int j=0;j<axial.n_z_local;++j) {
+                sys.a_p(i,j)=4*coefficient;
+                sys.a_e(i,j)=sys.a_w(i,j)=coefficient;
+                sys.a_n(i,j)=sys.a_s(i,j)=coefficient;
+                if (j==0 || j==axial.n_z_local-1) sys.set_dirichlet(i,j,10+2*j);
+            }
+            sys.solve(solution,0.9); // The explicit runtime tolerance must win.
+            for (int i=0;i<axial.n_theta_local;++i) for (int j=0;j<axial.n_z_local;++j)
+                check(std::isfinite(solution(i,j)) && std::abs(solution(i,j)-(10+2*j))<1e-7,
+                      "Prescribed-value rows preserve diffusion solution across coefficient scales");
+        }
+        PetscOptionsClearValue(nullptr,"-ksp_rtol");
+    }
+
     if (rank == 0) std::cout << "PASS: test_linear_system\n";
 
     PetscFinalize();

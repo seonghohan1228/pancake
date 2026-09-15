@@ -3925,3 +3925,19 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   refs stay unchanged and the new main remains a fast-forward of origin/main.
   Record the commit mapping, archive paths and test evidence in
   `docs/INTEGRATION_2026_09_15.md`.
+## 2026-09-15 - Repair solver boundaries and reduce repeated property work
+
+- Share periodic inlet geometry across pressure, heat, masks and diagnostics;
+  accept equivalent full-turn angles consistently and reject nonfinite angles.
+- Replace pressure/temperature penalty rows with directly prescribed values at
+  the existing equation scale, reusing the gas-transport boundary method.
+- Reuse final coupled cell properties for acceptance and output, and evaluate
+  EOS pressure/derivative together while bracketing. Preserve constitutive laws,
+  interpolation, nonlinear acceptance checks and all model selectors.
+- Respect runtime SNES/KSP stopping controls and report failed coupled iteration
+  counts. Reject invalid MPI partition/ghost depth before communicating.
+- Use the supply-temperature liquid volume in inlet enthalpy under linear density;
+  correct the warning that constant viscosity prevents all temperature feedback.
+- Stop the executable after PETSc initialization fails. Record the new regression
+  checks, remaining physical-model decisions and remote performance measurements
+  in [the audit](docs/SOLVER_AUDIT_2026_09_15.md).

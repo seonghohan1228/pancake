@@ -1,10 +1,12 @@
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #include <mpi.h>
 #include <petsc.h>
 
 #include "config.hpp"
+#include "communicator.hpp"
 #include "field.hpp"
 #include "film_thickness.hpp"
 #include "linear_system.hpp"
@@ -85,11 +87,7 @@ int main(int argc, char** argv) {
 
         int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-        // The supply pressure is enforced with the penalty method, so the achievable
-        // accuracy at the pinned cells is set by the linear-solver tolerance
-        // (rtol = 1e-8) times the supply pressure -- about 1e-5..1e-3 Pa here. Assert a
-        // relative tolerance rather than a sub-floor absolute one; a real BC leak would
-        // be O(p_supply), caught by orders of magnitude.
+        // Directly prescribed rows are still solved to the Krylov tolerance.
         const double pin_rtol = 1e-6;
 
         // Check cells inside the groove
@@ -122,6 +120,39 @@ int main(int argc, char** argv) {
             }
         }
 
+        const auto reference = pressure.data;
+        Field indicator("indicator",mesh), shifted("shifted",mesh);
+        FilmThickness::compute_inlet_indicator(indicator,mesh,cfg);
+        for (double turns : {-720.0,1440.0}) {
+            auto wrapped=cfg;
+            for (auto& inlet : wrapped.inlets) inlet.theta+=turns;
+            FilmThickness::compute_inlet_indicator(shifted,mesh,wrapped);
+            check(indicator.data==shifted.data,"Inlet mask must be invariant under full turns");
+            fields["pressure"].fill(cfg.p_cav);
+            fields["rho"].fill(cfg.rho);
+            Reynolds::solve(fields,sys,mesh,wrapped);
+            for (std::size_t k=0;k<reference.size();++k)
+                check(std::abs(pressure.data[k]-reference[k])<0.01,"Wrapped inlet pressure must be unchanged");
+        }
+        auto overlapping=cfg;
+        overlapping.inlets.push_back(groove);
+        overlapping.inlets.back().p_supply=4e5;
+        for (int i=0;i<mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j)
+            if (mesh.inside_inlet(groove,i,j))
+                check(mesh.inlet_at(overlapping,i,j)==&overlapping.inlets.back(),"Last matching reservoir wins");
+        // An undersized partition must fail on every rank before communication.
+        auto small=cfg; small.n_theta_global=mesh.size;
+        Mesh small_mesh(small); Field small_field("small",small_mesh); Communicator comm(small_mesh);
+        bool rejected=false;
+        try { comm.update_ghosts(small_field); } catch (const std::invalid_argument&) { rejected=true; }
+        check(rejected,"Ghost exchange must reject fewer physical cells than ghost layers");
+        auto invalid=cfg;
+        invalid.inlets.front().theta=std::numeric_limits<double>::quiet_NaN();
+        std::vector<std::string> errors,warnings;
+        invalid.validate(errors,warnings);
+        bool bad_angle=false;
+        for (const auto& error : errors) bad_angle |= error.find(".theta must be a finite")!=std::string::npos;
+        check(bad_angle,"Nonfinite inlet angles must fail validation");
         if (rank == 0) std::cout << "PASS: test_inlets\n";
     }
 

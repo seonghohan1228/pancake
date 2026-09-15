@@ -29,6 +29,17 @@ int main(int argc, char** argv) {
         fields["free_gas_mass"].fill(mg);
         CoupledCavitation::Solver solver(mesh,comm); solver.initialize(fields,cfg);
         const double mo=fields["oil_mass"](0,0), total=fields["dissolved_mass"](0,0)+mg;
+        // Runtime iteration limits must survive per-step default setup. A failed
+        // attempt must preserve the last accepted pressure and inventories.
+        for (const auto* limit : {"0", "1"}) {
+            PetscOptionsSetValue(nullptr,"-coupled_snes_max_it",limit);
+            const auto stopped=solver.solve(fields,cfg,.001);
+            require(!stopped.converged && stopped.iterations==std::stoi(limit),
+                    "Coupled runtime iteration limit and failure count");
+            require(fields["pressure"](0,0)==1e5+cfg.p_cav && fields["oil_mass"](0,0)==mo,
+                    "Rejected solve must not overwrite accepted state");
+        }
+        PetscOptionsClearValue(nullptr,"-coupled_snes_max_it");
         for (int step=0;step<10;++step) {
             const auto stats=solver.solve(fields,cfg,.001);
             if (mesh.rank==0) std::cout << "step " << step << " converged=" << stats.converged << " residual=" << stats.residual << " iterations=" << stats.iterations << '\n';

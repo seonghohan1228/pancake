@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include "coupled_cavitation.hpp"
+#include "fluid_properties.hpp"
 #include "r410a.hpp"
 
 namespace {
@@ -178,6 +179,31 @@ int main(int argc,char** argv) {
             near(f["pressure"](0,j),2e6-2e5*(j+.5)/mesh.n_z_local,.01,"High-pressure dissolved solution has the linear pressure profile");
             near(f["free_gas_mass"](0,j),0,1e-10,"High-pressure undersaturated solution remains gas-free");
         }
+        // Cooling a uniform, pressure-fed expanding liquid draws in cold oil.
+        // Supply flow work must use the reservoir density at its own temperature.
+        cfg.dissolved_gas_species=DissolvedGasSpecies::AIR;
+        cfg.fluid_property_model=FluidPropertyModel::SINGLE_PHASE;
+        cfg.density_model=DensityModel::LINEAR_TEMPERATURE;
+        cfg.dissolved_gas_initial=cfg.dissolved_gas_henry_coeff=0;
+        cfg.gas_mass_transfer_rate=cfg.omega=0;
+        cfg.bc_z_south_type=cfg.bc_z_north_type=BCType::NEUMANN;
+        cfg.temperature_initial=333.15;
+        cfg.journal_heat_transfer=10000; cfg.journal_wall_temperature=280;
+        InletConfig cold_feed; cold_feed.type=InletConfig::Type::GROOVE;
+        cold_feed.size=360; cold_feed.p_supply=1e6; cold_feed.feeds_fresh_oil=true;
+        cold_feed.t_supply=293.15; cfg.inlets={cold_feed};
+        reset(1,0,cold_feed.p_supply-cfg.p_cav);
+        const double mass_before=f["oil_mass"](0,0), energy_before=f["internal_energy"](0,0);
+        result=solver.solve(f,cfg,dt);
+        require(result.converged,"Thermally expanding liquid reservoir solve");
+        const double temperature=f["temperature"](0,0), mass_after=f["oil_mass"](0,0);
+        const double rho_feed=FluidProperties::liquid_solution_density(0,cold_feed.p_supply,cold_feed.t_supply,cfg);
+        const double supply_enthalpy=cfg.rho_cp/cfg.rho*(cold_feed.t_supply-cfg.property_reference_temperature)
+            +cold_feed.p_supply/rho_feed;
+        require(mass_after>mass_before,"Cooling must draw liquid from the pressure reservoir");
+        near(f["internal_energy"](0,0)-energy_before+dt*cfg.journal_heat_transfer*(temperature-280)
+                -(mass_after-mass_before)*supply_enthalpy,0,1e-6,
+             "Reservoir flow work uses supply temperature, not receiving cell temperature");
         if (mesh.rank==0) std::cout << "PASS: coupled heat, compression, dissolution and R410A energy\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; failed=1; }
     int any=0; MPI_Allreduce(&failed,&any,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);

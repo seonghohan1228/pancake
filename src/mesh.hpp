@@ -18,4 +18,10 @@ public:
     double get_d_theta() const { return (2.0 * M_PI) / n_theta_global; }
     double get_d_z() const { return L / n_z_global; }
     double cell_volume() const { return (R * get_d_theta()) * get_d_z(); }
+
+    /// Inlet membership at a local cell index (including theta ghost cells).
+    /// Angles wrap periodically, including inlet angles outside [0,360) degrees.
+    bool inside_inlet(const InletConfig& inlet, int i, int j) const;
+    /// Last matching reservoir wins, as in the pressure boundary assembly.
+    const InletConfig* inlet_at(const SimulationConfig& cfg, int i, int j) const;
 };

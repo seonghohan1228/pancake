@@ -135,6 +135,12 @@ void LinearSystem::reset() {
     std::fill(coeff_src.begin(), coeff_src.end(), 0.0);
 }
 
+void LinearSystem::set_dirichlet(int i, int j, double value) {
+    a_e(i,j) = a_w(i,j) = a_n(i,j) = a_s(i,j) = 0;
+    a_p(i,j) = std::max(std::abs(a_p(i,j)), 1e-30);
+    source(i,j) = a_p(i,j) * value;
+}
+
 int LinearSystem::global_row(int global_theta_idx, int j) const {
     return global_theta_idx * mesh_ref.n_z_global + j;
 }
@@ -209,7 +215,13 @@ void LinearSystem::solve(Field& result, double rtol, int max_iters, const char* 
     PetscInt n_iters = 0;
 
     auto attempt = [&](KSP solver) {
-        KSPSetTolerances(solver, rtol, PETSC_DEFAULT, PETSC_DEFAULT, max_iters);
+        const char* prefix=nullptr;
+        KSPGetOptionsPrefix(solver,&prefix);
+        PetscReal solve_rtol=rtol;
+        PetscInt solve_max_iters=max_iters;
+        PetscOptionsGetReal(nullptr,prefix,"-ksp_rtol",&solve_rtol,nullptr);
+        PetscOptionsGetInt(nullptr,prefix,"-ksp_max_it",&solve_max_iters,nullptr);
+        KSPSetTolerances(solver, solve_rtol, PETSC_DEFAULT, PETSC_DEFAULT, solve_max_iters);
         KSPSetOperators(solver, A, A);
         VecZeroEntries(x);
         KSPSolve(solver, b, x);
@@ -225,7 +237,7 @@ void LinearSystem::solve(Field& result, double rtol, int max_iters, const char* 
         VecRestoreArrayRead(x, &arr);
         int any_nonfinite = 0;
         MPI_Allreduce(&local_nonfinite, &any_nonfinite, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-        return reason >= 0 && any_nonfinite == 0;
+        return reason > 0 && any_nonfinite == 0;
     };
 
     auto describe = [&](std::ostream& out) {
