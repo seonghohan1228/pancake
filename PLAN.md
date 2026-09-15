@@ -161,6 +161,14 @@ VOID_COUPLED convergence items and the five deferred modelling gaps
 
 Priority queue (user gates in brackets):
 
+0a. **Ferron Figure 6 measured-flow campaign** - **IN PROGRESS 2026-08-09**.
+    At 4000 rpm / 6000 N, start the force-balance search from `eps=0.58` and
+    hold the user-digitised Figure 10 supply fixed at `Qi=7.837 L/min`. Run four
+    G6 thermal closures: depth-averaged, adiabatic cross-film, both-wall 40 C
+    cross-film, and fixed-outer-40 C CHT. Do not rerun `h=80`; it represents
+    deferred axial-face cooling. Return the Ubuntu archive, compact profiles,
+    Ferron overlay, numerical verdicts, and exact remote provenance.
+
 0. **Ferron CHT grid sensitivity** - **DONE, FAIL 2026-08-07**. The first pass
    exposed and fixed a groove-source diagnostic that grew as `1/dz`. The clean
    hash-verified rerun passes five of seven G6-to-G7 checks but misses the 0.10 K
@@ -191,7 +199,28 @@ Priority queue (user gates in brackets):
    2/4/6 kN), cross-checks moving-bearing vs static force balance.
 6. **Ferron temperature residual** - resolve the fresh-oil groove-mixing flow
    against Ferron's measured inlet-flow evidence before STRIATED, shaft-Robin,
-   or other thermal-model sensitivity work.
+   or other thermal-model sensitivity work. The 2026-08-07 boundary audit also
+   found that the current z-collapsed bush omits Ferron's axial-face \(h_b\)
+   condition and the scalar shaft omits its r-z/43 C end condition. Independent
+   outer-bush and shaft sink temperatures now permit bounded sensitivity runs;
+   a full Ferron reproduction still requires r-theta-z bush and r-z shaft solids.
+   Case `01e_ferron_terra_repro` is the isolated remote rerun in progress; its
+   reduced-model numerical/grid verdicts must remain separate from any Ferron
+   temperature-validation verdict. Its D add-on separately reruns the present
+   CHT grid ladder and a 4 kN, 2000 rpm physical timestep ladder; neither is a
+   substitute for the missing full-solid and independent-flow evidence. A
+   repaired-legacy mode reproduces Claude's original GCT only for comparison;
+   it is report-only because the nominal THD viscosity input is effectively inert.
+   The fresh steady D-grid ladder covers G1--G8 and reports both G6--G7 and
+   G7--G8 checks; its figures are generated locally from
+   transferred field data. The physical timestep ladder also passes its
+   registered 20/10/5 microsecond comparisons, selecting 20 microseconds; the
+   80/160/320 microsecond stability probes and force-imbalanced 40 microsecond
+   endpoint stay visible in the report rather than being counted as successful
+   cases. That ladder now runs to 0.10 s of physical time rather than 0.06 s,
+   and the 20/10/5 microsecond rungs agree there to 0.0012 percent in final
+   eccentricity and to machine precision in load, so the 20 microsecond
+   selection holds over the longer settling window.
 7. **Integration decision** - local `main` contains the 45-commit Claude snapshot
    while `origin/main` is behind it. Reconcile and verify on a task branch before
    any merge or push; do not continue development directly on `main`.
@@ -2437,3 +2466,9 @@ two-phase — 10.1007/s11249-006-9027-6, S0140700723004577, 10.1115/1.4066414,
 - [x] Add configurable constant density (940 in the FW68D example) and linear density (954.9 - 0.7284 T_C).
 - [x] Convert kinematic to dynamic viscosity using the selected density and document source limits.
 - [x] Add reproducible importer checks and C++ source-node, interpolation, units, density, bounds and config regression checks.
+
+## Branch consolidation (2026-09-15)
+
+- [x] Combine the Ferron, optical-rig and FW68D property work.
+- [ ] Preserve the unfinished bubble solver as a separate optional target.
+- [ ] Test the merged state on native Windows and workstation afml-r6; publish main.

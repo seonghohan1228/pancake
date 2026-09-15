@@ -1,0 +1,26 @@
+# paper: Ferron, Frene, Boncompain 1983, ASME J. Lubr. Technol. 105(3):422-428, DOI 10.1115/1.3254632
+# figure: 10
+# curve: N = 4000 rpm only (other speeds in the figure, if any, are not digitised)
+# condition: N = 4000 rpm, eccentricity swept 0.35-0.68 (load sweep)
+# x: eccentricity ratio [-]
+# y: nondimensional fresh supply / side-leakage flow Q* = Q_i/(L*c*U) [-]
+# note: Q_i is the measured external groove supply. At steady state it equals
+#   the total axial side leakage. U = R*omega. This normalization is independently
+#   stated by the NASA comparison that reproduces Ferron's flow data as Q/(L*c*U).
+# note: at eps=0.577999, Q*=0.512880. With L=0.08 m, c=152 um, R=0.05 m,
+#   and N=4000 rpm, Q_i=1.30620e-4 m^3/s = 7.837 L/min.
+# note: abscissa is eccentricity ratio, not load or speed. eps is derived from a
+#   probe displacement divided by clearance. Ferron states that the experimental
+#   eccentricities in the later figures use the hot clearance C = 152 um, so it
+#   carries the same clearance sensitivity documented in
+#   ferron1983_fig5_2000rpm_eccentricity.csv.
+# source: digitised by user from the paper's Fig. 10; no figure image archived here
+0.35434338272866633,0.23886842986273848
+0.4321872852536431,0.32817648406251654
+0.4940659524606628,0.39962645146512077
+0.5400864271492256,0.4712173805790002
+0.577999400912727,0.5128803763677692
+0.6079773315948054,0.5536139058728173
+0.6389047715539266,0.5873389952954029
+0.6638318679188765,0.612117421105492
+0.6778861910383592,0.6419924937888746

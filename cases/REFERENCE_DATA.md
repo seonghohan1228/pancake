@@ -9,8 +9,9 @@ reads these and overlays solver results, so follow the format exactly.
 `ref_data/` is shared by every case and is **not** a case directory - it has no
 stage number, no runs and no verdict. Every case reads it by relative path
 (`CASE_DIR.parent / "ref_data" / ...`), so it must stay where it is. Delivered
-files as of 2026-08-05: Ferron 1983 Fig. 4 (pressure + temperature + source PNG),
-Fig. 5 (eccentricity + PNG), Fig. 6 (pressure + temperature + PNG).
+files as of 2026-08-09: Ferron 1983 Fig. 4 (pressure + temperature + source PNG),
+Fig. 5 (eccentricity + PNG), Fig. 6 (pressure + temperature + PNG), and the
+4000 rpm curve from Fig. 10 (fresh supply/side-leakage flow).
 
 ## File format
 
@@ -30,6 +31,11 @@ Fig. 5 (eccentricity + PNG), Fig. 6 (pressure + temperature + PNG).
 ### DELIVERED
 - ferron1983_fig6_4000rpm_6kN_pressure.csv + _temperature.csv (+ source png). Used
   by Case 01-prelim; peak location agreed to ~3 deg with the stated theta origin.
+- **ferron1983_fig10_4000rpm_flow_rate.csv** (2026-08-09, user digitisation).
+  The ordinate is `Q*=Qi/(L*c*U)`. At the experimental Figure 6 eccentricity
+  `eps=0.578`, the digitised `Q*=0.512880` gives `Qi=7.837 L/min` using Ferron's
+  hot clearance `c=152 um`. Case 01e F6 holds this independently supplied flow
+  fixed during force balance; it does not infer it from the solver source.
 - **etsion1982_table2_extent.csv** (2026-08-05, agent). Etsion & Ludwig 1982
   Table 2: theta_0, p_min, theta_st, theta_end for all 8 conditions.
   **TRANSCRIBED from the PDF text layer, not digitised** - the extraction emits the

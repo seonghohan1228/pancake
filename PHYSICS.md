@@ -1322,21 +1322,27 @@ that a field named after a surface is positive *into* the fluid.) The bush close
 radial conduction in series with outer-surface convection, referred to the bore
 area,
 
-$$q_{bush} = G\,(T_b - T_\infty), \qquad
+$$q_{bush} = G\,(T_b - T_{b,out}), \qquad
   \frac1G = \frac{R\ln(r_o/R)}{k_{bush}} + \frac{R}{r_o\,h_{out}},$$
 
-which is linear in $T_b$ and solves in closed form. `bush_outer_heat_transfer = 0`
+where $T_{b,out}$ is `bush_outer_temperature` when positive and otherwise
+`thermal_ambient_temperature`. This is linear in $T_b$ and solves in closed form.
+`bush_outer_heat_transfer = 0`
 makes $G = 0$, an adiabatic bush; `bush_outer_boundary = FIXED_TEMPERATURE` is the
 $h_{out}\to\infty$ limit of the same series resistance, $G = k_{bush}/(R\ln(r_o/R))$.
 This is `bush_thermal_model = LOCAL`, the default. **Every watt that enters the
 bore leaves through the wall directly underneath it**, so the bush surface
 temperature can only peak where the film is hottest — on the Ferron rig, at the
-groove. §13.1.2.1 replaces it. The shaft is treated as **circumferentially
-isothermal**, its single temperature $T_s$ set by the global film-to-shaft
-balance
+groove. §13.1.2.1 replaces it. The shaft is treated as **circumferentially and
+axially isothermal**, its single temperature $T_s$ set by the global film-to-shaft
+balance. This reduced closure does not reproduce Ferron's axisymmetric $r$-$z$
+shaft conduction or its prescribed axial-end temperature.
 
 $$\oint q_{shaft}\,\mathrm{d}A
-  = h_{shaft}\,A_{shaft}\,(T_s - T_\infty).$$
+  = h_{shaft}\,A_{shaft}\,(T_s - T_{s,amb}),$$
+
+where $T_{s,amb}$ is `shaft_ambient_temperature` when positive and otherwise
+`thermal_ambient_temperature`.
 
 With `shaft_ambient_heat_transfer = 0` the shaft is globally adiabatic: the
 integral of the film-to-shaft flux is zero, so heat entering the shaft in the
@@ -1395,17 +1401,19 @@ $$q_{bush} = A_0 + A_1 T_s - B\,T_b, \qquad
   A_1 = \frac{k}{h}\!\left(1 - \tfrac{b_{slope}}{2}\right), \quad
   B = \frac{k}{h}\!\left(1 + \tfrac{b_{slope}}{2}\right) > 0,$$
 
-which is the same relation the local closure inverts against $q = G(T_b-T_\infty)$.
+which is the same relation the local closure inverts against $q = G(T_b-T_{b,out})$.
 Here it is imposed as a **Robin condition on the bore**, so the bush problem stays
 linear and needs no iteration. Because the bush is $z$-collapsed, the coupling
 uses the **$z$-average** of $A_0$, $A_1$ and $B$ at each $\theta$, and returns one
 $T_b(\theta)$ that the cross-film profile then uses at every $z$ of that column.
 
 **Outer boundary.** `bush_outer_boundary = CONVECTION` gives
-$-k_{bush}\partial T/\partial r = h_{out}(T - T_\infty)$ at $r = r_o$
-(`bush_outer_heat_transfer`; $h_{out} = 0$ is an adiabatic outer surface, leaving
-the bush a pure circumferential redistributor). `FIXED_TEMPERATURE` holds
-$T(r_o) = T_\infty$, the $h_{out}\to\infty$ limit of the same expression.
+$-k_{bush}\partial T/\partial r = h_{out}(T - T_{b,out})$ at $r = r_o$
+(`bush_outer_heat_transfer`; $T_{b,out}$ is `bush_outer_temperature` when positive
+and otherwise `thermal_ambient_temperature`; $h_{out} = 0$ is an adiabatic outer
+surface, leaving the bush a pure circumferential redistributor).
+`FIXED_TEMPERATURE` holds $T(r_o) = T_{b,out}$, the $h_{out}\to\infty$ limit of the
+same expression.
 
 **Discretisation.** Finite volume, uniform in $\theta$ on the solver's own theta
 grid, uniform in $r$ with `bush_radial_cells` (default 16) cells. Every radial

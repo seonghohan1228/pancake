@@ -1,0 +1,6 @@
+{
+  "ferron_fig4": {"peak_temperature_C": 49.04, "peak_location_deg": 258.2, "pressure_peak_gauge_MPa": 1.2602, "source": "digitised Fig. 4"},
+  "claude_g6_h10": {"q_supply_Lmin": 22.04, "mean_error_K": 0.02, "rms_error_K": 1.17, "peak_temperature_C": 46.71, "source": "superseded: grid-divergent source diagnostic"},
+  "codex_00d_g6_h10": {"q_supply_Lmin": 5.058, "mean_error_K": 3.821, "rms_error_K": 4.016, "peak_temperature_C": 50.379, "source": "corrected source; grid gate failed"},
+  "codex_00d_g7_h10": {"q_supply_Lmin": 5.176, "mean_error_K": 3.710, "rms_error_K": 3.909, "peak_temperature_C": 50.274, "source": "corrected source; best available, not certified"}
+}

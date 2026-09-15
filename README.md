@@ -500,8 +500,10 @@ the config validator warns rather than letting them look effective. Its own keys
 are `cross_film_profile_order` (2 or 4), `cross_film_quadrature_points`,
 `cross_film_relaxation`, `shaft_ambient_heat_transfer`,
 `shaft_ambient_area_ratio`, `thermal_ambient_temperature`,
-`bush_thermal_conductivity`, `bush_outer_radius` and
-`bush_outer_heat_transfer`. With `NONE` nothing in the module runs and results
+`shaft_ambient_temperature`, `bush_thermal_conductivity`, `bush_outer_radius`,
+`bush_outer_heat_transfer` and `bush_outer_temperature`. The two optional
+surface temperatures use `thermal_ambient_temperature` when set to `0` or a
+negative value. With `NONE` nothing in the module runs and results
 are bit-identical to the model-free solver. The equations as implemented, and
 the two stated approximations inside the order-4 collocation, are in PHYSICS.md
 sections 13.1.2 and 13.1.3.
@@ -512,17 +514,20 @@ the cross-film model is active:
 | value | bush model |
 | --- | --- |
 | `LOCAL` (default) | per-cell 1-D radial conduction in series with the outer surface. Every watt entering the bore leaves through the wall underneath it, so the bush surface can only peak where the film is hottest. |
-| `CONDUCTION_2D` | steady 2-D `(r, theta)` conduction in the bush annulus `[R, bush_outer_radius]`, Ferron's own bush model. Heat picked up in the loaded arc can leave at a different angular position. |
+| `CONDUCTION_2D` | reduced steady 2-D `(r, theta)` conduction in the bush annulus `[R, bush_outer_radius]`. Heat picked up in the loaded arc can leave at a different angular position. |
 
 `CONDUCTION_2D` adds `bush_radial_cells` (default 16). Both models share
 `bush_outer_boundary`, which is `CONVECTION` (Robin with
-`bush_outer_heat_transfer` to `thermal_ambient_temperature`; `0` is an adiabatic
-outer surface) or `FIXED_TEMPERATURE` (that surface held at
-`thermal_ambient_temperature` — the large-HTC limit, expressed exactly). The 2-D
-bush is z-collapsed as Ferron's is: it consumes the z-averaged film flux and
-returns one bore temperature per theta, and the axial end faces of the bush are
-not modelled. Its linear system is solved directly once per outer iteration and
-costs about 10^7 flops at 720 x 16. `LOCAL` with `CONVECTION` is bit-identical to
+`bush_outer_heat_transfer` to `bush_outer_temperature`, falling back to
+`thermal_ambient_temperature`; `0` is an adiabatic outer surface) or
+`FIXED_TEMPERATURE` (that surface held at the same selected temperature — the
+large-HTC limit, expressed exactly). The 2-D bush is z-collapsed: it consumes the
+z-averaged film flux and returns one bore temperature per theta. Ferron's solid
+model retains the axial term and applies \(h_b\) on the axial faces; those faces
+are absent here. The scalar shaft closure likewise is not Ferron's r-z shaft
+conduction model with 43 C axial-end temperatures. Its linear system is solved
+directly once per outer iteration and costs about 10^7 flops at 720 x 16. `LOCAL`
+with `CONVECTION` is bit-identical to
 the solver before the option existed. See PHYSICS.md §13.1.2.1.
 
 While the model is active, four optional output fields expose the film surfaces
@@ -697,6 +702,15 @@ cmake/
 
 tests/
   test_*.cpp            Solver and physics regression tests
+
+cases/
+  VALIDATION_PLAN.md    Registered validation ladder and its acceptance gates
+  00*/                  Discretization and JFO verification cases
+  01*/                  Ferron THD reproduction and boundary-condition ladder
+  02_optical_rig_sweep/ Optical-rig cavitation operating-window sweep
+                        (pinned-eccentricity FBNS matrix over eccentricity,
+                        speed and cavitation threshold; see its README for the
+                        angle convention and the geometry it is frozen against)
 ```
 
 ## Linux

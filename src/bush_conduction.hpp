@@ -20,16 +20,21 @@
 /// temperature on the same grid, so it can be unit-tested on its own and every
 /// rank can run it redundantly on identical input and obtain identical output.
 ///
-/// Governing equation, z-collapsed exactly as Ferron's bush equation is,
+/// Governing equation of this reduced, z-collapsed bush model,
 ///
 ///     (1/r) d/dr (r k_b dT/dr) + (1/r^2) d/dtheta (k_b dT/dtheta) = 0,
-///     R <= r <= R2,  theta periodic.
+///     R <= r <= R2, theta periodic.
+///
+/// Ferron (1983) instead retains the axial term and applies free convection on
+/// the two axial end faces. This module cannot represent that local r-theta-z
+/// boundary-value problem; its input and output are explicitly z-averaged.
 ///
 /// Inner boundary: flux continuity with the film. The cross-film profile makes
 /// the film-side flux linear in the bore temperature, so the coupling is a
 /// Robin condition and the whole bush problem stays linear (see `Coupling`).
-/// Outer boundary: convection to `thermal_ambient_temperature` with
-/// `bush_outer_heat_transfer`, or a fixed temperature, per
+/// Outer boundary: convection to `bush_outer_temperature` when positive
+/// (otherwise `thermal_ambient_temperature`) with `bush_outer_heat_transfer`,
+/// or a fixed temperature, per
 /// `cfg.bush_outer_boundary`.
 namespace BushConduction {
 

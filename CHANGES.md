@@ -178,6 +178,118 @@
   suites pass 40/40. Update README, PHYSICS, PLAN and validation claims; correct
   the reversed bubble-point wording and the front-convergence interpretation.
 
+### 2026-08-11 - Ferron campaign branch integration
+
+- Ran the case-02 optical-rig sweep at the confirmed lab-oil viscosity
+  (ISO VG 46 white mineral oil, mu(20 C) = 0.068 Pa s by grade conversion),
+  with the isopentane threshold `iso` = 0.12 bar added from Raoult and the
+  eccentricity band tightened to the measured +/-0.02 stack-up. Added a `MU`
+  sensitivity suite because cavity geometry is nonlinear in viscosity even
+  though load and pressure are linear. Gated the dispatch behind `verify_setup.py`:
+  V1 anchors the unvalidated grooveless ends-fed configuration against the
+  Ocvirk short-bearing solution, V2 confirms G6 transfers to this geometry
+  (0.004 % in load across G6 to G7). 156 of 159 points completed; RUN1 is
+  complete at 75/75. The three failures are physical rather than infrastructural
+  and are documented in `sweep_summary.md`.
+
+- Completed the 0.10 s physical timestep ladder (40/20/10/5 us) that had been
+  interrupted after its first rung. The 20/10/5 us rungs agree to 0.0012 % in
+  final eccentricity, 0.0004 degrees in attitude and machine precision in load,
+  so the frozen `dt = 2e-5 s` is now verified over a 0.10 s settling window
+  rather than 0.06 s. The 40 us rung carries visible transient noise and stays
+  a report-only stability probe. Report figures regenerated from the extended
+  history.
+
+- Folded the D-grid G8 rung (1620 x 432) into the local grid-convergence ledgers
+  and regenerated `terra_d_grid_convergence.png`. G7 -> G8 passes every gate with
+  the largest margin at 20 % of limit (eccentricity 0.050 % against 0.5 %, peak
+  bearing temperature 0.012 K against 0.25 K), so G6 remains the frozen campaign
+  resolution and the ladder is closed at both ends.
+
+- Added case 02, the optical-rig operating-window sweep, for the Rev B geometry
+  (D=49.3 mm, c=350 um, L/D=1, grooveless ends-fed, paraffin oil at 20 C). It
+  runs pinned-eccentricity steady FBNS solves over eccentricity, speed and
+  cavitation threshold, and reduces them to cavity arc, start/end angles, axial
+  coverage, peak void, film load and dissipation. Two substitutions against the
+  original specification are recorded in the case README: the prescribed
+  saturation pressures are set through `SCALAR_PCAV` rather than `LOCAL_PSAT`,
+  because `LOCAL_PSAT` derives `p_sat` from the Henry solubility model and
+  degenerates to `p_cav` under constant fluid properties; and the L/D variation
+  suite is dropped because the rig is now at L/D=1, above the 0.75 it proposed.
+
+- Added a separate Ferron Figure 6 campaign at 4000 rpm and 6000 N using the
+  user-digitised Figure 10 fresh supply, `Qi=7.837 L/min` at `eps=0.578`.
+  It runs depth-averaged, adiabatic cross-film, fixed-40 C cross-film, and
+  fixed-outer-40 C CHT models on G6. The axial-face `h_b=80` case is excluded
+  because axial cooling remains outside the present reduced CHT model.
+- Added compact Figure 6 profile export and a 300 dpi temperature comparison
+  against Ferron's subsurface bearing thermocouple data.
+
+- Reordered the Ferron thermal-model comparison and standardized its line map:
+  depth-averaged grey dotted, adiabatic cross-film blue, 40 C cross-film
+  orange, fixed-40 C CHT yellow, and outer-Robin CHT green.
+
+- Expanded the 2000 rpm / 4 kN temperature figure to compare cross-film THD
+  with isothermal walls, depth-averaged THD, outer-Robin heat transfer, CHT with
+  fixed outer bush temperature, and adiabatic cross-film THD. The compact visual
+  exporter now retains the depth-averaged temperature profile for each case.
+
+- Added the 2000 rpm / 4 kN Ferron temperature comparison using the current
+  R1-G7 bearing-interface temperature. No last-year circumferential temperature
+  curve is drawn because the LGEP exports contain only unverified scalar time
+  histories, not a comparable temperature field.
+
+## Unreleased - Windows MSYS2 GUI Workflow
+
+### 2026-08-07 - Ferron thermal-boundary audit corrections
+
+- Added optional `shaft_ambient_temperature` and `bush_outer_temperature`.
+  Positive values independently set the scalar shaft sink and bush outer-boundary
+  temperatures; zero or negative values preserve the historical fallback to
+  `thermal_ambient_temperature`. Parsing, serialization, validation, and the
+  cross-film config round-trip test cover both keys.
+- Corrected the Ferron documentation: the present bush model is z-collapsed and
+  omits the paper's axial-face \(h_b\) condition; the scalar shaft closure omits
+  Ferron's r-z shaft conduction and 43 C end temperatures. These changes expose
+  boundary-condition sensitivity without claiming a full-solid reproduction.
+- Added isolated case `01e_ferron_terra_repro` for the new Ubuntu campaign. It
+  keeps smoke and production archives separate, distinguishes model-derived
+  groove source from experimental flow, and pre-registers R0/R1/R2 plus the
+  corrected reproduction of Claude's Fig. 4/Fig. 5 and wall-model matrix.
+- Added a distinct discretisation add-on to case 01e: a fresh G5/G6/G7 steady
+  force-balanced CHT grid ladder and a physical moving-bearing timestep ladder
+  from 80 to 5 microseconds. This does not reuse Claude's invalid nominal THD
+  grid pair or conflate steady grid convergence with physical-time refinement.
+  Failed coarse stability probes are archived without aborting finer timestep
+  legs.
+- Added reproducible 300 dpi D-grid convergence, surface-temperature/pressure
+  profile, and film-field contour figures from the transferred Ubuntu data.
+- Completed the 24-rank Ubuntu timestep ladder. The 80 microsecond leg became
+  unstable and stopped early, 40 microseconds reached the endpoint but missed
+  force balance, and the registered 20/10/5 microsecond comparisons passed.
+  Added full eccentricity histories and report-style grid, timestep, Ferron
+  pressure, and CHT-temperature figures. Convergence panels reserve 10% of the
+  data range above the maximum and 40% below the minimum.
+- Extended the fresh force-balanced R1 grid sequence from G5--G7 to G1--G7 so
+  the total-cell convergence plot includes the inexpensive coarse grids rather
+  than borrowing points from Claude's fixed-eccentricity study.
+- Extended the transient stability sweep above 80 microseconds with 160 and
+  320 microsecond probes. Incomplete coarse histories remain visible as dashed
+  curves and in a separate time-reached plot, but are excluded from the
+  common-60-ms endpoint comparison.
+- Added an explicit `--rerun-failed` recovery path for timestep launch errors;
+  it cannot overwrite an archived solver run with `rc=0`.
+- Added G8 (1620x432) to the fresh R1 grid study and a distinct 0.10 s
+  40/20/10/5 microsecond ladder. The report averages eccentricity over the last
+  50 ms, labels it only as mean eccentricity, omits diverged histories, fixes
+  the mean panel to a 0.01 span with its maximum at 60% height, and applies the
+  10%/40% padding rule to the time-reached panel.
+- Added an unattended queue that waits for the independent G8 result before
+  launching the four 0.10 s cases, preserving the one-24-rank-job policy.
+- Added a separately labelled repaired-legacy reproduction of Claude's original
+  G1--G5 isothermal grid sweep and nominal THD G3/G4 pair. Minimal validator
+  repairs are machine-readable; non-converged coupling remains a failed verdict.
+
 ### 2026-08-07 - Ferron conjugate-THD grid protocol
 
 - Added case 00d, a pre-registered G5/G6/G7 film-plane grid check of the final
@@ -3772,3 +3884,15 @@ passed. The Python importer check passed. Single-rank constant-density and
 MPI-2 linear-density example runs passed; all 128 output cells contained the
 expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 0.032931879 Pa s at c=0.1, T=40 °C. No remote campaign or Git push was performed.
+
+## 2026-09-15 - Consolidate outstanding branches
+
+- Integrate the Ferron campaign and independent shaft/bush sink temperatures with
+  the coupled-cavitation and FW68D property work already on main. Preserve both
+  sets of physics corrections when resolving documentation conflicts.
+- Include the pending optical-rig sweep scripts, configuration and documentation;
+  keep generated run products and local agent settings outside this commit.
+- Verify that workstation commit a7a992e has identical source and tests to the
+  already integrated f0e772d; retain the latter's more complete validation record.
+- Native Windows checks for cross-film walls (2/4 ranks), bush conduction, config
+  keys and FW68D tables pass. Full merged-state testing follows on both platforms.
