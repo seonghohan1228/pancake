@@ -72,3 +72,7 @@ compile_commands.json
 validation/journal_bearing/_work/
 # Ad-hoc harness work directories (_work_f2, _work_b5, ...): solver scratch only.
 validation/journal_bearing/_work_*/
+
+# Generated campaign archives are retained outside Git.
+cases/**/*.tar.gz
+cases/**/*.tgz

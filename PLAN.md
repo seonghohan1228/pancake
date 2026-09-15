@@ -2470,5 +2470,5 @@ two-phase — 10.1007/s11249-006-9027-6, S0140700723004577, 10.1115/1.4066414,
 ## Branch consolidation (2026-09-15)
 
 - [x] Combine the Ferron, optical-rig and FW68D property work.
-- [ ] Preserve the unfinished bubble solver as a separate optional target.
+- [x] Preserve the unfinished bubble solver as a separate optional target.
 - [ ] Test the merged state on native Windows and workstation afml-r6; publish main.

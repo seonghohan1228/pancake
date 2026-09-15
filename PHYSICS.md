@@ -2702,3 +2702,14 @@ composition or pressure dependence. They do not supply a measured pure-R410A
 liquid density. The pure-refrigerant chart endpoint describes liquid kinematic
 viscosity; the free-gas EOS and `mu_gas` remain separate models. The top-level
 `fluid_property_model = CONSTANT` continues to bypass variable property laws.
+
+## Experimental bubble branch integration (2026-09-15)
+
+The separate `pancake_bubble` target retains the stereographic hemisphere and
+finite-volume thickness-transport implementation from `feature/bubble`. It does
+not change the Reynolds, cavitation, thermal or refrigerant/oil models above.
+Only its geometry, mask, surface operators and gravity thickness transport are
+implemented. Its original full-model specification is preserved in
+[experimental/bubble/PHYSICS.md](experimental/bubble/PHYSICS.md), with an explicit
+implementation-status notice. The remaining momentum, thermal, evaporation,
+Marangoni, disjoining-pressure and rupture models are unfinished.

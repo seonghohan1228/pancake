@@ -67,3 +67,11 @@ future result-viewer GUI may both produce output, but path creation and file
 naming should flow through `std::filesystem::path` so Windows, Linux, and
 non-ASCII paths are handled consistently. Runtime configuration defaults to
 `config.txt` beside the executable unless the CLI is given `-c` or `--config`.
+
+## Experimental bubble prototype
+
+`experimental/bubble` has its own core library, fields, communicator and driver.
+It links MPI/PETSc through the root build but does not link `pancake_core`, because
+its open stereographic boundaries differ from the bearing's periodic cylinder.
+`PANCAKE_BUILD_BUBBLE` defaults OFF. This preserves the unfinished branch without
+replacing or changing the journal-bearing executable.

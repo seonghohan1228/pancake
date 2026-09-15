@@ -137,3 +137,10 @@ by the default CMake search.
 Current Ubuntu workstation baseline (2026-08-07): GCC 11.4, OpenMPI, PETSc,
 Release build, and all 35 CTest tests pass with `OMP_NUM_THREADS=1` and
 `OPENBLAS_NUM_THREADS=1`.
+
+## Optional bubble prototype
+
+Add `-DPANCAKE_BUILD_BUBBLE=ON` to the native Windows preset or Linux configure
+command to build the separate experimental executable and its registered tests.
+It requires `PANCAKE_BUILD_SOLVER=ON` for shared MPI/PETSc dependency discovery.
+It is disabled by default; see [experimental/bubble/README.md](experimental/bubble/README.md).

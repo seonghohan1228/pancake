@@ -746,3 +746,10 @@ The latter evaluates temperature in Celsius; solver temperatures remain Kelvin.
 The property layer converts kinematic to dynamic viscosity using the selected density.
 This adds no runtime dependencies. See the data README for calibration, ranges,
 assumptions and the Python standard-library regeneration command.
+
+## Optional experimental bubble solver
+
+`PANCAKE_BUILD_BUBBLE=ON` additionally builds `pancake_bubble`. It preserves the
+unfinished `feature/bubble` work separately from the journal-bearing solver and
+is OFF by default. See [experimental/bubble/README.md](experimental/bubble/README.md)
+for supported physics, limitations and build/test commands.

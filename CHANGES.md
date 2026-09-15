@@ -3896,3 +3896,20 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   already integrated f0e772d; retain the latter's more complete validation record.
 - Native Windows checks for cross-film walls (2/4 ranks), bush conduction, config
   keys and FW68D tables pass. Full merged-state testing follows on both platforms.
+
+### Preserve the unfinished bubble branch
+
+- Relocate the bubble source, tests and model documents to `experimental/bubble`
+  instead of accepting the old branch's deletion of the journal-bearing solver.
+  Add an OFF-by-default CMake target using the existing MPI/PETSc discovery and
+  native Windows runtime deployment; no extra solver dependency is introduced.
+- Register the four original bubble checks at 1/2/4 MPI ranks and a CLI smoke
+  regression. Replace `M_PI`, finalize PETSc after object destruction, reject KSP
+  failure and refuse occupied output directories instead of recursively deleting
+  their contents. Mark the unimplemented physics as experimental in its README.
+- Multi-rank checks exposed off-rank mask indexing; compute neighbour membership
+  geometrically and support neighbour queries across MPI partitions. Exchange
+  face-flux ghosts before transport. Correct the pole-velocity test to use an
+  odd grid containing the exact pole; nearby cells have nonzero tangential gravity.
+- All 52 journal-bearing checks and all 13 optional bubble checks pass on native
+  Windows. The bubble tests include 1/2/4 ranks; bearing coverage includes 6 ranks.

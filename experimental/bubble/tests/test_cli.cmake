@@ -1,0 +1,21 @@
+string(RANDOM LENGTH 12 run_id)
+set(run_dir "${TEST_DIR}/${run_id}")
+file(MAKE_DIRECTORY "${run_dir}")
+set(output_dir "${run_dir}/output")
+file(WRITE "${run_dir}/config.txt" "n_u = 16\nn_v = 16\nend_t = 0.000002\ndt = 0.000001\nwrite_interval = 0.000001\noutput_dir = ${output_dir}\n")
+execute_process(COMMAND "${SOLVER}" -c "${run_dir}/config.txt"
+    RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 30)
+if(NOT result EQUAL 0 OR NOT EXISTS "${output_dir}/rank_0/step_2.vtu")
+    message(FATAL_ERROR "Bubble CLI failed: ${result}\n${out}\n${err}")
+endif()
+# Re-running into an occupied output directory must preserve prior files.
+file(WRITE "${output_dir}/sentinel.txt" "preserve me")
+execute_process(COMMAND "${SOLVER}" -c "${run_dir}/config.txt"
+    RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 30)
+if(result EQUAL 0 OR NOT "${out}${err}" MATCHES "output directory must be empty")
+    message(FATAL_ERROR "Bubble CLI must reject occupied output directories: ${out} ${err}")
+endif()
+file(READ "${output_dir}/sentinel.txt" sentinel)
+if(NOT sentinel STREQUAL "preserve me" OR NOT EXISTS "${output_dir}/rank_0/step_2.vtu")
+    message(FATAL_ERROR "Bubble CLI modified existing output")
+endif()
