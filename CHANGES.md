@@ -3913,3 +3913,15 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   odd grid containing the exact pole; nearby cells have nonzero tangential gravity.
 - All 52 journal-bearing checks and all 13 optional bubble checks pass on native
   Windows. The bubble tests include 1/2/4 ranks; bearing coverage includes 6 ranks.
+
+### Verify and prepare branch publication
+
+- Complete the fresh afml-r6 Release build, 65 CTest checks, importer check and
+  eight smoke runs. Both density choices give the expected FW68D values and
+  bubble thickness output agrees at 1/2/4 ranks; native outputs agree with Linux.
+  Save source/input/executable hashes and sync workstation logs/results locally.
+- Preserve all original branch history and pending edits before excluding three
+  oversized generated archives from unpublished history. Verify that published
+  refs stay unchanged and the new main remains a fast-forward of origin/main.
+  Record the commit mapping, archive paths and test evidence in
+  `docs/INTEGRATION_2026_09_15.md`.

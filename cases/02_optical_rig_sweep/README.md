@@ -42,10 +42,11 @@ drawing decision, not a solver output.
 
 | Suite | Points | Content |
 |---|---|---|
-| `RUN1` | 60 | ε ∈ {0.5, 0.6, 0.7} × N ∈ {500, 1000, 1500, 2000, 3000} rpm × p_sat ∈ {degassed, 0.2, 0.5, 0.8} bar abs |
+| `RUN1` | 75 | ε ∈ {0.5, 0.6, 0.7} × N ∈ {500, 1000, 1500, 2000, 3000} rpm × p_sat ∈ {degassed, 0.12, 0.2, 0.5, 0.8} bar abs |
 | `RUN2` | 8 | same points at `c` = 250 µm, ε ∈ {0.5, 0.7}, N ∈ {1000, 2000}, p_sat ∈ {degassed, 0.8} |
 | `RUN4` | 4 | back-pressure lever: both ends at 1.5 / 2.0 bar abs, p_sat ∈ {0.8, 1.5}, ε = 0.7, 2000 rpm |
-| `BAND` | 60 | ε ± 0.04 uncertainty band on the RUN1 grid at p_sat ∈ {degassed, 0.8} |
+| `BAND` | 60 | ε ± 0.02 uncertainty band on the RUN1 grid at p_sat ∈ {degassed, 0.8} |
+| `MU` | 8 | μ ∈ {0.05, 0.068, 0.10, 0.15} Pa·s at ε = 0.6, 1500 rpm, p_sat ∈ {degassed, 0.8} |
 | `THD` | 4 | worst corner (ε = 0.7, 3000 rpm) with the energy equation and Andrade µ(T) |
 
 ```bash

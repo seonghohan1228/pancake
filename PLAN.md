@@ -2471,4 +2471,5 @@ two-phase — 10.1007/s11249-006-9027-6, S0140700723004577, 10.1115/1.4066414,
 
 - [x] Combine the Ferron, optical-rig and FW68D property work.
 - [x] Preserve the unfinished bubble solver as a separate optional target.
-- [ ] Test the merged state on native Windows and workstation afml-r6; publish main.
+- [x] Test the merged state on native Windows and workstation afml-r6; prepare
+  fast-forward publication. See `docs/INTEGRATION_2026_09_15.md` for evidence.
