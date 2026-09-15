@@ -3735,3 +3735,40 @@ The Couette term $S = \frac{\omega}{2}\frac{\partial(\rho h)}{\partial\theta}$ i
 
 - Corrected dependency list: removed OpenMP (not used), added PETSc with install instructions.
 - Added test table, configuration reference, and project-structure overview.
+
+
+## 2026-09-15 — Add FW68D / R410A digitized solution properties
+
+Added `data/R410A_FW68D/fw68d.csv` with all 125 points from the user's JSON,
+plus its calibration/source image and a standard-library importer. The archived
+metadata remains unchanged; the operating interpretation follows the user's
+absolute-pressure and refrigerant-mass-fraction instructions. Calibrated pixel
+coordinates determine numerical values, including the pure oil and pure refrigerant
+curves; the model does not replace points with a fitted material correlation.
+
+Added `CURVE_TABLE` solubility and `KINEMATIC_TABLE` actual-composition viscosity
+through a shared `solution_table_file`. Ragged curves preserve original nodes.
+Solubility interpolates c(T) on each isobar, then pressure; viscosity interpolates
+nu(T) on each composition curve, then composition, optionally in log space.
+Bubble-pressure inversion uses the same solubility isotherm. Added configurable
+endpoint holding or range errors, with loader validation and no new C++ dependencies.
+
+Added `LINEAR_TEMPERATURE` density with editable Celsius intercept and slope,
+and an FW68D example selecting constant 940 kg/m³. Kinematic viscosity is converted
+with the selected density each call. Coupled liquid partial specific volumes also
+follow the linear density, so feed pressure work uses the current liquid volume.
+Nonpositive density is rejected. The example, CMake-deployed data/config, GUI
+controls, README and PHYSICS explain units, pure-fluid limits and calibration.
+
+Added `test_fw68d_properties` for every source node, ragged interpolation, absolute
+pressure, unit conversion, pure endpoints, density choices, inverse solubility,
+range rejection, malformed CSV and config round trips. The importer check confirms
+calibration anchors and reproducibility of every CSV row. Validation: native Windows GCC 16.1 solver and GUI builds passed; all 52 CTest
+tests passed. Ubuntu 22.04 / GCC 11.4 / OpenMPI / PETSc build passed; 49 tests
+passed initially, and the three six-rank tests passed after enabling local
+OpenMPI oversubscription on the four-slot WSL host. After the final temperature
+guard, eight relevant Windows checks and eleven Linux property/energy/MPI checks
+passed. The Python importer check passed. Single-rank constant-density and
+MPI-2 linear-density example runs passed; all 128 output cells contained the
+expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
+0.032931879 Pa s at c=0.1, T=40 °C. No remote campaign or Git push was performed.

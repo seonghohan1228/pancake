@@ -1,0 +1,50 @@
+# FW68D / R410A property example. All pressures are absolute Pa; temperatures K.
+# Concentration = kg dissolved R410A / kg liquid solution, not free-gas quality.
+# This is a short isothermal property/solver example, not a calibrated bearing case.
+R = 0.02
+c = 0.0001
+L = 0.02
+e = 0.00002
+omega = 0
+n_theta_global = 16
+n_z_global = 8
+dt = 0.00001
+end_t = 0.00001
+solution_mode = TRANSIENT
+cavitation_model = COUPLED
+cavitation_threshold = SCALAR_PCAV
+gas_pressure_coupling = NONE
+fluid_property_model = SINGLE_PHASE
+dissolved_gas_species = R410A
+dissolved_gas_initial = 0.1
+dissolved_gas_max = 1
+solubility_model = CURVE_TABLE
+liquid_viscosity_model = KINEMATIC_TABLE
+solution_table_file = data/R410A_FW68D/fw68d.csv
+# true holds each curve's nearest endpoint; false rejects out-of-range lookups.
+solution_table_clamp = true
+# true interpolates log(nu); false interpolates nu linearly.
+kinematic_viscosity_log_interpolation = true
+
+# Select CONSTANT (rho below) or LINEAR_TEMPERATURE (intercept + slope*T[degC]).
+density_model = CONSTANT
+rho = 940
+density_temperature_intercept = 954.9
+density_temperature_slope = -0.7284
+mu = 0.01
+viscosity_pressure_coeff = 0
+mixture_viscosity_model = DUKLER
+# Free-gas viscosity is an explicit placeholder, independent of liquid chart data.
+mu_gas = 0.000012
+temperature_model = ISOTHERMAL
+temperature_initial = 313.15
+temperature_reference = 313.15
+property_reference_temperature = 313.15
+property_reference_pressure = 100000
+# Numerical cavity-pressure placeholder for this smoke case, not measured oil vapor pressure.
+p_cav = 1
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 1000000
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 1000000
+output_dir = results/fw68d_example

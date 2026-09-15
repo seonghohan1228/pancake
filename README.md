@@ -715,3 +715,20 @@ grid. The user-confirmed geometry is 43 mm journal diameter, 40 mm length and
 cavity floor remain assumptions. Case 02b used superseded geometry;
 the results rank rigid, isothermal model conditions rather than validate oil
 vaporization or certify experimental operating limits.
+
+
+## FW68D / R410A digitized properties (2026-09-15)
+
+[config_r410a_fw68d.txt](config_r410a_fw68d.txt) selects the new
+[125-point property table](data/R410A_FW68D/README.md). Solubility uses absolute
+pressure and temperature; kinematic viscosity uses actual refrigerant mass fraction
+and temperature, including the pure-oil and pure-liquid-refrigerant endpoints.
+Choose linear or logarithmic viscosity interpolation and endpoint clamping or range
+rejection in the config or GUI.
+
+Density is selectable as `CONSTANT` with `rho = 940`, or `LINEAR_TEMPERATURE` with
+`density_temperature_intercept = 954.9` and `density_temperature_slope = -0.7284`.
+The latter evaluates temperature in Celsius; solver temperatures remain Kelvin.
+The property layer converts kinematic to dynamic viscosity using the selected density.
+This adds no runtime dependencies. See the data README for calibration, ranges,
+assumptions and the Python standard-library regeneration command.

@@ -2610,3 +2610,87 @@ and the pinned groove carry $T_{\rm in}$. These are cooling scenarios, not
 identified experimental boundary conditions. Since $\mu(T)$ is not supplied,
 this added temperature field has no viscosity feedback on pressure or position
 and must not be described as a coupled THD result.
+
+
+## FW68D / R410A digitized solution laws (2026-09-15)
+
+The [source table and calibration](data/R410A_FW68D/README.md) preserve 125 chart
+points, including 15 pure-oil points and 11 points at each refrigerant mass fraction
+from 0.1 through 1.0. In these laws,
+
+$$c_d = \frac{m_{\mathrm{R410A,dissolved}}}{m_{\mathrm{oil}}+m_{\mathrm{R410A,dissolved}}},
+\qquad T_C=T_K-273.15,\qquad p=p_{\mathrm{absolute}}.$$
+
+The CSV stores temperature in degrees Celsius, pressure in MPa absolute and kinematic
+viscosity in mm²/s. Loading converts these to K, Pa and m²/s. No atmospheric pressure
+is added. The user's explicit mass and pressure basis overrides the unspecified basis
+metadata in the original digitization.
+
+### Actual-composition kinematic viscosity
+
+`liquid_viscosity_model = KINEMATIC_TABLE` reads constant-composition curves with
+separate temperature nodes, without rectangular-grid resampling. Let $g(\nu)=\ln\nu$
+for `kinematic_viscosity_log_interpolation = true`, or $g(\nu)=\nu$ for `false`.
+On each enclosing concentration curve $i$, its enclosing temperatures define
+
+$$f_i=\frac{T-T_{i,j}}{T_{i,j+1}-T_{i,j}},\qquad
+v_i(T)=(1-f_i)g(\nu_{i,j})+f_i g(\nu_{i,j+1}).$$
+
+With $w=(c_d-c_i)/(c_{i+1}-c_i)$, the model is
+
+$$\nu(c_d,T)=g^{-1}\!\left((1-w)v_i(T)+wv_{i+1}(T)\right),\qquad
+\mu_l(c_d,p,T)=\rho_l(c_d,p,T)\,\nu(c_d,T).$$
+
+Exact nodes return their own curve value. The logarithmic option preserves positive
+viscosity and interpolates ratios. The source chart supplies equilibrium points;
+using these curves at off-equilibrium composition assumes negligible independent
+pressure dependence at fixed composition and temperature. No Barus factor is applied.
+`viscosity_pressure_coeff` must be zero for this model.
+
+### Equilibrium solubility and its inverse
+
+`solubility_model = CURVE_TABLE` groups the same nonzero-concentration rows by their
+labelled isobar. Within an isobar, it linearly interpolates $c_{\mathrm{sat}}$ in
+physical temperature. Between enclosing absolute pressures,
+
+$$c_{\mathrm{sat}}(p,T)=(1-q)c_k(T)+q c_{k+1}(T),\qquad
+q=\frac{p-p_k}{p_{k+1}-p_k}.$$
+
+The bubble pressure helper inverts this same piecewise-linear isotherm and returns
+its first crossing. Its zero-charge convention remains $p_{\mathrm{sat}}(0,T)=0$.
+Pure-oil viscosity rows have no pressure data and create no artificial solubility
+anchors. The equilibrium concentration is distinct from the transported actual
+concentration used for viscosity.
+
+`solution_table_clamp = true` holds each contributing curve's endpoint when its
+query lies outside the digitized temperature range; it also holds the outer
+pressure or concentration endpoint. This policy preserves the 100% saturation
+limit but also creates a 10% lower concentration limit where the solubility chart
+ends. It must not be read as measured behavior in the dilute region. With `false`,
+queries outside either contributing curve fail. No linear extrapolation is used
+for runtime properties. The pressure axis covers 0.1–4 MPa; valid temperature
+intervals depend on composition or isobar and are listed in the data README.
+
+### Requested density closures
+
+The configurable density choices are
+
+$$\rho_l=\rho_0,\quad \rho_0=940\;\mathrm{kg\,m^{-3}}\quad
+\text{for CONSTANT},$$
+
+$$\rho_l(T)=a+bT_C,\quad a=954.9\;\mathrm{kg\,m^{-3}},\quad
+b=-0.7284\;\mathrm{kg\,m^{-3}\,K^{-1}}\quad
+\text{for LINEAR\_TEMPERATURE}.$$
+
+`rho`, `density_temperature_intercept` and `density_temperature_slope` expose these
+parameters. At 40 °C the linear law gives 925.764 kg/m³. Nonpositive or nonfinite
+linear density is rejected; it is not silently floored. The coupled solver uses
+$1/\rho_l(T)$ for both liquid partial specific volumes under this
+composition-independent density closure, including its pressure-work contribution
+at a feed. Existing heat capacities and caloric assumptions are unchanged.
+
+Both density options are user-specified liquid-solution approximations with no
+composition or pressure dependence. They do not supply a measured pure-R410A
+liquid density. The pure-refrigerant chart endpoint describes liquid kinematic
+viscosity; the free-gas EOS and `mu_gas` remain separate models. The top-level
+`fluid_property_model = CONSTANT` continues to bypass variable property laws.

@@ -71,13 +71,13 @@ enum class DissolvedGasSpecies { AIR, PROPANE, R410A };
 // Saturation / solubility law c_sat(p,T), simplest -> measured:
 //   HENRY - c_sat = H(T) p (linear; optional van't Hoff T-dependence).
 //   TABLE - measured c_sat(p,T) surface (1-D or 2-D PTSV data).
-enum class SolubilityModel { HENRY, TABLE };
+enum class SolubilityModel { HENRY, TABLE, CURVE_TABLE };
 // Liquid-solution density, simplest -> measured:
 //   CONSTANT - dissolved gas does not change liquid density (rho = rho_oil).
 //   MIXTURE  - mass/volume mixing of oil and the dissolved-gas liquid phase;
 //              uses both phase densities (rho and dissolved_gas_liquid_density).
 //   TABLE    - measured rho(p,T).
-enum class DensityModel { CONSTANT, MIXTURE, TABLE };
+enum class DensityModel { CONSTANT, MIXTURE, TABLE, LINEAR_TEMPERATURE };
 // Liquid-solution viscosity, simplest -> measured:
 //   CONSTANT  - dissolved gas does not change liquid viscosity (mu = mu_oil).
 //   EMPIRICAL - mu_oil*exp[E_mu(1/T-1/T_ref)]*exp[a_c c_d]*exp[alpha_p(p-p_ref)]
@@ -87,7 +87,7 @@ enum class DensityModel { CONSTANT, MIXTURE, TABLE };
 //               see viscosity_poly_k0 and PHYSICS.md. Pure temperature law: it
 //               carries no pressure or dissolved-gas dependence.
 //   TABLE     - measured kinematic nu(p,T), converted to dynamic per cell.
-enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE, COMPOSITION_TABLE };
+enum class LiquidViscosityModel { CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE, COMPOSITION_TABLE, KINEMATIC_TABLE };
 // Per-timestep terminal/log verbosity. Both modes print every timestep; DETAILED
 // adds per-step diagnostics (film thickness, temperature range, fluid force, torque).
 enum class OutputVerbosity { SIMPLIFIED, DETAILED };
@@ -239,6 +239,47 @@ struct PropertyTable2D {
         lo = hi - 1;
         const double span = axis[hi] - axis[lo];
         frac = span > 0.0 ? (q - axis[lo]) / span : 0.0;
+    }
+};
+
+/// Property curves with a separate temperature grid at each pressure or mass fraction.
+/// Values and coordinates are SI. Interpolate in T, then the outer axis; optionally
+/// interpolate log(value). CLAMP holds endpoints, otherwise out-of-range queries fail.
+struct PropertyCurveTable {
+    std::vector<double> axis;
+    std::vector<std::vector<PropertyTablePoint>> curves;
+
+    bool empty() const { return axis.empty() || curves.empty(); }
+
+    double isotherm_at(std::size_t index, double temperature, bool clamp, bool logarithmic = false) const {
+        const auto& curve = curves.at(index);
+        if (curve.empty() || !std::isfinite(temperature) || temperature <= 0 ||
+            (!clamp && (temperature < curve.front().x || temperature > curve.back().x)))
+            throw std::domain_error("Solution curve table: temperature outside digitized range");
+        const auto value = [&](double v) { return logarithmic ? std::log(v) : v; };
+        auto right = std::lower_bound(curve.begin(), curve.end(), temperature,
+            [](const auto& point, double t) { return point.x < t; });
+        if (right == curve.end()) return value(curve.back().value);
+        if (right == curve.begin() || right->x == temperature) return value(right->value);
+        const auto& left = *(right - 1);
+        const double weight = (temperature - left.x) / (right->x - left.x);
+        return std::lerp(value(left.value), value(right->value), weight);
+    }
+
+    double interpolate(double x, double temperature, bool clamp, bool logarithmic = false) const {
+        if (empty() || !std::isfinite(x) ||
+            (!clamp && (x < axis.front() || x > axis.back())))
+            throw std::domain_error("Solution curve table: pressure/concentration outside digitized range");
+        std::size_t left, right;
+        double weight;
+        PropertyTable2D::bracket(axis, x, left, right, weight);
+        // An exact node must not query an unused neighbouring temperature curve.
+        if (weight == 0.0) right = left;
+        if (weight == 1.0) left = right;
+        const double a = isotherm_at(left, temperature, clamp, logarithmic);
+        const double result = left == right ? a : std::lerp(a,
+            isotherm_at(right, temperature, clamp, logarithmic), weight);
+        return logarithmic ? std::exp(result) : result;
     }
 };
 
@@ -460,6 +501,7 @@ inline const char* to_config_value(SolubilityModel model) {
     switch (model) {
         case SolubilityModel::HENRY: return "HENRY";
         case SolubilityModel::TABLE: return "TABLE";
+        case SolubilityModel::CURVE_TABLE: return "CURVE_TABLE";
     }
     return "HENRY";
 }
@@ -469,6 +511,7 @@ inline const char* to_config_value(DensityModel model) {
         case DensityModel::CONSTANT: return "CONSTANT";
         case DensityModel::MIXTURE: return "MIXTURE";
         case DensityModel::TABLE: return "TABLE";
+        case DensityModel::LINEAR_TEMPERATURE: return "LINEAR_TEMPERATURE";
     }
     return "CONSTANT";
 }
@@ -480,6 +523,7 @@ inline const char* to_config_value(LiquidViscosityModel model) {
         case LiquidViscosityModel::POLYNOMIAL: return "POLYNOMIAL";
         case LiquidViscosityModel::TABLE: return "TABLE";
         case LiquidViscosityModel::COMPOSITION_TABLE: return "COMPOSITION_TABLE";
+        case LiquidViscosityModel::KINEMATIC_TABLE: return "KINEMATIC_TABLE";
     }
     return "CONSTANT";
 }
@@ -651,6 +695,7 @@ inline DissolvedGasSpecies dissolved_gas_species_from_config(std::string value) 
 
 inline SolubilityModel solubility_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "CURVE_TABLE") return SolubilityModel::CURVE_TABLE;
     if (value == "TABLE" || value == "TABULATED") return SolubilityModel::TABLE;
     // BUNSEN was removed; it is the same linear-in-p law as Henry, so map to HENRY.
     return SolubilityModel::HENRY;
@@ -658,6 +703,7 @@ inline SolubilityModel solubility_model_from_config(std::string value) {
 
 inline DensityModel density_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "LINEAR_TEMPERATURE") return DensityModel::LINEAR_TEMPERATURE;
     if (value == "MIXTURE" || value == "MASS_VOLUME_MIXING" || value == "MASS_VOLUME" ||
         value == "MIXING") {
         return DensityModel::MIXTURE;
@@ -668,6 +714,7 @@ inline DensityModel density_model_from_config(std::string value) {
 
 inline LiquidViscosityModel liquid_viscosity_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "KINEMATIC_TABLE") return LiquidViscosityModel::KINEMATIC_TABLE;
     if (value == "COMPOSITION_TABLE") return LiquidViscosityModel::COMPOSITION_TABLE;
     if (value == "TABLE" || value == "TABULATED") return LiquidViscosityModel::TABLE;
     if (value == "POLYNOMIAL" || value == "POLY" || value == "FERRON") {
@@ -832,6 +879,8 @@ struct SimulationConfig {
     DissolvedGasSpecies dissolved_gas_species = DissolvedGasSpecies::PROPANE;
     SolubilityModel solubility_model = SolubilityModel::HENRY;
     DensityModel density_model = DensityModel::CONSTANT;
+    double density_temperature_intercept = 954.9; // rho(T_C = 0) [kg/m^3]
+    double density_temperature_slope = -0.7284;   // d(rho)/d(T_C) [kg/(m^3 K)]
     LiquidViscosityModel liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
     double dissolved_gas_initial = 0.0;          // Dissolved gas mass fraction [kg gas / kg liquid solution]
     double dissolved_gas_max = 1.0;              // Upper bound for dissolved gas mass fraction
@@ -888,6 +937,12 @@ struct SimulationConfig {
     std::filesystem::path viscosity_table_file;
     std::filesystem::path viscosity_composition_file;
     CompositionViscosityTable viscosity_composition_table;
+    // Digitized c_mass_fraction,T_C,P_MPa,viscosity_mm2s data, including c=0 and c=1.
+    std::filesystem::path solution_table_file;
+    PropertyCurveTable solubility_curve_table; // c_sat(p_abs,T)
+    PropertyCurveTable kinematic_composition_table; // nu(c,T) [m^2/s]
+    bool solution_table_clamp = true;
+    bool kinematic_viscosity_log_interpolation = true;
     std::filesystem::path density_table_file;
     // Directory of the loaded config file; relative *_table_file paths resolve
     // against it first, then the CWD. Set by load_from_file().
@@ -1142,6 +1197,8 @@ struct SimulationConfig {
             }
             else if (key == "solubility_model" || key == "oil_gas_solution_model") solubility_model = solubility_model_from_config(value);
             else if (key == "density_model") density_model = density_model_from_config(value);
+            else if (key == "density_temperature_intercept") density_temperature_intercept = std::stod(value);
+            else if (key == "density_temperature_slope") density_temperature_slope = std::stod(value);
             else if (key == "liquid_viscosity_model" || key == "viscosity_model") liquid_viscosity_model = liquid_viscosity_model_from_config(value);
             else if (key == "dissolved_gas_initial") dissolved_gas_initial = std::stod(value);
             else if (key == "dissolved_gas_max") dissolved_gas_max = std::stod(value);
@@ -1182,6 +1239,9 @@ struct SimulationConfig {
             else if (key == "solubility_table_file") solubility_table_file = value;
             else if (key == "viscosity_table_file") viscosity_table_file = value;
             else if (key == "viscosity_composition_file") viscosity_composition_file = value;
+            else if (key == "solution_table_file") solution_table_file = value;
+            else if (key == "solution_table_clamp") solution_table_clamp = is_true(value);
+            else if (key == "kinematic_viscosity_log_interpolation") kinematic_viscosity_log_interpolation = is_true(value);
             else if (key == "density_table_file") density_table_file = value;
             else if (key == "motion_model") motion_model = motion_model_from_config(value);
             else if (key == "bearing_initial_from_attitude") {
@@ -1810,9 +1870,20 @@ struct SimulationConfig {
                 case SolubilityModel::TABLE:
                     if (solubility_table_2d.empty()) require_table(solubility_table, "solubility_table");
                     break;
+                case SolubilityModel::CURVE_TABLE:
+                    if (solubility_curve_table.empty()) error("CURVE_TABLE requires solution_table_file.");
+                    break;
             }
 
             switch (density_model) {
+                case DensityModel::LINEAR_TEMPERATURE:
+                    if (!finite(density_temperature_intercept) || !finite(density_temperature_slope))
+                        error("Linear density coefficients must be finite.");
+                    for (double t : {temperature_initial, property_reference_temperature}) {
+                        if (!(density_temperature_intercept + density_temperature_slope * (t - 273.15) > 0))
+                            error("LINEAR_TEMPERATURE density must be positive at initial/reference temperatures.");
+                    }
+                    break;
                 case DensityModel::CONSTANT:
                     break;
                 case DensityModel::MIXTURE:
@@ -1890,6 +1961,10 @@ struct SimulationConfig {
                 case LiquidViscosityModel::COMPOSITION_TABLE:
                     if (viscosity_composition_table.empty()) error("COMPOSITION_TABLE requires viscosity_composition_file (c_mass_fraction,T_C,mu_Pa_s).");
                     if (viscosity_pressure_coeff != 0) error("COMPOSITION_TABLE has no pressure axis; supply a justified pressure-independent viscosity table, with viscosity_pressure_coeff = 0.");
+                    break;
+                case LiquidViscosityModel::KINEMATIC_TABLE:
+                    if (kinematic_composition_table.empty()) error("KINEMATIC_TABLE requires solution_table_file.");
+                    if (viscosity_pressure_coeff != 0) error("KINEMATIC_TABLE uses actual c,T and requires viscosity_pressure_coeff = 0.");
                     break;
             }
         }
@@ -2059,6 +2134,17 @@ struct SimulationConfig {
                                       (1.0 / T - 1.0 / property_reference_temperature));
                 }
                 return henry > 0.0 ? c_d / henry : 0.0;
+            }
+            case SolubilityModel::CURVE_TABLE: {
+                if (solubility_curve_table.empty()) throw std::domain_error("Missing solution curve table");
+                std::vector<double> concentrations;
+                for (std::size_t i = 0; i < solubility_curve_table.axis.size(); ++i)
+                    concentrations.push_back(solubility_curve_table.isotherm_at(i, T, true));
+                const double p = invert_csat(solubility_curve_table.axis, concentrations, c_d);
+                if (!solution_table_clamp && std::abs(
+                    solubility_curve_table.interpolate(p, T, false) - c_d) > 1e-10)
+                    throw std::domain_error("Bubble pressure outside digitized solution table range");
+                return p;
             }
             case SolubilityModel::TABLE: {
                 // Invert c_sat = c_d for the smallest pressure (the bubble point).
@@ -2348,11 +2434,14 @@ struct SimulationConfig {
             << "fluid_property_model = " << to_config_value(fluid_property_model) << "\n"
             << "# dissolved_gas_species options: AIR, PROPANE, R410A\n"
             << "dissolved_gas_species = " << to_config_value(dissolved_gas_species) << "\n"
-            << "# solubility_model options: HENRY, TABLE\n"
+            << "# solubility_model options: HENRY, TABLE, CURVE_TABLE\n"
             << "solubility_model = " << to_config_value(solubility_model) << "\n"
-            << "# density_model options: CONSTANT, MIXTURE, TABLE\n"
+            << "# density_model options: CONSTANT, MIXTURE, TABLE, LINEAR_TEMPERATURE\n"
             << "density_model = " << to_config_value(density_model) << "\n"
-            << "# liquid_viscosity_model options: CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE\n"
+            << "# Linear density [kg/m^3] = intercept + slope * (T[K] - 273.15).\n"
+            << "density_temperature_intercept = " << density_temperature_intercept << "\n"
+            << "density_temperature_slope = " << density_temperature_slope << "\n"
+            << "# liquid_viscosity_model options: CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE, COMPOSITION_TABLE, KINEMATIC_TABLE\n"
             << "liquid_viscosity_model = " << to_config_value(liquid_viscosity_model) << "\n"
             << "dissolved_gas_initial = " << dissolved_gas_initial << "\n"
             << "dissolved_gas_max = " << dissolved_gas_max << "\n"
@@ -2392,6 +2481,10 @@ struct SimulationConfig {
             << "solubility_table_file = " << solubility_table_file.generic_string() << "\n"
             << "viscosity_table_file = " << viscosity_table_file.generic_string() << "\n"
             << "viscosity_composition_file = " << viscosity_composition_file.generic_string() << "\n"
+            << "# CURVE_TABLE solubility and KINEMATIC_TABLE nu(c,T), using absolute P and refrigerant mass fraction.\n"
+            << "solution_table_file = " << solution_table_file.generic_string() << "\n"
+            << "solution_table_clamp = " << (solution_table_clamp ? "true" : "false") << "\n"
+            << "kinematic_viscosity_log_interpolation = " << (kinematic_viscosity_log_interpolation ? "true" : "false") << "\n"
             << "density_table_file = " << density_table_file.generic_string() << "\n\n";
 
         out << "# Bearing Motion\n"
@@ -2552,6 +2645,8 @@ struct SimulationConfig {
             "bush_outer_boundary", "groove_mixing_model", "fluid_property_model",
             "dissolved_gas_species", "solubility_model", "oil_gas_solution_model",
             "density_model", "liquid_viscosity_model", "viscosity_model",
+            "density_temperature_intercept", "density_temperature_slope",
+            "solution_table_file", "solution_table_clamp", "kinematic_viscosity_log_interpolation",
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",

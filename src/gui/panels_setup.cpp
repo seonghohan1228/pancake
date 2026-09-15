@@ -188,6 +188,8 @@ void apply_dissolved_gas_species_preset(SimulationConfig& config, DissolvedGasSp
             config.mu_gas = 0;
             config.viscosity_table.clear(); config.viscosity_table_2d={}; config.viscosity_table_file.clear();
             config.viscosity_composition_table={}; config.viscosity_composition_file.clear();
+            config.solution_table_file.clear();
+            config.solubility_curve_table={}; config.kinematic_composition_table={};
             config.density_table.clear(); config.density_table_2d={}; config.density_table_file.clear();
             config.density_model=DensityModel::CONSTANT;
             config.liquid_viscosity_model=LiquidViscosityModel::CONSTANT;
@@ -662,7 +664,9 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                     row("Solubility model", "Saturation law c_sat(p, T).");
                     changed |= enum_combo<SolubilityModel>(
                         "##solubility_model", config_.solubility_model,
-                        {{SolubilityModel::HENRY, "Henry's law",
+                        {{SolubilityModel::CURVE_TABLE, "Digitized solution curves",
+                          "c_sat from absolute pressure and temperature. Uses solution_table_file."},
+                         {SolubilityModel::HENRY, "Henry's law",
                           "c_sat = H(T) p, linear in pressure with optional van't Hoff "
                           "temperature dependence. Good for dilute solutions."},
                          {SolubilityModel::TABLE, "Table",
@@ -671,7 +675,9 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                     row("Density model", "Liquid-solution density law.");
                     changed |= enum_combo<DensityModel>(
                         "##density_model", config_.density_model,
-                        {{DensityModel::CONSTANT, "Constant",
+                        {{DensityModel::LINEAR_TEMPERATURE, "Linear in temperature",
+                          "rho = intercept + slope * T[degC]. Default: 954.9 - 0.7284*T[degC]."},
+                         {DensityModel::CONSTANT, "Constant",
                           "Dissolved gas does not change liquid density (rho = rho_oil)."},
                          {DensityModel::MIXTURE, "Mixture",
                           "Mass/volume mixing of the two phase densities: oil (rho) and the "
@@ -682,7 +688,9 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                     row("Liquid viscosity model", "Liquid-solution viscosity law.");
                     changed |= enum_combo<LiquidViscosityModel>(
                         "##liquid_viscosity_model", config_.liquid_viscosity_model,
-                        {{LiquidViscosityModel::CONSTANT, "Constant",
+                        {{LiquidViscosityModel::KINEMATIC_TABLE, "Kinematic composition curves",
+                          "nu at actual refrigerant mass fraction and T, including pure oil/refrigerant. mu = rho*nu."},
+                         {LiquidViscosityModel::CONSTANT, "Constant",
                           "Dissolved gas does not change liquid viscosity (mu = mu_oil)."},
                          {LiquidViscosityModel::EMPIRICAL, "Empirical",
                           "mu_oil * Andrade(T) * exp(a_c c_d) * Barus(p): exponential thinning "
@@ -777,6 +785,19 @@ void GuiApp::draw_enum_widgets(ParamGroup group) {
                             config_.viscosity_composition_file=winutil::utf8_to_path(path); dirty_=true;
                         }
                         if (ImGui::IsItemDeactivatedAfterEdit()) reload_property_tables();
+                    }
+                    if (config_.solubility_model == SolubilityModel::CURVE_TABLE ||
+                        config_.liquid_viscosity_model == LiquidViscosityModel::KINEMATIC_TABLE) {
+                        row("Solution curve file", "CSV: c_mass_fraction,T_C,P_MPa,viscosity_mm2s. Pressure is absolute; pure-oil pressure is blank.");
+                        std::string path=winutil::path_to_utf8(config_.solution_table_file);
+                        if (input_text_string("##solution_table_file",path)) {
+                            config_.solution_table_file=winutil::utf8_to_path(path); dirty_=true;
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) reload_property_tables();
+                        row("Clamp solution curves", "Hold the endpoint of each curve outside its digitized range. Disable to reject out-of-range queries.");
+                        changed |= ImGui::Checkbox("##solution_table_clamp", &config_.solution_table_clamp);
+                        row("Log viscosity interpolation", "Interpolate log(nu) in temperature and mass fraction. Disable for linear nu interpolation.");
+                        changed |= ImGui::Checkbox("##kinematic_viscosity_log_interpolation", &config_.kinematic_viscosity_log_interpolation);
                     }
                 }
                 break;

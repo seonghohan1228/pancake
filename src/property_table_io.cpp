@@ -5,6 +5,7 @@
 #include <cmath>
 #include <exception>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 namespace FluidProperties {
@@ -182,6 +183,77 @@ CompositionViscosityTable load_viscosity_composition_csv(const std::filesystem::
     return {std::move(grid.p),std::move(grid.t),std::move(grid.values)};
 }
 
+void load_solution_table_csv(const std::filesystem::path& path, PropertyCurveTable& solubility,
+                             PropertyCurveTable& viscosity, std::string& error_out) {
+    solubility = {};
+    viscosity = {};
+    error_out.clear();
+    std::map<double, std::vector<PropertyTablePoint>> pressure_curves, concentration_curves;
+    std::ifstream file(path);
+    std::string line;
+    std::size_t line_number = 1;
+    try {
+        if (!file || !std::getline(file, line)) throw std::runtime_error("cannot read table");
+        auto header = split_csv(strip_bom_and_cr(line));
+        const auto column = [&](const char* name) {
+            for (std::size_t i = 0; i < header.size(); ++i)
+                if (to_lower(header[i]) == to_lower(name)) return i;
+            throw std::runtime_error(std::string("missing column ") + name);
+        };
+        const auto c_column = column("c_mass_fraction"), t_column = column("T_C");
+        const auto p_column = column("P_MPa"), nu_column = column("viscosity_mm2s");
+        const auto needed = std::max({c_column, t_column, p_column, nu_column}) + 1;
+        while (std::getline(file, line)) {
+            ++line_number;
+            line = trim_copy(strip_bom_and_cr(line));
+            if (line.empty() || line[0] == '#') continue;
+            auto cells = split_csv(line);
+            // A reordered blank oil-pressure column may be the last cell.
+            if (line.back() == ',') cells.emplace_back();
+            if (cells.size() < needed) throw std::runtime_error("too few columns");
+            const auto number = [&](std::size_t index) {
+                std::size_t end;
+                const double value = std::stod(cells[index], &end);
+                if (end != cells[index].size() || !std::isfinite(value))
+                    throw std::runtime_error("invalid numeric value");
+                return value;
+            };
+            const double c = number(c_column), t = number(t_column) + 273.15;
+            const double nu = number(nu_column) * 1e-6;
+            if (c < 0 || c > 1 || t <= 0 || nu <= 0 || !std::isfinite(t) || !std::isfinite(nu))
+                throw std::runtime_error("require 0 <= c <= 1, T > 0 K, nu > 0");
+            concentration_curves[c].push_back({t, nu});
+            if (c == 0) {
+                if (!cells[p_column].empty()) throw std::runtime_error("pure-oil rows need blank pressure");
+            } else {
+                const double pressure = number(p_column) * 1e6;
+                if (pressure <= 0 || !std::isfinite(pressure)) throw std::runtime_error("require positive absolute pressure");
+                pressure_curves[pressure].push_back({t, c});
+            }
+        }
+        const auto finish = [](auto& groups, PropertyCurveTable& table, bool saturation) {
+            if (groups.size() < 2) throw std::runtime_error("need at least two pressure/concentration curves");
+            for (auto& [axis, points] : groups) {
+                std::sort(points.begin(), points.end(), [](auto a, auto b) { return a.x < b.x; });
+                if (points.size() < 2) throw std::runtime_error("each curve needs at least two temperatures");
+                for (std::size_t i = 1; i < points.size(); ++i) {
+                    if (points[i].x <= points[i - 1].x) throw std::runtime_error("duplicate temperature in curve");
+                    if (saturation && points[i].value >= points[i - 1].value)
+                        throw std::runtime_error("solubility must decrease with T along each isobar");
+                }
+                table.axis.push_back(axis);
+                table.curves.push_back(std::move(points));
+            }
+        };
+        finish(pressure_curves, solubility, true);
+        finish(concentration_curves, viscosity, false);
+    } catch (const std::exception& error) {
+        solubility = {};
+        viscosity = {};
+        error_out = path.string() + " line " + std::to_string(line_number) + ": " + error.what();
+    }
+}
+
 void load_config_property_tables(SimulationConfig& cfg, std::vector<std::string>& errors) {
     auto resolve = [&](const std::filesystem::path& f) -> std::filesystem::path {
         if (f.empty() || f.is_absolute()) return f;
@@ -206,6 +278,14 @@ void load_config_property_tables(SimulationConfig& cfg, std::vector<std::string>
     load_one(cfg.solubility_table_file, "solubility_pct", 0.01, cfg.solubility_table_2d, "solubility");
     load_one(cfg.viscosity_table_file, "viscosity_mm2s", 1.0e-6, cfg.viscosity_table_2d, "viscosity");
     load_one(cfg.density_table_file, "density_kgm3", 1.0, cfg.density_table_2d, "density");
+    cfg.solubility_curve_table = {};
+    cfg.kinematic_composition_table = {};
+    if (!cfg.solution_table_file.empty()) {
+        std::string error;
+        load_solution_table_csv(resolve(cfg.solution_table_file), cfg.solubility_curve_table,
+                                cfg.kinematic_composition_table, error);
+        if (!error.empty()) errors.push_back("solution_table_file: " + error);
+    }
     if (!cfg.viscosity_composition_file.empty()) {
         std::string error;
         cfg.viscosity_composition_table=load_viscosity_composition_csv(resolve(cfg.viscosity_composition_file),error);

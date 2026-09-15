@@ -22,6 +22,7 @@ configure_file(
     COPYONLY)
 
 set(PANCAKE_CASE_CONFIGS
+    config_r410a_fw68d.txt
     config_r290_pz68.txt
     config_r290_pz68_quick.txt
     config_r290_pz68_table.txt)

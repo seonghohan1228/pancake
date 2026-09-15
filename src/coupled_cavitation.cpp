@@ -159,8 +159,9 @@ struct Solver::Impl {
         s.rho_g=gas_density(s.p-cfg->oil_vapor_pressure(s.t),s.t);
         const double mu_mix=s.theta*s.mu_l+std::max(0.0,1-s.theta)*cfg->mu_gas;
         s.mobility=s.total()*s.h*s.h/(12*mu_mix);
-        s.volume={1/cfg->rho, cfg->density_model==DensityModel::MIXTURE && cfg->dissolved_gas_liquid_density>0 ?
-            1/cfg->dissolved_gas_liquid_density : 1/cfg->rho, s.rho_g>0 ? 1/s.rho_g : 0};
+        const double liquid_volume = cfg->density_model == DensityModel::LINEAR_TEMPERATURE ? 1/s.rho_l : 1/cfg->rho;
+        s.volume={liquid_volume, cfg->density_model==DensityModel::MIXTURE && cfg->dissolved_gas_liquid_density>0 ?
+            1/cfg->dissolved_gas_liquid_density : liquid_volume, s.rho_g>0 ? 1/s.rho_g : 0};
         if (thermal) {
             s.energy=0;
             s.u=internal_energies(s.t,s.p,s.rho_g);

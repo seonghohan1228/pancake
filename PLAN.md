@@ -2426,3 +2426,14 @@ two-phase — 10.1007/s11249-006-9027-6, S0140700723004577, 10.1115/1.4066414,
 104(2):157), Braun & Hendricks (10.1080/05698198408981539); THD — Ferron 1983
 (ASME 105(3):422), Lund & Tonnesen (10.1115/1.3260891); dynamics — Lund 1987
 (10.1115/1.3261324); review — Braun & Hannon (10.1243/13506501JET772).
+
+
+## FW68D / R410A properties (2026-09-15)
+
+- [x] Archive the user's chart calibration and all 125 decoded property points.
+- [x] Add solubility interpolation in absolute pressure and temperature, with the same isotherm inverse for bubble pressure.
+- [x] Add kinematic viscosity interpolation in actual refrigerant mass fraction and temperature, including c=0 and c=1.
+- [x] Expose linear/log viscosity interpolation and clamp/reject range handling in config and GUI.
+- [x] Add configurable constant density (940 in the FW68D example) and linear density (954.9 - 0.7284 T_C).
+- [x] Convert kinematic to dynamic viscosity using the selected density and document source limits.
+- [x] Add reproducible importer checks and C++ source-node, interpolation, units, density, bounds and config regression checks.

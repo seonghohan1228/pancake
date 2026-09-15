@@ -129,6 +129,9 @@ double equilibrium_dissolved_gas(double pressure, double temperature, const Simu
                 ? interpolate_property_table(cfg.solubility_table, p_abs, 0.0)
                 : cfg.solubility_table_2d.interpolate(p_abs, bounded_temperature(temperature, cfg), 0.0);
             break;
+        case SolubilityModel::CURVE_TABLE:
+            dissolved = cfg.solubility_curve_table.interpolate(p_abs, temperature, cfg.solution_table_clamp);
+            break;
     }
     return clamp_mass_fraction(dissolved, cfg);
 }
@@ -144,6 +147,13 @@ double liquid_solution_density(double dissolved_gas,
     const double c_g = clamp_mass_fraction(dissolved_gas, cfg);
     double rho_solution = cfg.rho;
     switch (cfg.density_model) {
+        case DensityModel::LINEAR_TEMPERATURE:
+            rho_solution = cfg.density_temperature_intercept
+                + cfg.density_temperature_slope * (temperature - kKelvinOffset);
+            if (!std::isfinite(temperature) || temperature <= 0 ||
+                !std::isfinite(rho_solution) || rho_solution <= 0)
+                throw std::domain_error("LINEAR_TEMPERATURE requires positive temperature and density");
+            break;
         case DensityModel::CONSTANT:
             rho_solution = cfg.rho;
             break;
@@ -182,6 +192,10 @@ double liquid_solution_viscosity(double dissolved_gas,
     const double c_g = clamp_mass_fraction(dissolved_gas, cfg);
     double mu_solution = cfg.mu;
     switch (cfg.liquid_viscosity_model) {
+        case LiquidViscosityModel::KINEMATIC_TABLE:
+            return liquid_solution_density(c_g, pressure, temperature, cfg)
+                * cfg.kinematic_composition_table.interpolate(c_g, temperature,
+                    cfg.solution_table_clamp, cfg.kinematic_viscosity_log_interpolation);
         case LiquidViscosityModel::COMPOSITION_TABLE:
             return cfg.viscosity_composition_table.interpolate(c_g,temperature);
         case LiquidViscosityModel::CONSTANT:

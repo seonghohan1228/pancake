@@ -24,6 +24,8 @@ double liquid_solution_density(double dissolved_gas,
                                const SimulationConfig& cfg);
 
 /// Liquid oil plus dissolved-gas solution dynamic viscosity [Pa s].
+/// KINEMATIC_TABLE uses actual refrigerant mass fraction and T [K], including
+/// c=0 and c=1. It converts nu [m^2/s] to mu using the selected liquid density.
 /// POLYNOMIAL (Ferron 1983) is a pure temperature law and ignores dissolved_gas
 /// and pressure; its Tbar is a ratio of CELSIUS temperatures (see PHYSICS.md).
 double liquid_solution_viscosity(double dissolved_gas,
