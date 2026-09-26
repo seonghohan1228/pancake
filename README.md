@@ -759,3 +759,15 @@ assumptions and the Python standard-library regeneration command.
 unfinished `feature/bubble` work separately from the journal-bearing solver and
 is OFF by default. See [experimental/bubble/README.md](experimental/bubble/README.md)
 for supported physics, limitations and build/test commands.
+
+## FW68D comparison and MPI timing
+
+The [FW68D campaign plan and short workstation benchmark](cases/90_diagnostics/fw68d_mpi_benchmark/README.md)
+cover the requested 200/1500 rpm cavitation comparison, temperature-dependent
+pure-oil viscosity, moving-bearing flow and reduced CHT. The timing fixture is
+synthetic; the physical campaign still needs the experimental load and thermal
+inputs. The driver records provenance and verifies convergence and final fields.
+The [measured results](cases/90_diagnostics/fw68d_mpi_benchmark/RESULTS.md)
+archive the coarse-grid scaling test and the G6 startup failure.
+The plan uses the prior 720-by-192 mesh and 20-us timestep; the synthetic G6
+startup hit the minimum-film guard, so its multicore choice remains unresolved.

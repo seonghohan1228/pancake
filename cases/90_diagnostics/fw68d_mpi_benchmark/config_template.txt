@@ -1,0 +1,89 @@
+# Synthetic FW68D-only MPI timing fixture; no experimental validation or gas release.
+# G6 mesh and 20-us timestep are inherited from the Ferron D convergence ladder, not validated for this FW68D case.
+# One transient step uses one segregated thermal/flow sweep. CHT solids are quasi-steady.
+R = 0.0215
+c = 42.5e-6
+L = 0.040
+e = 8.5e-6
+attitude_angle_deg = 45
+omega = 157.07963267949
+omega_ramp_time = 0
+
+n_theta_global = 720
+n_z_global = 192
+solution_mode = TRANSIENT
+dt = 2e-5
+end_t = 2e-4
+write_interval = 2e-4
+diagnostics_interval = 1
+motion_time_method = EULER_IMPLICIT
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+
+motion_model = MOVING_BEARING
+bearing_initial_from_attitude = true
+bearing_initial_vx = 0
+bearing_initial_vy = 0
+bearing_initial_vz = 0
+bearing_mass = 1.64
+bearing_stiffness_x = 0
+bearing_stiffness_y = 0
+bearing_stiffness_z = 0
+bearing_damping_x = 0
+bearing_damping_y = 0
+bearing_damping_z = 0
+external_load_x = 0
+external_load_y = -1000
+external_load_z = 0
+stop_on_nonpositive_film = true
+
+cavitation_model = FBNS
+cavitation_threshold = SCALAR_PCAV
+gas_pressure_coupling = NONE
+cavitated_film_model = STRIATED
+p_cav = 500
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 101325
+bc_z_south_thermal = CONSTANT
+bc_z_south_temperature = 313.15
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 101325
+bc_z_north_thermal = CONSTANT
+bc_z_north_temperature = 313.15
+
+temperature_model = ENERGY_EQUATION
+temperature_initial = 313.15
+temperature_reference = 313.15
+rho_cp = 1.874e6
+thermal_conductivity = 0.13
+cross_film_thermal_model = POLYNOMIAL
+cross_film_profile_order = 4
+cross_film_quadrature_points = 6
+bush_thermal_model = CONDUCTION_2D
+bush_thermal_conductivity = 50
+bush_outer_radius = 0.03
+bush_radial_cells = 16
+bush_outer_boundary = FIXED_TEMPERATURE
+bush_outer_temperature = 313.15
+shaft_ambient_heat_transfer = 0
+thermal_ambient_temperature = 313.15
+
+fluid_property_model = SINGLE_PHASE
+dissolved_gas_species = AIR
+dissolved_gas_initial = 0
+dissolved_gas_max = 1
+solubility_model = HENRY
+dissolved_gas_henry_coeff = 0
+density_model = CONSTANT
+rho = 937
+liquid_viscosity_model = KINEMATIC_TABLE
+solution_table_file = data/R410A_FW68D/fw68d.csv
+solution_table_clamp = false
+kinematic_viscosity_log_interpolation = true
+viscosity_pressure_coeff = 0
+
+output_dir = results/fw68d_mpi_benchmark
+output_write_3d = true
+output_write_flat = false
+output_verbosity = DETAILED
+output_fields = pressure, film_content, h, temperature, mu, temperature_journal, temperature_bearing, heat_flux_journal, heat_flux_bearing, fluid_force_x, fluid_force_y, bearing_x, bearing_y, friction_torque

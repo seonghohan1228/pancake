@@ -2491,3 +2491,31 @@ two-phase — 10.1007/s11249-006-9027-6, S0140700723004577, 10.1115/1.4066414,
 - [x] Preserve the unfinished bubble solver as a separate optional target.
 - [x] Test the merged state on native Windows and workstation afml-r6; prepare
   fast-forward publication. See `docs/INTEGRATION_2026_09_15.md` for evidence.
+
+## 2026-09-27 - FW68D comparison plan and workstation MPI timing
+
+- [x] Define a 24-point, two-speed FW68D-only cavitation comparison matrix from
+  the supplied experimental Sommerfeld ranges, with four corner pilots and
+  eight initial spatial/timestep verification repeats.
+- [x] Review moving-bearing, pure-oil viscosity, film energy and reduced CHT
+  compatibility. Identify cross-film wall-shear and speed-ramp consistency
+  work required before quantitative experimental comparison.
+- [x] Prepare a synthetic geometry-matched timing fixture without changing
+  numerical source; build locally and pass native 1/2-rank short checks plus
+  a full 360-by-96 smoke check before the isolated workstation build.
+- [x] Complete and archive initial 360-by-96 workstation scaling and throughput:
+  1 rank minimizes core cost, 14 two-rank jobs lead tested queue throughput,
+  and 28 ranks minimize isolated latency for this short startup fixture.
+- [ ] Freeze experimental load/reference-viscosity, thermal and support inputs
+  before launching the physical 24-point comparison campaign.
+- [ ] Correct cross-film wall forces/torque and any speed-ramp usage, verify
+  timestep sensitivity, then execute the accepted physical campaign.
+
+See [the campaign and benchmark plan](cases/90_diagnostics/fw68d_mpi_benchmark/README.md).
+The short timing fixture is not an experimental validation or a mesh/time
+independence study. Earlier completed tasks remain part of this record.
+
+- [x] Reuse the prior accepted G6 720-by-192 mesh, 20-us timestep and 16-cell
+  radial bush discretization in the FW68D plan and final MPI performance check.
+- [ ] Resolve the G6 synthetic startup's minimum-film guard before step 3
+  (reproduced at 24/28 ranks), then obtain an admissible G6 scaling comparison.

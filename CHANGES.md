@@ -3941,3 +3941,25 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Stop the executable after PETSc initialization fails. Record the new regression
   checks, remaining physical-model decisions and remote performance measurements
   in [the audit](docs/SOLVER_AUDIT_2026_09_15.md).
+
+## 2026-09-27 - Add a reproducible FW68D MPI benchmark
+
+- Add a synthetic transient moving-bearing fixture with the confirmed rig
+  dimensions, pure-FW68D table viscosity, FBNS cavitation, film energy and
+  reduced conjugate heat transfer. Keep numerical source unchanged so the
+  timing comparison measures the currently checked implementation.
+- Add a standard-library workstation driver with fresh per-run directories,
+  fixed input/output cadence, source/input/binary hashes, bounded MPI launches,
+  convergence/final-field checks and separate scaling/throughput measurements.
+- Record the 24-point experimental comparison plan and eight initial refinement
+  repeats, distinguishing known rig geometry from missing thermal/load data and
+  documenting the current cross-film shear and solid-transient limitations.
+- Follow native build/check, isolated remote source transfer/rebuild/run and
+  local evidence return. Preserve launcher failures and all prior campaigns.
+- Record the seven-rank scaling sweep, repeated 24/28-rank candidates and
+  measured 24-by-1 versus 14-by-2 concurrent batches. Return complete evidence
+  locally; distinguish lowest core cost, queue throughput and single-case latency.
+- Apply the user-selected prior convergence settings: G6 720-by-192 and
+  dt=20 us, retaining bush radial16/profile order4/quadrature6. Archive the
+  native two-step pass and matching remote 24/28-rank film-guard failures
+  before step3. Do not transfer the coarse-grid optimum to the failed G6 case.
