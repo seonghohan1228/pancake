@@ -194,3 +194,31 @@ It tests the search algorithm, not the CFD force law or uniqueness of the
 physical equilibrium. The current motion model assumes fixed journal centre
 with a rotating journal surface; confirmation of that interpretation of
 "journal stationary" is pending.
+
+
+### Thermal closure and iteration-cap follow-up
+
+E reached external thermal closure on its fourth evaluation: relative h
+mismatch 6.20e-5, wall-temperature change 0.00134 K, and inner energy
+defect 9.97e-7. Its force error was still about 59.66%, so the position
+search continued. For the downloaded E evaluations, shaft torque times
+angular speed and integrated viscous heat agree within 0.003%; this is a
+consistency check, not an independently complete mechanical energy ledger.
+
+A and C exhausted 2000 sweeps at 15:50:38/43 UTC, returning solver code 4.
+A had R_p=1.81038e-6 and energy residual -0.000808094 W on a 9.11394 W
+scale (relative 8.87e-5). C's retained best iterate had energy residual
+-2.63664e-5 W on a 6.49650 W scale (relative 4.06e-6); it is explicitly
+marked restored and unconverged. Their exact profile minima, 303.398 K
+and 302.558 K, remained above their respective TC0 values. These failures
+are insufficient iteration budgets for the slowly decaying coupled thermal
+mode; neither is accepted.
+
+The existing driver/executable were restarted for full A/C cooling and
+position searches with `--coupling-max-iters 4000 --timeout 7200`, leaving
+all mesh, physical and tolerance settings unchanged. A driver PID 4068349
+uses cores 0--7 and log `A_force4000_driver.log`; C PID 4068483 uses cores
+8--15 and `C_force4000_driver.log`. Existing work directories preserve the
+failed attempts; no failed state is reused. These searches and the E search
+remain in progress. No final experimental comparison or verified merge has
+been claimed.
