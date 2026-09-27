@@ -2576,5 +2576,5 @@ numerical diagnosis only and do not complete an experimental comparison.
 - [x] Identify and preserve two invalid native timing inputs with inherited
   housing ambient override; correct generated reservoir references.
 - [x] Retain 1e-6 coupling tolerances, use fixed relaxation and a sufficient cap.
-- [ ] Complete corrected native check and physical-core steady timing test.
+- [x] Complete corrected native check and physical-core steady timing test.
 - [ ] Accept a converged fixed-position solve before the load/thermal sweep.

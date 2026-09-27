@@ -4,8 +4,8 @@ This campaign replaces the earlier 24-point transient plan with the six cases
 selected by the user. It uses a steady pressure–energy–CHT solve and an outer
 load-balance search. The package now includes the groove, housing and still-oil
 cooling. The user supplied 1 atm reservoirs and exposed shaft ends and
-authorized ordinary/similar material properties. Native validation is in
-progress; production equilibria have not yet been accepted.
+authorized ordinary/similar material properties. Local and remote focused checks pass; production equilibria have not yet
+been accepted.
 
 ## Accepted cases
 
@@ -39,7 +39,7 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
 - Retain dt=20 us as configuration metadata. Steady Reynolds/energy storage
   terms are disabled and bearing motion is not integrated.
 - Inner pressure/temperature coupling: both normalized changes below 1e-6,
-  maximum 200 sweeps, adaptive relaxation. An iteration cap or restored best
+  maximum 2000 sweeps, fixed relaxation 1. An iteration cap or restored best
   iterate without convergence is a failed trial.
 - Outer equilibrium: vary eccentricity and attitude until the total fluid force
   on the bearing balances the specified applied load vector to 0.2%.
@@ -62,8 +62,8 @@ is a preparation record, not a runnable solver configuration.
 
 ## Temperature and property assignment
 
-Use TC0 for confirmed feed/reservoir temperatures, surrounding fluid and the
-numerical initial temperature guess. Compute the film and wall temperatures.
+Use TC0 for feed/reservoir temperatures and surrounding fluid. The numerical
+initial film guess is TC0 + 1 K. Compute the film and wall temperatures.
 Do not impose TC0 on either wall without a separately specified wall boundary.
 Logged pressure is retained as an observation; no boundary uses it until its
 sensor location is known. Compare TC2 only at the corresponding sensor position.
@@ -177,8 +177,8 @@ python run_steady.py --solver /absolute/path/pancake --ranks 2 \
 
 A frozen-position timing call is `--trial F .15 165 --thermal-iterations 1`.
 It is not load-balanced or externally thermally converged. On Open MPI only,
-`--cpu-list` restricts the physical-core set; check the binding before comparing
-throughput. The user-requested resolution remains 720 by 192 throughout.
+`--rankfile` assigns one rank to each chosen physical core. The workstation
+left ranks unbound with `--cpu-list`, so that option is not used. The user-requested resolution remains 720 by 192 throughout.
 
 Follow the repository workflow: local build and short checks, isolated remote
 source/configuration snapshot, fresh remote build, converged equilibrium runs,
@@ -214,3 +214,6 @@ cannot identify which individual change improved their convergence.
 The ENERGY_EQUATION/cross-film path leaves the global energy-residual CSV field
 blank. The driver records that diagnostic as unavailable, never zero or
 verified. Wall heat fluxes remain available for inspection.
+
+See [the execution record](EXECUTION.md) for verified builds, short MPI timings,
+failed attempts and current physical-run status.

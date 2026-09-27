@@ -4016,3 +4016,7 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   settings only; retain the convergence-study grid and cross-film resolution.
 - Accept unavailable cross-film energy diagnostics as missing evidence, not
   zero; supported mass, pressure, thermal and field checks remain required.
+
+- Verify ten bounded steady MPI trials, retain all failed/capped evidence and
+  select four ranks per case for batch efficiency. Use verified physical-core
+  rankfiles after the workstation ignored CPU-list binding.

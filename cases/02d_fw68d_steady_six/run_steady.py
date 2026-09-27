@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -51,6 +52,18 @@ def source_sha256():
 
 def save_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+
+
+def mpi_command(mpi, solver, ranks, rankfile=None, platform=sys.platform):
+    command = [str(mpi)]
+    if rankfile:
+        if not platform.startswith("linux"):
+            raise ValueError("--rankfile requires OpenMPI on Linux")
+        rankfile = Path(rankfile).resolve()
+        if not rankfile.is_file():
+            raise FileNotFoundError(f"OpenMPI rankfile not found: {rankfile}")
+        command += ["--rankfile", str(rankfile), "--bind-to", "core", "--report-bindings"]
+    return command + ["-n", str(ranks), str(solver), "--config", "config.txt"]
 
 
 def density(temperature_c):
@@ -298,13 +311,7 @@ class Campaign:
         mpi = shutil.which("mpiexec") or shutil.which("mpirun")
         if not mpi:
             raise FileNotFoundError("mpiexec/mpirun not found")
-        command = [mpi]
-        if self.args.cpu_list:
-            if os.name == "nt":
-                raise ValueError("--cpu-list requires OpenMPI on Linux")
-            command += ["--bind-to", "core", "--cpu-list", self.args.cpu_list]
-        command += ["-n", str(self.args.ranks), str(self.solver), "--config", "config.txt"]
-        return command
+        return mpi_command(mpi, self.solver, self.args.ranks, self.args.rankfile)
 
     def single(self, case, eps, psi, h_bush, h_shaft, label):
         self.sequence += 1
@@ -322,6 +329,8 @@ class Campaign:
             "run_dir": str(run_dir), "command": command,
             "mpi_ranks": self.args.ranks, "python_version": sys.version.split()[0],
             "mpi_version": self.mpi_version, "source_sha256": self.source_hash,
+            "driver_sha256": sha256(__file__),
+            "rankfile_sha256": sha256(Path(self.args.rankfile).resolve()) if self.args.rankfile else None,
             "config_sha256": sha256(config_path), "executable_sha256": sha256(self.solver),
             "experiment_sha256": sha256(EXPERIMENT), "material_setup_sha256": sha256(self.materials_path),
             "property_table_sha256": sha256(TABLE), "status": "started",
@@ -472,7 +481,15 @@ def self_check(campaign):
                                      campaign.points, campaign.materials)
         if min(hb, hs) <= 0 or not meta["laminar_Re_under_1e5"]:
             raise ValueError("invalid external coefficient or laminar disk assumption")
-    print("Self-check passed: six case mu/S/omega inputs, config force sign, thermal correlations")
+    with tempfile.TemporaryDirectory() as temporary:
+        rankfile = Path(temporary) / "rankfile"
+        rankfile.write_text("rank 0=localhost slot=0\n", encoding="utf-8")
+        command = mpi_command("mpirun", "/tmp/pancake", 1, rankfile, platform="linux")
+        if command[1:6] != ["--rankfile", str(rankfile.resolve()), "--bind-to", "core", "--report-bindings"]:
+            raise ValueError("rankfile MPI command mismatch")
+        if command[-4:] != ["1", "/tmp/pancake", "--config", "config.txt"]:
+            raise ValueError("rankfile MPI rank/executable command mismatch")
+    print("Self-check passed: six case mu/S/omega inputs, boundaries, thermal correlations, rankfile command")
 
 
 def main():
@@ -482,7 +499,7 @@ def main():
     parser.add_argument("--work", help="new or existing campaign output root")
     parser.add_argument("--cases", default="A,B,C,D,E,F", help="comma-separated A-F or E_low,E_high")
     parser.add_argument("--materials", default=str(SETUP), help="JSON with material_settings object")
-    parser.add_argument("--cpu-list", help="OpenMPI physical-core list; Linux only")
+    parser.add_argument("--rankfile", help="existing OpenMPI rankfile; Linux only")
     parser.add_argument("--timeout", type=int, default=7200, help="seconds per native solve")
     parser.add_argument("--max-thermal-iterations", type=int, default=30)
     parser.add_argument("--max-force-iterations", type=int, default=18)
@@ -506,6 +523,7 @@ def main():
         parser.error("physical runs require --solver, --work, and positive --ranks")
     if not campaign.solver.is_file():
         parser.error("solver executable does not exist")
+    campaign.command()
     try:
         campaign.mpi_version = subprocess.run([campaign.command()[0], "--version"],
                                               capture_output=True, text=True, timeout=10).stdout.splitlines()[:2]
