@@ -29,6 +29,7 @@ EXPERIMENT = HERE / "experiment.json"
 TABLE = HERE / "fw68d_experiment.csv"
 SETUP = HERE / "steady_setup.json"
 NUMBER = r"([+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+\-]?\d+)?)"
+FBNS_TOL = 1e-12
 
 
 def sha256(path):
@@ -146,7 +147,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "theta_convection_scheme": "UPWIND", "thermal_convection_scheme": "UPWIND",
         "gas_convection_scheme": "UPWIND", "external_load_x": 0,
         "external_load_y": -load, "external_load_z": 0,
-        "cavitation_model": "FBNS", "cavitation_threshold": "SCALAR_PCAV",
+        "cavitation_model": "FBNS", "fbns_tol": FBNS_TOL,
+        "cavitation_threshold": "SCALAR_PCAV",
         "cavitated_film_model": "STRIATED", "gas_pressure_coupling": "NONE",
         "p_cav": materials["cavitation_pressure_Pa"],
         "bc_z_south_type": "DIRICHLET", "bc_z_south_val": materials["reservoir_pressure_Pa"],
@@ -234,8 +236,8 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure):
     if int(diagnostic["converged"]) != 1:
         raise ValueError("FBNS did not converge")
     fbns = re.findall(r"fbns iter=\d+ \|G\|=" + NUMBER + r" \|FB\|=" + NUMBER, log)
-    if not fbns or max(map(float, fbns[-1])) > 1e-7:
-        raise ValueError("FBNS complementarity residual missing or above 1e-7")
+    if not fbns or max(map(float, fbns[-1])) >= FBNS_TOL:
+        raise ValueError(f"FBNS residual missing or not below configured {FBNS_TOL:g}")
     force = re.findall(r"\| F=\(" + NUMBER + r",\s*" + NUMBER + r",\s*" + NUMBER + r"\) N\s*\| M=" + NUMBER, log)
     if not force:
         raise ValueError("final total-fluid-force/torque record missing")
@@ -270,7 +272,9 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure):
         "cavitated_area_fraction": float(np.mean(fields["film_content"] < .999)),
         "film_content_min": float(np.min(fields["film_content"])),
         "T_min_K": float(np.min(fields["T"])), "T_max_K": float(np.max(fields["T"])),
+        "T_bore_min_K": float(np.min(fields["T_bearing"])),
         "T_bore_mean_K": float(np.mean(fields["T_bearing"])),
+        "T_bore_max_K": float(np.max(fields["T_bearing"])),
         "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
         "energy_diagnostic_status": energy_status,
         "diagnostics": diagnostic,
@@ -462,7 +466,8 @@ def self_check(campaign):
                 values["coupling_max_iters"] != "2000" or
                 values["coupling_relaxation_mode"] != "FIXED" or
                 values["coupling_relaxation"] != "1.0" or
-                values["coupling_keep_best_iterate"] != "true"):
+                values["coupling_keep_best_iterate"] != "true" or
+                float(values["fbns_tol"]) != FBNS_TOL):
             raise ValueError("initial guess, boundary, or fixed-point defaults mismatch")
         for key in ("bc_z_south_temperature", "bc_z_north_temperature",
                     "thermal_ambient_temperature", "shaft_ambient_temperature",

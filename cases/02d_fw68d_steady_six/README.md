@@ -39,7 +39,7 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
 - Retain dt=20 us as configuration metadata. Steady Reynolds/energy storage
   terms are disabled and bearing motion is not integrated.
 - Inner pressure/temperature coupling: both normalized changes below 1e-6,
-  maximum 2000 sweeps, fixed relaxation 1. An iteration cap or restored best
+  maximum 2000 sweeps, fixed relaxation 1, inner FBNS tolerance 1e-12. An iteration cap or restored best
   iterate without convergence is a failed trial.
 - Outer equilibrium: vary eccentricity and attitude until the total fluid force
   on the bearing balances the specified applied load vector to 0.2%.
@@ -217,3 +217,15 @@ verified. Wall heat fluxes remain available for inspection.
 
 See [the execution record](EXECUTION.md) for verified builds, short MPI timings,
 failed attempts and current physical-run status.
+
+### Pinned-groove thermal limitation
+
+The current model pins the groove depth-average temperature to TC0 while
+applying the sheared quartic film profile and conjugate wall closure there.
+This can create a sub-ambient bore patch in the groove and neighboring cells,
+even with nonnegative bulk temperature rise and balanced solid wall fluxes.
+The fixed-F diagnostic showed a 0.218 K groove undershoot and 0.069 K in two
+adjacent columns. These wall values are a model artifact, not physical cooling
+below the reservoir. Keep the raw fields, report their minima, and avoid using
+groove-region wall temperatures as experimental predictions. Its influence on
+friction/cavitation remains a sensitivity question; it is not assumed negligible.

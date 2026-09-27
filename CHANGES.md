@@ -4020,3 +4020,7 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Verify ten bounded steady MPI trials, retain all failed/capped evidence and
   select four ranks per case for batch efficiency. Use verified physical-core
   rankfiles after the workstation ignored CPU-list binding.
+
+- Tighten the campaign inner FBNS tolerance to1e-12 after the plotted pressure
+  history exposed premature outer acceptance when FBNS skipped its Newton
+  update at the default1e-9 floor. Preserve the original preflight as evidence.

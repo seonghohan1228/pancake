@@ -61,7 +61,8 @@
     "bc_z_north_type": "DIRICHLET",
     "bc_z_north_val": 101325.0,
     "bc_z_south_thermal": "CONSTANT",
-    "bc_z_north_thermal": "CONSTANT"
+    "bc_z_north_thermal": "CONSTANT",
+    "fbns_tol": 1e-12
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
@@ -124,7 +125,8 @@
     "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
     "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass diagnostics. The current cross-film path does not provide a global energy-balance diagnostic; report it as unavailable.",
     "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
-    "external_convection": "Each force evaluation must close both h coefficients to relative1e-3 and wall-temperature change0.01K after an inner converged pressure/thermal solve."
+    "external_convection": "Each force evaluation must close both h coefficients to relative1e-3 and wall-temperature change0.01K after an inner converged pressure/thermal solve.",
+    "fbns": "Scaled mass and complementarity residuals below1e-12; inner solve must not mask an outer pressure step larger than1e-6."
   },
   "specified_boundaries": {
     "provenance": "User follow-up: 5 mm groove opposite load, same reservoir conditions as bearing ends, p_cav=0, stainless OD85 mm and L40 mm; surrounding still oil at TC0, estimate natural convection.",
@@ -223,7 +225,8 @@
     "BVC32 PVE cp and k are constant analogues; FW68D nu(T) and suppliedrho(T) unchanged.",
     "Horizontal housing; full-length axial groove.",
     "Shaft is represented by one equilibrated temperature; two circularendfaces43mm diameter convect toTC0.",
-    "Housing r-theta conduction lacks axial/endfacecooling; assesscoolingsensitivity."
+    "Housing r-theta conduction lacks axial/endfacecooling; assesscoolingsensitivity.",
+    "PINNED groove mean temperature with sheared cross-film reconstruction can give sub-ambient bore temperatures locally. Do not interpret groove/adjacent wall temperatures as physical predictions; effect on other outputs needs sensitivity evidence."
   ],
   "material_sensitivity_plan": {
     "oil_cp_k_fraction": 0.2,

@@ -2908,3 +2908,23 @@ changes below 0.01 K before accepting the external thermal closure. Force
 balance then requires fluid-on-bearing (0,+W) for applied (0,-W).
 The housing has no axial end-face cooling in this r-theta model; this omission
 and the short L/D=0.47 remain explicit limits on the thermal comparison.
+
+### FW68D preflight qualifications (2026-09-27)
+
+The initial F convergence plot exposed a tolerance mismatch: FBNS could stop
+at its initial iterate once the scaled residual passed its default 1e-9,
+leaving pressure unchanged and making the outer pressure-change norm zero.
+The prior pressure update still exceeded the campaign 1e-6 outer tolerance.
+Set campaign `fbns_tol=1e-12` so the outer criterion is not hidden by that floor.
+This is a numerical setting change, with no change to the physical equations.
+
+The PINNED groove replaces mean-film energy rows by TC0, while cross-film
+reconstruction still treats those cells as sheared film with conjugate walls.
+The pinned row therefore acts as an implicit supply-energy sink. A warm shaft
+and fixed mean can produce an algebraically sub-ambient bore temperature,
+which bush conduction spreads into neighboring cells. The F diagnostic found
+a 0.218 K groove undershoot and 0.069 K in two adjacent columns. Balanced
+solid wall fluxes do not remove this local modeling inconsistency. Preserve
+these values as baseline diagnostics; do not interpret them as physical
+sub-ambient cooling or assume negligible effects on other outputs. Changing
+the groove mixing model without measured mixing inputs is not a remedy.

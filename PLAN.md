@@ -2578,3 +2578,7 @@ numerical diagnosis only and do not complete an experimental comparison.
 - [x] Retain 1e-6 coupling tolerances, use fixed relaxation and a sufficient cap.
 - [x] Complete corrected native check and physical-core steady timing test.
 - [ ] Accept a converged fixed-position solve before the load/thermal sweep.
+
+- [x] Detect an inner FBNS stopping floor masking the outer pressure tolerance.
+- [ ] Repeat the fixed-position preflight with fbns_tol=1e-12.
+- [x] Assess localized pinned-groove wall-temperature undershoot explicitly; document baseline limitation without clamping.

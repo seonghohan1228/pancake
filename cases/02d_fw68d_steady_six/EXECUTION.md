@@ -60,3 +60,22 @@ The workstation OpenMPI 4.1.2 left all ranks unbound when given `--cpu-list`.
 Explicit rankfiles were verified to bind ranks to separate physical cores,
 including disjoint groups 0–3 and 4–7. The driver uses `--rankfile` and records
 its hash and binding output. This changes process placement only.
+
+## Fixed-position preflight and inner-tolerance correction
+
+Snapshot875a58b completed a24-rank F trial at epsilon0.2 and attitude165 degrees
+in262 outer iterations,101.71s, return code0. It remained a fixed-coefficient,
+fixed-load-position trial: housing-h mismatch51.3%, force mismatch6.35%. Two
+linear-solver fallbacks recovered successfully. Solid wall flux integrals agree
+with their imposed external cooling to within5e-10W.
+
+The convergence curve revealed that the final pressure residual dropped from
+6.49e-5 to exactly zero because FBNS accepted its initial iterate at its default
+1e-9 tolerance. This does not demonstrate the requested1e-6 outer pressure
+tolerance. Retain that trial as a tolerance diagnostic. Tighten inner FBNS to
+1e-12 and repeat before accepting pressure convergence or launching production.
+
+The trial also shows a localized bore undershoot of0.218K below TC0 in the
+pinned groove, extending0.069K below TC0 into two neighboring columns. This
+requires a model review before interpreting local groove-region temperature.
+No clamping or adjustment of those saved temperatures has been applied.
