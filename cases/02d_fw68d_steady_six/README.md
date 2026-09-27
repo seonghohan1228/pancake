@@ -3,8 +3,9 @@
 This campaign replaces the earlier 24-point transient plan with the six cases
 selected by the user. It uses a steady pressure–energy–CHT solve and an outer
 load-balance search. The package now includes the groove, housing and still-oil
-cooling. Pressure datum and material/shaft thermal inputs remain unresolved;
-no physical cases have been run.
+cooling. The user supplied 1 atm reservoirs and exposed shaft ends and
+authorized ordinary/similar material properties. Native validation is in
+progress; production equilibria have not yet been accepted.
 
 ## Accepted cases
 
@@ -97,17 +98,31 @@ case TC0. The native fed-groove PINNED closure fixes reservoir cells to TC0.
 The stainless housing has OD 85 mm, outer radius 42.5 mm and length 40 mm.
 Its physical radial wall is 20.9575 mm thick. The r-theta solid solver starts
 at journal R=21.5 mm, a thin-film approximation to bore radius 21.5425 mm.
-Stainless grade/conductivity remains unspecified; the generic solver default
-50 W/(m K) is not assigned. As a reference only, the
-[Outokumpu Core datasheet](https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf)
-lists 15 W/(m K) at 20 degrees C for 304. This does not identify the rig material.
+Use 304 stainless as the authorized ordinary-material analogue, with constant
+conductivity 15 W/(m K), from the
+[Outokumpu Core datasheet](https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf).
 
-The requested cavitation pressure is 0 Pa; its gauge/absolute datum is pending.
-The current validator requires positive absolute cavity pressure, though exact
-zero is mathematically compatible with this pure-oil FBNS pressure-offset
-formulation. Zero absolute would need a narrow validation change and regression
-check. No positive floor or atmospheric conversion has been substituted. The
-common groove/end reservoir pressure remains a separate unresolved input.
+Groove and end reservoirs are 101325 Pa absolute. Retain the requested cavity
+plateau as 0 Pa absolute, distinct from the reservoirs. The scoped validator
+change permits zero only for this gas-free SINGLE_PHASE/FBNS/SCALAR_PCAV path;
+negative pressures and zero pressure in other gas/coupled paths remain invalid.
+
+## Adopted oil properties and exposed shaft ends
+
+Use constant cp=2010 J/(kg K) and k=0.13 W/(m K), the published 40 C thermal
+properties of BITZER BVC32 PVE, as the authorized analogous oil values
+([manufacturer data](https://www.bitzer.de/shared_media/html/est-500/en-GB/271261579271263371.html)).
+Keep the supplied FW68D viscosity and density laws. Film energy uses constant
+rho_cp=rho(TC0)*cp within each case. These cp/k values are not FW68D measurements.
+
+Both exposed shaft ends have radius 21.5 mm and total area 0.0029044024 m2.
+Use shaft_ambient_area_ratio=R/L=0.5375 and ambient temperature TC0. The existing
+CHT model solves one global shaft temperature, not axial solid conduction.
+For the rotating disks use Nu_R=0.62 Re_R^(1/2) Pr^(1/3), Re_R=|omega| R^2/nu,
+and h_end=Nu_R*k/R at mean shaft/oil temperature. This is a high-Pr, laminar,
+unconfined-disk estimate (Liu and Stewart,
+[*Int. J. Heat Mass Transfer*](https://doi.org/10.1016/0017-9310(72)90181-0), 1972).
+Record Re/Pr and distinguish this rotating-end coefficient from housing cooling.
 
 ## Natural convection to surrounding oil
 
@@ -124,26 +139,12 @@ alpha=k_o/(rho cp), Pr=nu/alpha, Ra_D=g beta |T_surface-TC0| D^3/(nu alpha),
 and beta=0.7284/rho from the supplied density approximation. Use the supplied
 FW68D viscosity table. The boundary is q''=h(T_surface-TC0).
 
-Preliminary estimates below use **unconfirmed timing-fixture assumptions**
-cp=2000 J/(kg K) and k_o=0.13 W/(m K). They are not production boundary inputs
-or simulated temperatures. Wall excesses are illustrative.
-
-| Case | h at 5 K excess | h at 10 K excess | h at 20 K excess |
-|---|---:|---:|---:|
-| A | 42.06 | 53.66 | 71.34 |
-| B | 63.02 | 80.10 | 104.99 |
-| C | 41.43 | 52.83 | 70.22 |
-| D | 41.22 | 52.57 | 69.87 |
-| E | 56.19 | 71.32 | 93.51 |
-| F | 41.26 | 52.62 | 69.94 |
-
-All h values are W/(m2 K). Full-precision estimates and Ra/Pr are recorded in
-`steady_setup.json`. Recalculate when oil thermal properties are established.
-
-The solver currently takes fixed h per solve. The planned thermal iteration
-updates mean h from the converged mean outer-surface temperature inside each
-force evaluation; this coupling is not implemented. A pressure/temperature
-solve with frozen trial h does not verify the natural-convection closure.
+The driver iterates the housing and shaft coefficients within every force
+evaluation, using solved mean surface temperatures and relaxation. The mean
+housing outer temperature is reconstructed from the bore mean and exact mean
+radial/Robin resistance. Accept coefficient changes below 1e-3 relative and
+wall-temperature changes below 0.01 K, alongside both inner coupling residuals
+below 1e-6. A fixed-coefficient timing trial is explicitly labelled unclosed.
 
 L/D=0.47 is short, so this long-cylinder lateral-surface estimate is approximate.
 The two annular end faces have about 79% of the outside cylindrical area, but
@@ -151,25 +152,33 @@ axial solid conduction/end-face cooling is absent from the r-theta CHT model.
 Confinement and mounting contacts are also unresolved. Report these limits
 and test cooling sensitivity; this is not a full finite-housing heat-loss model.
 
-## Inputs still required
+## Remaining comparison information
 
-- Common groove/end absolute pressure and whether cavity zero is gauge or
-  absolute. Logged pressure remains an observation until assigned.
-- Stainless grade or conductivity, shaft cooling condition, oil heat capacity
-  and conductivity. These are not determined by still-oil cooling.
-- TC2 and pressure sensor positions for comparisons, not for solving the PDEs.
-
-Full-length groove and horizontal housing are explicit model interpretations.
-Unresolved numeric production inputs remain null in the preparation record.
+TC2 and pressure sensor positions are needed to compare measured temperatures
+and pressure at corresponding points. They do not block the numerical solves.
+Full-length groove, horizontal housing, isothermal shaft and analogous
+materials are explicit modeling assumptions. Revisit cooling sensitivity when
+assessing experimental agreement; chosen coefficient/property variations are
+sensitivity scenarios, not measured confidence bounds.
 
 ## Execution and acceptance
 
-Once the physical boundaries are established, make cross-film wall shear
-consistent with the existing F0/F1 flow integrals before quantitative friction
-comparison. The current force/torque routine still uses mean-film viscosity.
-Verify the variable-viscosity wall stress and its constant-viscosity limit with
-the existing force tests. This source correction has not been made in this
-input-preparation task.
+`run_steady.py` renders the exact cases and iterates eccentricity/attitude to
+fluid-on-bearing target (0,+W). The F0/F1 wall-stress correction is implemented
+and checked against variable-viscosity and uniform-viscosity limits. Every
+solver attempt retains its config, log, hashes, diagnostic table and fields;
+failed or capped inner/thermal/force solves remain failed.
+
+```sh
+python run_steady.py --self-check
+python run_steady.py --solver /absolute/path/pancake --ranks 2 \
+  --work /absolute/path/new-results --cases F,E,D,C,B,A,E_low,E_high
+```
+
+A frozen-position timing call is `--trial F .15 165 --thermal-iterations 1`.
+It is not load-balanced or externally thermally converged. On Open MPI only,
+`--cpu-list` restricts the physical-core set; check the binding before comparing
+throughput. The user-requested resolution remains 720 by 192 throughout.
 
 Follow the repository workflow: local build and short checks, isolated remote
 source/configuration snapshot, fresh remote build, converged equilibrium runs,

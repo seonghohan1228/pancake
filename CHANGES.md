@@ -3988,3 +3988,20 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Record Churchill-Chu natural-convection estimates using explicitly provisional
   oil thermal properties; document the missing self-consistent h coupling and
   finite-housing/end-face limitations. No solver code or CFD output changed.
+
+
+## 2026-09-27 - Enable the steady FW68D thermal campaign
+
+- Adopt the user's 1 atm end/groove reservoir and two exposed shaft-end faces.
+  Use documented BVC32 PVE cp/k and 304 stainless conductivity under the user's
+  instruction to use ordinary/similar properties; keep exact FW68D nu/rho inputs.
+- Permit exact zero absolute cavity pressure only in the restricted gas-free
+  SINGLE_PHASE FBNS configuration; retain gas-path and negative-pressure checks.
+- Correct shaft torque and bearing circumferential/axial wall stresses using
+  F0/F1 when cross-film viscosity is active. Keep the classical initial/off path.
+- Add independent variable-viscosity stress, uniform-limit, initial-state and
+  zero-cavity-pressure regressions. Native one/four-rank focused checks pass.
+- Add a runnable force/thermal iteration driver with retained per-attempt
+  provenance and explicit rejection of nonlinear, thermal and force caps.
+  Use natural convection for the stationary housing and rotating-disk cooling
+  for the exposed shaft ends; report reduced-solid/confinement assumptions.

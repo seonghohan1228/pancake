@@ -2827,3 +2827,84 @@ annular end area about 79% of lateral area, the cylinder correlation is an
 approximate lateral boundary, not a full finite-housing thermal model.
 Existing CHT accepts fixed h; self-consistent updating of h during equilibrium
 remains planned, not implemented or validated by these input records.
+
+## Steady FW68D thermal closure and wall stress (2026-09-27)
+
+The groove and both axial reservoirs are 101325 Pa absolute at the selected
+case TC0. The requested cavity plateau is interpreted as 0 Pa absolute.
+Validation permits this only for gas-free SINGLE_PHASE FBNS with SCALAR_PCAV,
+no gas-pressure coupling, zero initial dissolved charge/Henry coefficient and
+zero vapor-temperature coefficient. Negative pressure and zero pressure in
+other gas/coupled configurations remain invalid. FBNS uses the pressure offset
+p-p_cav and a separately positive reference scale; it does not divide by p_cav.
+
+### Wall forces with cross-film viscosity
+
+For shaft surface speed U=omega R and y measured from shaft to bush, define
+$F_0=\int_0^h\mu(y)^{-1}\,dy$ and $F_1=\int_0^h y\mu(y)^{-1}\,dy$.
+The positive resisting shaft stress and fluid-on-bush tangential stress are
+
+$$\tau_{s}=\frac{U}{F_0}+\frac{F_1}{F_0}\frac{\partial p}{\partial s},
+\qquad \tau_b=\frac{U}{F_0}-\left(h-\frac{F_1}{F_0}\right)
+\frac{\partial p}{\partial s}.$$
+
+The bush axial stress is
+$\tau_{b,z}=-(h-F_1/F_0)\partial p/\partial z$.
+Apply the full-film gate to pressure-driven stresses and the existing STRIATED
+liquid-filling factor to Couette stress in cavities. With cross-film closure
+inactive, retain the classical mu U/h and h/2 expressions. For uniform mu,
+F0=h/mu and F1=h^2/(2mu), so the new formula has the same limit. The correction
+makes reported torque and wall forces use the same viscosity integrals as flow.
+
+### Adopted materials and exposed shaft ends
+
+The user authorizes ordinary or similar thermophysical properties. Use BVC32
+PVE refrigeration oil as the cp/k analogue: cp=2010 J/(kg K), k=0.13 W/(m K),
+the manufacturer's values at 40 C, held constant
+([BITZER technical data](https://www.bitzer.de/shared_media/html/est-500/en-GB/271261579271263371.html)).
+Keep the supplied FW68D nu(T) and rho(T), so the experimental reference S does
+not change. The film equation uses constant volumetric rho_cp=rho(TC0)*2010
+within each case; external-film property evaluation uses cp=2010. This is a
+caloric approximation, not a measured FW68D heat-capacity curve.
+
+Use 304 stainless k=15 W/(m K), held constant, as the housing analogue
+([Outokumpu physical properties](https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf)).
+Steady solids have no storage term, so solid heat capacity/density are not
+required by this reduced CHT model.
+
+Both shaft ends are exposed to surrounding oil at TC0. Their combined area is
+$A_e=2\pi R^2=0.0029044024$ m2, giving native shaft_ambient_area_ratio=R/L=0.5375.
+The shaft remains one equilibrated temperature; axial solid conduction is not
+resolved. For rotating ends in otherwise still oil, use the laminar high-Pr
+free-disk estimate
+
+$$Re_R=\frac{|\omega|R^2}{\nu},\qquad
+Nu_R\simeq0.62 Re_R^{1/2}Pr^{1/3},\qquad h_e=\frac{k_o Nu_R}{R},$$
+
+with properties at (Tshaft+TC0)/2. This high-Pr limit follows rotating-disk
+heat/mass-transfer theory (Liu and Stewart,
+[*Int. J. Heat Mass Transfer*](https://doi.org/10.1016/0017-9310(72)90181-0), 1972).
+The heat sink is Q_e=h_e A_e(Tshaft-TC0). This coefficient is distinct from
+natural convection at the stationary housing. Finite end geometry, confinement,
+shaft conduction and mixed buoyancy/rotation are model uncertainties, not
+measured corrections. Record disk Re/Pr with the results.
+
+### External coefficient iteration
+
+The campaign driver wraps the existing steady solver with updates of housing
+and shaft coefficients. Each accepted inner evaluation must meet pressure and
+temperature coupling criteria. For the current constant-k r-theta housing with
+uniform outer Robin coefficient, angular averaging gives
+
+$$\overline T_{outer}=T_\infty+
+\frac{\overline T_{bore}-T_\infty}
+{1+h_b r_o\ln(r_o/R)/k_b}.$$
+
+This reconstructs the mean outer surface temperature without treating the bore
+as the outside wall. Evaluate the housing Churchill-Chu coefficient at
+(overline(Touter)+TC0)/2 and the end-disk coefficient at (Tshaft+TC0)/2; iterate
+with relaxation. Require relative coefficient change below 1e-3 and wall
+changes below 0.01 K before accepting the external thermal closure. Force
+balance then requires fluid-on-bearing (0,+W) for applied (0,-W).
+The housing has no axial end-face cooling in this r-theta model; this omission
+and the short L/D=0.47 remain explicit limits on the thermal comparison.

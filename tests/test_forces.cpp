@@ -4,6 +4,7 @@
 #include <mpi.h>
 #include <petsc.h>
 
+#include "communicator.hpp"
 #include "config.hpp"
 #include "field.hpp"
 #include "film_thickness.hpp"
@@ -118,6 +119,19 @@ int main(int argc, char** argv) {
         const double expected_fz = pi * (cfg.R + cfg.c) * cfg.c * p0;
         check(std::abs(forces.viscous_z - expected_fz) / expected_fz < 1.0e-3,
               "viscous z force should use bearing-side pressure-gradient shear");
+
+        cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+        fields.add("cross_film_f0", mesh).fill(cfg.c / cfg.mu);
+        const double asymmetric_inverse_viscosity = 0.6;
+        fields.add("cross_film_f1", mesh).fill(cfg.c * cfg.c / cfg.mu *
+            (0.5 + asymmetric_inverse_viscosity / 12.0));
+        const Reynolds::ForceComponents cross_film_forces =
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
+        const double expected_cross_film_fz = expected_fz *
+            (1.0 - asymmetric_inverse_viscosity / 6.0);
+        check(std::abs(cross_film_forces.viscous_z - expected_cross_film_fz) /
+                  expected_cross_film_fz < 1.0e-3,
+              "axial bearing stress must use the cross-film F1/F0 pressure arm");
     }
 
     {
@@ -142,6 +156,96 @@ int main(int argc, char** argv) {
             2.0 * pi * cfg.mu * cfg.omega * cfg.R * cfg.R * cfg.R * cfg.L / cfg.c;
         check(std::abs(forces.friction_torque - expected_torque) / expected_torque < 1.0e-12,
               "friction torque should include shaft surface geometry");
+    }
+
+    {
+        SimulationConfig cfg;
+        cfg.n_theta_global = 120;
+        cfg.n_z_global = 8;
+        cfg.R = 0.01;
+        cfg.c = 1.0e-4;
+        cfg.e = 0.0;
+        cfg.L = 0.02;
+        cfg.mu = 0.01;
+        cfg.omega = 100.0;
+        cfg.p_cav = 1.0e5;
+        cfg.cavitation_model = CavitationModel::FBNS;
+        cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+
+        Mesh mesh(cfg);
+        Communicator comm(mesh);
+        Fields fields = make_force_fields(mesh, cfg);
+        fields.add("cross_film_f0", mesh).fill(0.0);
+        fields.add("cross_film_f1", mesh).fill(0.0);
+        const Reynolds::ForceComponents initial =
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
+        const double initial_torque = 2.0 * pi * cfg.mu * cfg.omega *
+            cfg.R * cfg.R * cfg.R * cfg.L / cfg.c;
+        check(std::abs(initial.friction_torque - initial_torque) / initial_torque < 1.0e-11,
+              "uninitialized cross-film integrals must keep finite initial torque");
+        const double pressure_amplitude = 2.0e4;
+        const double inverse_mu_scale = 1.5;
+        const double first_harmonic = 0.6;
+        const double second_harmonic = 0.3;
+        const double d_theta = mesh.get_d_theta();
+        const double U = cfg.omega * cfg.R;
+
+        // 1/mu(y,theta) = scale/mu0 * [1 + a(theta)*(y/h - 1/2)].
+        // Integrating this prescribed profile gives F0 and F1 analytically.
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            const double angle = (mesh.offset_theta + i + 0.5) * d_theta;
+            const double a = first_harmonic * std::cos(angle) +
+                second_harmonic * std::cos(2.0 * angle);
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                fields["pressure"](i, j) = cfg.p_cav + pressure_amplitude * (1.0 + std::sin(angle));
+                fields["cross_film_f0"](i, j) = cfg.c * inverse_mu_scale / cfg.mu;
+                fields["cross_film_f1"](i, j) = cfg.c * cfg.c * inverse_mu_scale / cfg.mu *
+                    (0.5 + a / 12.0);
+            }
+        }
+        comm.update_ghosts(fields["pressure"]);
+        const Reynolds::ForceComponents forces =
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
+        const double sinc = std::sin(d_theta) / d_theta;
+        const double expected_torque = 2.0 * pi * cfg.R * cfg.R * cfg.L *
+            cfg.mu * U / (cfg.c * inverse_mu_scale) +
+            pi * cfg.R * cfg.L * pressure_amplitude * cfg.c * first_harmonic * sinc / 12.0;
+        const double expected_viscous_y = -(cfg.R + cfg.c) * cfg.L *
+            pressure_amplitude * cfg.c * pi * sinc / (2.0 * cfg.R) *
+            (1.0 - second_harmonic / 12.0);
+        check(std::abs(forces.friction_torque - expected_torque) / expected_torque < 1.0e-11,
+              "cross-film shaft torque must use analytic F0/F1 wall stress");
+        check(std::abs(forces.viscous_y - expected_viscous_y) / std::abs(expected_viscous_y) < 1.0e-11,
+              "cross-film bearing force must use analytic F1/F0 pressure arm");
+
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                fields["pressure"](i, j) = cfg.p_cav;
+                fields["theta"](i, j) = 0.3;
+            }
+        }
+        cfg.cavitated_film_model = CavitatedFilmModel::STRIATED;
+        comm.update_ghosts(fields["pressure"]);
+        const double expected_striated_torque = 0.3 * 2.0 * pi * cfg.R * cfg.R * cfg.L *
+            cfg.mu * U / (cfg.c * inverse_mu_scale);
+        const Reynolds::ForceComponents striated =
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
+        check(std::abs(striated.friction_torque - expected_striated_torque) /
+                  expected_striated_torque < 1.0e-11,
+              "cavitated cross-film Couette torque must keep STRIATED liquid fraction");
+
+        cfg.cavitated_film_model = CavitatedFilmModel::FULL_FILM;
+        for (int i = 0; i < mesh.n_theta_local; ++i)
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                fields["cross_film_f0"](i, j) = cfg.c / cfg.mu;
+                fields["cross_film_f1"](i, j) = cfg.c * cfg.c / (2.0 * cfg.mu);
+            }
+        const Reynolds::ForceComponents uniform =
+            Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
+        const double uniform_torque = 2.0 * pi * cfg.mu * cfg.omega *
+            cfg.R * cfg.R * cfg.R * cfg.L / cfg.c;
+        check(std::abs(uniform.friction_torque - uniform_torque) / uniform_torque < 1.0e-11,
+              "uniform-viscosity F0 must recover classical torque");
     }
 
     int rank = 0;

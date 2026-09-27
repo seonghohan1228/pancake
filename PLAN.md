@@ -2553,3 +2553,19 @@ independently.
 
 These additions resolve groove placement and housing dimensions from the prior
 entry. They do not mark physical runs or thermal convergence complete.
+
+
+## 2026-09-27 - Enable and validate steady FW68D execution
+
+- [x] Apply atmospheric end/groove pressure and the requested zero cavity plateau.
+- [x] Select sourced ordinary/analogous stainless and PVE thermal properties.
+- [x] Represent both exposed shaft-end areas and separate rotating-end cooling
+  from natural convection at the stationary housing.
+- [x] Correct cross-film wall forces/torque and verify native one/four-rank limits.
+- [x] Implement the force/thermal campaign driver and pass its no-CFD self-check.
+- [ ] Finish G6 native/remote preflight and measure a suitable MPI rank layout.
+- [ ] Obtain the six accepted steady equilibria and two Case E sensitivities,
+  return evidence, and compare temperature, friction and cavity regions.
+
+The original discretization is retained. Non-converged trials are evidence for
+numerical diagnosis only and do not complete an experimental comparison.

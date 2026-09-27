@@ -4,9 +4,8 @@
   "case_csv_source": "F:/Seongho/Research/attachments/LGE-2026-09-27-simulation-cases.csv",
   "case_csv_sha256": "de19d60a4805b220c2e45d5b2ab2339577d7ea34d0f2113a9bd61a4d3d1d4629",
   "case_count": 6,
-  "solver_source_and_general_material_table_unchanged": true,
   "preparation_source_commit": "dc69cee3b6df43ced59aabe41c1de84caf546bb1",
-  "simulations_executed": 0,
+  "simulations_executed": 2,
   "boundary_update": {
     "date": "2026-09-27",
     "source": "Direct user messages in this task",
@@ -20,6 +19,14 @@
     "housing_material": "stainless steel",
     "surroundings": "still FW68D at each TC0",
     "natural_convection_estimation_authorized": true,
-    "note": "Source experimental attachment and reference-property table remain unchanged; no physical cases run."
-  }
+    "note": "Source experimental attachment and reference-property table remain unchanged; no physical cases run.",
+    "reservoir_pressure_Pa_absolute": 101325,
+    "pressure_reference_interpretation": "Requested zero cavity interpreted absolute; distinct from user1atmreservoir.",
+    "analogous_thermal_properties_authorized": true,
+    "shaft_end_exposure": "Both circular ends exposed to surrounding oil at TC0"
+  },
+  "solver_source_modified": true,
+  "general_material_table_unchanged": true,
+  "accepted_production_equilibria": 0,
+  "execution_note": "Two local fixed-position preflight attempts started; neither is a production load/thermal equilibrium."
 }

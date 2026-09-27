@@ -466,6 +466,57 @@ void test_dirichlet_axial_ends() {
           "the summed per-cell residual must reproduce the boundary flux plus the groove supply");
 }
 
+void test_zero_cavitation_pressure_pure_oil() {
+    SimulationConfig cfg = benchmark_config(120, 8);
+    cfg.p_cav = 0.0;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.dissolved_gas_species = DissolvedGasSpecies::AIR;
+    cfg.dissolved_gas_initial = 0.0;
+    cfg.dissolved_gas_henry_coeff = 0.0;
+    cfg.bc_z_south_type = BCType::DIRICHLET;
+    cfg.bc_z_north_type = BCType::DIRICHLET;
+    cfg.bc_z_south_val = 101325.0;
+    cfg.bc_z_north_val = 101325.0;
+
+    std::vector<std::string> errors, warnings;
+    cfg.validate(errors, warnings);
+    check(errors.empty(), "gas-free SINGLE_PHASE FBNS must accept p_cav = 0 Pa");
+
+    SimulationConfig negative = cfg;
+    negative.p_cav = -1.0;
+    negative.validate(errors, warnings);
+    check(std::any_of(errors.begin(), errors.end(), [](const std::string& error) {
+              return error.find("p_cav") != std::string::npos;
+          }), "negative cavitation pressure must remain invalid");
+
+    SimulationConfig gaseous = cfg;
+    gaseous.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    gaseous.validate(errors, warnings);
+    check(std::any_of(errors.begin(), errors.end(), [](const std::string& error) {
+              return error.find("p_cav") != std::string::npos;
+          }), "TWO_PHASE must retain a positive absolute cavitation pressure");
+
+    Case c(cfg);
+    check(c.solve().converged, "FBNS must converge with p_cav = 0 and positive reservoirs");
+    double min_pressure = 1.0e300;
+    double max_pressure = -1.0e300;
+    double min_theta = 1.0;
+    for (int i = 0; i < c.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < c.mesh.n_z_local; ++j) {
+            min_pressure = std::min(min_pressure, c.fields["pressure"](i, j));
+            max_pressure = std::max(max_pressure, c.fields["pressure"](i, j));
+            min_theta = std::min(min_theta, c.fields["theta"](i, j));
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &min_pressure, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &max_pressure, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &min_theta, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    check(min_pressure >= -1.0e-8 && min_pressure < 1.0e-6,
+          "zero-pressure FBNS case must contain a finite zero-pressure cavity");
+    check(max_pressure > cfg.bc_z_south_val && min_theta < 0.99,
+          "zero-pressure FBNS case must have a nontrivial loaded and cavitated film");
+}
+
 double manufactured_full_length_groove_source(int n_z) {
     SimulationConfig cfg = benchmark_config(120, n_z);
     cfg.omega = 0.0;
@@ -1554,6 +1605,7 @@ int main(int argc, char** argv) {
     test_front_accuracy_beats_elrod();
     test_transient_storage();
     test_dirichlet_axial_ends();
+    test_zero_cavitation_pressure_pure_oil();
     test_inlet_overwrites_axial_boundary();
     test_scope_is_enforced();
     test_property_coupling_is_inert_when_off();

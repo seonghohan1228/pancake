@@ -779,5 +779,7 @@ The [A–F steady campaign](cases/02d_fw68d_steady_six/README.md) supersedes the
 TC0 as inlet/ambient reference, and solves eccentricity/attitude by load balance
 around steady energy/CHT evaluations. The specified 5 mm groove is opposite
 the load; the 85 mm OD stainless housing uses estimated natural convection
-to still oil at TC0. Pressure datum and material/shaft thermal inputs remain
-unresolved; no physical six-case run has been launched.
+to still oil at TC0. The runnable driver uses atmospheric groove/end reservoirs,
+zero absolute cavity pressure, analogous PVE/stainless thermal properties, and
+convective cooling from both shaft ends. Validation and accepted equilibrium
+results are recorded with the campaign; failed trials are retained.

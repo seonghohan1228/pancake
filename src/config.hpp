@@ -1509,9 +1509,16 @@ struct SimulationConfig {
         require_positive(bulk_modulus, "bulk_modulus");
         require_positive(theta_min, "theta_min");
         require_positive(min_film_thickness, "min_film_thickness");
-        if (!finite(p_cav) || p_cav <= 0.0) {
-            error("p_cav must be an absolute pressure > 0 Pa. Use a justified cavity pressure; "
-                  "the reservoir pressure belongs in bc_z_south_val / bc_z_north_val.");
+        const bool zero_pressure_pure_oil = cavitation_model == CavitationModel::FBNS &&
+            cavitation_threshold == CavitationThreshold::SCALAR_PCAV &&
+            fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+            gas_pressure_coupling == GasPressureCoupling::NONE &&
+            dissolved_gas_initial == 0.0 && dissolved_gas_henry_coeff == 0.0 &&
+            oil_vapor_temperature_coeff == 0.0;
+        if (!finite(p_cav) || p_cav < 0.0 || (p_cav == 0.0 && !zero_pressure_pure_oil)) {
+            error("p_cav must be a positive absolute pressure, except 0 Pa for gas-free "
+                  "SINGLE_PHASE FBNS with SCALAR_PCAV. Reservoir pressure belongs in "
+                  "bc_z_south_val / bc_z_north_val.");
         }
         if (!finite(omega_ramp_time) || omega_ramp_time < 0.0) {
             error("omega_ramp_time must be finite and non-negative.");

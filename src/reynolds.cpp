@@ -637,8 +637,17 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             const double shear_w = (cfg.cavitated_film_model == CavitatedFilmModel::STRIATED && g_f <= 0.0)
                 ? std::max(theta(i, j), 0.0) : 1.0;
 
-            const double tau_theta_bearing = (mu_val * omega * R) / h_val * shear_w
-                - g_f * (h_val / (2.0 * R)) * dp_dtheta;
+            double couette_shear = mu_val * omega * R / h_val;
+            double shaft_pressure_arm = 0.5 * h_val;
+            if (CrossFilm::active(cfg) && fields.has("cross_film_f0") &&
+                fields.has("cross_film_f1") && fields["cross_film_f0"](i, j) > 0.0) {
+                const double f0 = fields["cross_film_f0"](i, j);
+                const double f1 = fields["cross_film_f1"](i, j);
+                couette_shear = omega * R / f0;
+                shaft_pressure_arm = f1 / f0;
+            }
+            const double tau_theta_bearing = couette_shear * shear_w
+                - g_f * ((h_val - shaft_pressure_arm) / R) * dp_dtheta;
 
             double dp_dz = 0.0;
             if (j == 0) {
@@ -654,15 +663,15 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             } else {
                 dp_dz = (p(i, j + 1) - p(i, j - 1)) / (2.0 * d_z);
             }
-            const double tau_z_bearing = -g_f * 0.5 * h_val * dp_dz;
+            const double tau_z_bearing = -g_f * (h_val - shaft_pressure_arm) * dp_dz;
 
             local_viscous_x += tau_theta_bearing * (-sin_t) * dA_bearing;
             local_viscous_y += tau_theta_bearing * ( cos_t) * dA_bearing;
             local_viscous_z += tau_z_bearing * dA_bearing;
 
             const double dA_shaft = R * d_theta * d_z;
-            const double tau_torque = (mu_val * omega * R) / h_val * shear_w
-                + g_f * (h_val / (2.0 * R)) * dp_dtheta;
+            const double tau_torque = couette_shear * shear_w
+                + g_f * (shaft_pressure_arm / R) * dp_dtheta;
             local_torque += tau_torque * R * dA_shaft;
         }
     }
