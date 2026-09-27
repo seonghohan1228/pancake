@@ -2577,8 +2577,11 @@ numerical diagnosis only and do not complete an experimental comparison.
   housing ambient override; correct generated reservoir references.
 - [x] Retain 1e-6 coupling tolerances, use fixed relaxation and a sufficient cap.
 - [x] Complete corrected native check and physical-core steady timing test.
-- [ ] Accept a converged fixed-position solve before the load/thermal sweep.
+- [x] Accept a converged fixed-position solve with tight FBNS tolerance before the load/thermal sweep.
 
 - [x] Detect an inner FBNS stopping floor masking the outer pressure tolerance.
-- [ ] Repeat the fixed-position preflight with fbns_tol=1e-12.
+- [x] Repeat the fixed-position preflight with fbns_tol=1e-12; pressure crosses tolerance smoothly at iteration 484.
 - [x] Assess localized pinned-groove wall-temperature undershoot explicitly; document baseline limitation without clamping.
+
+- [x] Launch A-F on six disjoint four-rank slots, with two E temperature variants queued.
+- [ ] Return completed production equilibria, inspect model limitations and compare with experimental targets.

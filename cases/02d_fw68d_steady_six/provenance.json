@@ -5,7 +5,7 @@
   "case_csv_sha256": "de19d60a4805b220c2e45d5b2ab2339577d7ea34d0f2113a9bd61a4d3d1d4629",
   "case_count": 6,
   "preparation_source_commit": "dc69cee3b6df43ced59aabe41c1de84caf546bb1",
-  "simulations_executed": 15,
+  "simulations_executed": 16,
   "boundary_update": {
     "date": "2026-09-27",
     "source": "Direct user messages in this task",
@@ -32,5 +32,12 @@
   "bounded_remote_timing_trials": 10,
   "native_preflight_attempts": 4,
   "timing_evidence": "C:/Dev/pancake/results/fw68d_steady_20260927/remote_f754147/benchmarks/benchmark_20260927T100147Z_3904602/manifest.json",
-  "formally_converged_but_rejected_tolerance_trials": 1
+  "formally_converged_but_rejected_tolerance_trials": 1,
+  "counts_scope": "Archived pre-production checks only; production counts/status are recorded by the live campaign manifests.",
+  "accepted_fixed_position_numerical_checks": 1,
+  "production_source_commit": "ae0efd2148107c368f26367bf90d03551dad3828",
+  "production_remote_root": "/home/user/pancake-runs/fw68d-steady-20260927-ae0efd2",
+  "production_launch_utc": "2026-09-27T10:33:16.697185+00:00",
+  "production_launcher_pid": 3922893,
+  "production_launch_status": "A-F started with verified disjoint four-core binding; E_low and E_high queued."
 }

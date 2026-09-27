@@ -4024,3 +4024,8 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Tighten the campaign inner FBNS tolerance to1e-12 after the plotted pressure
   history exposed premature outer acceptance when FBNS skipped its Newton
   update at the default1e-9 floor. Preserve the original preflight as evidence.
+
+- Verify strict fixed-position convergence at 484 iterations on the remote
+  workstation, return full hashed evidence and inspect the convergence plot.
+  Launch the eight-case numerical baseline on six disjoint four-rank slots;
+  full load/thermal equilibria and experimental comparisons remain pending.

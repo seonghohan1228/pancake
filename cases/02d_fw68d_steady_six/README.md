@@ -5,7 +5,8 @@ selected by the user. It uses a steady pressure–energy–CHT solve and an oute
 load-balance search. The package now includes the groove, housing and still-oil
 cooling. The user supplied 1 atm reservoirs and exposed shaft ends and
 authorized ordinary/similar material properties. Local and remote focused checks pass; production equilibria have not yet
-been accepted.
+been accepted at batch launch. A-F are running remotely, with the two E
+temperature variants queued. See the execution record for the launch snapshot.
 
 ## Accepted cases
 

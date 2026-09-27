@@ -1,5 +1,5 @@
 {
-  "status": "preparing_solver_checks_and_remote_campaign",
+  "status": "remote_baseline_batch_launched_after_strict_fixed_position_check",
   "case_ids": [
     "A",
     "B",
