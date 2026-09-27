@@ -222,3 +222,22 @@ uses cores 0--7 and log `A_force4000_driver.log`; C PID 4068483 uses cores
 failed attempts; no failed state is reused. These searches and the E search
 remain in progress. No final experimental comparison or verified merge has
 been claimed.
+
+
+### Confirmed motion and execution scope
+
+The user confirmed on September 28 KST that the journal rotates at the
+previously supplied RPM while its centre remains fixed. A/C/D/F use 200 rpm;
+B/E use 1500 rpm, including E's TC0 variants. The bearing centre is an
+equilibrium unknown: the outer search updates eccentricity and attitude
+until fluid force balances the applied load. The bearing housing has no
+imposed rotation. This confirms the motion convention already used in the
+current runs; no physical configuration change or RPM substitution is needed.
+The user also answered yes to the explicit B workstation-transfer/run
+question. The prepared B launcher is being retried through normal approval.
+
+Automatic approval review rejected the B launcher upload a second time,
+despite the preceding yes response. It requires explicit authorization of
+the named local launcher transfer to user@143.248.99.6. A full-sentence
+approval question is pending; no B upload or launch succeeded. Existing
+A/C/E computations continue.
