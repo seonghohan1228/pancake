@@ -24,6 +24,13 @@ and run short checks locally; synchronize source and inputs to an isolated
 remote directory; compile and run there; bring results and provenance back
 locally. See [AGENTS.md](AGENTS.md#simulation-campaigns).
 
+The [six-case FW68D campaign](cases/02d_fw68d_steady_six/README.md) now uses
+pressure-derived groove mass/enthalpy exchange, constant mass-specific heat,
+and full-profile temperature and conservation checks. The bearing position
+is solved by force balance. Saved steady fields accelerate later trials;
+they do not replace any convergence checks. See the September 28 repair
+section in [PHYSICS.md](PHYSICS.md) for equations and model limits.
+
 For a feature-level record of substantive project contributions, see
 `docs/PROJECT_CONTRIBUTIONS.md`.
 

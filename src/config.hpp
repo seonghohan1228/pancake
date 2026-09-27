@@ -188,7 +188,9 @@ enum class BushOuterBoundary { CONVECTION, FIXED_TEMPERATURE };
 //   FLOW_WEIGHTED - the same mix, with lambda = Q_supply/(Q_supply + Q_upstream)
 //                   from the inlet's supply flow rate and the solved upstream
 //                   circumferential film flow.
-enum class GrooveMixingModel { PINNED, FIXED_LAMBDA, FLOW_WEIGHTED };
+//   FLUX_BALANCED - keep the groove film temperature unknown and exchange mass
+//                   with the supply at the net FBNS face-flux imbalance.
+enum class GrooveMixingModel { PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCED };
 
 struct PropertyTablePoint {
     double x = 0.0;
@@ -475,6 +477,7 @@ inline const char* to_config_value(GrooveMixingModel model) {
         case GrooveMixingModel::PINNED: return "PINNED";
         case GrooveMixingModel::FIXED_LAMBDA: return "FIXED_LAMBDA";
         case GrooveMixingModel::FLOW_WEIGHTED: return "FLOW_WEIGHTED";
+        case GrooveMixingModel::FLUX_BALANCED: return "FLUX_BALANCED";
     }
     return "PINNED";
 }
@@ -668,6 +671,7 @@ inline GrooveMixingModel groove_mixing_model_from_config(std::string value) {
     if (value == "FLOW_WEIGHTED" || value == "FLOW" || value == "MIXING") {
         return GrooveMixingModel::FLOW_WEIGHTED;
     }
+    if (value == "FLUX_BALANCED") return GrooveMixingModel::FLUX_BALANCED;
     return GrooveMixingModel::PINNED;  // PINNED, SUPPLY, NONE
 }
 
@@ -818,6 +822,7 @@ struct SimulationConfig {
     double journal_wall_temperature = 300.0;
     double bearing_wall_temperature = 300.0;
     double rho_cp = 1.92e6;              // Volumetric heat capacity [J/(m^3 K)]
+    double liquid_specific_heat = 0.0;   // [J/(kg K)]; positive overrides legacy rho_cp/rho
     double thermal_conductivity = 0.15;  // Lubricant thermal conductivity [W/(m K)]
     double gas_heat_capacity_cv = -1.0; // Ideal free gas [J/(kg K)]; R410A uses its EOS.
     double dissolved_heat_capacity = -1.0; // Dissolved species [J/(kg K)].
@@ -877,7 +882,7 @@ struct SimulationConfig {
     BushOuterBoundary bush_outer_boundary = BushOuterBoundary::CONVECTION;
 
     // Hot-oil carry-over at fed grooves. PINNED (default) reproduces the historical
-    // hard pin of groove cells to t_supply.
+    // hard pin; FLUX_BALANCED uses the solved FBNS mass flux as reservoir exchange.
     GrooveMixingModel groove_mixing_model = GrooveMixingModel::PINNED;
 
     // Liquid oil plus dissolved gas property model. Defaults keep pure-oil behavior.
@@ -1072,6 +1077,8 @@ struct SimulationConfig {
 
     // Output
     std::string output_dir = "results";
+    // Converged steady pure-oil FBNS fields used only as a new solve's initial guess.
+    std::string steady_initial_state_file;
     std::string filename_prefix = "solution";
     OutputVerbosity output_verbosity = OutputVerbosity::SIMPLIFIED;
     bool output_write_3d = true;
@@ -1175,6 +1182,7 @@ struct SimulationConfig {
             else if (key == "journal_wall_temperature") journal_wall_temperature = std::stod(value);
             else if (key == "bearing_wall_temperature") bearing_wall_temperature = std::stod(value);
             else if (key == "rho_cp") rho_cp = std::stod(value);
+            else if (key == "liquid_specific_heat") liquid_specific_heat = std::stod(value);
             else if (key == "thermal_conductivity") thermal_conductivity = std::stod(value);
             else if (key == "gas_heat_capacity_cv") gas_heat_capacity_cv = std::stod(value);
             else if (key == "dissolved_heat_capacity") dissolved_heat_capacity = std::stod(value);
@@ -1361,6 +1369,7 @@ struct SimulationConfig {
                 else if (is_false(value)) log_coupling_history = false;
             }
             else if (key == "output_dir") output_dir = value;
+            else if (key == "steady_initial_state_file") steady_initial_state_file = value;
             else if (key == "filename_prefix") filename_prefix = value;
             else if (key == "output_verbosity") output_verbosity = output_verbosity_from_config(value);
             else if (key == "output_write_3d") {
@@ -1525,6 +1534,7 @@ struct SimulationConfig {
         }
         if (temperature_model == TemperatureModel::ENERGY_EQUATION) {
             require_positive(rho_cp, "rho_cp");
+            require_nonnegative(liquid_specific_heat, "liquid_specific_heat");
             require_positive(thermal_conductivity, "thermal_conductivity");
             require_nonnegative(journal_heat_transfer, "journal_heat_transfer");
             require_nonnegative(bearing_heat_transfer, "bearing_heat_transfer");
@@ -1626,6 +1636,16 @@ struct SimulationConfig {
                 error("groove_mixing_model is set but no inlet feeds fresh oil, so the key "
                       "would have no effect. Give an inlet a t_supply token or leave the "
                       "model at PINNED.");
+            }
+            if (groove_mixing_model == GrooveMixingModel::FLUX_BALANCED &&
+                (cavitation_model != CavitationModel::FBNS ||
+                 fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
+                 dissolved_gas_initial != 0.0 || dissolved_gas_henry_coeff != 0.0 ||
+                 solution_mode != SolutionMode::STEADY_STATE ||
+                 thermal_convection_scheme != ConvectionScheme::UPWIND ||
+                 liquid_specific_heat <= 0.0)) {
+                error("FLUX_BALANCED requires steady gas-free SINGLE_PHASE FBNS, UPWIND "
+                      "thermal transport, and positive liquid_specific_heat in J/(kg K).");
             }
         }
         if (motion_model == MotionModel::MOVING_BEARING) {
@@ -1799,6 +1819,13 @@ struct SimulationConfig {
             error("Temperature-dependent oil vapor pressure currently requires COUPLED.");
 
         // Outer (Picard) coupling schedule.
+        if (!steady_initial_state_file.empty() &&
+            (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
+             fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
+             gas_pressure_coupling != GasPressureCoupling::NONE ||
+             cavitation_threshold != CavitationThreshold::SCALAR_PCAV || dissolved_gas_initial != 0.0)) {
+            error("steady_initial_state_file requires steady gas-free single-phase FBNS with scalar p_cav.");
+        }
         if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
         if (!finite(coupling_tolerance) || coupling_tolerance <= 0.0) {
             error("coupling_tolerance must be positive.");
@@ -2419,6 +2446,7 @@ struct SimulationConfig {
             << "journal_wall_temperature = " << journal_wall_temperature << "\n"
             << "bearing_wall_temperature = " << bearing_wall_temperature << "\n"
             << "rho_cp = " << rho_cp << "\n"
+            << "liquid_specific_heat = " << liquid_specific_heat << "\n"
             << "thermal_conductivity = " << thermal_conductivity << "\n"
             << "gas_heat_capacity_cv = " << gas_heat_capacity_cv << "\n"
             << "dissolved_heat_capacity = " << dissolved_heat_capacity << "\n"
@@ -2450,7 +2478,7 @@ struct SimulationConfig {
             << "bush_radial_cells = " << bush_radial_cells << "\n"
             << "# bush_outer_boundary options: CONVECTION (Robin), FIXED_TEMPERATURE\n"
             << "bush_outer_boundary = " << to_config_value(bush_outer_boundary) << "\n"
-            << "# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED\n"
+            << "# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCED\n"
             << "groove_mixing_model = " << to_config_value(groove_mixing_model) << "\n\n";
 
         out << "# Fluid Properties\n"
@@ -2631,6 +2659,7 @@ struct SimulationConfig {
             << "#          cross_film_thermal_model = POLYNOMIAL.\n"
             << "#          Legacy load_x/load_y/load_z requests map to pressure_force_*.\n"
             << "output_dir = " << output_dir << "\n"
+            << "steady_initial_state_file = " << steady_initial_state_file << "\n"
             << "filename_prefix = " << filename_prefix << "\n"
             << "# output_verbosity options: SIMPLIFIED (compact per-step line), DETAILED (per-step diagnostics)\n"
             << "output_verbosity = " << to_config_value(output_verbosity) << "\n"
@@ -2658,7 +2687,7 @@ struct SimulationConfig {
             "linear_solver_fallbacks", "omega", "omega_ramp_time", "mu", "rho",
             "p_cav", "oil_vapor_temperature_coeff", "bulk_modulus", "tilt_slope_x", "tilt_slope_y",
             "temperature_model", "temperature_initial", "temperature_reference",
-            "journal_wall_temperature", "bearing_wall_temperature", "rho_cp",
+            "journal_wall_temperature", "bearing_wall_temperature", "rho_cp", "liquid_specific_heat",
             "thermal_conductivity", "gas_heat_capacity_cv", "dissolved_heat_capacity", "desorption_internal_energy", "gas_thermal_conductivity", "journal_heat_transfer",
             "bearing_heat_transfer", "cross_film_thermal_model",
             "cross_film_profile_order", "cross_film_quadrature_points",
@@ -2704,7 +2733,7 @@ struct SimulationConfig {
             "steady_gas_model",
             "allow_frozen_gas_steady", "max_outer_iters", "outer_tol",
             "fbns_max_iters", "fbns_tol", "fbns_relaxation",
-            "fbns_pressure_scale", "theta_min", "log_outer_iters", "output_dir",
+            "fbns_pressure_scale", "theta_min", "log_outer_iters", "output_dir", "steady_initial_state_file",
             "filename_prefix", "output_verbosity", "output_write_3d",
             "output_write_flat", "output_fields", "inlet_circular", "inlet_groove",
         };

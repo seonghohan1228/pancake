@@ -11,6 +11,7 @@
 #include "energy.hpp"
 #include "field.hpp"
 #include "film_thickness.hpp"
+#include "fluid_properties.hpp"
 #include "linear_system.hpp"
 #include "mesh.hpp"
 
@@ -56,7 +57,9 @@ static void test_energy_config_aliases() {
         "solution_mode = single step\n"
         "temperature_model = thd\n"
         "temperature_initial = 315\n"
-        "journal_heat_transfer = 1000\n");
+        "journal_heat_transfer = 1000\n"
+        "liquid_specific_heat = 2010\n"
+        "groove_mixing_model = FLUX_BALANCED\n");
 
     check(cfg.solution_mode == SolutionMode::STEADY_STATE,
           "single step alias should map to STEADY_STATE");
@@ -66,6 +69,10 @@ static void test_energy_config_aliases() {
           "temperature_initial parse failed");
     check(std::abs(cfg.journal_heat_transfer - 1000.0) < 1e-14,
           "journal_heat_transfer parse failed");
+    check(std::abs(cfg.liquid_specific_heat - 2010.0) < 1e-14,
+          "liquid_specific_heat parse failed");
+    check(cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED,
+          "FLUX_BALANCED groove mode parse failed");
 }
 
 static void test_isothermal_refreshes_heat_only() {
@@ -635,10 +642,152 @@ static void test_distinct_end_temperatures_with_flow_reversal() {
     }
 }
 
+static void test_mass_specific_heat_stays_constant_with_density() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 8;
+    cfg.n_z_global = 2;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.density_model = DensityModel::LINEAR_TEMPERATURE;
+    cfg.liquid_specific_heat = 2010.0;
+    Mesh mesh(cfg);
+    Fields fields;
+    add_energy_fields(fields, mesh, cfg);
+    fields.add("rho_liquid_solution", mesh).fill(0.0);
+    fields.add("cp_liquid_solution", mesh).fill(0.0);
+    fields.add("rho_cp_liquid_solution", mesh).fill(0.0);
+    for (int i = 0; i < mesh.n_theta_local; ++i)
+        for (int j = 0; j < mesh.n_z_local; ++j)
+            fields["temperature"](i, j) = j == 0 ? 300.0 : 330.0;
+    FluidProperties::update_solution_fields(fields, mesh, cfg);
+    double local_error = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i)
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double density = fields["rho_liquid_solution"](i, j);
+            local_error = std::max(local_error,
+                std::abs(fields["cp_liquid_solution"](i, j) - 2010.0));
+            local_error = std::max(local_error,
+                std::abs(fields["rho_cp_liquid_solution"](i, j) - density * 2010.0));
+        }
+    check(global_max_abs(local_error) < 1e-9,
+          "configured mass-specific heat must remain constant as oil density changes");
+}
+
+static void test_fbns_pressure_front_dissipates_on_both_sides() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 8;
+    cfg.n_z_global = 1;
+    cfg.cavitation_model = CavitationModel::FBNS;
+    cfg.temperature_model = TemperatureModel::ISOTHERMAL;
+    cfg.omega = 0.0;
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields;
+    add_energy_fields(fields, mesh, cfg);
+    fields["pressure"].fill(cfg.p_cav);
+    fields["theta"].fill(0.5);
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        if (mesh.offset_theta + i == 1) {
+            fields["pressure"](i, 0) = cfg.p_cav + 1.0e6;
+            fields["theta"](i, 0) = 1.0;
+        }
+    }
+    comm.update_ghosts(fields);
+    LinearSystem sys(mesh);
+    Energy::solve(fields, sys, mesh, cfg);
+    const double dp_ds = 1.0e6 / (cfg.R * mesh.get_d_theta());
+    const double expected = cfg.c * cfg.c * cfg.c * dp_ds * dp_ds / (24.0 * cfg.mu);
+    double local_error = 0.0;
+    int local_front_cells = 0;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        const int global_i = mesh.offset_theta + i;
+        if (global_i == 0 || global_i == 2) {
+            local_error = std::max(local_error,
+                std::abs(fields["heat_generation"](i, 0) - expected));
+            ++local_front_cells;
+        }
+    }
+    int front_cells = 0;
+    MPI_Allreduce(&local_front_cells, &front_cells, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    check(front_cells == 2, "FBNS front test should resolve both rupture neighbours");
+    check(global_max_abs(local_error) / expected < 1e-12,
+          "FBNS pressure-work heating must include physical rupture-front fluxes");
+}
+
+static void test_flux_balanced_groove_conserves_energy_without_cold_cells() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 36;
+    cfg.n_z_global = 6;
+    cfg.cavitation_model = CavitationModel::FBNS;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
+    cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    cfg.groove_mixing_model = GrooveMixingModel::FLUX_BALANCED;
+    cfg.liquid_specific_heat = 2010.0;
+    cfg.thermal_convection_scheme = ConvectionScheme::UPWIND;
+    cfg.omega = 0.0;
+    cfg.p_cav = 0.0;
+    cfg.bc_z_south_type = BCType::DIRICHLET;
+    cfg.bc_z_north_type = BCType::DIRICHLET;
+    cfg.bc_z_south_val = 1.0e5;
+    cfg.bc_z_north_val = 1.0e5;
+    cfg.bc_z_south_temperature = 300.0;
+    cfg.bc_z_north_temperature = 300.0;
+    cfg.bc_z_south_thermal = ThermalInflowMode::CONSTANT;
+    cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
+    cfg.temperature_initial = 300.0;
+    cfg.temperature_reference = 300.0;
+    cfg.journal_wall_temperature = 300.0;
+    cfg.bearing_wall_temperature = 300.0;
+    cfg.journal_heat_transfer = 1000.0;
+    cfg.bearing_heat_transfer = 1000.0;
+    cfg.linear_rtol = 1.0e-13;
+    InletConfig inlet;
+    inlet.type = InletConfig::Type::GROOVE;
+    inlet.theta = 90.0;
+    inlet.size = 20.0;
+    inlet.p_supply = 2.0e5;
+    inlet.feeds_fresh_oil = true;
+    inlet.t_supply = 300.0;
+    cfg.inlets.push_back(inlet);
+
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields;
+    add_energy_fields(fields, mesh, cfg);
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            fields["pressure"](i, j) = mesh.inside_inlet(inlet, i, j) ? 2.0e5 : 1.0e5;
+        }
+    }
+    comm.update_ghosts(fields);
+    LinearSystem sys(mesh);
+    Energy::solve(fields, sys, mesh, cfg);
+    comm.update_ghosts(fields);
+    const Energy::Balance ledger = Energy::balance(fields, mesh, cfg);
+
+    double local_min = 1.0e300;
+    double local_groove_max = -1.0e300;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            local_min = std::min(local_min, fields["temperature"](i, j));
+            if (mesh.inside_inlet(inlet, i, j))
+                local_groove_max = std::max(local_groove_max, fields["temperature"](i, j));
+        }
+    }
+    check(global_min_value(local_min) >= 300.0 - 1e-6,
+          "balanced feed with ambient walls and positive dissipation cannot cool below supply");
+    check(global_max_value(local_groove_max) > 300.0 + 1e-5,
+          "balanced groove must solve its temperature rather than pin it to supply");
+    check(ledger.feed_mass_kg_s > 0.0, "pressure-pinned groove should draw positive reservoir feed");
+    check(std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0) < 1e-8,
+          "steady balanced-groove energy ledger must close");
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
 
     test_energy_config_aliases();
+    test_mass_specific_heat_stays_constant_with_density();
     test_isothermal_refreshes_heat_only();
     test_steady_wall_balance();
     test_steady_initial_solve_ignores_old_temperature();
@@ -648,8 +797,10 @@ int main(int argc, char** argv) {
     test_outflow_boundaries_do_not_impose_reference_temperature();
     test_boundary_heat_is_bounded_and_uses_field_viscosity();
     test_cavitation_front_heat_uses_active_face_average();
+    test_fbns_pressure_front_dissipates_on_both_sides();
     test_elrod_axial_boundary_uses_pressure_value();
     test_distinct_end_temperatures_with_flow_reversal();
+    test_flux_balanced_groove_conserves_energy_without_cold_cells();
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);

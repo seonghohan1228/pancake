@@ -4,9 +4,9 @@ This campaign replaces the earlier 24-point transient plan with the six cases
 selected by the user. It uses a steady pressure–energy–CHT solve and an outer
 load-balance search. The package now includes the groove, housing and still-oil
 cooling. The user supplied 1 atm reservoirs and exposed shaft ends and
-authorized ordinary/similar material properties. Local and remote focused checks pass; production equilibria have not yet
-been accepted at batch launch. A-F are running remotely, with the two E
-temperature variants queued. See the execution record for the launch snapshot.
+authorized ordinary/similar material properties. The original batch is preserved as a failed/stopped baseline. The September 28
+repair adds conservative feed energy and physical acceptance checks; the new
+full-resolution campaign is being validated before accepting equilibria.
 
 ## Accepted cases
 
@@ -40,7 +40,8 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
 - Retain dt=20 us as configuration metadata. Steady Reynolds/energy storage
   terms are disabled and bearing motion is not integrated.
 - Inner pressure/temperature coupling: both normalized changes below 1e-6,
-  maximum 2000 sweeps, fixed relaxation 1, inner FBNS tolerance 1e-12. An iteration cap or restored best
+  maximum 2000 sweeps, outer field relaxation 1, quartic-source relaxation 0.3,
+  inner FBNS tolerance 1e-12, and normalized global energy defect below 1e-6. An iteration cap or restored best
   iterate without convergence is a failed trial.
 - Outer equilibrium: vary eccentricity and attitude until the total fluid force
   on the bearing balances the specified applied load vector to 0.2%.
@@ -82,8 +83,9 @@ solubility or release calculation is enabled.
 recalculations, CSV/JSON agreement and E sensitivity values. No extrapolation
 of the kinematic table is allowed. The supplied linear density law is an
 adopted PVE approximation; cases B/E exceed its stated 15–50 °C fit range.
-The present energy model uses constant volumetric heat capacity `rho_cp`;
-its value must be specified consistently with the selected oil heat capacity.
+The campaign sets `liquid_specific_heat=2010` J/(kg K) and updates volumetric
+capacity with the local liquid density. The legacy `rho_cp` value remains a
+reference/default for other configurations.
 
 ## Specified groove and housing
 
@@ -94,7 +96,8 @@ width = (0.005/0.0215425) * (180/pi) = 13.2983125 degrees; center = 90 degrees.
 At 720 theta cells the native cell-center mask selects 26 columns (13 degrees,
 4.88784 mm bore arc). Retain the nominal 5 mm input and report this discretization.
 Groove pressure equals the common end pressure; its supplied temperature is
-case TC0. The native fed-groove PINNED closure fixes reservoir cells to TC0.
+case TC0. `FLUX_BALANCED` solves groove film temperature, using the signed
+net FBNS mass flux to supply oil at TC0 or drain oil at local temperature.
 
 The stainless housing has OD 85 mm, outer radius 42.5 mm and length 40 mm.
 Its physical radial wall is 20.9575 mm thick. The r-theta solid solver starts
@@ -113,8 +116,8 @@ negative pressures and zero pressure in other gas/coupled paths remain invalid.
 Use constant cp=2010 J/(kg K) and k=0.13 W/(m K), the published 40 C thermal
 properties of BITZER BVC32 PVE, as the authorized analogous oil values
 ([manufacturer data](https://www.bitzer.de/shared_media/html/est-500/en-GB/271261579271263371.html)).
-Keep the supplied FW68D viscosity and density laws. Film energy uses constant
-rho_cp=rho(TC0)*cp within each case. These cp/k values are not FW68D measurements.
+Keep the supplied FW68D viscosity and density laws. Film energy uses
+rho_cp(T)=rho(T)*cp. These cp/k values are not FW68D measurements.
 
 Both exposed shaft ends have radius 21.5 mm and total area 0.0029044024 m2.
 Use shaft_ambient_area_ratio=R/L=0.5375 and ambient temperature TC0. The existing
@@ -230,3 +233,26 @@ adjacent columns. These wall values are a model artifact, not physical cooling
 below the reservoir. Keep the raw fields, report their minima, and avoid using
 groove-region wall temperatures as experimental predictions. Its influence on
 friction/cavitation remains a sensitivity question; it is not assumed negligible.
+
+
+## September 28 physical acceptance and continuation
+
+The original PINNED groove produced subambient bore/profile temperatures and
+undamped quartic updates stalled several inner solves. Those results are
+retained but rejected. The replacement uses pressure-derived mass/enthalpy
+exchange, with no imposed mixing flow, and computes the exact internal profile
+minimum/maximum. No clipping is used to pass acceptance.
+
+Each trial must have a clean solver return, pressure and mean-temperature
+residuals below 1e-6, FBNS residuals below 1e-12, relative mass-rate residual
+at most 1e-8, and normalized global energy defect at most 1e-6. Require finite
+positive gap/viscosity/density, pressure at or above the cavity floor within
+numerical tolerance, film content in [0,1], and film/wall/profile temperatures
+at least TC0 minus 0.001 K. External coefficient closure remains 1e-3 relative
+and 0.01 K. A final case additionally needs vector force error below 0.2%.
+
+A converged fixed-position solve is only a trial in the position search.
+The driver changes eccentricity and attitude, bounds/backtracks Newton steps,
+and re-closes the thermal problem. It loads only validated same-case steady
+fields as numerical guesses, preserving every rejected attempt and recording
+source, executable, input, checkpoint and MPI provenance.

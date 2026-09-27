@@ -13,6 +13,21 @@
 /// `temperature` at the configured initial/reference value.
 namespace Energy {
 
+    struct Balance {
+        double residual_W = 0.0;
+        double scale_W = 0.0;
+        double viscous_heat_W = 0.0;
+        double wall_heat_W = 0.0;
+        double axial_enthalpy_out_W = 0.0;
+        double groove_enthalpy_in_W = 0.0;
+        double mass_imbalance_correction_W = 0.0;
+        double feed_mass_kg_s = 0.0;
+    };
+
     void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const SimulationConfig& cfg);
+
+    /// Discrete steady FBNS energy ledger, with enthalpy referenced to
+    /// temperature_reference. Requires current temperature ghosts after solve.
+    Balance balance(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 
 }  // namespace Energy

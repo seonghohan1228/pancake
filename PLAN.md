@@ -2585,3 +2585,14 @@ numerical diagnosis only and do not complete an experimental comparison.
 
 - [x] Launch A-F on six disjoint four-rank slots, with two E temperature variants queued.
 - [ ] Return completed production equilibria, inspect model limitations and compare with experimental targets.
+
+
+## 2026-09-28 - Recover physically admissible FW68D equilibria
+
+- [x] Diagnose the failed pressure/thermal fixed points and preserve baseline runs.
+- [x] Repair groove enthalpy exchange and FBNS mass/energy transport consistency.
+- [x] Add conservation and internal-profile admissibility checks without clipping.
+- [x] Add validated reusable steady initial fields and bounded force backtracking.
+- [ ] Rebuild the isolated workstation snapshot and validate representative CHT trials.
+- [ ] Close thermal coefficients and bearing position for A-F and E temperature variants.
+- [ ] Return results and provenance, inspect all acceptance checks, and merge verified code.

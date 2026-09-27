@@ -934,6 +934,10 @@ void test_energy_coupling_matches_elrod() {
 // to say so explicitly rather than leave inert values in the config.
 SimulationConfig cross_film_config(int n_theta, CavitationModel model, double ecc_ratio) {
     SimulationConfig cfg = thermal_config(n_theta, model, ecc_ratio);
+    // The generalized mobility makes the Newton row scale hundreds of times
+    // larger than the physical Couette throughput used by the cellwise check.
+    // Resolve the FBNS rows below that check's 1e-9 flux-scale threshold.
+    if (model == CavitationModel::FBNS) cfg.fbns_tol = 1.0e-13;
     cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
     cfg.cross_film_profile_order = 4;
     cfg.cross_film_quadrature_points = 6;

@@ -238,6 +238,7 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
     double liquid_storage_rate = 0.0;  // kg/s
     double gas_storage_rate = 0.0;
     double cavitated_cells = 0.0;
+    double liquid_exchange_scale = 0.0;
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             const double rho_l = base_density(fields, cfg, i, j);
@@ -281,8 +282,9 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
                 // link. Restoring that discarded face here makes a full-length
                 // groove source grow as 1/dz.
                 if (FBNS::active(cfg)) {
-                    balance.inlet_mass_source +=
-                        FBNS::cell_outflow(fields, mesh, cfg, dt, i, j, false);
+                    const double feed = FBNS::cell_outflow(fields, mesh, cfg, dt, i, j, false);
+                    balance.inlet_mass_source += feed;
+                    liquid_exchange_scale += std::abs(feed);
                 } else if (cfg.cavitation_model == CavitationModel::JFO) {
                     balance.inlet_mass_source +=
                         elrod_cell_outflow(fields, mesh, cfg, dt, i, j, false);
@@ -293,6 +295,15 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
 
     balance.liquid_boundary_flux = liquid_boundary_inflow(fields, mesh, cfg);
     balance.gas_boundary_flux = gas_boundary_inflow(fields, mesh, cfg);
+    if (FBNS::active(cfg)) {
+        for (int i = 0; i < n_theta; ++i) {
+            if (!mesh.inlet_at(cfg, i, 0))
+                liquid_exchange_scale += std::abs(FBNS::mass_flux_z(fields, mesh, cfg, i, -1));
+            if (!mesh.inlet_at(cfg, i, n_z - 1))
+                liquid_exchange_scale += std::abs(FBNS::mass_flux_z(fields, mesh, cfg, i, n_z - 1));
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &liquid_exchange_scale, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     double sums[10] = {
         balance.liquid_mass, balance.gas_mass,
@@ -323,6 +334,12 @@ MassBalance mass_balance(const Fields& fields, const Mesh& mesh,
     balance.liquid_residual =
         (liquid_storage_rate - balance.liquid_boundary_flux - balance.inlet_mass_source -
          balance.clamp_mass_liquid / step) * step / std::max(balance.liquid_mass, 1.0e-30);
+    balance.liquid_residual_kg_s = liquid_storage_rate - balance.liquid_boundary_flux -
+        balance.inlet_mass_source - balance.clamp_mass_liquid / step;
+    balance.liquid_balance_scale_kg_s = std::max({liquid_exchange_scale,
+        std::abs(liquid_storage_rate), std::abs(balance.liquid_boundary_flux),
+        std::abs(balance.inlet_mass_source), std::abs(balance.clamp_mass_liquid / step), 1.0e-30});
+    balance.liquid_residual_rel = balance.liquid_residual_kg_s / balance.liquid_balance_scale_kg_s;
     if (gas_active) {
         balance.gas_residual =
             (gas_storage_rate - balance.gas_boundary_flux - balance.clamp_mass_gas / step) *
@@ -395,7 +412,12 @@ void append_csv(const std::filesystem::path& path, double time, int step,
                "cavitated_fraction,"
                "coupling_iters,coupling_R_p,coupling_R_T,coupling_converged,"
                "coupling_best_iter,coupling_best_residual,coupling_restored_best,"
-               "coupling_relaxation,coupling_R_g,gas_volume_excess,gas_eos_defect,energy_residual_W,internal_energy_J\n";
+               "coupling_relaxation,coupling_R_g,gas_volume_excess,gas_eos_defect,energy_residual_W,internal_energy_J,"
+               "liquid_residual_kg_s,liquid_balance_scale_kg_s,liquid_residual_rel,"
+               "energy_balance_residual_W,energy_balance_scale_W,energy_viscous_heat_W,"
+               "energy_wall_heat_W,energy_axial_enthalpy_out_W,energy_groove_enthalpy_in_W,"
+               "energy_mass_imbalance_correction_W,energy_feed_mass_kg_s,"
+               "cross_film_profile_t_min_K,cross_film_profile_t_max_K,cross_film_profile_residual\n";
     }
     csv.precision(15);
     csv << step << ',' << time << ',' << stats.outer_iters << ',' << stats.flag_flips << ','
@@ -418,6 +440,25 @@ void append_csv(const std::filesystem::path& path, double time, int step,
     if (std::isfinite(balance.energy_residual_w)) csv << balance.energy_residual_w;
     csv << ',';
     if (std::isfinite(balance.internal_energy_j)) csv << balance.internal_energy_j;
+    csv << ',';
+    if (std::isfinite(balance.liquid_residual_kg_s)) csv << balance.liquid_residual_kg_s;
+    csv << ',';
+    if (std::isfinite(balance.liquid_balance_scale_kg_s)) csv << balance.liquid_balance_scale_kg_s;
+    csv << ',';
+    if (std::isfinite(balance.liquid_residual_rel)) csv << balance.liquid_residual_rel;
+    if (balance.energy) {
+        const auto& energy = *balance.energy;
+        csv << ',' << energy.residual_W << ',' << energy.scale_W
+            << ',' << energy.viscous_heat_W << ',' << energy.wall_heat_W
+            << ',' << energy.axial_enthalpy_out_W << ',' << energy.groove_enthalpy_in_W
+            << ',' << energy.mass_imbalance_correction_W << ',' << energy.feed_mass_kg_s;
+    } else csv << ",,,,,,,,";
+    csv << ',';
+    if (std::isfinite(balance.cross_film_profile_t_min_K)) csv << balance.cross_film_profile_t_min_K;
+    csv << ',';
+    if (std::isfinite(balance.cross_film_profile_t_max_K)) csv << balance.cross_film_profile_t_max_K;
+    csv << ',';
+    if (std::isfinite(balance.cross_film_profile_residual)) csv << balance.cross_film_profile_residual;
     csv << '\n';
 }
 

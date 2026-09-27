@@ -5,6 +5,9 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <array>
+#include <iomanip>
+#include <limits>
 #include <mpi.h>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +19,35 @@ namespace fs = std::filesystem;
 
 namespace IO {
 namespace {
+constexpr std::array<const char*, 4> initial_state_fields = {
+    "pressure", "theta", "temperature", "cross_film_collocation"};
+
+void initial_state_error(std::string error, const Mesh& mesh) {
+    int length = mesh.rank == 0 ? static_cast<int>(error.size()) : 0;
+    MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    error.resize(length);
+    if (length) {
+        MPI_Bcast(error.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
+        throw std::runtime_error("Steady initial state: " + error);
+    }
+}
+
+void initial_state_layout(const Mesh& mesh, std::vector<int>& counts, std::vector<int>& offsets) {
+    const int count = mesh.n_theta_local * mesh.n_z_local;
+    const int offset = mesh.offset_theta * mesh.n_z_local;
+    counts.resize(mesh.size);
+    offsets.resize(mesh.size);
+    MPI_Allgather(&count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(&offset, 1, MPI_INT, offsets.data(), 1, MPI_INT, MPI_COMM_WORLD);
+}
+
+bool admissible_initial_value(int field, double value, const SimulationConfig& cfg) {
+    return std::isfinite(value) &&
+        (field != 0 || value >= cfg.effective_p_cav() - 1e-8) &&
+        (field != 1 || (value >= 0.0 && value <= 1.0 + 1e-12)) &&
+        (field != 2 || value > 0.0);
+}
+
 bool processor_directory(const std::string& name) {
     return name.starts_with("processor") && name.size() > 9 &&
         std::all_of(name.begin() + 9, name.end(), [](unsigned char c) { return std::isdigit(c); });
@@ -56,6 +88,89 @@ bool vector_group_enabled(const SimulationConfig& cfg, const OutputNaming::Vecto
     return cfg.output_field_enabled(g.x) || cfg.output_field_enabled(g.y) ||
            cfg.output_field_enabled(g.z);
 }
+}
+
+void write_steady_initial_state(const fs::path& path, const Fields& fields,
+                                const Mesh& mesh, const SimulationConfig& cfg) {
+    std::vector<int> counts, offsets;
+    initial_state_layout(mesh, counts, offsets);
+    const size_t total = static_cast<size_t>(mesh.n_theta_global) * mesh.n_z_global;
+    std::array<std::vector<double>, 4> gathered;
+    int invalid = 0;
+    for (int k = 0; k < 4; ++k) {
+        std::vector<double> local(counts[mesh.rank]);
+        const char* name = initial_state_fields[k];
+        for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double value = fields.has(name) ? fields[name](i, j) : 0.0;
+            local[static_cast<size_t>(i) * mesh.n_z_local + j] = value;
+            if (!admissible_initial_value(k, value, cfg)) invalid = 1;
+        }
+        if (mesh.rank == 0) gathered[k].resize(total);
+        MPI_Gatherv(local.data(), counts[mesh.rank], MPI_DOUBLE, gathered[k].data(),
+                    counts.data(), offsets.data(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    }
+    int any_invalid = 0;
+    MPI_Allreduce(&invalid, &any_invalid, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    std::string error;
+    if (mesh.rank == 0) {
+        if (any_invalid) error = "refusing to write inadmissible fields";
+        else {
+            std::ofstream stream(path);
+            stream << std::setprecision(17) << "PANCAKE_STEADY_GUESS 1\n"
+                   << mesh.n_theta_global << ' ' << mesh.n_z_global << ' '
+                   << cfg.R << ' ' << cfg.c << ' ' << cfg.L << '\n';
+            for (int k = 0; k < 4; ++k) {
+                stream << initial_state_fields[k] << '\n';
+                for (double value : gathered[k]) stream << value << '\n';
+            }
+            stream.close();
+            if (!stream) error = "could not write " + path.string();
+        }
+    }
+    initial_state_error(error, mesh);
+}
+
+void read_steady_initial_state(const fs::path& path, Fields& fields,
+                               const Mesh& mesh, const SimulationConfig& cfg) {
+    const size_t total = static_cast<size_t>(mesh.n_theta_global) * mesh.n_z_global;
+    std::array<std::vector<double>, 4> gathered;
+    std::string error;
+    if (mesh.rank == 0) {
+        std::ifstream stream(path);
+        std::string magic, name;
+        int version = 0, nt = 0, nz = 0;
+        double radius = 0.0, clearance = 0.0, length = 0.0;
+        stream >> magic >> version >> nt >> nz >> radius >> clearance >> length;
+        if (!stream || magic != "PANCAKE_STEADY_GUESS" || version != 1 ||
+            nt != mesh.n_theta_global || nz != mesh.n_z_global ||
+            radius != cfg.R || clearance != cfg.c || length != cfg.L) {
+            error = "missing, malformed, or incompatible file " + path.string();
+        }
+        for (int k = 0; k < 4 && error.empty(); ++k) {
+            stream >> name;
+            if (name != initial_state_fields[k]) { error = "unexpected field " + name; break; }
+            gathered[k].resize(total);
+            for (double& value : gathered[k]) {
+                if (!(stream >> value) || !admissible_initial_value(k, value, cfg)) {
+                    error = "invalid or missing value in " + name;
+                    break;
+                }
+            }
+        }
+        if (error.empty() && (stream >> name)) error = "unexpected trailing data";
+    }
+    initial_state_error(error, mesh);
+    std::vector<int> counts, offsets;
+    initial_state_layout(mesh, counts, offsets);
+    for (int k = 0; k < 4; ++k) {
+        std::vector<double> local(counts[mesh.rank]);
+        MPI_Scatterv(gathered[k].data(), counts.data(), offsets.data(), MPI_DOUBLE,
+                     local.data(), counts[mesh.rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        if (!fields.has(initial_state_fields[k])) continue;
+        Field& field = fields[initial_state_fields[k]];
+        for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
+            field(i, j) = local[static_cast<size_t>(i) * mesh.n_z_local + j];
+    }
 }
 
 // Interpolate face-based data to cell centers for visualization

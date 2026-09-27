@@ -109,6 +109,39 @@ int main(int argc, char** argv) {
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+    // A warm start is a global field ordering, independent of the MPI theta split.
+    Fields initial;
+    const char* names[] = {"pressure", "theta", "temperature", "cross_film_collocation"};
+    for (const char* name : names) initial.add(name, mesh);
+    auto expected = [](int k, int index) {
+        const double starts[] = {200000.0, 0.5, 300.0, -20.0};
+        const double steps[] = {1.0, 0.001, 0.01, 0.1};
+        return starts[k] + steps[k] * index;
+    };
+    for (int k = 0; k < 4; ++k)
+        for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
+            initial[names[k]](i, j) = expected(k, (mesh.offset_theta + i) * mesh.n_z_global + j);
+    const fs::path guess = fs::path(cfg.output_dir) / "steady_state.dat";
+    IO::write_steady_initial_state(guess, initial, mesh, cfg);
+    for (const char* name : names) initial[name].fill(0.0);
+    IO::read_steady_initial_state(guess, initial, mesh, cfg);
+    for (int k = 0; k < 4; ++k)
+        for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
+            check(initial[names[k]](i, j) == expected(k, (mesh.offset_theta + i) * mesh.n_z_global + j),
+                  "steady initial guess must round-trip every physical cell exactly");
+    SimulationConfig mismatch = cfg;
+    mismatch.c *= 2.0;
+    bool rejected = false;
+    try { IO::read_steady_initial_state(guess, initial, mesh, mismatch); }
+    catch (const std::exception&) { rejected = true; }
+    check(rejected, "steady initial guess must reject incompatible geometry on every rank");
+    if (mesh.rank == 0) std::ofstream(guess) << "PANCAKE_STEADY_GUESS 1\n8 3\n";
+    MPI_Barrier(MPI_COMM_WORLD);
+    rejected = false;
+    try { IO::read_steady_initial_state(guess, initial, mesh, cfg); }
+    catch (const std::exception&) { rejected = true; }
+    check(rejected, "steady initial guess must reject truncated input collectively");
+
     SimulationConfig legacy_cfg;
     legacy_cfg.n_theta_global = 8;
     legacy_cfg.n_z_global = 3;

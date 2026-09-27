@@ -118,3 +118,49 @@ Live status and evidence are in `production/<case>/batch_status.json`,
 files distinguish running cases from the waiting queue. `batch_launch.json`
 records the launch command and PID. The prepared launcher is retained locally
 at `C:/Dev/pancake/results/fw68d_steady_20260927/launch_batch.py`.
+
+
+## September 28 repair and validation
+
+The original A/B/C first-position thermal solves reached their 2000-sweep
+caps. E later failed during its position search; D/F and queued variants were
+stopped after diagnosis. Only verified processes belonging to the obsolete
+campaign were stopped, and all files plus a process/stop record were retained.
+No original case is relabeled as a converged equilibrium.
+
+The original C position at epsilon=0.6, attitude 140 degrees converged after
+reducing quartic-source relaxation to 0.3: 513 sweeps at both 8 and 4 MPI ranks,
+531.8 and 1000.5 seconds respectively. Its fluid force was only about 469 N
+against 1973 N applied load, and the PINNED thermal defect remained. This is
+numerical damping evidence, not an accepted position or temperature result.
+
+The repair uses FLUX_BALANCED groove energy, FBNS-consistent mass/enthalpy
+faces, constant mass-specific cp, exact profile extrema and raw collocation
+residual checks, a global energy ledger, and a timestep-independent mass-rate
+check. Saved steady fields accelerate subsequent same-case position/h trials.
+The native Windows full build succeeds. All 52 native CTest checks pass after
+four FBNS variants were rebuilt/rerun with a tighter test solve tolerance:
+1e-13 instead of 1e-11, retaining the original 1e-9 physical-flux assertion.
+The changed energy model exposed that mismatch between the test's inner
+Jacobian-scaled norm and its physical-flow residual requirement.
+
+A 720x192, four-rank, three-sweep startup check returned the expected cap
+failure 4 and wrote the new energy/profile columns. Its executable SHA256 is
+77a75f8f0cd0b0ef14385ab3840b2dfc47ce610fb8ce99e5e647239197ae8cdb.
+This check is not convergence evidence. Native validation is retained at
+`results/fw68d_physical_v3_short_native/` in the managed worktree.
+
+The corrected remote source is isolated under
+`/home/user/pancake-runs/fw68d-physical-20260928-a2ba963-c6d9373b/`.
+Source archive SHA256:
+`c6d9373b8e16f82dd87f1e59c1680e66b444fb06e5d6a504330439dfedcc9f30`.
+The subsequent test-only tolerance patch is recorded separately; it does
+not change production source or executable physics. Remote trials and
+accepted equilibria will be appended when their checks complete.
+
+
+The fresh v3 workstation Release build and 14 focused CTest checks passed,
+as did explicit four-rank I/O and diagnostics checks and the case-driver
+self-check. Production executable SHA256 is
+`d9d19941151107d308ca484a1a6a5c212366c041553e83cbb67a032f8c55396a`.
+Compiler/MPI/PETSc are GCC 11.4 / OpenMPI 4.1.2 / PETSc 3.15.5.

@@ -59,6 +59,20 @@ SimulationConfig gas_steady_config() {
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
+    {
+        SimulationConfig cfg;
+        cfg.coupling_tolerance = 1e-6;
+        cfg.coupling_max_iters = 2;
+        Coupling::Controller control(cfg);
+        check(!control.record(0, 1e-9, 1e-9, 0.0, false),
+              "small field changes cannot bypass an unclosed energy balance");
+        check(control.record(1, 1e-9, 1e-9, 0.0, true),
+              "field and conservation convergence allow acceptance");
+        control.finish(2);
+        check(control.status().converged && !control.status().cap_exhausted,
+              "additional conservation gate must preserve the accepted status");
+    }
+
     // --- steady + gas + FROZEN honesty guard --------------------------------
     {
         std::vector<std::string> errors, warnings;

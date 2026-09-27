@@ -84,8 +84,9 @@ public:
     explicit Controller(const SimulationConfig& cfg);
 
     /// Record the residuals of the sweep numbered `outer` (0-based). Returns true
-    /// when the loop should stop because coupling_tolerance is met.
-    bool record(int outer, double R_p, double R_T, double R_g = 0.0);
+    /// when coupling_tolerance and any additional conservation check are met.
+    bool record(int outer, double R_p, double R_T, double R_g = 0.0,
+                bool additional_balance_converged = true);
 
     /// True when the sweep just recorded is the best seen so far, i.e. the caller
     /// should snapshot it. Always true for the first sweep.

@@ -112,6 +112,34 @@ SimulationConfig base_transient_config() {
     return cfg;
 }
 
+void test_steady_rate_balance_is_independent_of_metadata_dt() {
+    SimulationConfig cfg = base_transient_config();
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
+    cfg.cavitation_model = CavitationModel::FBNS;
+    cfg.p_cav = 0.0;
+    cfg.e = 0.0;
+    cfg.bc_z_south_type = BCType::DIRICHLET;
+    cfg.bc_z_north_type = BCType::DIRICHLET;
+    cfg.bc_z_south_val = 2.0e5;
+    cfg.bc_z_north_val = 2.0e5;
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields = make_elrod_fields(mesh, cfg);
+    fields["pressure"].fill(1.0e5);
+    fields["theta"].fill(1.0);
+    comm.update_ghosts(fields);
+    const auto first = Diagnostics::mass_balance(fields, mesh, cfg, 0.0);
+    cfg.dt *= 1000.0;
+    const auto second = Diagnostics::mass_balance(fields, mesh, cfg, 0.0);
+    check(first.liquid_residual_kg_s < 0.0,
+          "uniform low pressure with two high-pressure ends must expose net unbalanced inflow");
+    check(std::abs(first.liquid_residual_rel + 1.0) < 1e-12,
+          "unbalanced all-inflow state must have a unit rate defect");
+    check(first.liquid_residual_rel == second.liquid_residual_rel &&
+          first.liquid_residual_kg_s == second.liquid_residual_kg_s,
+          "steady rate balance cannot improve by reducing inactive timestep metadata");
+}
+
 void test_closed_domain_conservation() {
     SimulationConfig cfg = base_transient_config();
     cfg.e = 0.6 * cfg.c;
@@ -449,6 +477,7 @@ int main(int argc, char** argv) {
     if (rank == 0) std::cout << "Running test_diagnostics...\n";
 
     test_regime_and_saturation_guards();
+    test_steady_rate_balance_is_independent_of_metadata_dt();
     test_closed_domain_conservation();
     test_open_domain_accounting();
     test_inlet_accounting();

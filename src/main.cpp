@@ -252,6 +252,14 @@ int main(int argc, char** argv) {
         JournalMotion::BearingState bearing_state = JournalMotion::initial_state(cfg);
         update_film_geometry(fields, mesh, cfg, bearing_state);
         FilmThickness::compute_inlet_indicator(fields["inlet_indicator"], mesh, cfg);
+        if (!cfg.steady_initial_state_file.empty()) {
+            try {
+                IO::read_steady_initial_state(cfg.steady_initial_state_file, fields, mesh, cfg);
+            } catch (const std::exception& ex) {
+                Utils::log(ex.what(), Utils::Color::RED, 1);
+                MPI_Abort(MPI_COMM_WORLD, 3);
+            }
+        }
         if (!coupled) FluidProperties::update_solution_fields(fields, mesh, cfg);
         comm.update_ghosts(fields);
 
@@ -384,7 +392,13 @@ int main(int argc, char** argv) {
                 // temperatures it solves are the ones the energy solve closes on.
                 // No-op unless cross_film_thermal_model is enabled.
                 if (CrossFilm::active(cfg)) {
-                    cross_film_state = CrossFilm::update(fields, mesh, cfg);
+                    try {
+                        cross_film_state = CrossFilm::update(fields, mesh, cfg);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(), Utils::Color::RED, 1);
+                        break;
+                    }
                     // The Reynolds assembly reads these on both theta ghost layers.
                     comm.update_ghosts(fields["cross_film_f0"]);
                     comm.update_ghosts(fields["cross_film_f1"]);
@@ -475,12 +489,29 @@ int main(int argc, char** argv) {
                         ? std::max(normalized_max_change(fields["dissolved_gas"], c_outer_prev, mesh, 1.0) /
                                        std::max(cfg.dissolved_gas_initial, 1e-6),
                                    normalized_max_change(fields["alpha_gas"], alpha_outer_prev, mesh, 1.0)) : 0.0;
-                    const bool tolerance_met = coupling_control.record(outer, coupling_R_p, coupling_R_T, coupling_R_g);
+                    bool energy_balanced = !CrossFilm::active(cfg) ||
+                        (std::isfinite(cross_film_state.profile_residual) &&
+                         cross_film_state.profile_residual < cfg.coupling_tolerance);
+                    if (cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED) {
+                        if (energy_balanced &&
+                            std::max(coupling_R_p, coupling_R_T) < cfg.coupling_tolerance) {
+                            comm.update_ghosts(fields["temperature"]);
+                            const auto ledger = Energy::balance(fields, mesh, step_cfg);
+                            energy_balanced = std::isfinite(ledger.residual_W) &&
+                                std::isfinite(ledger.scale_W) && ledger.scale_W >= 0.0 &&
+                                std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0) < cfg.coupling_tolerance;
+                        } else {
+                            energy_balanced = false;
+                        }
+                    }
+                    const bool tolerance_met = coupling_control.record(
+                        outer, coupling_R_p, coupling_R_T, coupling_R_g, energy_balanced);
                     if (cfg.log_coupling_history) {
                         std::ostringstream h;
                         h << "Coupling outer=" << (outer + 1) << " R_p=" << coupling_R_p
                           << " R_T=" << coupling_R_T
                           << " R_g=" << coupling_R_g
+                          << " R_X=" << cross_film_state.profile_residual
                           << " omega=" << coupling_control.relaxation()
                           << (coupling_control.is_best() ? " *best" : "");
                         Utils::log(h.str(), Utils::Color::BLUE, 2);
@@ -494,9 +525,9 @@ int main(int argc, char** argv) {
                         best_forces = forces;
                         best_cross_film_state = cross_film_state;
                     }
+                    if (tolerance_met) break;
                     relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
                     relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
-                    if (tolerance_met) break;
                 }
             }
             if (steady_state && !coupled) {
@@ -567,6 +598,15 @@ int main(int argc, char** argv) {
                     balance.cavitated_fraction = total_cavity/(mesh.n_theta_global*mesh.n_z_global);
                 } else balance = Diagnostics::mass_balance(fields, mesh, step_cfg,
                                                             steady_state ? 0.0 : step_cfg.dt);
+                if (cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED) {
+                    comm.update_ghosts(fields["temperature"]);
+                    balance.energy = Energy::balance(fields, mesh, step_cfg);
+                }
+                if (CrossFilm::active(cfg)) {
+                    balance.cross_film_profile_residual = cross_film_state.profile_residual;
+                    balance.cross_film_profile_t_min_K = cross_film_state.profile_t_min;
+                    balance.cross_film_profile_t_max_K = cross_film_state.profile_t_max;
+                }
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
                     t, step, balance, elrod_stats,
@@ -617,6 +657,20 @@ int main(int argc, char** argv) {
             }
 
             if (nonlinear_failed) break;
+
+            if (steady_state && cfg.cavitation_model == CavitationModel::FBNS &&
+                cfg.fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+                cfg.gas_pressure_coupling == GasPressureCoupling::NONE &&
+                cfg.cavitation_threshold == CavitationThreshold::SCALAR_PCAV &&
+                cfg.dissolved_gas_initial == 0.0) {
+                try {
+                    IO::write_steady_initial_state(fs::path(cfg.output_dir) / "steady_state.dat", fields, mesh, cfg);
+                } catch (const std::exception& ex) {
+                    Utils::log(ex.what(), Utils::Color::RED, 1);
+                    nonlinear_failed = true;
+                    break;
+                }
+            }
 
             // Store the completed state for the next physical interval.
             fields["pressure"].store_old_time();

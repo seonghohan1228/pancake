@@ -1,5 +1,5 @@
 {
-  "status": "remote_baseline_batch_launched_after_strict_fixed_position_check",
+  "status": "physical_closure_repair_under_full_resolution_validation",
   "case_ids": [
     "A",
     "B",
@@ -62,7 +62,11 @@
     "bc_z_north_val": 101325.0,
     "bc_z_south_thermal": "CONSTANT",
     "bc_z_north_thermal": "CONSTANT",
-    "fbns_tol": 1e-12
+    "fbns_tol": 1e-12,
+    "groove_mixing_model": "FLUX_BALANCED",
+    "cross_film_relaxation": 0.3,
+    "liquid_specific_heat": 2010.0,
+    "convergence_note": "Pressure and temperature changes below 1e-6 plus normalized global energy residual below 1e-6; full profile temperatures must be >=TC0-0.001 K."
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
@@ -78,8 +82,9 @@
     "bc_z_south_temperature": "tc0_boundary_temperature_k",
     "bc_z_north_temperature": "tc0_boundary_temperature_k",
     "shaft_ambient_temperature": "tc0_boundary_temperature_k",
-    "rho_cp": "rho(TC0)*2010; constant volumetric heat capacity within each case",
-    "bush_outer_temperature": "tc0_boundary_temperature_k; explicit convection reservoir temperature, not prescribed housing wall"
+    "rho_cp": "rho(TC0)*2010 reference only; liquid_specific_heat selects local rho(T)*cp in the film energy equation",
+    "bush_outer_temperature": "tc0_boundary_temperature_k; explicit convection reservoir temperature, not prescribed housing wall",
+    "liquid_specific_heat": "2010 J/(kg K); mass-specific cp held constant"
   },
   "force_balance": {
     "unknowns": [
@@ -123,10 +128,15 @@
   "acceptance": {
     "pressure_and_temperature_coupling": "Both normalized changes below 1e-6 with converged status; restored best or iteration cap is a failure.",
     "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
-    "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass diagnostics. The current cross-film path does not provide a global energy-balance diagnostic; report it as unavailable.",
+    "fields": "Finite pressure, temperature, torque and exact cross-film extrema; positive gap/viscosity/density; admissible filling; common-ambient lower temperature bound and viscosity-table domain. Global mass and energy diagnostics are mandatory.",
     "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
     "external_convection": "Each force evaluation must close both h coefficients to relative1e-3 and wall-temperature change0.01K after an inner converged pressure/thermal solve.",
-    "fbns": "Scaled mass and complementarity residuals below1e-12; inner solve must not mask an outer pressure step larger than1e-6."
+    "fbns": "Scaled mass and complementarity residuals below1e-12; inner solve must not mask an outer pressure step larger than1e-6.",
+    "global_energy_relative_residual_max": 1e-06,
+    "liquid_mass_rate_relative_residual_max": 1e-08,
+    "cross_film_raw_collocation_residual_max": 1e-06,
+    "temperature_floor_K": "case TC0 minus 0.001 K numerical allowance, tested on mean/walls/exact profile extrema",
+    "property_domain": "exact cross-film extrema must stay within supplied viscosity temperature table"
   },
   "specified_boundaries": {
     "provenance": "User follow-up: 5 mm groove opposite load, same reservoir conditions as bearing ends, p_cav=0, stainless OD85 mm and L40 mm; surrounding still oil at TC0, estimate natural convection.",
@@ -226,7 +236,7 @@
     "Horizontal housing; full-length axial groove.",
     "Shaft is represented by one equilibrated temperature; two circularendfaces43mm diameter convect toTC0.",
     "Housing r-theta conduction lacks axial/endfacecooling; assesscoolingsensitivity.",
-    "PINNED groove mean temperature with sheared cross-film reconstruction can give sub-ambient bore temperatures locally. Do not interpret groove/adjacent wall temperatures as physical predictions; effect on other outputs needs sensitivity evidence."
+    "FLUX_BALANCED ideal pressure-fed groove: signed mass exchange follows the solved FBNS face divergence, supplies oil at TC0 and drains at the solved groove temperature; deep-groove recirculation remains unresolved."
   ],
   "material_sensitivity_plan": {
     "oil_cp_k_fraction": 0.2,

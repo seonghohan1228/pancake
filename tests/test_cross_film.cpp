@@ -28,7 +28,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -330,6 +332,11 @@ static void test_independent_surface_temperature_overrides() {
     }
     check(std::abs(state.t_shaft - 322.0) < 1.0e-4,
           "shaft_ambient_temperature must set the scalar shaft sink");
+    const double shaft_sink = cfg.shaft_ambient_heat_transfer * cfg.shaft_ambient_area_ratio *
+                              (2.0 * M_PI * cfg.R * cfg.L) * (state.t_shaft - 322.0);
+    check(std::abs(state.q_shaft_net - shaft_sink) <
+              1e-6 * (1.0 + std::abs(state.q_shaft_net) + std::abs(shaft_sink)),
+          "shaft heat flow must equal its external convective sink");
     check(global_max_abs(bush_error) < 1.0e-4,
           "bush_outer_temperature must set the bush outer-boundary sink");
 }
@@ -455,7 +462,7 @@ static void test_surface_fields_match_the_profile() {
     build_fields(fields, mesh, cfg);
     ramp_temperature(fields, mesh, cfg);
     comm.update_ghosts(fields);
-    CrossFilm::update(fields, mesh, cfg);
+    const CrossFilm::WallState state = CrossFilm::update(fields, mesh, cfg);
 
     for (const char* name : OutputNaming::surface_fields()) {
         check(fields.has(name), (std::string("selected field ") + name + " must be allocated").c_str());
@@ -464,12 +471,19 @@ static void test_surface_fields_match_the_profile() {
     const double kh = cfg.thermal_conductivity / cfg.c;
     double err_t = 0.0, err_q = 0.0, err_walls = 0.0;
     double max_split = 0.0, max_flux = 0.0, worst_bearing_sign = -1.0e300;
+    double sampled_min = std::numeric_limits<double>::infinity();
+    double sampled_max = -std::numeric_limits<double>::infinity();
     for (int i = 0; i < mesh.n_theta_local; ++i) {
         for (int j = 0; j < mesh.n_z_local; ++j) {
             const double t_bar = fields["temperature"](i, j);
             const double a = fields["cross_film_a"](i, j);
             const double b = fields["cross_film_b"](i, j);
             const double c = fields["cross_film_c"](i, j);
+            for (int sample = 0; sample <= 4096; ++sample) {
+                const double value = profile_at(t_bar, a, b, c, sample / 4096.0);
+                sampled_min = std::min(sampled_min, value);
+                sampled_max = std::max(sampled_max, value);
+            }
 
             const double t_j = fields["temperature_journal"](i, j);
             const double t_b = fields["temperature_bearing"](i, j);
@@ -508,6 +522,99 @@ static void test_surface_fields_match_the_profile() {
     // sign-flip regression trips first.
     check(worst_bearing_sign < 0.0,
           "a cooled bush must draw heat out of the film (negative into-fluid flux)");
+    double global_sampled_min = 0.0, global_sampled_max = 0.0;
+    MPI_Allreduce(&sampled_min, &global_sampled_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(&sampled_max, &global_sampled_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    check(state.profile_t_min > 0.0 && state.profile_t_min <= global_sampled_min + 1e-9 &&
+          global_sampled_min - state.profile_t_min < 1e-4,
+          "global profile minimum must include internal stationary points");
+    check(state.profile_t_max >= global_sampled_max - 1e-9 &&
+          state.profile_t_max - global_sampled_max < 1e-4,
+          "global profile maximum must include internal stationary points");
+}
+
+static void test_collocation_residual_is_unrelaxed() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 24;
+    cfg.n_z_global = 4;
+    cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+    cfg.cross_film_profile_order = 4;
+    cfg.cross_film_relaxation = 0.3;
+    cfg.temperature_reference = 320.0;
+    cfg.temperature_initial = 320.0;
+    cfg.thermal_ambient_temperature = 320.0;
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Fields fields;
+    build_fields(fields, mesh, cfg);
+    comm.update_ghosts(fields);
+    const auto state = CrossFilm::update(fields, mesh, cfg);
+    double largest_relaxed = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i)
+        for (int j = 0; j < mesh.n_z_local; ++j)
+            largest_relaxed = std::max(largest_relaxed,
+                std::abs(fields["cross_film_collocation"](i, j)));
+    const double expected = global_max_abs(largest_relaxed) /
+        (cfg.cross_film_relaxation * cfg.temperature_reference);
+    check(expected > 0.0, "test needs a nonzero quartic collocation source");
+    check(std::abs(state.profile_residual - expected) < 1e-12 * expected,
+          "profile residual must report raw fixed-point defect before under-relaxation");
+}
+
+static void test_invalid_wall_temperature_is_rejected() {
+    SimulationConfig cfg = surface_config();
+    cfg.shaft_ambient_heat_transfer = 1e12;
+    cfg.shaft_ambient_temperature = -100.0;
+    cfg.thermal_ambient_temperature = -100.0;
+    Mesh mesh(cfg);
+    Fields fields;
+    build_fields(fields, mesh, cfg);
+    bool rejected = false;
+    try {
+        CrossFilm::update(fields, mesh, cfg);
+    } catch (const std::runtime_error& error) {
+        rejected = std::string(error.what()).find("shaft temperature") != std::string::npos;
+    }
+    check(rejected, "invalid shaft wall temperature must fail on every MPI rank");
+}
+
+static void test_profile_minimum_between_walls() {
+    SimulationConfig cfg = surface_config();
+    cfg.omega = 0.0;
+    cfg.temperature_initial = 300.0;
+    cfg.temperature_reference = 300.0;
+    cfg.thermal_ambient_temperature = 330.0;
+    cfg.shaft_ambient_temperature = 330.0;
+    cfg.shaft_ambient_heat_transfer = 1e6;
+    cfg.bush_outer_heat_transfer = 1e6;
+    Mesh mesh(cfg);
+    Fields fields;
+    build_fields(fields, mesh, cfg);
+    const CrossFilm::WallState state = CrossFilm::update(fields, mesh, cfg);
+    double local_wall_min = std::numeric_limits<double>::infinity();
+    double local_sample_min = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double t = fields["temperature"](i, j);
+            const double a = fields["cross_film_a"](i, j);
+            const double b = fields["cross_film_b"](i, j);
+            const double c = fields["cross_film_c"](i, j);
+            local_wall_min = std::min(local_wall_min,
+                                      std::min(profile_at(t, a, b, c, 0.0),
+                                               profile_at(t, a, b, c, 1.0)));
+            for (int sample = 0; sample <= 4096; ++sample)
+                local_sample_min = std::min(local_sample_min,
+                                            profile_at(t, a, b, c, sample / 4096.0));
+        }
+    }
+    double wall_min = 0.0, sample_min = 0.0;
+    MPI_Allreduce(&local_wall_min, &wall_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_sample_min, &sample_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    check(state.profile_t_min < wall_min - 1.0,
+          "cold profile minimum must occur inside the film, not on a wall");
+    check(state.profile_t_min <= sample_min + 1e-9 && sample_min - state.profile_t_min < 1e-4,
+          "reported interior profile minimum must match independent dense sampling");
 }
 
 // The fields are opt-in: not selecting them must leave every other field
@@ -736,11 +843,14 @@ int main(int argc, char** argv) {
 
     test_config_round_trip();
     test_uniform_viscosity_reduction();
+    test_collocation_residual_is_unrelaxed();
     test_adiabatic_shaft_balance();
     test_independent_surface_temperature_overrides();
     test_groove_mixing_limits(0.0, false);
     test_groove_mixing_limits(1.0, true);
     test_surface_fields_match_the_profile();
+    test_invalid_wall_temperature_is_rejected();
+    test_profile_minimum_between_walls();
     test_surface_fields_are_opt_in();
     test_surface_field_selection_is_validated();
     test_bush_2d_is_z_uniform_and_smooths();

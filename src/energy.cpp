@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 #include <mpi.h>
 
 #include "cross_film.hpp"
+#include "fbns.hpp"
 #include "full_film.hpp"
 #include "fvm.hpp"
 #include "reynolds_coefficients.hpp"
@@ -18,10 +20,10 @@ namespace {
 ///
 /// A ruptured cell holds liquid theta*h per unit area, not h, in both the
 /// striated and the homogeneous picture. Under STRIATED every thermal term that
-/// scales with liquid content -- heat generation, stored energy, conduction and
-/// convected enthalpy -- is weighted by this. Under FULL_FILM (the default) the
-/// cavitated zone is not thermally modelled and this returns 1, which is the
-/// historical behaviour.
+/// scales with local liquid content -- Couette heat generation, stored energy,
+/// and conduction -- is weighted by this. FBNS convected enthalpy instead follows
+/// its exact upwind liquid mass flux. Under FULL_FILM (the default) the cavitated
+/// zone is not thermally modelled and this returns 1.
 ///
 /// `g` is the caller's full-film switch, passed in so cell and face users share
 /// one definition of "cavitated".
@@ -93,6 +95,21 @@ double volumetric_heat_capacity(const Fields& fields, const SimulationConfig& cf
     return positive_field_value(fields, "rho_cp_liquid_solution", cfg.rho_cp, i, j);
 }
 
+double specific_heat(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
+    if (cfg.liquid_specific_heat > 0.0) return cfg.liquid_specific_heat;
+    const double density = positive_field_value(fields, "rho_liquid_solution", cfg.rho, i, j);
+    return volumetric_heat_capacity(fields, cfg, i, j) / density;
+}
+
+const InletConfig* fed_inlet(const Mesh& mesh, const SimulationConfig& cfg, int i, int j) {
+    const InletConfig* inlet = mesh.inlet_at(cfg, i, j);
+    return inlet != nullptr && inlet->feeds_fresh_oil ? inlet : nullptr;
+}
+
+bool flux_balanced(const SimulationConfig& cfg) {
+    return cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED;
+}
+
 double thermal_conductivity(const Fields& fields, const SimulationConfig& cfg, int i, int j) {
     return positive_field_value(fields, "k_liquid_solution", cfg.thermal_conductivity, i, j);
 }
@@ -117,11 +134,8 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
             const double mu_val = dynamic_viscosity(fields, cfg, i, j);
             // Only the liquid fraction theta carries Couette shear in a cavitated
             // cell; full-film cells (g=1) are unchanged. Shares one helper with the
-            // capacity, conduction and convective flux weights so the four cannot
-            // drift apart: weighting shear alone conserves the leading-order
-            // temperature rise by accident (source and mass flux both scale with
-            // theta and the error cancels) while leaving conduction and storage
-            // over-weighted by 1/theta.
+            // capacity and conduction weights. FBNS carries enthalpy with its
+            // upwind liquid mass flux instead of an averaged face fraction.
             const double liquid = liquid_fraction(theta, cfg, g, i, j);
             // Depth-integrated Couette dissipation. With uniform viscosity the shear
             // stress is mu U/h and the integral is mu U^2/h. With a cross-film
@@ -136,23 +150,16 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
                 : mu_val * U * U / h_val;
             const double couette = couette_specific * liquid;
 
-            // Pressure-flow dissipation must follow the same active faces as the
-            // Reynolds/velocity solve. Cavitated faces carry no Poiseuille flow, so
-            // their pressure jump is not a cell-centered gradient. Average squared
-            // active face gradients; inactive and exterior faces contribute zero.
-            //
-            // The full-film switch is kept here for every cavitation model,
-            // including FBNS. Attributing a depth-integrated h^3|grad p|^2/(12 mu)
-            // to a ruptured cell is a modelling claim about a striated film, not a
-            // conservation requirement the way the convected enthalpy above is; the
-            // only cells it can touch are the single rupture/reformation front cells
-            // (deeper in the cavity FBNS holds p = p_cav, so grad p vanishes), where
-            // Couette shear outweighs it by orders of magnitude in a journal bearing.
+            // Follow the pressure faces carried by the selected mass operator.
+            // FBNS retains a physical pressure flux at a rupture front; Elrod
+            // switches that flux off when either neighbour is cavitated.
             double poiseuille = 0.0;
-            if (g > 0.0) {
+            if (g > 0.0 || cfg.cavitation_model == CavitationModel::FBNS) {
                 double grad_sq = 0.0;
-                const double g_e = FullFilm::face_gate(fields, cfg, i, j, i + 1, j);
-                const double g_w = FullFilm::face_gate(fields, cfg, i - 1, j, i, j);
+                const double g_e = poiseuille_face_activity(
+                    cfg, FullFilm::face_gate(fields, cfg, i, j, i + 1, j));
+                const double g_w = poiseuille_face_activity(
+                    cfg, FullFilm::face_gate(fields, cfg, i - 1, j, i, j));
                 if (g_e > 0.0) {
                     const double dp_ds_e = (p(i + 1, j) - p(i, j)) / (d_theta * R);
                     grad_sq += 0.5 * dp_ds_e * dp_ds_e;
@@ -164,20 +171,24 @@ void compute_heat_generation(Fields& fields, const Mesh& mesh, const SimulationC
 
                 if (n_z > 1) {
                     if (j == 0) {
-                        const double g_n = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
+                        const double g_n = poiseuille_face_activity(
+                            cfg, FullFilm::face_gate(fields, cfg, i, j, i, j + 1));
                         if (g_n > 0.0) {
                             const double dp_dz_n = (p(i, j + 1) - p(i, j)) / d_z;
                             grad_sq += dp_dz_n * dp_dz_n;
                         }
                     } else if (j == n_z - 1) {
-                        const double g_s = FullFilm::face_gate(fields, cfg, i, j - 1, i, j);
+                        const double g_s = poiseuille_face_activity(
+                            cfg, FullFilm::face_gate(fields, cfg, i, j - 1, i, j));
                         if (g_s > 0.0) {
                             const double dp_dz_s = (p(i, j) - p(i, j - 1)) / d_z;
                             grad_sq += dp_dz_s * dp_dz_s;
                         }
                     } else {
-                        const double g_n = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
-                        const double g_s = FullFilm::face_gate(fields, cfg, i, j - 1, i, j);
+                        const double g_n = poiseuille_face_activity(
+                            cfg, FullFilm::face_gate(fields, cfg, i, j, i, j + 1));
+                        const double g_s = poiseuille_face_activity(
+                            cfg, FullFilm::face_gate(fields, cfg, i, j - 1, i, j));
                         if (g_n > 0.0) {
                             const double dp_dz_n = (p(i, j + 1) - p(i, j)) / d_z;
                             grad_sq += 0.5 * dp_dz_n * dp_dz_n;
@@ -247,6 +258,9 @@ double south_boundary_flux(const Field& p, const Field& h, const Field& theta,
                            const Fields& fields, const Mesh& mesh,
                            const SimulationConfig& cfg, int i) {
     if (!uses_pressure_boundary(cfg.bc_z_south_type)) return 0.0;
+    if (cfg.cavitation_model == CavitationModel::FBNS) {
+        return FBNS::mass_flux_z(fields, mesh, cfg, i, -1) * specific_heat(fields, cfg, i, 0);
+    }
     const double face_length = mesh.R * mesh.get_d_theta();
     const double d_z = mesh.get_d_z();
     const double h_face = std::max(h(i, 0), cfg.min_film_thickness);
@@ -279,6 +293,9 @@ double north_boundary_flux(const Field& p, const Field& h, const Field& theta,
                            const SimulationConfig& cfg, int i) {
     if (!uses_pressure_boundary(cfg.bc_z_north_type)) return 0.0;
     const int j = mesh.n_z_local - 1;
+    if (cfg.cavitation_model == CavitationModel::FBNS) {
+        return FBNS::mass_flux_z(fields, mesh, cfg, i, j) * specific_heat(fields, cfg, i, j);
+    }
     const double face_length = mesh.R * mesh.get_d_theta();
     const double d_z = mesh.get_d_z();
     const double h_face = std::max(h(i, j), cfg.min_film_thickness);
@@ -312,19 +329,23 @@ void add_axial_boundary_convection(LinearSystem& sys, const Field& p, const Fiel
     const bool north_reservoir = cfg.bc_z_north_thermal == ThermalInflowMode::CONSTANT;
 
     for (int i = 0; i < mesh.n_theta_local; ++i) {
-        const double flux_south = south_boundary_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_south >= 0.0 && south_reservoir) {
-            sys.source(i, 0) += flux_south * cfg.axial_inflow_temperature(true);
-        } else {
-            sys.a_p(i, 0) += -flux_south;  // outflow, or open zero-gradient inflow
+        if (!flux_balanced(cfg) || fed_inlet(mesh, cfg, i, 0) == nullptr) {
+            const double flux_south = south_boundary_flux(p, h, theta, fields, mesh, cfg, i);
+            if (flux_south >= 0.0 && south_reservoir) {
+                sys.source(i, 0) += flux_south * cfg.axial_inflow_temperature(true);
+            } else {
+                sys.a_p(i, 0) += -flux_south;
+            }
         }
 
         const int j = mesh.n_z_local - 1;
-        const double flux_north = north_boundary_flux(p, h, theta, fields, mesh, cfg, i);
-        if (flux_north < 0.0 && north_reservoir) {
-            sys.source(i, j) += -flux_north * cfg.axial_inflow_temperature(false);
-        } else {
-            sys.a_p(i, j) += flux_north;  // outflow, or open zero-gradient inflow
+        if (!flux_balanced(cfg) || fed_inlet(mesh, cfg, i, j) == nullptr) {
+            const double flux_north = north_boundary_flux(p, h, theta, fields, mesh, cfg, i);
+            if (flux_north < 0.0 && north_reservoir) {
+                sys.source(i, j) += -flux_north * cfg.axial_inflow_temperature(false);
+            } else {
+                sys.a_p(i, j) += flux_north;
+            }
         }
     }
 }
@@ -399,15 +420,14 @@ void groove_mixing_temperatures(const InletConfig& inlet, const Fields& fields,
     }
 }
 
-// Actual fed inlets (feeds_fresh_oil) pump fresh oil in at a fixed supply
-// temperature, so their rows impose that value directly. Under the default
-// groove_mixing_model = PINNED the pinned value is inlet.t_supply exactly; the
-// mixing models pin the groove to the hot-oil carry-over mixture instead.
+// Historical inlet modes pin fed groove cells to the supply or empirical mix.
+// FLUX_BALANCED leaves those cells in the energy solve, with a signed reservoir
+// exchange set by their discrete FBNS face-flux imbalance.
 // Open large-clearance regions (feeds_fresh_oil == false) impose no thermal
 // condition and are left thermally transparent to the energy solve.
 void apply_inlet_thermal_conditions(LinearSystem& sys, const Fields& fields,
                                     const Mesh& mesh, const SimulationConfig& cfg) {
-    if (cfg.inlets.empty()) return;
+    if (cfg.inlets.empty() || flux_balanced(cfg)) return;
 
     const int n_theta = mesh.n_theta_local;
     const int n_z = mesh.n_z_local;
@@ -442,12 +462,21 @@ void add_nonconservative_convection_correction(LinearSystem& sys,
             const double flux_w = flux_theta(i - 1, j);
             const double flux_n = (j + 1 < mesh.n_z_local)
                 ? flux_z(i, j)
-                : north_boundary_flux(p, h, theta, fields, mesh, cfg, i);
+                : (flux_balanced(cfg) && fed_inlet(mesh, cfg, i, j) != nullptr
+                    ? 0.0 : north_boundary_flux(p, h, theta, fields, mesh, cfg, i));
             const double flux_s = (j > 0)
                 ? flux_z(i, j - 1)
-                : south_boundary_flux(p, h, theta, fields, mesh, cfg, i);
+                : (flux_balanced(cfg) && fed_inlet(mesh, cfg, i, j) != nullptr
+                    ? 0.0 : south_boundary_flux(p, h, theta, fields, mesh, cfg, i));
             const double flux_divergence = flux_e - flux_w + flux_n - flux_s;
             sys.a_p(i, j) -= flux_divergence;
+            if (flux_balanced(cfg)) {
+                if (const InletConfig* inlet = fed_inlet(mesh, cfg, i, j)) {
+                    const double supplied = std::max(flux_divergence, 0.0);
+                    sys.a_p(i, j) += supplied;
+                    sys.source(i, j) += supplied * inlet->t_supply;
+                }
+            }
         }
     }
 }
@@ -490,6 +519,14 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     Field flux_z("thermal_flux_z", mesh);
     for (int i = -1; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
+            if (cfg.cavitation_model == CavitationModel::FBNS) {
+                const double mass_flux = FBNS::mass_flux_theta(fields, mesh, cfg, i, j);
+                const double cp = mass_flux >= 0.0
+                    ? specific_heat(fields, cfg, i, j)
+                    : specific_heat(fields, cfg, i + 1, j);
+                flux_theta(i, j) = mass_flux * cp;
+                continue;
+            }
             const double h_face = std::max(0.5 * (h(i, j) + h(i + 1, j)), cfg.min_film_thickness);
             const double g_face = FullFilm::face_gate(fields, cfg, i, j, i + 1, j);
             // Separate switches on purpose: `g_flow` decides whether the face
@@ -532,6 +569,14 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) flux_z(i, j) = 0.0;
         for (int j = 0; j + 1 < n_z; ++j) {
+            if (cfg.cavitation_model == CavitationModel::FBNS) {
+                const double mass_flux = FBNS::mass_flux_z(fields, mesh, cfg, i, j);
+                const double cp = mass_flux >= 0.0
+                    ? specific_heat(fields, cfg, i, j)
+                    : specific_heat(fields, cfg, i, j + 1);
+                flux_z(i, j) = mass_flux * cp;
+                continue;
+            }
             const double h_face = std::max(0.5 * (h(i, j) + h(i, j + 1)), cfg.min_film_thickness);
             const double g_face = FullFilm::face_gate(fields, cfg, i, j, i, j + 1);
             const double g_flow = poiseuille_face_activity(cfg, g_face);
@@ -588,6 +633,99 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     apply_inlet_thermal_conditions(sys, fields, mesh, cfg);
 
     sys.solve(temperature, cfg.linear_rtol, 1000, "temperature");
+}
+
+Balance balance(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    if (!flux_balanced(cfg)) {
+        throw std::invalid_argument("Energy::balance requires FLUX_BALANCED groove mixing");
+    }
+    const Field& temperature = fields["temperature"];
+    const Field& heat = fields["heat_generation"];
+    const double reference = cfg.temperature_reference;
+    const double area = mesh.R * mesh.get_d_theta() * mesh.get_d_z();
+    Balance local;
+    double advection_W = 0.0;
+
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const InletConfig* inlet = fed_inlet(mesh, cfg, i, j);
+            const double t_cell = temperature(i, j) - reference;
+            const double east_mass = FBNS::mass_flux_theta(fields, mesh, cfg, i, j);
+            const double west_mass = FBNS::mass_flux_theta(fields, mesh, cfg, i - 1, j);
+            const double east = east_mass * (east_mass >= 0.0
+                ? specific_heat(fields, cfg, i, j) : specific_heat(fields, cfg, i + 1, j));
+            const double west = west_mass * (west_mass >= 0.0
+                ? specific_heat(fields, cfg, i - 1, j) : specific_heat(fields, cfg, i, j));
+            double conv = east * (east >= 0.0 ? t_cell : temperature(i + 1, j) - reference)
+                        - west * (west >= 0.0 ? temperature(i - 1, j) - reference : t_cell);
+            double divergence = east - west;
+
+            if (j + 1 < mesh.n_z_local) {
+                const double mass = FBNS::mass_flux_z(fields, mesh, cfg, i, j);
+                const double flux = mass * (mass >= 0.0
+                    ? specific_heat(fields, cfg, i, j) : specific_heat(fields, cfg, i, j + 1));
+                conv += flux * (flux >= 0.0 ? t_cell : temperature(i, j + 1) - reference);
+                divergence += flux;
+            } else if (inlet == nullptr) {
+                const double flux = north_boundary_flux(fields["pressure"], fields["h"],
+                    fields["theta"], fields, mesh, cfg, i);
+                const double t_face = flux >= 0.0 || cfg.bc_z_north_thermal != ThermalInflowMode::CONSTANT
+                    ? t_cell : cfg.axial_inflow_temperature(false) - reference;
+                conv += flux * t_face;
+                divergence += flux;
+                local.axial_enthalpy_out_W += flux * t_face;
+            }
+            if (j > 0) {
+                const double mass = FBNS::mass_flux_z(fields, mesh, cfg, i, j - 1);
+                const double flux = mass * (mass >= 0.0
+                    ? specific_heat(fields, cfg, i, j - 1) : specific_heat(fields, cfg, i, j));
+                conv -= flux * (flux >= 0.0 ? temperature(i, j - 1) - reference : t_cell);
+                divergence -= flux;
+            } else if (inlet == nullptr) {
+                const double flux = south_boundary_flux(fields["pressure"], fields["h"],
+                    fields["theta"], fields, mesh, cfg, i);
+                const double t_face = flux <= 0.0 || cfg.bc_z_south_thermal != ThermalInflowMode::CONSTANT
+                    ? t_cell : cfg.axial_inflow_temperature(true) - reference;
+                conv -= flux * t_face;
+                divergence -= flux;
+                local.axial_enthalpy_out_W -= flux * t_face;
+            }
+            advection_W += conv;
+            if (inlet != nullptr) {
+                const double supplied = std::max(divergence, 0.0);
+                local.groove_enthalpy_in_W += supplied * (inlet->t_supply - reference)
+                    + std::min(divergence, 0.0) * t_cell;
+                local.feed_mass_kg_s += divergence / cfg.liquid_specific_heat;
+            } else {
+                local.mass_imbalance_correction_W += divergence * t_cell;
+            }
+            local.viscous_heat_W += heat(i, j) * area;
+            if (CrossFilm::active(cfg) && fields.has("cross_film_wall_flux")) {
+                local.wall_heat_W += fields["cross_film_wall_flux"](i, j) * area;
+            } else {
+                local.wall_heat_W += (cfg.journal_heat_transfer *
+                    (temperature(i, j) - cfg.journal_wall_temperature) +
+                    cfg.bearing_heat_transfer *
+                    (temperature(i, j) - cfg.bearing_wall_temperature)) * area;
+            }
+        }
+    }
+
+    double values[] = {advection_W, local.viscous_heat_W, local.wall_heat_W,
+        local.axial_enthalpy_out_W, local.groove_enthalpy_in_W,
+        local.mass_imbalance_correction_W, local.feed_mass_kg_s};
+    MPI_Allreduce(MPI_IN_PLACE, values, 7, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    Balance result;
+    result.viscous_heat_W = values[1];
+    result.wall_heat_W = values[2];
+    result.axial_enthalpy_out_W = values[3];
+    result.groove_enthalpy_in_W = values[4];
+    result.mass_imbalance_correction_W = values[5];
+    result.feed_mass_kg_s = values[6];
+    result.residual_W = values[0] + values[2] - values[1] - values[4] - values[5];
+    result.scale_W = std::abs(values[0]) + std::abs(values[2]) +
+        std::abs(values[1]) + std::abs(values[4]) + std::abs(values[5]);
+    return result;
 }
 
 }  // namespace Energy

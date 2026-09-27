@@ -302,7 +302,9 @@ void update_solution_fields(Fields& fields, const Mesh& mesh, const SimulationCo
 
             const double rho_liquid = liquid_solution_density(dissolved, pressure, temperature, cfg);
             double mu_liquid = liquid_solution_viscosity(dissolved, pressure, temperature, cfg);
-            const double cp_liquid = cfg.rho_cp / std::max(rho_liquid, kMinPositive);
+            const double cp_liquid = cfg.liquid_specific_heat > 0.0
+                ? cfg.liquid_specific_heat
+                : cfg.rho_cp / std::max(rho_liquid, kMinPositive);
             const double rho_g = gas_density(pressure, temperature, cfg);
 
             // Dissolved gas modifies the liquid viscosity; free gas enters through

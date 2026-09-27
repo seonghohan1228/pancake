@@ -2926,5 +2926,119 @@ which bush conduction spreads into neighboring cells. The F diagnostic found
 a 0.218 K groove undershoot and 0.069 K in two adjacent columns. Balanced
 solid wall fluxes do not remove this local modeling inconsistency. Preserve
 these values as baseline diagnostics; do not interpret them as physical
-sub-ambient cooling or assume negligible effects on other outputs. Changing
-the groove mixing model without measured mixing inputs is not a remedy.
+sub-ambient cooling or assume negligible effects on other outputs. The correction below derives reservoir exchange from the solved mass flux;
+it does not prescribe an unmeasured mixing-flow rate.
+
+
+## Conservative steady FW68D closure repair (2026-09-28)
+
+The September 27 baseline failed for two separate reasons: undamped quartic
+collocation updates stalled the pressure/temperature fixed point, and a
+prescribed groove mean temperature could force an artificial cold part of the
+cross-film profile against warmer walls. Fixed-position convergence is only
+an inner calculation. The six experimental conditions require an outer search
+for eccentricity and attitude satisfying the two fluid-force components.
+The following changes supersede the PINNED/constant-volumetric-capacity
+assumptions in the initial campaign record; the earlier failures are retained.
+
+### One discrete liquid flux for mass and enthalpy
+
+For FBNS, energy now uses the public Reynolds mass-flux operator on every
+face, including its harmonic pressure mobility and upwind liquid fraction
+on the Couette term. In schematic form,
+
+\[
+\dot m_{i+1/2}=G_{i+1/2}(p_i-p_{i+1})
+                 +C_{i+1/2}\theta_{\rm upwind},\qquad
+\dot H_f=c_p\dot m_f(T_{\rm upwind}-T_0).
+\]
+
+Pressure-driven flux is not multiplied by an averaged cavity fraction. FBNS
+complementarity makes pressure constant inside a cavity, while a physical
+pressure flux can remain at a rupture/reformation front. Pressure-work
+heating therefore remains active at those fronts. The dissipation law is
+\(\theta U^2/F_0+F_2|\nabla p|^2\) for a striated cavity, with the full-film
+Couette fraction equal to one. The existing thin-film dissipation and
+cross-film approximations remain; no vapor latent-heat model is added.
+
+A positive `liquid_specific_heat` selects constant mass-specific heat and
+updates `rho_cp_liquid_solution = rho_liquid_solution * liquid_specific_heat`.
+FW68D uses 2010 J/(kg K). Zero retains the earlier volumetric-capacity input
+for configurations that have not selected this option.
+
+### Pressure-fed groove energy
+
+`groove_mixing_model = FLUX_BALANCED` leaves the groove pressure constraint
+in place and solves the groove film temperature. The reservoir exchange is
+computed from the divergence of the same signed face mass fluxes:
+
+\[
+q_g=\sum_{f\in\partial g}\dot m_f,\qquad
+Q_{g,\mathrm{in}}=c_p\left[q_g^+(T_s-T_0)+q_g^-(T_g-T_0)\right].
+\]
+
+Here \(q_g^+=\max(q_g,0)\), \(q_g^-=\min(q_g,0)\). Net supply enters at
+TC0; drainage leaves at the solved groove temperature. The groove is an
+ideal pressure-fed reservoir coupled to the existing film cell, not a
+resolved deep-groove recirculation region. No independent fresh-oil flow is
+invented. At a full-length groove/end overlap, the groove row owns the
+reservoir exchange; the discarded axial pressure face is not counted again.
+This closure is currently restricted to steady, gas-free, single-phase FBNS,
+upwind thermal convection, and positive constant mass-specific heat.
+
+### Conservation and admissibility
+
+The global energy ledger sums the same discrete fluxes and sources:
+
+\[
+R_E=H_{\rm axial,out}+Q_{\rm walls,out}-Q_{\rm viscous}
+       -Q_{\rm groove,in}-Q_{\rm mass\ correction}.
+\]
+
+Periodic/internal face enthalpy fluxes cancel. The final term records the
+existing non-groove continuity-defect correction explicitly; it cannot hide
+a mass error because mass closure is tested separately. Wall heat is evaluated
+from the actual CHT flux, so its lag is included in the nonlinear residual.
+The solver keeps iterating after small pressure/temperature changes until
+\(|R_E|/\max(S_E,1\,\mathrm W)<\texttt{coupling_tolerance}\), where \(S_E\)
+is the sum of absolute ledger contributions. The campaign requires 1e-6.
+
+The liquid rate residual is storage minus net boundary/feed inflow and clamp
+rate, in kg/s. Its scale includes absolute reservoir exchanges, storage and
+clamp rates. This dimensionless check is independent of inactive steady
+`dt` metadata; the campaign requires absolute relative residual at most 1e-8.
+The legacy timestep-normalized diagnostic remains for compatibility.
+
+The raw quartic profile is checked at both walls and every stationary point
+inside the film. Its global minimum/maximum are written to diagnostics.
+Nonfinite/nonpositive walls, profiles, viscosity integrals, or a failed bush
+conduction solve terminate the run collectively. No temperature floor or
+viscosity-ratio clamp repairs the result. For this common-ambient, positive-
+heating campaign, every film/wall/profile temperature must be at least
+TC0 minus 0.001 K numerical allowance. This is a rejection criterion, not a
+clipping operation or a general constraint on other boundary conditions.
+
+### Coupled equilibrium and reusable initial fields
+
+The raw collocation fixed-point defect is checked separately as
+max |X_target-X_previous| / max(|T_reference|,1 K) below 1e-6. Testing this
+unrelaxed defect prevents source damping from hiding a changing internal
+profile. Exact profile extrema must remain inside the FW68D viscosity table.
+
+The quartic collocation update uses `cross_film_relaxation = 0.3` without
+changing mesh, profile order, quadrature or residual tolerances. Each outer
+force trial closes pressure, film/solid temperature and both external heat-
+transfer coefficients. The position solver bounds Newton steps and backtracks
+when a trial fails or increases the vector force error. Only
+\(\|\mathbf F_{\rm fluid}+(0,-W)\|/W<0.002\), together with all thermal and
+physical checks, is an accepted bearing position.
+
+A successful gas-free steady FBNS solve writes `steady_state.dat` with
+pressure, liquid content, mean temperature and quartic collocation state.
+`steady_initial_state_file` loads those values only as an initial guess.
+The current geometry, load and boundary configuration still define the new
+problem. Grid dimensions, R, c, L, field order and values are validated; MPI
+rank decomposition may differ. The campaign uses only same-case states with
+matching source/executable/input provenance and rechecks their diagnostics.
+Neither a saved state nor a cached fixed-position result establishes load
+balance. Failed attempts and their files remain available for diagnosis.

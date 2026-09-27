@@ -4029,3 +4029,24 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   workstation, return full hashed evidence and inspect the convergence plot.
   Launch the eight-case numerical baseline on six disjoint four-rank slots;
   full load/thermal equilibria and experimental comparisons remain pending.
+
+
+## 2026-09-28 - Repair steady FW68D thermal and load closure
+
+- Replace the six-case PINNED groove thermal rows with signed, pressure-derived
+  reservoir enthalpy exchange; retain pressure and TC0 reservoir conditions.
+- Use exact FBNS mass fluxes in energy, preserve rupture-front pressure heating,
+  and hold mass-specific cp constant as density varies.
+- Add the discrete energy ledger, a timestep-independent liquid rate residual,
+  and exact internal quartic temperature extrema. Reject invalid cross-film
+  states and failed bush solves rather than repairing values silently.
+- Include energy closure in the coupled stopping decision. Require the case
+  driver to pass conservation, positivity, subambient-temperature, pressure,
+  cavity-content, thermal-coefficient and vector-load checks.
+- Reuse verified same-case steady fields; add bounded force-search backtracking
+  and faster bounded external-coefficient updates. Preserve all failed trials.
+- Keep the requested 720 by 192 mesh, order-four profile, six quadrature points
+  and 16 radial bush cells. Damp only the quartic source update by 0.3.
+- Add focused native/MPI checks for groove energy, heat capacity, rupture-front
+  heating, profile extrema, wall heat balance, initial-state I/O and mass-rate
+  normalization. Full-case validation is recorded separately as it completes.

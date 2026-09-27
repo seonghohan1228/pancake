@@ -1,25 +1,20 @@
 #include "cross_film.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <exception>
+#include <limits>
 #include <mpi.h>
+#include <stdexcept>
 #include <vector>
 
 #include "bush_conduction.hpp"
 #include "fluid_properties.hpp"
 #include "output_naming.hpp"
-#include "utils.hpp"
 
 namespace CrossFilm {
 namespace {
-
-// Viscosity ratio clamp. The reconstructed profile is a polynomial fit, not a
-// solution of the full 3-D energy equation, so a locally extreme coefficient must
-// not be allowed to drive exp(E_mu/T) to an absurd value and corrupt the Reynolds
-// coefficient. The bracket is wide enough never to bind on the validation rigs
-// (their cross-film viscosity ratio stays inside about 0.6-1.6).
-constexpr double kMuRatioMin = 0.05;
-constexpr double kMuRatioMax = 20.0;
 
 /// Zero-mean shape functions on eta = y/h in [0, 1], y measured from the shaft
 /// surface (eta = 0) to the bush surface (eta = 1).
@@ -34,6 +29,59 @@ constexpr double kMuRatioMax = 20.0;
 double psi1(double e) { return e - 0.5; }
 double psi2(double e) { return e - e * e - 1.0 / 6.0; }
 double psi4(double e) { const double q = e * (1.0 - e); return q * q - 1.0 / 30.0; }
+
+void require_globally_valid(bool invalid, const char* message) {
+    const int local = invalid ? 1 : 0;
+    int global = 0;
+    MPI_Allreduce(&local, &global, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    if (global) throw std::runtime_error(message);
+}
+
+double profile_temperature(double t_bar, double a, double b, double c, double eta) {
+    return t_bar + a * psi1(eta) + b * psi2(eta) + c * psi4(eta);
+}
+
+std::array<double, 2> profile_extrema(double t_bar, double a, double b, double c) {
+    const auto derivative = [=](double eta) {
+        const double x = eta - 0.5;
+        return a - (2.0 * b + c) * x + 4.0 * c * x * x * x;
+    };
+    std::vector<double> limits{0.0, 1.0};
+    if (c != 0.0) {
+        const double root_squared = (c + 2.0 * b) / (12.0 * c);
+        if (root_squared > 0.0 && root_squared < 0.25) {
+            const double root = std::sqrt(root_squared);
+            limits.push_back(0.5 - root);
+            limits.push_back(0.5 + root);
+        }
+    }
+    std::sort(limits.begin(), limits.end());
+    std::array<double, 2> extrema{
+        std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()};
+    const auto include = [&](double eta) {
+        const double value = profile_temperature(t_bar, a, b, c, eta);
+        if (!std::isfinite(value)) {
+            extrema.fill(std::numeric_limits<double>::quiet_NaN());
+            return;
+        }
+        extrema[0] = std::min(extrema[0], value);
+        extrema[1] = std::max(extrema[1], value);
+    };
+    for (double eta : limits) include(eta);
+    for (size_t k = 1; k < limits.size(); ++k) {
+        double left = limits[k - 1], right = limits[k];
+        const double d_left = derivative(left), d_right = derivative(right);
+        if (!std::isfinite(d_left) || !std::isfinite(d_right) ||
+            !((d_left < 0.0 && d_right > 0.0) || (d_left > 0.0 && d_right < 0.0))) continue;
+        for (int iteration = 0; iteration < 40; ++iteration) {
+            const double mid = 0.5 * (left + right);
+            if ((derivative(mid) < 0.0) == (d_left < 0.0)) left = mid;
+            else right = mid;
+        }
+        include(0.5 * (left + right));
+    }
+    return extrema;
+}
 
 /// Gauss-Legendre nodes and weights on [0, 1], by Newton iteration on P_n.
 void gauss_legendre_unit(int n, std::vector<double>& nodes, std::vector<double>& weights) {
@@ -157,6 +205,24 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     const double area = R * d_theta * d_z;
     const bool quartic = cfg.cross_film_profile_order >= 4;
 
+    bool invalid_input = false;
+    for (int i = 0; i < n_theta; ++i) {
+        for (int j = 0; j < n_z; ++j) {
+            const double h_val = h(i, j);
+            const double t_val = temperature(i, j);
+            const double mu_val = field_or(fields, "mu", cfg.mu, i, j);
+            const double k_val = field_or(fields, "k_liquid_solution", cfg.thermal_conductivity, i, j);
+            const double rho_cp = field_or(fields, "rho_cp_liquid_solution", cfg.rho_cp, i, j);
+            invalid_input |= !(std::isfinite(h_val) && h_val > 0.0 &&
+                               std::isfinite(t_val) && t_val > 0.0 &&
+                               std::isfinite(p(i, j)) &&
+                               std::isfinite(mu_val) && mu_val > 0.0 &&
+                               std::isfinite(k_val) && k_val > 0.0 &&
+                               std::isfinite(rho_cp) && rho_cp > 0.0);
+        }
+    }
+    require_globally_valid(invalid_input, "Cross-film input contains a nonphysical or nonfinite value");
+
     std::vector<double> nodes, weights;
     gauss_legendre_unit(std::max(2, cfg.cross_film_quadrature_points), nodes, weights);
 
@@ -186,6 +252,8 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // parabola whose amplitude follows from the mean and the two wall values.
     // ---------------------------------------------------------------------
     std::vector<double> x_collocation(static_cast<size_t>(n_theta) * n_z, 0.0);
+    double profile_residual = 0.0;
+    bool invalid_collocation = false;
     for (int i = 0; i < n_theta; ++i) {
         for (int j = 0; j < n_z; ++j) {
             if (!quartic) continue;
@@ -275,11 +343,21 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             const double w = std::clamp(cfg.cross_film_relaxation, 0.01, 1.0);
             const double x_raw = x_dissipation + x_conv_eff;
             const double x_prev = x_prev_f(i, j);
+            if (!std::isfinite(x_raw) || !std::isfinite(x_prev)) {
+                invalid_collocation = true;
+                continue;
+            }
+            profile_residual = std::max(profile_residual,
+                std::abs(x_raw - x_prev) /
+                std::max(std::abs(cfg.temperature_reference), 1.0));
             const double x_new = w * x_raw + (1.0 - w) * x_prev;
             x_prev_f(i, j) = x_new;
             x_collocation[static_cast<size_t>(i) * n_z + j] = x_new;
         }
     }
+    require_globally_valid(invalid_collocation, "Cross-film collocation source is nonfinite");
+    MPI_Allreduce(MPI_IN_PLACE, &profile_residual, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    state.profile_residual = profile_residual;
 
     // ---------------------------------------------------------------------
     // Step 2: conjugate walls.
@@ -374,11 +452,8 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
 
         const BushConduction::Solution bush =
             BushConduction::solve(coupling, n_theta_global, R, cfg);
-        if (!bush.converged) {
-            Utils::log("WARNING: the 2-D bush conduction solve left a relative residual of " +
-                           std::to_string(bush.residual),
-                       Utils::Color::YELLOW);
-        }
+        require_globally_valid(!bush.converged || !std::isfinite(bush.residual),
+                               "Cross-film 2-D bush conduction did not converge");
         state.bush_2d_solved = true;
         state.bush_residual = bush.residual;
         for (int i = 0; i < n_theta; ++i) {
@@ -433,11 +508,12 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // sum q_shaft dA = sums[1] + sums[2] + T_s (sums[3] - sums[0])
     //                 = shaft_sink (T_s - T_shaft_ambient)
     const double lhs_slope = sums[3] - sums[0] - shaft_sink;
-    double t_shaft = cfg.temperature_reference;
+    double t_shaft = std::numeric_limits<double>::quiet_NaN();
     if (std::abs(lhs_slope) > 1.0e-30) {
         t_shaft = -(sums[1] + sums[2] + shaft_sink * t_shaft_ambient) / lhs_slope;
     }
-    if (!std::isfinite(t_shaft) || t_shaft <= 0.0) t_shaft = cfg.temperature_reference;
+    require_globally_valid(!std::isfinite(t_shaft) || t_shaft <= 0.0,
+                           "Cross-film shaft temperature is nonphysical or nonfinite");
     state.t_shaft = t_shaft;
 
     // ---------------------------------------------------------------------
@@ -445,6 +521,9 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
     // ---------------------------------------------------------------------
     double bush_area_sum = 0.0, bush_temp_sum = 0.0;
     double q_shaft_net = 0.0, q_bush_net = 0.0, core_rise_max = 0.0;
+    double profile_t_min = std::numeric_limits<double>::infinity();
+    double profile_t_max = -std::numeric_limits<double>::infinity();
+    bool invalid_profile = false;
     // Physical cells only. The Reynolds assembly reads f2 and couette_h on both
     // theta ghost layers, which the caller supplies by ghost exchange rather than
     // by re-deriving a stencil that would need three ghost layers of p and T.
@@ -457,14 +536,28 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             const double t_bar = temperature(i, j);
 
             const size_t idx = static_cast<size_t>(i) * n_z + j;
-            double t_bush = alpha[idx] + beta[idx] * t_shaft;
-            if (!std::isfinite(t_bush) || t_bush <= 0.0) t_bush = t_bar;
+            const double t_bush = alpha[idx] + beta[idx] * t_shaft;
+            if (!std::isfinite(t_bush) || t_bush <= 0.0) {
+                invalid_profile = true;
+                continue;
+            }
 
             const double dT_wall = t_bar - 0.5 * (t_shaft + t_bush);
             const double X = x_collocation[static_cast<size_t>(i) * n_z + j];
             const double a_val = t_bush - t_shaft;
             const double c_val = quartic ? -(5.0 / 3.0) * X - 20.0 * dT_wall : 0.0;
             const double b_val = 6.0 * dT_wall - 0.2 * c_val;
+            if (!std::isfinite(a_val) || !std::isfinite(b_val) || !std::isfinite(c_val)) {
+                invalid_profile = true;
+                continue;
+            }
+            const auto extrema = profile_extrema(t_bar, a_val, b_val, c_val);
+            if (!std::isfinite(extrema[0]) || !std::isfinite(extrema[1]) || extrema[0] <= 0.0) {
+                invalid_profile = true;
+                continue;
+            }
+            profile_t_min = std::min(profile_t_min, extrema[0]);
+            profile_t_max = std::max(profile_t_max, extrema[1]);
             a_f(i, j) = a_val;
             b_f(i, j) = b_val;
             c_f(i, j) = c_val;
@@ -497,32 +590,58 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
             // the pressure, dissolved-gas and mixture corrections, so only the
             // temperature ratio is applied on top of it; that keeps every property
             // model working unchanged through the cross-film reconstruction.
-            const double mu_cell = std::max(field_or(fields, "mu", cfg.mu, i, j), 1.0e-30);
+            const double mu_cell = field_or(fields, "mu", cfg.mu, i, j);
             const double dissolved = field_or(fields, "dissolved_gas", 0.0, i, j);
             const double p_cell = p(i, j);
-            const double mu_ref = std::max(
-                FluidProperties::liquid_solution_viscosity(dissolved, p_cell, t_bar, cfg), 1.0e-30);
+            double mu_ref = std::numeric_limits<double>::quiet_NaN();
+            try {
+                mu_ref = FluidProperties::liquid_solution_viscosity(dissolved, p_cell, t_bar, cfg);
+            } catch (const std::exception&) {
+                invalid_profile = true;
+                continue;
+            }
+            if (!std::isfinite(mu_ref) || mu_ref <= 0.0) {
+                invalid_profile = true;
+                continue;
+            }
             double int0 = 0.0, int1 = 0.0, int2 = 0.0;
+            bool invalid_viscosity = false;
             for (size_t q = 0; q < nodes.size(); ++q) {
                 const double e = nodes[q];
-                const double t_local = std::max(
-                    t_bar + a_val * psi1(e) + b_val * psi2(e) + c_val * psi4(e), 1.0);
-                const double ratio = std::clamp(
-                    FluidProperties::liquid_solution_viscosity(dissolved, p_cell, t_local, cfg) / mu_ref,
-                    kMuRatioMin, kMuRatioMax);
+                const double t_local = profile_temperature(t_bar, a_val, b_val, c_val, e);
+                double ratio = std::numeric_limits<double>::quiet_NaN();
+                try {
+                    ratio = FluidProperties::liquid_solution_viscosity(dissolved, p_cell, t_local, cfg) / mu_ref;
+                } catch (const std::exception&) {
+                    invalid_viscosity = true;
+                    break;
+                }
+                if (!std::isfinite(ratio) || ratio <= 0.0) {
+                    invalid_viscosity = true;
+                    break;
+                }
                 const double inv_mu = 1.0 / (mu_cell * ratio);
                 int0 += weights[q] * inv_mu;
                 int1 += weights[q] * e * inv_mu;
                 int2 += weights[q] * e * e * inv_mu;
             }
+            if (invalid_viscosity) {
+                invalid_profile = true;
+                continue;
+            }
             const double F0 = h_val * int0;
             const double F1 = h_val * h_val * int1;
             const double G2 = h_val * h_val * h_val * int2;
-            const double F2 = std::max(G2 - F1 * F1 / std::max(F0, 1.0e-300), 1.0e-300);
+            const double F2 = G2 - F1 * F1 / F0;
+            if (!std::isfinite(F0) || F0 <= 0.0 || !std::isfinite(F1) ||
+                !std::isfinite(F2) || F2 <= 0.0) {
+                invalid_profile = true;
+                continue;
+            }
             f0_f(i, j) = F0;
             f1_f(i, j) = F1;
             f2_f(i, j) = F2;
-            couette_h_f(i, j) = 2.0 * F1 / std::max(F0, 1.0e-300);
+            couette_h_f(i, j) = 2.0 * F1 / F0;
 
             // Wall closure for the depth-averaged energy equation. The total loss
             // is q_shaft + q_bush = 2 kh b. Linearising in T_bar through the bush
@@ -567,13 +686,20 @@ WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) 
         }
     }
 
+    require_globally_valid(invalid_profile,
+                           "Cross-film bush, profile, or viscosity integral is nonphysical");
+
     double reduce[4] = {bush_area_sum, bush_temp_sum, q_shaft_net, q_bush_net};
     MPI_Allreduce(MPI_IN_PLACE, reduce, 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     MPI_Allreduce(MPI_IN_PLACE, &core_rise_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &profile_t_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &profile_t_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     state.t_bush_mean = reduce[0] > 0.0 ? reduce[1] / reduce[0] : t_shaft;
     state.q_shaft_net = reduce[2];
     state.q_bush_net = reduce[3];
     state.core_rise_max = core_rise_max;
+    state.profile_t_min = profile_t_min;
+    state.profile_t_max = profile_t_max;
     return state;
 }
 

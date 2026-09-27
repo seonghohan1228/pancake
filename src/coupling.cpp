@@ -20,7 +20,8 @@ Controller::Controller(const SimulationConfig& cfg) {
     status_.relaxation_min_used = omega_;
 }
 
-bool Controller::record(int outer, double R_p, double R_T, double R_g) {
+bool Controller::record(int outer, double R_p, double R_T, double R_g,
+                        bool additional_balance_converged) {
     const double r = residual_metric(R_p, R_T, R_g);
 
     // Relaxation schedule. FIXED leaves omega_ at its constructed value, so the
@@ -47,7 +48,7 @@ bool Controller::record(int outer, double R_p, double R_T, double R_g) {
     status_.R_p = R_p;
     status_.R_T = R_T;
     status_.R_g = R_g;
-    status_.converged = r < tolerance_;
+    status_.converged = r < tolerance_ && additional_balance_converged;
 
     prev_residual_ = r;
     any_recorded_ = true;

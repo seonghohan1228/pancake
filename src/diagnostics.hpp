@@ -1,6 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
+
+#include "energy.hpp"
 
 #include "config.hpp"
 #include "coupling.hpp"
@@ -46,6 +49,13 @@ struct MassBalance {
     double gas_eos_defect = 0.0;       // max |alpha_gas - m_g/(rho_g h)|, including clipping
     double energy_residual_w = std::numeric_limits<double>::quiet_NaN(); // COUPLED thermal balance; otherwise unavailable.
     double internal_energy_j = std::numeric_limits<double>::quiet_NaN();
+    std::optional<Energy::Balance> energy;
+    double cross_film_profile_residual = std::numeric_limits<double>::quiet_NaN();
+    double cross_film_profile_t_min_K = std::numeric_limits<double>::quiet_NaN();
+    double cross_film_profile_t_max_K = std::numeric_limits<double>::quiet_NaN();
+    double liquid_residual_kg_s = std::numeric_limits<double>::quiet_NaN();
+    double liquid_balance_scale_kg_s = std::numeric_limits<double>::quiet_NaN();
+    double liquid_residual_rel = std::numeric_limits<double>::quiet_NaN();
 };
 
 /// Global mass balance for the step just completed. dt is the step size used by
