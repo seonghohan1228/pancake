@@ -164,3 +164,33 @@ as did explicit four-rank I/O and diagnostics checks and the case-driver
 self-check. Production executable SHA256 is
 `d9d19941151107d308ca484a1a6a5c212366c041553e83cbb67a032f8c55396a`.
 Compiler/MPI/PETSc are GCC 11.4 / OpenMPI 4.1.2 / PETSc 3.15.5.
+
+
+### Corrected E inner trial and force-search check
+
+At 2026-09-27 15:30:31 UTC (September 28 KST), E's first fixed-position
+trial completed in 616.160 s on eight ranks after 641 coupling sweeps.
+R_p=1.59038e-7, R_T=7.91947e-10 and raw R_X=4.50689e-9; the relative
+energy defect is 9.91995e-7 and liquid-rate defect is 4.62e-16. The exact
+profile range is 328.658--333.54 K, above TC0=324.71526 K. The minimum gap
+is 36.13 micrometres; pressure is 0--229.8 kPa. These are inner-solve checks.
+
+The force is (-52.333,191.208) N against the required (0,461.252) N,
+so its vector load error remains 59.635%. Its initial external-coefficient
+mismatch is 15.657%. The record is `trial_only_not_thermally_closed`, not an
+accepted bearing equilibrium. The next cooling evaluation reduced the h
+mismatch to 1.106% while again passing the inner energy/physical gates.
+
+A full E cooling/position search was launched with the existing driver at
+15:31:38 UTC, PID 4057589, reusing this verified checkpoint. It uses physical
+cores 16--23 and the same `diagnostic_trials/E` work directory. A/C remain
+in their first trials. B has not launched: automatic approval review blocked
+its launcher upload; the destination-specific user approval is pending.
+
+The standalone check `python tests/test_fw68d_force_balance.py` passes. It
+uses a known two-component force equilibrium from two different positions,
+rejects the first full candidate, and verifies retained history plus recovery.
+It tests the search algorithm, not the CFD force law or uniqueness of the
+physical equilibrium. The current motion model assumes fixed journal centre
+with a rotating journal surface; confirmation of that interpretation of
+"journal stationary" is pending.

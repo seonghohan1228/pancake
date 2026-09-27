@@ -2596,3 +2596,13 @@ numerical diagnosis only and do not complete an experimental comparison.
 - [ ] Rebuild the isolated workstation snapshot and validate representative CHT trials.
 - [ ] Close thermal coefficients and bearing position for A-F and E temperature variants.
 - [ ] Return results and provenance, inspect all acceptance checks, and merge verified code.
+
+### September 28 validation progress
+
+- [x] Pass the corrected workstation build, 14 focused tests and explicit
+  four-rank I/O/diagnostics checks.
+- [x] Verify the position-search algorithm from two distinct starts with a
+  rejected full step and recovery by backtracking.
+- [x] Pass Case E inner conservation and physical checks at its trial position.
+- [ ] Finish external cooling and force closure; an inner pass is not an
+  accepted experimental case.

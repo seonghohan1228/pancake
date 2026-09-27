@@ -4050,3 +4050,6 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Add focused native/MPI checks for groove energy, heat capacity, rupture-front
   heating, profile extrema, wall heat balance, initial-state I/O and mass-rate
   normalization. Full-case validation is recorded separately as it completes.
+
+- Add a standalone analytic force-balance check: two initial positions reach the
+  same equilibrium after a failed full Newton step, exercising backtracking.
