@@ -6,5 +6,20 @@
   "case_count": 6,
   "solver_source_and_general_material_table_unchanged": true,
   "preparation_source_commit": "dc69cee3b6df43ced59aabe41c1de84caf546bb1",
-  "simulations_executed": 0
+  "simulations_executed": 0,
+  "boundary_update": {
+    "date": "2026-09-27",
+    "source": "Direct user messages in this task",
+    "groove_width_m": 0.005,
+    "groove_opposite_applied_load": true,
+    "groove_conditions_match_ends": true,
+    "cavitation_pressure_requested_Pa": 0,
+    "pressure_reference_confirmed": false,
+    "housing_outer_diameter_m": 0.085,
+    "housing_length_m": 0.04,
+    "housing_material": "stainless steel",
+    "surroundings": "still FW68D at each TC0",
+    "natural_convection_estimation_authorized": true,
+    "note": "Source experimental attachment and reference-property table remain unchanged; no physical cases run."
+  }
 }

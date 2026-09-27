@@ -3974,3 +3974,17 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   viscosities, Sommerfeld numbers, friction coefficients and E endpoints.
 - Map TC0 to feed/ambient references and leave wall/supply specifications
   unresolved. Record the wall-shear prerequisite and preserve all prior results.
+
+
+## 2026-09-27 - Specify FW68D groove and still-oil housing cooling
+
+- Record the user's 5 mm groove opposite applied load, common groove/end
+  reservoir, requested zero cavity pressure, OD85/L40 stainless housing and
+  surrounding still oil at TC0. Preserve the pressure datum as unresolved.
+- Convert the bore-arc groove width to 13.2983125 degrees and record its
+  26-column representation on the retained 720-cell circumferential mesh.
+- Define force signs consistently with fluid-on-bearing output; use +y target
+  for a -y applied load, independently of the inert load_angle_deg input.
+- Record Churchill-Chu natural-convection estimates using explicitly provisional
+  oil thermal properties; document the missing self-consistent h coupling and
+  finite-housing/end-face limitations. No solver code or CFD output changed.

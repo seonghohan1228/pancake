@@ -48,7 +48,9 @@
     "coupling_relaxation_min": 0.1,
     "coupling_relaxation_backoff": 0.5,
     "coupling_relaxation_growth": 1.05,
-    "coupling_keep_best_iterate": true
+    "coupling_keep_best_iterate": true,
+    "bush_outer_radius": 0.0425,
+    "bush_outer_boundary": "CONVECTION"
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
@@ -68,26 +70,28 @@
       "attitude_angle_deg"
     ],
     "target": "total fluid-on-bearing force equals minus the specified applied load vector",
-    "load_direction_deg": null,
-    "load_frame": "Positive theta follows journal rotation; feed angles and applied load must share this frame.",
+    "load_direction_deg": 270,
+    "load_frame": "Chosen coordinates: applied load along -y (270 degrees), groove along +y (90 degrees); positive theta follows journal rotation. This is a coordinate convention, not a further experimental input.",
     "relative_vector_error_limit": 0.002,
-    "note": "Do not treat input eccentricity as measured or infer it from matched S. load_angle_deg alone does not control force direction in the current solver."
+    "note": "Do not treat input eccentricity as measured or infer it from matched S. load_angle_deg alone does not control force direction in the current solver.",
+    "applied_load_unit_vector": [
+      0,
+      -1
+    ],
+    "target_fluid_force_unit_vector": [
+      0,
+      1
+    ]
   },
   "physical_inputs_required": {
-    "feed_geometry_and_angular_position": null,
-    "end_pressure_south_Pa_abs": null,
-    "end_pressure_north_Pa_abs": null,
-    "supply_pressure_or_flow": null,
-    "logged_pressure_sensor_location": null,
-    "bush_outer_boundary_type": null,
-    "bush_outer_heat_transfer_W_m2_K_or_wall_temperature_K": null,
-    "bush_outer_radius_m": null,
-    "bush_thermal_conductivity_W_m_K": null,
+    "common_groove_and_end_pressure_Pa_absolute": null,
+    "cavitation_zero_pressure_reference_gauge_or_absolute": null,
+    "stainless_grade_or_thermal_conductivity_W_m_K": null,
     "shaft_cooling_condition": null,
     "oil_heat_capacity_J_kg_K_or_volumetric_heat_capacity_J_m3_K": null,
     "oil_thermal_conductivity_W_m_K": null,
-    "cavitation_pressure_Pa_abs": null,
-    "TC2_sensor_position": null
+    "logged_pressure_sensor_location_for_comparison_only": null,
+    "TC2_sensor_position_for_comparison_only": null
   },
   "additional_cases": [
     {
@@ -110,5 +114,218 @@
     "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
     "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass and energy diagnostics.",
     "friction_prerequisite": "Correct and verify cross-film wall shear using F0/F1 before quantitative torque comparison."
+  },
+  "specified_boundaries": {
+    "provenance": "User follow-up: 5 mm groove opposite load, same reservoir conditions as bearing ends, p_cav=0, stainless OD85 mm and L40 mm; surrounding still oil at TC0, estimate natural convection.",
+    "groove": {
+      "type": "GROOVE",
+      "width_m": 0.005,
+      "width_interpretation": "Circumferential arc at the nominal bore, treated as a full-length axial groove.",
+      "width_deg": 13.298312524795712,
+      "theta_deg": 90,
+      "axial_length_m": 0.04,
+      "native_inlet_size_deg": 13.298312524795712,
+      "pressure": "Equal to the common axial-end reservoir pressure; numeric value pending.",
+      "temperature": "Each case TC0, same as the axial-end reservoir.",
+      "thermal_closure": "Fed reservoir at TC0; native PINNED groove temperature, no measured hot-oil mixing fraction.",
+      "resolved_theta_columns": 26,
+      "resolved_arc_width_m": 0.00488783820344142
+    },
+    "pressure": {
+      "requested_cavitation_pressure_Pa": 0,
+      "requested_pressure_reference": null,
+      "solver_absolute_cavitation_pressure_Pa": null,
+      "note": "Do not silently convert between gauge and absolute pressure. Current solver validation rejects p_cav=0; datum or safe pure-oil zero-pressure support must be resolved before a run."
+    },
+    "housing": {
+      "material": "stainless steel",
+      "grade": null,
+      "outer_diameter_m": 0.085,
+      "outer_radius_m": 0.0425,
+      "length_m": 0.04,
+      "physical_bore_radius_m": 0.0215425,
+      "physical_radial_wall_thickness_m": 0.020957500000000004,
+      "native_cht_inner_radius_m": 0.0215,
+      "native_cht_geometry_note": "Existing r-theta solid solver starts at journal R, a thin-film approximation; axial solid end-face cooling is not represented.",
+      "outside_boundary": "Natural convection to still FW68D at case TC0",
+      "outside_surface_temperature": "Solved, not set to TC0",
+      "annular_end_area_over_lateral_area": 0.7895121727941177
+    },
+    "natural_convection": {
+      "status": "correlation_selected_not_yet_coupled_to_solver",
+      "correlation": "Churchill-Chu horizontal-cylinder mean Nu_D",
+      "doi": "10.1016/0017-9310(75)90222-7",
+      "orientation_assumption": "Horizontal cylinder",
+      "characteristic_diameter_m": 0.085,
+      "length_over_diameter": 0.47058823529411764,
+      "property_temperature": "Mean of outer housing surface temperature and TC0",
+      "kinematic_viscosity": "Supplied FW68D log-linear table",
+      "density": "954.9 - 0.7284*T_C",
+      "volumetric_expansion_per_K": "0.7284/rho",
+      "thermal_diffusivity": "k_oil/(rho*cp_oil)",
+      "Pr": "nu/alpha",
+      "Ra_D": "9.80665*beta*abs(T_surface-TC0)*D^3/(nu*alpha)",
+      "Nu_D": "(0.60 + 0.387*Ra_D^(1/6)/(1+(0.559/Pr)^(9/16))^(8/27))^2",
+      "heat_transfer_W_m2_K": "Nu_D*k_oil/D",
+      "coupling_plan": "Update a uniform mean h using converged mean outer surface temperature within each load-balance evaluation; re-solve thermal/pressure coupling until h and surface temperature settle.",
+      "limitations": "L/D=0.47 is short: long-cylinder lateral-surface estimate only. Confinement, mounting contacts and annular end-face cooling are not resolved; no measured h is implied.",
+      "preliminary_estimate_assumptions": {
+        "oil_cp_J_kg_K": 2000,
+        "oil_conductivity_W_m_K": 0.13,
+        "status": "Timing-fixture assumptions only; not confirmed FW68D thermal properties and not assigned as production inputs.",
+        "gravity_m_s2": 9.80665,
+        "delta_T_wall_to_TC0_K": [
+          5,
+          10,
+          20
+        ]
+      },
+      "preliminary_estimates": [
+        {
+          "case_id": "A",
+          "tc0_C": 29.673547120517753,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 42.063420746627074,
+              "Ra_D": 3048180.3198714843,
+              "Pr": 1586.4137602854873
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 53.65676520958215,
+              "Ra_D": 6920710.001358263,
+              "Pr": 1394.7186136182827
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 71.33524742613021,
+              "Ra_D": 17837773.65643964,
+              "Pr": 1078.0076647595072
+            }
+          ]
+        },
+        {
+          "case_id": "B",
+          "tc0_C": 61.48691239412936,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 63.02224667127491,
+              "Ra_D": 12081038.490435122,
+              "Pr": 390.31196962616445
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 80.10017490858907,
+              "Ra_D": 26656368.89209973,
+              "Pr": 353.08036689308426
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 104.99267367022578,
+              "Ra_D": 64617748.020048656,
+              "Pr": 290.13780576650663
+            }
+          ]
+        },
+        {
+          "case_id": "C",
+          "tc0_C": 28.640128684417995,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 41.425016143143345,
+              "Ra_D": 2892493.418448082,
+              "Pr": 1673.15265537032
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 52.83109187872406,
+              "Ra_D": 6567232.259658644,
+              "Pr": 1470.9786950240732
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 70.22326817737051,
+              "Ra_D": 16926702.979039524,
+              "Pr": 1136.954320607293
+            }
+          ]
+        },
+        {
+          "case_id": "D",
+          "tc0_C": 28.304340836455523,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 41.21976199172407,
+              "Ra_D": 2843637.949604857,
+              "Pr": 1702.3449894326288
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 52.5656419915622,
+              "Ra_D": 6456308.857378226,
+              "Pr": 1496.6443668963457
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 69.86577952765462,
+              "Ra_D": 16640803.62150367,
+              "Pr": 1156.7931218772942
+            }
+          ]
+        },
+        {
+          "case_id": "E",
+          "tc0_C": 51.56525966331575,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 56.18586599493736,
+              "Ra_D": 8180399.089807378,
+              "Pr": 581.0098388522886
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 71.32374081888163,
+              "Ra_D": 18049750.937814336,
+              "Pr": 525.5960261343674
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 93.50858224134274,
+              "Ra_D": 43937431.13786612,
+              "Pr": 430.1144798190946
+            }
+          ]
+        },
+        {
+          "case_id": "F",
+          "tc0_C": 28.371634937361524,
+          "estimates": [
+            {
+              "wall_excess_K": 5,
+              "h_W_m2_K": 41.26081107832204,
+              "Ra_D": 2853362.3411713056,
+              "Pr": 1696.4541358191739
+            },
+            {
+              "wall_excess_K": 10,
+              "h_W_m2_K": 52.618729189655014,
+              "Ra_D": 6478387.503294384,
+              "Pr": 1491.4651734286542
+            },
+            {
+              "wall_excess_K": 20,
+              "h_W_m2_K": 69.93727322024006,
+              "Ra_D": 16697710.19444428,
+              "Pr": 1152.7897577161532
+            }
+          ]
+        }
+      ]
+    }
   }
 }

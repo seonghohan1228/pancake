@@ -2,8 +2,9 @@
 
 This campaign replaces the earlier 24-point transient plan with the six cases
 selected by the user. It uses a steady pressure–energy–CHT solve and an outer
-load-balance search. The input package is prepared; simulations await the feed,
-load-direction and wall/solid thermal specifications listed below.
+load-balance search. The package now includes the groove, housing and still-oil
+cooling. Pressure datum and material/shaft thermal inputs remain unresolved;
+no physical cases have been run.
 
 ## Accepted cases
 
@@ -43,8 +44,9 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
   on the bearing balances the specified applied load vector to 0.2%.
 
 Eccentricity and attitude are solved outputs, so measured values are not needed
-for this load-controlled calculation. The load direction relative to feed ports
-is needed. `load_angle_deg` currently does not rotate the solver force target;
+for this load-controlled calculation. Choose applied load along -y (270 degrees)
+and the opposite groove at +y (90 degrees). The fluid-on-bearing target is
+(0,+W). `load_angle_deg` currently does not rotate the solver force target;
 the outer search must use explicit force-vector components in the chosen frame.
 The static geometry in each inner solve represents an equilibrium position of
 the loaded bearing, with the journal centre fixed and the journal rotating.
@@ -81,24 +83,84 @@ adopted PVE approximation; cases B/E exceed its stated 15–50 °C fit range.
 The present energy model uses constant volumetric heat capacity `rho_cp`;
 its value must be specified consistently with the selected oil heat capacity.
 
+## Specified groove and housing
+
+The user specifies a 5 mm groove opposite the applied load, at the same
+reservoir conditions as both bearing ends. Treat the width as a circumferential
+arc at the 43.085 mm bore and use the native full-length axial groove:
+width = (0.005/0.0215425) * (180/pi) = 13.2983125 degrees; center = 90 degrees.
+At 720 theta cells the native cell-center mask selects 26 columns (13 degrees,
+4.88784 mm bore arc). Retain the nominal 5 mm input and report this discretization.
+Groove pressure equals the common end pressure; its supplied temperature is
+case TC0. The native fed-groove PINNED closure fixes reservoir cells to TC0.
+
+The stainless housing has OD 85 mm, outer radius 42.5 mm and length 40 mm.
+Its physical radial wall is 20.9575 mm thick. The r-theta solid solver starts
+at journal R=21.5 mm, a thin-film approximation to bore radius 21.5425 mm.
+Stainless grade/conductivity remains unspecified; the generic solver default
+50 W/(m K) is not assigned. As a reference only, the
+[Outokumpu Core datasheet](https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf)
+lists 15 W/(m K) at 20 degrees C for 304. This does not identify the rig material.
+
+The requested cavitation pressure is 0 Pa; its gauge/absolute datum is pending.
+The current validator requires positive absolute cavity pressure, though exact
+zero is mathematically compatible with this pure-oil FBNS pressure-offset
+formulation. Zero absolute would need a narrow validation change and regression
+check. No positive floor or atmospheric conversion has been substituted. The
+common groove/end reservoir pressure remains a separate unresolved input.
+
+## Natural convection to surrounding oil
+
+The user confirmed still surrounding FW68D at TC0 and requested estimated h.
+Use convection with a solved housing-surface temperature. For an assumed
+horizontal cylinder, estimate mean lateral-surface h with the correlation
+(Churchill and Chu, [*Int. J. Heat Mass Transfer*](https://doi.org/10.1016/0017-9310(75)90222-7), 1975):
+
+$$Nu_D=\left[0.60+\frac{0.387 Ra_D^{1/6}}
+{[1+(0.559/Pr)^{9/16}]^{8/27}}\right]^2,\qquad h=Nu_D k_o/D.$$
+
+Use D=0.085 m and properties at (mean outer-surface temperature+TC0)/2:
+alpha=k_o/(rho cp), Pr=nu/alpha, Ra_D=g beta |T_surface-TC0| D^3/(nu alpha),
+and beta=0.7284/rho from the supplied density approximation. Use the supplied
+FW68D viscosity table. The boundary is q''=h(T_surface-TC0).
+
+Preliminary estimates below use **unconfirmed timing-fixture assumptions**
+cp=2000 J/(kg K) and k_o=0.13 W/(m K). They are not production boundary inputs
+or simulated temperatures. Wall excesses are illustrative.
+
+| Case | h at 5 K excess | h at 10 K excess | h at 20 K excess |
+|---|---:|---:|---:|
+| A | 42.06 | 53.66 | 71.34 |
+| B | 63.02 | 80.10 | 104.99 |
+| C | 41.43 | 52.83 | 70.22 |
+| D | 41.22 | 52.57 | 69.87 |
+| E | 56.19 | 71.32 | 93.51 |
+| F | 41.26 | 52.62 | 69.94 |
+
+All h values are W/(m2 K). Full-precision estimates and Ra/Pr are recorded in
+`steady_setup.json`. Recalculate when oil thermal properties are established.
+
+The solver currently takes fixed h per solve. The planned thermal iteration
+updates mean h from the converged mean outer-surface temperature inside each
+force evaluation; this coupling is not implemented. A pressure/temperature
+solve with frozen trial h does not verify the natural-convection closure.
+
+L/D=0.47 is short, so this long-cylinder lateral-surface estimate is approximate.
+The two annular end faces have about 79% of the outside cylindrical area, but
+axial solid conduction/end-face cooling is absent from the r-theta CHT model.
+Confinement and mounting contacts are also unresolved. Report these limits
+and test cooling sensitivity; this is not a full finite-housing heat-loss model.
+
 ## Inputs still required
 
-1. Load direction relative to the groove/ports and the chosen rotation frame.
-2. Feed/groove geometry, supply pressure or flow, axial-end pressure and the
-   logged pressure sensor location. The earlier 90°/10° groove and 1-bar feed
-   are not newly confirmed by the six-case attachment.
-3. Bush outer radius and conductivity, outer convection coefficient or measured
-   wall-temperature boundary, and shaft cooling condition. For a convective
-   boundary TC0 supplies the external fluid temperature; the coefficient is
-   still required. The bore diameter does not determine the bush outer radius.
-4. Oil heat capacity/volumetric heat capacity and thermal conductivity.
-5. Cavitation pressure/plateau assumption. The earlier 500-Pa value was a timing
-   assumption; it has not been assigned to these six experimental cases.
-6. TC2 location for a like-for-like thermal comparison.
+- Common groove/end absolute pressure and whether cavity zero is gauge or
+  absolute. Logged pressure remains an observation until assigned.
+- Stainless grade or conductivity, shaft cooling condition, oil heat capacity
+  and conductivity. These are not determined by still-oil cooling.
+- TC2 and pressure sensor positions for comparisons, not for solving the PDEs.
 
-The package deliberately records unresolved inputs as null. No assumed pressure,
-wall temperature, heat-transfer coefficient or initial eccentricity has been
-substituted for an experimental input.
+Full-length groove and horizontal housing are explicit model interpretations.
+Unresolved numeric production inputs remain null in the preparation record.
 
 ## Execution and acceptance
 

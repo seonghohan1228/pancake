@@ -2803,3 +2803,27 @@ This is a campaign specification, not a solver change or a convergence result.
 Feed and thermal boundaries remain unresolved. Quantitative torque comparison
 also awaits correction of the mean-viscosity wall-stress post-processing to
 match the existing cross-film flow integrals; see the case plan.
+
+
+### FW68D groove and external natural convection update (2026-09-27)
+
+The groove is opposite the applied load. Choose load (0,-W), groove theta=90
+degrees and target fluid-on-bearing force (0,+W). Its 5 mm bore arc converts
+to 13.2983125 degrees; the native groove spans all axial film cells. Its
+reservoir pressure and temperature match the bearing ends, with TC0 supplying
+the temperature. The requested cavity plateau is 0 Pa, pending its datum;
+no conversion to absolute pressure has been assumed.
+
+The housing is stainless steel, outer radius 42.5 mm, length 40 mm. The user
+selected surrounding still oil at TC0. Adopt an estimated horizontal-cylinder
+mean natural-convection coefficient at the oil temperature halfway between
+the mean outer wall and TC0 (Churchill and Chu,
+[*Int. J. Heat Mass Transfer*](https://doi.org/10.1016/0017-9310(75)90222-7), 1975).
+See [the case boundary plan](cases/02d_fw68d_steady_six/README.md) for the
+correlation, conditional values and unspecified material properties.
+
+The r-theta solid model has no axial end-face heat loss. With L/D=0.47 and
+annular end area about 79% of lateral area, the cylinder correlation is an
+approximate lateral boundary, not a full finite-housing thermal model.
+Existing CHT accepts fixed h; self-consistent updating of h during equilibrium
+remains planned, not implemented or validated by these input records.

@@ -2537,3 +2537,19 @@ See [the current six-case plan](cases/02d_fw68d_steady_six/README.md).
 The prior startup-motion investigation remains archived and is not a gate
 on static equilibrium solves; their thermal and force convergence are checked
 independently.
+
+
+## 2026-09-27 - Record FW68D groove and housing boundaries
+
+- [x] Set nominal 5 mm full-length axial groove opposite applied load and
+  tie its pressure/temperature to the common bearing-end reservoir.
+- [x] Record OD 85 mm, L 40 mm stainless housing and natural convection to
+  still oil at TC0; estimate conditional h for all six reference temperatures.
+- [x] Define applied force (0,-W) and fluid-on-bearing target (0,+W) explicitly.
+- [ ] Resolve common reservoir pressure and gauge/absolute meaning of p_cav=0.
+- [ ] Establish stainless conductivity, shaft cooling and FW68D thermal properties.
+- [ ] Couple the natural-convection estimate to thermal equilibrium, assess
+  omitted housing end-face cooling, and verify the selected cooling sensitivity.
+
+These additions resolve groove placement and housing dimensions from the prior
+entry. They do not mark physical runs or thermal convergence complete.

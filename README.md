@@ -777,5 +777,7 @@ startup hit the minimum-film guard, so its multicore choice remains unresolved.
 The [A–F steady campaign](cases/02d_fw68d_steady_six/README.md) supersedes the
 24-point transient plan. It preserves the supplied experimental inputs, uses
 TC0 as inlet/ambient reference, and solves eccentricity/attitude by load balance
-around steady energy/CHT evaluations. Feed and solid thermal inputs remain
-explicitly unresolved; no physical six-case run has been launched.
+around steady energy/CHT evaluations. The specified 5 mm groove is opposite
+the load; the 85 mm OD stainless housing uses estimated natural convection
+to still oil at TC0. Pressure datum and material/shaft thermal inputs remain
+unresolved; no physical six-case run has been launched.
