@@ -1,0 +1,115 @@
+{
+  "purpose": "Match the six experiment-selected FW68D pure-oil viscosity coordinates without modifying repository source data.",
+  "attachment_json_sha256": "3155fac7a7c91ad984e5e7e69ca85a699f58d20c31f82fde42c619dff74c3045",
+  "attachment_csv_sha256": "de19d60a4805b220c2e45d5b2ab2339577d7ea34d0f2113a9bd61a4d3d1d4629",
+  "source_table": "data/R410A_FW68D/fw68d.csv",
+  "source_table_sha256": "90057c6b2497506b1b6d4c371f6b938764910aa6cba305919eb5447fc43ed45c",
+  "case_table": "cases/02d_fw68d_steady_six/fw68d_experiment.csv",
+  "case_table_sha256": "9b5a7bd944afc037004110d7a9deb7a52a954f5c9ecc04496aee7158d10c663b",
+  "rows": {
+    "total": 125,
+    "replaced_pure_oil": 15,
+    "unchanged_other": 110
+  },
+  "json_csv_common_values_match": true,
+  "interpolation": "linear in ln(nu) between supplied rounded pure-oil temperature nodes; no extrapolation",
+  "density": "rho = 954.9 - 0.7284*T_C kg/m3; previously adopted PVE approximation, recorded fit 15-50 C",
+  "dynamic_viscosity": "mu = rho*nu_mm2_s*1e-6 Pa s",
+  "sommerfeld": "S = mu*(rpm_nominal/60)/(W/(2*R*L))*(R/c)^2",
+  "geometry": {
+    "R_m": 0.0215,
+    "L_m": 0.04,
+    "c_m": 4.25e-05
+  },
+  "cases": [
+    {
+      "case_id": "A",
+      "tc0_c": 29.673547120517753,
+      "rho_kg_m3": 933.2857882774149,
+      "nu_mm2_s": 126.57291046832194,
+      "mu_pa_s": 0.11812869852099449,
+      "mu_attachment_pa_s": 0.1181286985209944,
+      "sommerfeld": 0.03284993875218574,
+      "sommerfeld_attachment": 0.0328499387521857,
+      "friction_coefficient_check": 0.002950061843754829,
+      "density_outside_recorded_15_to_50_c_fit": false
+    },
+    {
+      "case_id": "B",
+      "tc0_c": 61.48691239412936,
+      "rho_kg_m3": 910.1129330121162,
+      "nu_mm2_s": 30.815306785074274,
+      "mu_pa_s": 0.02804540923983211,
+      "mu_attachment_pa_s": 0.0280454092398321,
+      "sommerfeld": 0.09531854910996326,
+      "sommerfeld_attachment": 0.0953185491099633,
+      "friction_coefficient_check": 0.006174298692198966,
+      "density_outside_recorded_15_to_50_c_fit": true
+    },
+    {
+      "case_id": "C",
+      "tc0_c": 28.640128684417995,
+      "rho_kg_m3": 934.03853026627,
+      "nu_mm2_s": 136.43132899336823,
+      "mu_pa_s": 0.1274321180152396,
+      "mu_attachment_pa_s": 0.1274321180152396,
+      "sommerfeld": 0.0947670529891686,
+      "sommerfeld_attachment": 0.0947670529891686,
+      "friction_coefficient_check": 0.007553983653514477,
+      "density_outside_recorded_15_to_50_c_fit": false
+    },
+    {
+      "case_id": "D",
+      "tc0_c": 28.304340836455523,
+      "rho_kg_m3": 934.2831181347258,
+      "nu_mm2_s": 139.7970930270126,
+      "mu_pa_s": 0.13061006397944766,
+      "mu_attachment_pa_s": 0.1306100639794476,
+      "sommerfeld": 0.5009843474091754,
+      "sommerfeld_attachment": 0.5009843474091755,
+      "friction_coefficient_check": 0.015007347458064996,
+      "density_outside_recorded_15_to_50_c_fit": false
+    },
+    {
+      "case_id": "E",
+      "tc0_c": 51.56525966331575,
+      "rho_kg_m3": 917.3398648612408,
+      "nu_mm2_s": 45.50889305986353,
+      "mu_pa_s": 0.041747121809519866,
+      "mu_attachment_pa_s": 0.0417471218095198,
+      "sommerfeld": 0.9959916475416571,
+      "sommerfeld_attachment": 0.995991647541658,
+      "friction_coefficient_check": 0.01792831581684862,
+      "density_outside_recorded_15_to_50_c_fit": true
+    },
+    {
+      "case_id": "F",
+      "tc0_c": 28.371634937361524,
+      "rho_kg_m3": 934.2341011116258,
+      "nu_mm2_s": 139.11598369594637,
+      "mu_pa_s": 0.12996689597844205,
+      "mu_attachment_pa_s": 0.129966895978442,
+      "sommerfeld": 1.0003189045282597,
+      "sommerfeld_attachment": 1.00031890452826,
+      "friction_coefficient_check": 0.017227766416190053,
+      "density_outside_recorded_15_to_50_c_fit": false
+    }
+  ],
+  "E_raw_TC0_endpoint_sensitivity": [
+    {
+      "tc0_c": 51.23781185626001,
+      "nu_mm2_s": 46.09828009845697,
+      "rho_kg_m3": 917.5783778439002,
+      "mu_pa_s": 0.04229878507413589,
+      "sommerfeld_at_fixed_load_rpm": 1.0091530819111956
+    },
+    {
+      "tc0_c": 51.92767223620965,
+      "nu_mm2_s": 44.86535296854831,
+      "rho_kg_m3": 917.0758835431449,
+      "mu_pa_s": 0.04114493321410649,
+      "sommerfeld_at_fixed_load_rpm": 0.9816247933663402
+    }
+  ],
+  "loader_note": "src/property_table_io.cpp load_solution_table_csv requires at least two pressure and concentration curves. A standalone c=0-only table is invalid, so 110 nonzero-concentration source rows are retained solely for loader schema; SINGLE_PHASE with dissolved_gas_initial=0 uses c=0 viscosity and no refrigerant model."
+}

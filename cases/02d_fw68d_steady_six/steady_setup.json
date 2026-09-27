@@ -1,0 +1,114 @@
+{
+  "status": "awaiting_physical_boundary_conditions",
+  "case_ids": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F"
+  ],
+  "experiment": "experiment.json",
+  "common_solver_settings": {
+    "solution_mode": "STEADY_STATE",
+    "motion_model": "STATIC",
+    "R": 0.0215,
+    "L": 0.04,
+    "c": 4.25e-05,
+    "n_theta_global": 720,
+    "n_z_global": 192,
+    "dt": 2e-05,
+    "dt_note": "Retained metadata only; steady Reynolds and energy equations omit physical storage, and bearing motion is not integrated.",
+    "omega_ramp_time": 0,
+    "cavitation_model": "FBNS",
+    "cavitation_threshold": "SCALAR_PCAV",
+    "cavitated_film_model": "STRIATED",
+    "temperature_model": "ENERGY_EQUATION",
+    "cross_film_thermal_model": "POLYNOMIAL",
+    "cross_film_profile_order": 4,
+    "cross_film_quadrature_points": 6,
+    "bush_thermal_model": "CONDUCTION_2D",
+    "bush_radial_cells": 16,
+    "fluid_property_model": "SINGLE_PHASE",
+    "dissolved_gas_species": "AIR",
+    "dissolved_gas_initial": 0,
+    "dissolved_gas_henry_coeff": 0,
+    "solubility_model": "HENRY",
+    "density_model": "LINEAR_TEMPERATURE",
+    "density_temperature_intercept": 954.9,
+    "density_temperature_slope": -0.7284,
+    "liquid_viscosity_model": "KINEMATIC_TABLE",
+    "solution_table_file": "fw68d_experiment.csv",
+    "kinematic_viscosity_log_interpolation": true,
+    "solution_table_clamp": false,
+    "coupling_tolerance": 1e-06,
+    "coupling_max_iters": 200,
+    "coupling_relaxation_mode": "ADAPTIVE",
+    "coupling_relaxation": 1.0,
+    "coupling_relaxation_min": 0.1,
+    "coupling_relaxation_backoff": 0.5,
+    "coupling_relaxation_growth": 1.05,
+    "coupling_keep_best_iterate": true
+  },
+  "per_case_mapping": {
+    "omega": "angular_speed_magnitude_rad_s",
+    "temperature_initial": "tc0_boundary_temperature_k; numerical initial guess only",
+    "temperature_reference": "tc0_boundary_temperature_k",
+    "thermal_ambient_temperature": "tc0_boundary_temperature_k",
+    "inflow_temperature": "tc0_boundary_temperature_k for each confirmed feed reservoir",
+    "target_load_magnitude_N": "load_mean_n",
+    "reference_sommerfeld_number": "sommerfeld_number; uses nominal RPM and mu(TC0)",
+    "comparison_torque_Nm": "apparent_bearing_torque_nm",
+    "comparison_friction": "friction_coefficient",
+    "temperature_comparison": "tc2_measured_mean_c after sensor position is known"
+  },
+  "force_balance": {
+    "unknowns": [
+      "eccentricity_ratio",
+      "attitude_angle_deg"
+    ],
+    "target": "total fluid-on-bearing force equals minus the specified applied load vector",
+    "load_direction_deg": null,
+    "load_frame": "Positive theta follows journal rotation; feed angles and applied load must share this frame.",
+    "relative_vector_error_limit": 0.002,
+    "note": "Do not treat input eccentricity as measured or infer it from matched S. load_angle_deg alone does not control force direction in the current solver."
+  },
+  "physical_inputs_required": {
+    "feed_geometry_and_angular_position": null,
+    "end_pressure_south_Pa_abs": null,
+    "end_pressure_north_Pa_abs": null,
+    "supply_pressure_or_flow": null,
+    "logged_pressure_sensor_location": null,
+    "bush_outer_boundary_type": null,
+    "bush_outer_heat_transfer_W_m2_K_or_wall_temperature_K": null,
+    "bush_outer_radius_m": null,
+    "bush_thermal_conductivity_W_m_K": null,
+    "shaft_cooling_condition": null,
+    "oil_heat_capacity_J_kg_K_or_volumetric_heat_capacity_J_m3_K": null,
+    "oil_thermal_conductivity_W_m_K": null,
+    "cavitation_pressure_Pa_abs": null,
+    "TC2_sensor_position": null
+  },
+  "additional_cases": [
+    {
+      "case_id": "E_low",
+      "base_case": "E",
+      "tc0_boundary_temperature_C": 51.23781185626001,
+      "tc0_boundary_temperature_K": 324.38781185626,
+      "hold_load_and_rpm": true
+    },
+    {
+      "case_id": "E_high",
+      "base_case": "E",
+      "tc0_boundary_temperature_C": 51.92767223620965,
+      "tc0_boundary_temperature_K": 325.0776722362096,
+      "hold_load_and_rpm": true
+    }
+  ],
+  "acceptance": {
+    "pressure_and_temperature_coupling": "Both normalized changes below 1e-6 with converged status; restored best or iteration cap is a failure.",
+    "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
+    "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass and energy diagnostics.",
+    "friction_prerequisite": "Correct and verify cross-film wall shear using F0/F1 before quantitative torque comparison."
+  }
+}

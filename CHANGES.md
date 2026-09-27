@@ -3963,3 +3963,14 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   dt=20 us, retaining bush radial16/profile order4/quadrature6. Archive the
   native two-step pass and matching remote 24/28-rank film-guard failures
   before step3. Do not transfer the coarse-grid optimum to the failed G6 case.
+
+## 2026-09-27 - Prepare six load-controlled steady FW68D cases
+
+- Preserve the exact A–F experimental JSON and source hashes. Replace the
+  active transient sweep plan with static inner steady pressure/energy/CHT
+  solves and an external eccentricity/attitude load-balance search.
+- Match the supplied pure-oil viscosity temperature nodes in a case-specific
+  table without altering the general material table; audit all reference
+  viscosities, Sommerfeld numbers, friction coefficients and E endpoints.
+- Map TC0 to feed/ambient references and leave wall/supply specifications
+  unresolved. Record the wall-shear prerequisite and preserve all prior results.

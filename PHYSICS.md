@@ -2774,3 +2774,32 @@ positivity, table-domain and free-gas phase checks. Looser stopping options cann
 turn a rejected state into an accepted solution. Failed solves now report their
 actual iteration count. Every MPI partition must own at least as many physical
 theta cells as the requested ghost depth before an exchange begins.
+
+
+## Steady experimental load matching (2026-09-27)
+
+The [six FW68D cases](cases/02d_fw68d_steady_six/README.md) select
+`STEADY_STATE` and `STATIC` for each fixed-geometry pressure/energy/CHT solve.
+Physical time-storage terms and bearing-motion integration are inactive.
+The equilibrium bearing offset is obtained by an external search over
+$q=(\varepsilon,\phi)$, using the total fluid force on the bearing:
+
+$$\mathbf r(q)=\mathbf F_{\mathrm{fluid}}(q)+\mathbf W,
+\qquad \frac{\|\mathbf r\|_2}{\|\mathbf W\|_2}<0.002.$$
+
+Every force evaluation must first converge its pressure and temperature
+coupling; a capped or restored-best inner iterate is not an equilibrium.
+The applied load vector and feed positions must share a specified frame.
+The current `load_angle_deg` input does not itself set this external target.
+
+TC0 defines feed/reservoir and external-fluid temperature references, not a
+uniform film or wall temperature. For convection it supplies $T_\infty$ in
+$q''=h_{\mathrm{ext}}(T_{\mathrm{wall}}-T_\infty)$; the heat-transfer
+coefficient and solid conduction geometry remain independent inputs.
+The supplied viscosity reference fixes the experimental Sommerfeld coordinate;
+local film viscosity remains temperature dependent in the steady solve.
+
+This is a campaign specification, not a solver change or a convergence result.
+Feed and thermal boundaries remain unresolved. Quantitative torque comparison
+also awaits correction of the mean-viscosity wall-stress post-processing to
+match the existing cross-film flow integrals; see the case plan.

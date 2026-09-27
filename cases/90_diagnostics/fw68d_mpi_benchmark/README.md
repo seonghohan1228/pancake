@@ -1,5 +1,9 @@
 # FW68D transient CHT campaign and MPI benchmark
 
+The user replaced this 24-point transient campaign plan with the
+[six-case steady A–F campaign](../../02d_fw68d_steady_six/README.md).
+The benchmark and failed-startup evidence below remain historical records.
+
 This case plans the FW68D-only cavitation comparison and measures workstation
 MPI performance on a short synthetic case. See [measured results](RESULTS.md) for
 the current G6 test outcome and the archived coarse-grid timing comparison.

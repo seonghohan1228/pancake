@@ -771,3 +771,11 @@ The [measured results](cases/90_diagnostics/fw68d_mpi_benchmark/RESULTS.md)
 archive the coarse-grid scaling test and the G6 startup failure.
 The plan uses the prior 720-by-192 mesh and 20-us timestep; the synthetic G6
 startup hit the minimum-film guard, so its multicore choice remains unresolved.
+
+## Six steady FW68D cases
+
+The [A–F steady campaign](cases/02d_fw68d_steady_six/README.md) supersedes the
+24-point transient plan. It preserves the supplied experimental inputs, uses
+TC0 as inlet/ambient reference, and solves eccentricity/attitude by load balance
+around steady energy/CHT evaluations. Feed and solid thermal inputs remain
+explicitly unresolved; no physical six-case run has been launched.

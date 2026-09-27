@@ -2519,3 +2519,21 @@ independence study. Earlier completed tasks remain part of this record.
   radial bush discretization in the FW68D plan and final MPI performance check.
 - [ ] Resolve the G6 synthetic startup's minimum-film guard before step 3
   (reproduced at 24/28 ranks), then obtain an admissible G6 scaling comparison.
+
+## 2026-09-27 - Replace the transient sweep with steady FW68D cases A–F
+
+- [x] Replace the active 24-point transient matrix with the six user-selected
+  measured cases, retaining G6 and adding two Case E temperature sensitivities.
+- [x] Preserve exact experiment inputs and align the pure-oil table with the
+  supplied viscosity nodes; independently verify mu, S and friction targets.
+- [x] Specify STEADY_STATE with static inner geometry and an outer vector
+  load-balance search; dt=20 us is inactive in the physical steady equations.
+- [ ] Establish feed/load-frame, cavity-pressure and fluid/solid thermal inputs.
+- [ ] Correct and verify cross-film wall shear before quantitative friction.
+- [ ] Build/check locally, run the force-balanced steady cases remotely, return
+  provenance/results and compare paired-speed temperature/friction/cavitation.
+
+See [the current six-case plan](cases/02d_fw68d_steady_six/README.md).
+The prior startup-motion investigation remains archived and is not a gate
+on static equilibrium solves; their thermal and force convergence are checked
+independently.

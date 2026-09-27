@@ -6,3 +6,7 @@
 *.pdf  binary
 *.vtu  binary
 *.pvd  text eol=lf
+
+# Preserve source/provenance hashes across Windows and Linux checkouts.
+cases/02d_fw68d_steady_six/experiment.json -text whitespace=cr-at-eol
+cases/02d_fw68d_steady_six/fw68d_experiment.csv -text whitespace=cr-at-eol
