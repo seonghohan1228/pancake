@@ -4005,3 +4005,14 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   provenance and explicit rejection of nonlinear, thermal and force caps.
   Use natural convection for the stationary housing and rotating-disk cooling
   for the exposed shaft ends; report reduced-solid/confinement assumptions.
+
+### FW68D steady preflight corrections (2026-09-27)
+
+- Preserve two capped native checks as failed diagnostic attempts; their old
+  housing-temperature override did not match TC0. Render every reservoir
+  temperature explicitly in the case driver.
+- Use fixed coupling relaxation with a larger cap, keeping the same tolerances
+  and rejecting capped/restored solutions. This changes numerical iteration
+  settings only; retain the convergence-study grid and cross-film resolution.
+- Accept unavailable cross-film energy diagnostics as missing evidence, not
+  zero; supported mass, pressure, thermal and field checks remain required.

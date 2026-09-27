@@ -2569,3 +2569,12 @@ entry. They do not mark physical runs or thermal convergence complete.
 
 The original discretization is retained. Non-converged trials are evidence for
 numerical diagnosis only and do not complete an experimental comparison.
+
+### FW68D steady execution follow-up (2026-09-27)
+
+- [x] Rebuild f754147 in an isolated remote snapshot; focused remote tests pass.
+- [x] Identify and preserve two invalid native timing inputs with inherited
+  housing ambient override; correct generated reservoir references.
+- [x] Retain 1e-6 coupling tolerances, use fixed relaxation and a sufficient cap.
+- [ ] Complete corrected native check and physical-core steady timing test.
+- [ ] Accept a converged fixed-position solve before the load/thermal sweep.

@@ -196,3 +196,21 @@ provide. Numerical convergence does not itself establish experimental agreement.
 The old failed transient runs remain in
 [the MPI benchmark record](../90_diagnostics/fw68d_mpi_benchmark/RESULTS.md).
 Their startup failure is not a result for this steady six-case campaign.
+
+### Preflight correction and numerical settings (2026-09-27)
+
+Two native diagnostic trials reached the 200-iteration cap (return code 4).
+They also inherited a 313.15 K housing reservoir override from the old timing
+fixture. Both are invalid for the requested TC0 housing boundary and remain
+saved as failed attempts. The case driver explicitly sets the housing, shaft,
+groove and axial-end reservoir references to each case TC0.
+
+Use fixed coupling relaxation 1, best-iterate retention and a cap of 2000;
+pressure and temperature tolerances remain 1e-6. Initial film temperature is
+TC0 + 1 K, a numerical guess only. Reaching the cap or restoring a best iterate
+is still a failure. The initial trials varied several numerical settings and
+cannot identify which individual change improved their convergence.
+
+The ENERGY_EQUATION/cross-film path leaves the global energy-residual CSV field
+blank. The driver records that diagnostic as unavailable, never zero or
+verified. Wall heat fluxes remain available for inspection.

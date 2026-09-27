@@ -42,8 +42,8 @@
     "kinematic_viscosity_log_interpolation": true,
     "solution_table_clamp": false,
     "coupling_tolerance": 1e-06,
-    "coupling_max_iters": 200,
-    "coupling_relaxation_mode": "ADAPTIVE",
+    "coupling_max_iters": 2000,
+    "coupling_relaxation_mode": "FIXED",
     "coupling_relaxation": 1.0,
     "coupling_relaxation_min": 0.1,
     "coupling_relaxation_backoff": 0.5,
@@ -65,7 +65,7 @@
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
-    "temperature_initial": "tc0_boundary_temperature_k; numerical initial guess only",
+    "temperature_initial": "tc0_boundary_temperature_k + 1 K; numerical initial guess only",
     "temperature_reference": "tc0_boundary_temperature_k",
     "thermal_ambient_temperature": "tc0_boundary_temperature_k",
     "inflow_temperature": "tc0_boundary_temperature_k for each confirmed feed reservoir",
@@ -77,7 +77,8 @@
     "bc_z_south_temperature": "tc0_boundary_temperature_k",
     "bc_z_north_temperature": "tc0_boundary_temperature_k",
     "shaft_ambient_temperature": "tc0_boundary_temperature_k",
-    "rho_cp": "rho(TC0)*2010; constant volumetric heat capacity within each case"
+    "rho_cp": "rho(TC0)*2010; constant volumetric heat capacity within each case",
+    "bush_outer_temperature": "tc0_boundary_temperature_k; explicit convection reservoir temperature, not prescribed housing wall"
   },
   "force_balance": {
     "unknowns": [
@@ -121,7 +122,7 @@
   "acceptance": {
     "pressure_and_temperature_coupling": "Both normalized changes below 1e-6 with converged status; restored best or iteration cap is a failure.",
     "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
-    "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass and energy diagnostics.",
+    "fields": "Finite temperatures/pressure/torque, positive gap, admissible liquid filling, recorded mass diagnostics. The current cross-film path does not provide a global energy-balance diagnostic; report it as unavailable.",
     "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
     "external_convection": "Each force evaluation must close both h coefficients to relative1e-3 and wall-temperature change0.01K after an inner converged pressure/thermal solve."
   },

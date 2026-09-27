@@ -113,7 +113,8 @@ def outer_temperature(bore_mean_k, ambient_k, h_bush, radius, outer_radius, k_bu
     return ambient_k + (bore_mean_k - ambient_k) / resistance
 
 
-def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_shaft, output_dir, table):
+def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_shaft,
+                  output_dir, table, coupling_max_iters=2000, coupling_relaxation=1.0):
     geometry = experiment["geometry"]
     radius = float(geometry["journal_radius_m"])
     clearance = float(geometry["radial_clearance_m"])
@@ -139,7 +140,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "bc_z_north_type": "DIRICHLET", "bc_z_north_val": materials["reservoir_pressure_Pa"],
         "bc_z_south_thermal": "CONSTANT", "bc_z_north_thermal": "CONSTANT",
         "bc_z_south_temperature": temperature, "bc_z_north_temperature": temperature,
-        "temperature_model": "ENERGY_EQUATION", "temperature_initial": temperature,
+        "temperature_model": "ENERGY_EQUATION", "temperature_initial": temperature + 1,
         "temperature_reference": temperature, "property_reference_temperature": temperature,
         "rho_cp": rho * float(materials["oil_cp_J_kg_K"]),
         "thermal_conductivity": materials["oil_conductivity_W_m_K"],
@@ -151,6 +152,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "bush_outer_heat_transfer": h_bush, "shaft_ambient_heat_transfer": h_shaft,
         "shaft_ambient_area_ratio": materials["shaft_end_area_ratio"],
         "thermal_ambient_temperature": temperature, "shaft_ambient_temperature": temperature,
+        "bush_outer_temperature": temperature,
         "fluid_property_model": "SINGLE_PHASE", "dissolved_gas_species": "AIR",
         "dissolved_gas_initial": 0, "solubility_model": "HENRY",
         "dissolved_gas_henry_coeff": 0, "density_model": "LINEAR_TEMPERATURE",
@@ -160,10 +162,10 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "kinematic_viscosity_log_interpolation": "true", "viscosity_pressure_coeff": 0,
         "mu": rho * nu, "groove_mixing_model": "PINNED",
         "inlet_groove": f"90 {boundaries['groove']['width_deg']} {materials['reservoir_pressure_Pa']} {temperature}",
-        "coupling_max_iters": 200, "coupling_tolerance": 1e-6,
-        "coupling_relaxation_mode": "ADAPTIVE", "coupling_relaxation": 1,
+        "coupling_max_iters": coupling_max_iters, "coupling_tolerance": 1e-6,
+        "coupling_relaxation_mode": "FIXED", "coupling_relaxation": coupling_relaxation,
         "coupling_relaxation_min": 0.1, "coupling_relaxation_backoff": 0.5,
-        "coupling_relaxation_growth": 1.05, "coupling_keep_best_iterate": "false",
+        "coupling_relaxation_growth": 1.05, "coupling_keep_best_iterate": "true",
         "log_outer_iters": "true", "log_coupling_history": "true",
         "output_dir": str(output_dir.resolve()),
         "output_write_3d": "false", "output_write_flat": "true",
@@ -203,9 +205,14 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure):
     if returncode:
         raise ValueError(f"solver exit code {returncode}")
     diagnostic = last_diagnostic(run_dir)
-    for key in ("liquid_residual", "cavitated_fraction", "energy_residual_W"):
+    for key in ("liquid_residual", "cavitated_fraction"):
         if not math.isfinite(float(diagnostic[key])):
             raise ValueError(f"nonfinite or missing {key} diagnostic")
+    energy_status = "unavailable_for_cross_film_model"
+    if diagnostic.get("energy_residual_W", "").strip():
+        if not math.isfinite(float(diagnostic["energy_residual_W"])):
+            raise ValueError("nonfinite energy_residual_W diagnostic")
+        energy_status = "reported_by_solver"
     for key in ("coupling_R_p", "coupling_R_T"):
         if not math.isfinite(float(diagnostic[key])) or float(diagnostic[key]) >= 1e-6:
             raise ValueError(f"{key} failed: {diagnostic[key]}")
@@ -252,6 +259,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure):
         "T_min_K": float(np.min(fields["T"])), "T_max_K": float(np.max(fields["T"])),
         "T_bore_mean_K": float(np.mean(fields["T_bearing"])),
         "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
+        "energy_diagnostic_status": energy_status,
         "diagnostics": diagnostic,
     }
 
@@ -274,6 +282,9 @@ class Campaign:
                                             self.experiment["viscosity"]["points"]) * 1e6
             case["rho_kg_m3"] = density(case["tc0_boundary_temperature_c"])
             case["mu_pa_s"] = case["rho_kg_m3"] * case["nu_mm2_s"] * 1e-6
+            pressure = case["load_mean_n"] / (case["journal_diameter_m"] * case["bearing_length_m"])
+            case["sommerfeld_number"] = (case["mu_pa_s"] * case["rpm_nominal"] / 60 / pressure
+                                         * (case["journal_diameter_m"] / (2 * case["radial_clearance_m"]))**2)
             self.cases[case["case_id"]] = case
         self.points = self.experiment["viscosity"]["points"]
         self.solver = Path(args.solver).resolve() if args.solver else None
@@ -300,7 +311,8 @@ class Campaign:
         run_dir = self.work / case["case_id"] / f"{self.sequence:04d}_{label}_{uuid.uuid4().hex[:8]}"
         run_dir.mkdir(parents=True, exist_ok=False)
         config = render_config(case, self.experiment, self.boundaries, self.materials, eps, psi, h_bush, h_shaft,
-                               run_dir / "results", TABLE)
+                               run_dir / "results", TABLE, self.args.coupling_max_iters,
+                               self.args.coupling_relaxation)
         config_path = run_dir / "config.txt"
         config_path.write_text(config, encoding="utf-8")
         command = self.command()
@@ -316,7 +328,8 @@ class Campaign:
         }
         save_json(run_dir / "metrics.json", record)
         started = time.monotonic()
-        environment = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
+        environment = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
+                           MKL_NUM_THREADS="1")
         try:
             with (run_dir / "run.log").open("w", encoding="utf-8") as stream:
                 process = subprocess.run(command, cwd=run_dir, stdout=stream, stderr=subprocess.STDOUT,
@@ -424,7 +437,7 @@ def self_check(campaign):
         if not math.isclose(case["angular_speed_magnitude_rad_s"],
                             case["rpm_nominal"] * math.pi / 30, rel_tol=2e-12):
             raise ValueError(f"case {case['case_id']} angular speed mismatch")
-        if case["case_id"] in expected:
+        if case["case_id"] in expected or case["case_id"] in ("E_low", "E_high"):
             pressure = case["load_mean_n"] / (case["journal_diameter_m"] * case["bearing_length_m"])
             sommerfeld = mu * (case["rpm_nominal"] / 60) / pressure * (
                 case["journal_diameter_m"] / (2 * case["radial_clearance_m"]))**2
@@ -433,8 +446,26 @@ def self_check(campaign):
         amb = case["tc0_boundary_temperature_k"]
         config = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials, .3, 140,
                                60, 100, Path("/tmp/steady-check"), TABLE)
+        values = dict(line.split(" = ", 1) for line in config.splitlines() if " = " in line)
         if "external_load_y = -" not in config or "solution_mode = STEADY_STATE" not in config:
             raise ValueError("steady or load config mismatch")
+        if (float(values["temperature_initial"]) != amb + 1 or
+                values["coupling_max_iters"] != "2000" or
+                values["coupling_relaxation_mode"] != "FIXED" or
+                values["coupling_relaxation"] != "1.0" or
+                values["coupling_keep_best_iterate"] != "true"):
+            raise ValueError("initial guess, boundary, or fixed-point defaults mismatch")
+        for key in ("bc_z_south_temperature", "bc_z_north_temperature",
+                    "thermal_ambient_temperature", "shaft_ambient_temperature",
+                    "bush_outer_temperature"):
+            if float(values[key]) != amb:
+                raise ValueError(f"{key} differs from case TC0")
+        groove = list(map(float, values["inlet_groove"].split()))
+        if (len(groove) != 4 or groove[3] != amb or
+                float(values["bc_z_south_val"]) != 101325 or
+                float(values["bc_z_north_val"]) != 101325 or
+                groove[2] != 101325 or float(values["p_cav"]) != 0):
+            raise ValueError("groove/axial reservoir and cavity references mismatch")
         outer = outer_temperature(amb + 10, amb, 60, .0215, .0425, 15)
         hb, _ = housing_coefficient(outer, amb, campaign.points, campaign.materials)
         hs, meta = shaft_coefficient(amb + 10, amb, case["angular_speed_magnitude_rad_s"],
@@ -455,12 +486,18 @@ def main():
     parser.add_argument("--timeout", type=int, default=7200, help="seconds per native solve")
     parser.add_argument("--max-thermal-iterations", type=int, default=30)
     parser.add_argument("--max-force-iterations", type=int, default=18)
+    parser.add_argument("--coupling-max-iters", type=int, default=2000,
+                        help="steady pressure/thermal fixed-point cap (default 2000)")
+    parser.add_argument("--coupling-relaxation", type=float, default=1.0,
+                        help="fixed-point relaxation in (0,1] (default 1)")
     parser.add_argument("--trial", nargs=3, metavar=("CASE", "EPS", "PSI"),
                         help="one fixed-geometry benchmark evaluation")
     parser.add_argument("--thermal-iterations", type=int, default=1,
                         help="trial-only number of evaluations; result is unclosed")
     parser.add_argument("--self-check", action="store_true")
     args = parser.parse_args()
+    if args.coupling_max_iters < 1 or not 0 < args.coupling_relaxation <= 1:
+        parser.error("coupling cap must be positive and fixed relaxation in (0,1]")
     campaign = Campaign(args)
     if args.self_check:
         self_check(campaign)
