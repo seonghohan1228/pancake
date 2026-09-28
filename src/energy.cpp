@@ -632,7 +632,23 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
     add_nonconservative_convection_correction(sys, flux_theta, flux_z, p, h, theta, fields, mesh, cfg);
     apply_inlet_thermal_conditions(sys, fields, mesh, cfg);
 
-    sys.solve(temperature, cfg.linear_rtol, 1000, "temperature");
+    // Solve for temperature rise, not absolute Kelvin: the large common wall
+    // offset otherwise sets the relative KSP tolerance above the physical heat
+    // budget. This is the same assembled equation, A(T - T_ref) = b - A T_ref,
+    // including prescribed inlet rows and the actual nonperiodic axial stencil.
+    const double reference = cfg.temperature_reference;
+    for (int i = 0; i < n_theta; ++i) {
+        for (int j = 0; j < n_z; ++j) {
+            double row_sum = sys.a_p(i, j) - sys.a_e(i, j) - sys.a_w(i, j);
+            if (j + 1 < n_z) row_sum -= sys.a_n(i, j);
+            if (j > 0) row_sum -= sys.a_s(i, j);
+            sys.source(i, j) -= row_sum * reference;
+        }
+    }
+    sys.solve(temperature, cfg.linear_rtol, 1000, "temperature rise");
+    for (int i = 0; i < n_theta; ++i)
+        for (int j = 0; j < n_z; ++j)
+            temperature(i, j) += reference;
 }
 
 Balance balance(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {

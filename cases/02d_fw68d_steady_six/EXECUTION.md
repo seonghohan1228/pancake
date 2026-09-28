@@ -412,3 +412,23 @@ C:/Dev/pancake/results/fw68d_physical_20260928/load_orientation_correction/upwar
 remote_startup contains the 70-file snapshot; its ongoing production logs are
 partial. Final results must be returned and checked after convergence before
 experimental comparisons or merging the task branch.
+
+
+## 2026-09-28 - Remove the absolute-temperature linear accuracy floor
+
+The corrected-load D run hit4000 sweeps with Rp8.62e-15 and RT1.51e-15,
+but energy residual7.224642e-6W /6.406604W=1.12769e-6 still failed the
+unchanged1e-6 gate. The linear energy equation used absolute Kelvin with
+relative tolerance1e-8, so a large common300K offset obscured a small heat
+budget. Solve the identical assembled equation for temperature rise instead:
+A*(T-Tref)=b-A*Tref, including actual axial stencil and Dirichlet rows.
+Restore absolute temperature after the solve; physics and tolerances are unchanged.
+
+A low-heat regression reproduces the old four-rank residual1.33436e-6W;
+the shifted formulation gives9.64e-14W, with the same rise when the reference
+moves from300 to900K. One/four-rank energy tests and28 affected native CTests
+pass. Log R_E alongside field residuals once the energy gate is evaluated,
+so stationary field updates cannot conceal a failed energy balance.
+
+This numerical correction is distinct from A's21.7mK profile undershoot at
+the groove entrance; that model-consistency issue remains under investigation.

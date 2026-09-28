@@ -2639,3 +2639,11 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Validate the final native and Linux snapshot, then launch independent cases
   on seven disjoint four-core slots; queue the eighth temperature variant.
 - [ ] Accept only the same-position load, pressure, thermal and conservation closure.
+
+
+### September28 thermal recovery
+
+- [x] Reproduce and fix the absolute-Kelvin energy accuracy floor; pass28 native checks.
+- [ ] Deploy the shifted solve and recover D/F without weakening acceptance.
+- [ ] Repair the groove-entry cross-film cooling inconsistency and revalidate A.
+- [ ] Recompute final corrected equilibria before reporting comparisons.

@@ -492,14 +492,16 @@ int main(int argc, char** argv) {
                     bool energy_balanced = !CrossFilm::active(cfg) ||
                         (std::isfinite(cross_film_state.profile_residual) &&
                          cross_film_state.profile_residual < cfg.coupling_tolerance);
+                    double coupling_R_E = std::numeric_limits<double>::quiet_NaN();
                     if (cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED) {
                         if (energy_balanced &&
                             std::max(coupling_R_p, coupling_R_T) < cfg.coupling_tolerance) {
                             comm.update_ghosts(fields["temperature"]);
                             const auto ledger = Energy::balance(fields, mesh, step_cfg);
+                            coupling_R_E = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
                             energy_balanced = std::isfinite(ledger.residual_W) &&
                                 std::isfinite(ledger.scale_W) && ledger.scale_W >= 0.0 &&
-                                std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0) < cfg.coupling_tolerance;
+                                coupling_R_E < cfg.coupling_tolerance;
                         } else {
                             energy_balanced = false;
                         }
@@ -512,6 +514,7 @@ int main(int argc, char** argv) {
                           << " R_T=" << coupling_R_T
                           << " R_g=" << coupling_R_g
                           << " R_X=" << cross_film_state.profile_residual
+                          << " R_E=" << coupling_R_E
                           << " omega=" << coupling_control.relaxation()
                           << (coupling_control.is_best() ? " *best" : "");
                         Utils::log(h.str(), Utils::Color::BLUE, 2);

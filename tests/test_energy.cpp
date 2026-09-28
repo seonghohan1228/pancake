@@ -783,9 +783,71 @@ static void test_flux_balanced_groove_conserves_energy_without_cold_cells() {
           "steady balanced-groove energy ledger must close");
 }
 
+// Small physical heat sources must control linear accuracy, rather than the
+// arbitrary absolute Kelvin offset in wall and reservoir RHS terms.
+static void test_low_heat_balance_is_temperature_origin_invariant() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 96;
+    cfg.n_z_global = 12;
+    cfg.R = 0.0215;
+    cfg.L = 0.04;
+    cfg.c = 42.5e-6;
+    cfg.mu = 0.1;
+    cfg.omega = 0.3;
+    cfg.cavitation_model = CavitationModel::FBNS;
+    cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+    cfg.solution_mode = SolutionMode::STEADY_STATE;
+    cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    cfg.groove_mixing_model = GrooveMixingModel::FLUX_BALANCED;
+    cfg.liquid_specific_heat = 2010.0;
+    cfg.journal_heat_transfer = 1.0e4;
+    cfg.bearing_heat_transfer = 1.0e4;
+    check(cfg.linear_rtol == 1.0e-8, "low-heat regression must use the default linear tolerance");
+    Mesh mesh(cfg);
+    Communicator comm(mesh);
+    Field rise_reference("rise_reference", mesh);
+    for (const double ambient : {300.0, 900.0}) {
+        cfg.temperature_initial = ambient;
+        cfg.temperature_reference = ambient;
+        cfg.journal_wall_temperature = ambient;
+        cfg.bearing_wall_temperature = ambient;
+        Fields fields;
+        add_energy_fields(fields, mesh, cfg);
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                const double angle = (mesh.offset_theta + i + 0.5) * mesh.get_d_theta();
+                fields["h"](i, j) = cfg.c * (1.0 + 0.4 * std::cos(angle)) *
+                    (1.0 + 0.2 * std::sin((j + 0.5) * 3.141592653589793 / mesh.n_z_local));
+            }
+        }
+        comm.update_ghosts(fields);
+        LinearSystem sys(mesh);
+        Energy::solve(fields, sys, mesh, cfg);
+        comm.update_ghosts(fields);
+        const auto ledger = Energy::balance(fields, mesh, cfg);
+        const double residual = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
+        int rank = 0;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) std::cout << std::setprecision(12) << "  low-heat ambient=" << ambient
+            << " K residual=" << residual << " heat=" << ledger.viscous_heat_W << " W\n";
+        check(residual < 1.0e-8, "default linear tolerance must close the low-heat energy ledger");
+        double change = 0.0;
+        for (int i = 0; i < mesh.n_theta_local; ++i) {
+            for (int j = 0; j < mesh.n_z_local; ++j) {
+                const double rise = fields["temperature"](i, j) - ambient;
+                if (ambient == 300.0) rise_reference(i, j) = rise;
+                else change = std::max(change, std::abs(rise - rise_reference(i, j)));
+            }
+        }
+        check(global_max_abs(change) < 1.0e-9,
+              "the physical temperature rise must not depend on its absolute Kelvin origin");
+    }
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
 
+    test_low_heat_balance_is_temperature_origin_invariant();
     test_energy_config_aliases();
     test_mass_specific_heat_stays_constant_with_density();
     test_isothermal_refreshes_heat_only();
