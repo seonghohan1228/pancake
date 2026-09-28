@@ -4084,3 +4084,8 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
   and the unchanged transient exit, on native 1/2/4/6 MPI ranks.
 - Record the authorized stop of the wrong-direction campaign and prepare
   independent four-rank cases so a failed case cannot cancel the remaining queue.
+
+- Validate bcb69c8 on Windows (52 CTests) and Linux (14 focused tests plus
+  four-rank I/O/diagnostics); pass full-resolution CHT startup on both. Launch
+  seven independent four-rank corrected searches with the eighth case queued;
+  preserve and return hashed startup evidence. Final equilibria remain pending.

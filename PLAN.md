@@ -2628,7 +2628,7 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Stop affected workstation drivers and preserve all wrong-direction outputs.
 - [x] Correct explicit load, force residuals, initial attitudes and restart checks.
 - [x] Pass an independent force-sign regression and a short native CFD check.
-- [ ] Deploy a fresh isolated snapshot, rebuild and verify on the workstation.
+- [x] Deploy a fresh isolated snapshot, rebuild and verify on the workstation.
 - [ ] Recompute A-F and E sensitivities with both load and thermal closure.
 
 
@@ -2636,6 +2636,6 @@ all downward-load cases solve the wrong confirmed physical configuration.
 
 - [x] Prevent skipped steady pressure updates from satisfying outer convergence.
 - [x] Pass exact/perturbed warm-state and unchanged transient checks at 1/2/4/6 ranks.
-- [ ] Validate the final native and Linux snapshot, then launch independent cases
+- [x] Validate the final native and Linux snapshot, then launch independent cases
   on seven disjoint four-core slots; queue the eighth temperature variant.
 - [ ] Accept only the same-position load, pressure, thermal and conservation closure.

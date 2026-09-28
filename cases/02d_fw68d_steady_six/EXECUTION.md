@@ -374,3 +374,41 @@ and force-balance/cache-rejection regression also pass. Native executable
 SHA256: 4a9f462ed7ddd3504f94deb2a8544449b58cf9f00db16187660170552d05cbb7.
 The executable includes the minimum steady FBNS correction. Full evidence is
 load_orientation_correction/native_final_validation.json and native_final_ctest.log.
+
+
+### Corrected parallel campaign launched (2026-09-28 13:50:51 KST)
+
+Deployed commit bcb69c86d410a01e7860415347f90973ba465327 to the fresh root
+/home/user/pancake-runs/fw68d-upward-20260928-bcb69c8. The selected 141-file
+source archive SHA256 is
+4a928e7261ec0cee16682bfd1726d802bcd78088b00a14afc4011d694cd4c3d0.
+Every unpacked file hash was verified before building and again before launch.
+Linux Release build, all 14 focused CTests, explicit four-rank I/O/diagnostics,
+driver self-check and force-balance regression returned zero. Linux executable:
+3f1b7514ffd7a649d8a136199099d7280544fa5de514e076ebc8bdb0dce178d8.
+Core source aggregate: accc314513f1e524a2f3e6e8e73d39915617345fbc8ed0c37f639e45971c1f0c.
+
+A separate full-resolution CHT startup at C's actual eps0.6/psi320 seed passed
+on Windows and Linux. It deliberately stopped after eight sweeps with rc4;
+that cap is correctly rejected as nonconverged and is not reused in production.
+Linux took 21.026 s and gave fluid force (-160.991918,-1350.994806) N;
+finite pressure, filling, gap, viscosity and thermal fields passed, with zero
+subambient deviation. Pressure/thermal/load closure was not asserted by this
+startup check. Production retains the 4000-sweep cap and strict final gates.
+
+Parallel launcher PID211322 started A-F and E_low as independent four-rank
+searches. E_high is queued for the first free slot. The seven-slot affinity
+probe confirms 28 distinct physical cores without overlap; each rank may use
+the two SMT threads of its one physical core, with one numerical thread.
+The saved actual startup configs pass load, RPM, TC0, pressure, groove,
+resolution and tolerance checks. At 13:51:50 KST all seven cases had progressed
+through at least 14 outer iterations without an immediate driver failure.
+No corrected case was yet accepted; pressure/thermal/equilibrium searches continue.
+
+The original failed/wrong-direction results remain preserved and invalidated.
+Corrected startup evidence, source archive, native and remote tests, configs,
+rankfiles and launch records were returned and checksum-verified under
+C:/Dev/pancake/results/fw68d_physical_20260928/load_orientation_correction/upward_bcb69c8/.
+remote_startup contains the 70-file snapshot; its ongoing production logs are
+partial. Final results must be returned and checked after convergence before
+experimental comparisons or merging the task branch.
