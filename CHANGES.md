@@ -4128,3 +4128,16 @@ the same result for inactive dt values 1e-8 and 1e3. A short 720x192 A pilot
 performed six position corrections in 40 CFD sweeps and reduced the final
 force error to 0.08596%; its deliberately capped thermal solve remains
 unconverged and is not an accepted case. Linux deployment is still pending.
+
+
+Workstation validation and launch (28 September, 16:53 KST): revision 23fcbe7
+passed 22 focused Linux CTests, four-rank IO/diagnostics and driver acceptance
+checks. Restarted seven independent four-rank cases at 16:47 KST, with E-high
+queued. Verified 28 live solver ranks on disjoint physical cores. The initial
+remote histories show position corrections inside the steady iteration
+(B: 30 corrections in 35 iterations; E: 14 in 14). All six nominal cases
+currently meet the force tolerance, but pressure/thermal closure is pending.
+These intermediate histories are not accepted experimental predictions.
+The separate local E short check reached its 360-second time cap after 31
+iterations/corrections, without thermal convergence; the remote run has the
+normal longer limit. No temperature tolerance or physicality test was relaxed.
