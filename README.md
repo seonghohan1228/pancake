@@ -800,3 +800,10 @@ the required fluid-on-bearing force is (0,-W). The old downward-load campaign,
 including its converged E result, was invalidated for experimental comparison.
 Historical outputs are preserved; follow the case EXECUTION.md for corrected
 validation and reruns.
+
+
+Steady FBNS now computes at least one Newton correction before testing its
+residual exit, so warm starts cannot falsely report zero outer pressure change.
+The FW68D corrected campaign uses an upward applied bearing load, a fixed top
+groove and independent load/CHT searches; earlier downward-load outputs are
+invalid for this experiment. See the case EXECUTION.md for validation records.

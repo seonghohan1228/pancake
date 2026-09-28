@@ -3033,7 +3033,7 @@ changing mesh, profile order, quadrature or residual tolerances. Each outer
 force trial closes pressure, film/solid temperature and both external heat-
 transfer coefficients. The position solver bounds Newton steps and backtracks
 when a trial fails or increases the vector force error. Only
-\(\|\mathbf F_{\rm fluid}+(0,-W)\|/W<0.002\), together with all thermal and
+\(\|\mathbf F_{\rm fluid}+(0,+W)\|/W<0.002\), together with all thermal and
 physical checks, is an accepted bearing position.
 
 A successful gas-free steady FBNS solve writes `steady_state.dat` with
@@ -3065,3 +3065,15 @@ belonged to the wrong load configuration; it is not evidence for the corrected
 experiment. All previous case outputs are retained, but their numerical
 convergence is insufficient for physical acceptance. Fresh inputs/results and
 provenance prevent reuse as corrected equilibria.
+
+
+### Steady pressure-update acceptance (2026-09-28)
+
+Every steady FBNS call takes at least one Newton correction before accepting
+its mass/complementarity residual. Previously a warm state already below
+fbns_tol could return at iteration zero, manufacture a zero outer pressure
+change, and pass the pressure-update gate without measuring a correction.
+The minimum correction makes the outer pressure change observable, including
+at very small residuals; all existing thermal, conservation and force gates
+remain required. An exact zero-RHS state takes a safe zero correction.
+Transient FBNS retains its existing initial-residual exit.

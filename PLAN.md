@@ -2625,8 +2625,17 @@ The earlier completed E milestone above is superseded for experimental use:
 all downward-load cases solve the wrong confirmed physical configuration.
 
 - [x] Identify the user-confirmed upward push and invalidate prior comparisons.
-- [ ] Stop affected workstation drivers and preserve all wrong-direction outputs.
+- [x] Stop affected workstation drivers and preserve all wrong-direction outputs.
 - [x] Correct explicit load, force residuals, initial attitudes and restart checks.
 - [x] Pass an independent force-sign regression and a short native CFD check.
 - [ ] Deploy a fresh isolated snapshot, rebuild and verify on the workstation.
 - [ ] Recompute A-F and E sensitivities with both load and thermal closure.
+
+
+### Final convergence correction before the upward-load campaign
+
+- [x] Prevent skipped steady pressure updates from satisfying outer convergence.
+- [x] Pass exact/perturbed warm-state and unchanged transient checks at 1/2/4/6 ranks.
+- [ ] Validate the final native and Linux snapshot, then launch independent cases
+  on seven disjoint four-core slots; queue the eighth temperature variant.
+- [ ] Accept only the same-position load, pressure, thermal and conservation closure.

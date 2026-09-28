@@ -4073,3 +4073,14 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 - Rebuild natively; existing force/motion tests, driver tests and a four-rank
   720x192 isothermal direction check pass. Corrected thermal equilibria remain
   pending; the old results are not relabelled as corrected.
+
+
+## 2026-09-28 - Measure the actual steady pressure correction
+
+- Require one Newton correction per steady FBNS call before residual-based
+  acceptance; prevent warm iteration-zero returns from fabricating R_p=0.
+- Preserve the transient path and all existing tolerances. Regression checks
+  cover an exact zero-RHS warm state, a sub-tolerance perturbed pure-oil state,
+  and the unchanged transient exit, on native 1/2/4/6 MPI ranks.
+- Record the authorized stop of the wrong-direction campaign and prepare
+  independent four-rank cases so a failed case cannot cancel the remaining queue.

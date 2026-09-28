@@ -343,3 +343,34 @@ The attempted targeted stop of the old workstation campaign was rejected by
 automatic approval review, which required explicit authorization to interrupt
 the jobs. No termination signals were sent. The exact host/campaign stop
 question is pending; no corrected remote campaign has been launched yet.
+
+
+### Authorized stop and additional pressure-convergence fix
+
+The user's explicit stop instruction superseded the earlier approval blocker.
+At 2026-09-28 04:36 UTC all 36 old campaign processes were stopped using targeted
+SIGTERM; no solver processes remained and all files were preserved. Evidence:
+load_orientation_correction/termination_authorized.json and resource_readiness.json.
+
+The final audit found a second convergence issue: an initial FBNS residual exit
+could skip the actual pressure update and report R_p=0. Steady calls now require
+at least one Newton correction; transient behavior and tolerances are unchanged.
+Exact zero-RHS and sub-tolerance perturbed warm-state tests pass at 1/2/4/6 native
+MPI ranks. The prior a46dbb7 remote build passed its 14 focused tests, four-rank
+I/O/diagnostics and Python checks, but is staging evidence only: it must not
+launch production because it predates this additional correction.
+
+Replacement scheduling uses seven independent four-rank workers on the 28
+physical cores. A-F and E_low start first; E_high uses the first released slot.
+Six slots are socket-local and one spans the remaining two cores per socket.
+Explicit rankfiles and one numerical thread per rank avoid SMT oversubscription.
+Prior timing evidence supports this resource-efficient layout but does not prove
+it is the absolute fastest makespan for the corrected coupled cases. A case
+failure releases its slot and does not cancel the other cases or the eighth run.
+All production acceptance gates and the original converged resolution remain.
+
+Final native Release build and all 52 CTests pass (46.45 s). Driver self-check
+and force-balance/cache-rejection regression also pass. Native executable
+SHA256: 4a9f462ed7ddd3504f94deb2a8544449b58cf9f00db16187660170552d05cbb7.
+The executable includes the minimum steady FBNS correction. Full evidence is
+load_orientation_correction/native_final_validation.json and native_final_ctest.log.

@@ -442,7 +442,10 @@ Stats solve(Fields& fields, LinearSystem& sys, Communicator& comm,
                          iter, stats.residual_mass, stats.residual_complementarity);
         }
 
-        if (stats.residual < cfg.fbns_tol) {
+        // A steady outer solve needs an actual pressure correction to measure
+        // its change; an iter-0 residual exit would manufacture R_p = 0.
+        if (stats.residual < cfg.fbns_tol &&
+            (iter > 0 || cfg.solution_mode != SolutionMode::STEADY_STATE)) {
             stats.converged = true;
             break;
         }

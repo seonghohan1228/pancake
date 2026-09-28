@@ -226,6 +226,81 @@ void locate_fronts(const std::vector<double>& film, double& rupture, double& ref
     }
 }
 
+// Steady Picard convergence needs the pressure correction even when the
+// normalized FBNS rows already satisfy their inner tolerance. The exact state
+// also exercises the zero Schur RHS, with a moved full-film ceiling to retain
+// a genuinely warm start (the literal theta == 1 is the cold-start sentinel).
+void test_steady_warm_start_requires_correction() {
+    SimulationConfig exact_cfg = benchmark_config(96, 4);
+    exact_cfg.e = 0.0;
+    exact_cfg.fluid_property_model = FluidPropertyModel::TWO_PHASE;
+    Case exact(exact_cfg);
+    exact.fields.add("alpha_gas", exact.mesh).fill(0.25);
+    exact.fields["theta"].fill(0.75);
+    exact.fields["pressure"].fill(exact_cfg.inlets.front().p_supply);
+    const FBNS::Stats zero = exact.solve();
+    check(zero.converged && zero.newton_iters == 1,
+          "an exact steady warm state must safely take one zero-RHS Newton correction");
+    check(zero.residual_history.front() == 0.0,
+          "the exact warm-state fixture must have an exactly zero Newton RHS");
+    int invalid = 0;
+    for (int i = 0; i < exact.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < exact.mesh.n_z_local; ++j) {
+            if (exact.fields["pressure"](i, j) != exact_cfg.inlets.front().p_supply ||
+                exact.fields["theta"](i, j) != 0.75) ++invalid;
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &invalid, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    check(invalid == 0, "a zero-RHS correction must preserve the exact finite admissible state");
+
+    // The transient path keeps its existing iter-0 exit on the same exact state.
+    exact.cfg.solution_mode = SolutionMode::TRANSIENT;
+    exact.fields["theta"].store_old_time();
+    exact.fields["rho"].store_old_time();
+    exact.fields["pressure"].store_old_time();
+    const FBNS::Stats transient = exact.solve();
+    check(transient.converged && transient.newton_iters == 0,
+          "an exact transient warm state must retain the iter-0 residual exit");
+
+    Case perturbed(benchmark_config(96, 4));
+    check(perturbed.solve().converged, "the pure-oil warm-state fixture must converge");
+    Field before("warm_pressure_before", perturbed.mesh);
+    perturbed.cfg.fbns_tol = 1.0e-6;
+    const double p_ref = FBNS::pressure_scale(perturbed.cfg);
+    const double perturbation = 0.25 * perturbed.cfg.fbns_tol * p_ref;
+    for (int i = 0; i < perturbed.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < perturbed.mesh.n_z_local; ++j) {
+            if (perturbed.fields["theta"](i, j) == 1.0)
+                perturbed.fields["pressure"](i, j) += perturbation;
+            before(i, j) = perturbed.fields["pressure"](i, j);
+        }
+    }
+    const FBNS::Stats corrected = perturbed.solve();
+    check(corrected.residual_history.front() > 0.0 &&
+          corrected.residual_history.front() < perturbed.cfg.fbns_tol,
+          "the perturbed warm state must enter below the inner residual tolerance");
+    check(corrected.converged && corrected.newton_iters >= 1,
+          "a sub-tolerance steady warm state must compute a Newton correction");
+    double change = 0.0;
+    invalid = 0;
+    for (int i = 0; i < perturbed.mesh.n_theta_local; ++i) {
+        for (int j = 0; j < perturbed.mesh.n_z_local; ++j) {
+            const double p = perturbed.fields["pressure"](i, j);
+            const double theta = perturbed.fields["theta"](i, j);
+            change = std::max(change, std::abs(p - before(i, j)));
+            if (!std::isfinite(p) || !std::isfinite(theta) ||
+                p < perturbed.cfg.p_cav || theta < 0.0 || theta > 1.0) ++invalid;
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &invalid, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    check(change > 0.5 * perturbation,
+          "the outer pressure change must reflect the real sub-tolerance correction");
+    check(invalid == 0, "the warm-state correction must remain finite and admissible");
+    log_rank0("  warm-start correction: zero RHS safe; sub-tolerance initial residual = " +
+              fmt(corrected.residual_history.front()) + ", max |dp|/p_ref = " + fmt(change / p_ref));
+}
+
 void test_complementarity_and_residual() {
     const SimulationConfig cfg = benchmark_config(240, 4);
     Case c(cfg);
@@ -1604,6 +1679,7 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) std::cout << "Running test_fbns...\n";
 
+    test_steady_warm_start_requires_correction();
     test_complementarity_and_residual();
     test_cavitated_flux_invariant();
     test_front_accuracy_beats_elrod();
