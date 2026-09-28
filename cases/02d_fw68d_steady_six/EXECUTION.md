@@ -278,3 +278,22 @@ uses work directory `remaining_cases`, log `remaining_cases_driver.log`,
 config and MPI startup were verified. No new source was uploaded for this
 launch. Later cases remain queued; an earlier failure stops this driver and
 requires inspection before the remaining queue can continue.
+
+
+### Case B launched without a new source transfer
+
+Read-only inspection confirmed that the workstation already held Case B's
+experimental inputs, the v3 driver/executable, and its cores 24--27 rankfile.
+A separate normal approval review permitted direct invocation of those
+existing files. The previously rejected launcher upload was unnecessary and
+was not retried; no local source/input file was transferred for this launch.
+
+B started at 2026-09-28 11:59:29 KST, driver PID 162977, work directory
+`diagnostic_trials/B`, log `B_force4000_driver.log`. All four MPI ranks were
+verified on physical cores 24--27. Its first generated config uses omega
+157.07963267948966 rad/s (1500 rpm), applied load 3237.813830374732 N,
+TC0=334.63691239412935 K and coupling cap 4000; geometry, mesh, physical
+models and acceptance tolerances remain v3. First config SHA256 is
+94c12bba983db41fc463aac992b63ec05380cc70639826d067e410b36987ca7c.
+B is running a full thermal/position search, and its former upload-approval
+question is no longer a prerequisite for this execution.

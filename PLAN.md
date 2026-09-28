@@ -2613,6 +2613,7 @@ numerical diagnosis only and do not complete an experimental comparison.
 - [ ] Complete A/C position searches; latest accepted-position errors remain
   above the 0.2% target.
 - [x] Start D on E's freed eight-core slot and queue F/E_low/E_high.
-- [ ] Resolve B's blocked launcher transfer through explicit file/host approval.
+- [x] Resolve B's execution blocker through approved use of the already-deployed
+  solver and inputs; start B on cores 24--27 without a new launcher transfer.
 - [ ] Finish all remaining cases and experimental temperature/friction/cavity
   comparisons before declaring the campaign complete or merging the task.
