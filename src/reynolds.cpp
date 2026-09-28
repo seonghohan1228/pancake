@@ -10,6 +10,7 @@
 #include "equation_of_state.hpp"
 #include "full_film.hpp"
 #include "fvm.hpp"
+#include "fbns.hpp"
 #include "communicator.hpp"
 #include "fluid_properties.hpp"
 #include "reynolds_coefficients.hpp"
@@ -487,6 +488,31 @@ void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConf
     const double R       = mesh.R;
     const double omega   = cfg.omega;
 
+    if (FBNS::active(cfg)) {
+        const Field& theta = fields["theta"];
+        for (int i = 0; i < n_theta; ++i) {
+            for (int j = 0; j < n_z; ++j) {
+                const double mass_flux = FBNS::mass_flux_theta(fields, mesh, cfg, i - 1, j);
+                const int upwind = mass_flux >= 0.0 ? i - 1 : i;
+                const double h_face = std::max(0.5 * (h(i - 1, j) + h(i, j)), cfg.min_film_thickness);
+                const double rho_face = 0.5 * (theta_base_density(fields, cfg, i - 1, j) +
+                                                theta_base_density(fields, cfg, i, j));
+                u_theta(i, j) = mass_flux /
+                    std::max(rho_face * h_face * theta(upwind, j) * d_z, 1.0e-30);
+            }
+            for (int j = 0; j <= n_z; ++j) {
+                const int south = std::max(j - 1, 0);
+                const int north = std::min(j, n_z - 1);
+                const double h_face = std::max(0.5 * (h(i, south) + h(i, north)), cfg.min_film_thickness);
+                const double rho_face = 0.5 * (
+                    theta_base_density(fields, cfg, i, south) * theta(i, south) +
+                    theta_base_density(fields, cfg, i, north) * theta(i, north));
+                u_z(i, j) = FBNS::mass_flux_z(fields, mesh, cfg, i, j - 1) /
+                    std::max(rho_face * h_face * R * d_theta, 1.0e-30);
+            }
+        }
+        return;
+    }
     // u_theta at FACE_THETA: interface between (i-1, j) and (i, j)
     // u_theta(i, j) is the west face of cell (i, j)
     // We need to calculate for i=0 to n_theta-1. Face i=n_theta is the same as i=0 for periodic.

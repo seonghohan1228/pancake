@@ -61,6 +61,20 @@ int main(int argc, char** argv) {
 
     {
         SimulationConfig cfg;
+        cfg.steady_pressure_inner_only = true;
+        Coupling::Controller control(cfg);
+        check(!control.record(0, 0.1, 1e-8, 0.0, false),
+              "inner-pressure selection cannot bypass pressure/force/energy checks");
+        check(!control.record(1, 0.1, 1e-3, 0.0, true),
+              "inner-pressure selection still requires thermal convergence");
+        check(control.record(2, 0.1, 1e-8, 0.0, true),
+              "inner-pressure selection must not impose a pressure-change gate");
+        check(control.status().R_p == 0.1 && control.status().last_residual() == 1e-8,
+              "actual pressure change remains reported separately from the stopping metric");
+    }
+
+    {
+        SimulationConfig cfg;
         cfg.coupling_tolerance = 1e-6;
         cfg.coupling_max_iters = 2;
         Coupling::Controller control(cfg);

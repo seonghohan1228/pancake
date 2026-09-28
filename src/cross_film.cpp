@@ -12,6 +12,7 @@
 #include "bush_conduction.hpp"
 #include "fluid_properties.hpp"
 #include "output_naming.hpp"
+#include "resolved_cross_film.hpp"
 
 namespace CrossFilm {
 namespace {
@@ -158,6 +159,9 @@ void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& c
     // Diagnostic: midplane temperature minus the depth-averaged temperature [K].
     fields.add("cross_film_core_rise", mesh).fill(0.0);
 
+    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+        ResolvedCrossFilm::register_fields(fields, mesh, cfg);
+
     // Optional film-surface outputs. Allocated only when the user selected them
     // AND the model that defines them is on, so an unselected run allocates
     // nothing, `update()` skips the stores, and the written files are unchanged.
@@ -171,6 +175,8 @@ void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& c
 }
 
 WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+        return ResolvedCrossFilm::update(fields, mesh, cfg);
     WallState state;
     if (!active(cfg)) return state;
 

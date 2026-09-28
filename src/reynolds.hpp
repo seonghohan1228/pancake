@@ -52,7 +52,8 @@ namespace Reynolds {
     ElrodStats solve_elrod(Fields& fields, LinearSystem& sys,
                            const Mesh& mesh, const SimulationConfig& cfg);
 
-    /// Calculate velocities on a staggered grid.
+    /// Calculate depth-averaged liquid velocities on a staggered grid.
+    /// FBNS reconstructs its conserved mass flux using the face liquid inventory.
     /// u_theta is on FACE_THETA, u_z is on FACE_Z.
     void calculate_velocities(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
 

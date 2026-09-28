@@ -55,6 +55,7 @@ struct Status {
     double R_T = 0.0;
     double R_g = 0.0;              ///< dissolved concentration / gas-volume change
     bool   converged = false;      ///< the last sweep met coupling_tolerance
+    bool   pressure_inner_only = false; ///< pressure change is reported, not a stopping gate
     bool   cap_exhausted = false;  ///< the loop stopped because it ran out of iterations
     int    best_iter = 0;          ///< 1-based index of the lowest-residual sweep
     double best_R_p = 0.0;
@@ -66,7 +67,7 @@ struct Status {
     double relaxation_min_used = 1.0;
 
     /// Residual of the last sweep under the ranking metric.
-    double last_residual() const { return residual_metric(R_p, R_T, R_g); }
+    double last_residual() const { return residual_metric(pressure_inner_only ? 0.0 : R_p, R_T, R_g); }
     /// How much worse the final iterate is than the best one found.
     double best_to_last_ratio() const {
         return best_residual > 0.0 ? last_residual() / best_residual : 1.0;
@@ -117,6 +118,7 @@ private:
     int    max_iters_ = 1;
     bool   keep_best_ = true;
     bool   adaptive_ = false;
+    bool   pressure_inner_only_ = false;
     double omega_ = 1.0;
     double omega_max_ = 1.0;
     double omega_min_ = 1.0;

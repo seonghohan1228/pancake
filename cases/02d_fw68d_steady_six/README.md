@@ -34,15 +34,17 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
 ## Solver and load control
 
 - Geometry: R=0.0215 m, L=0.040 m, radial clearance c=42.5e-6 m; bore 43.085 mm.
-- Film mesh: 720×192; bush radial cells: 16; cross-film order 4, quadrature 6.
+- Film mesh: 720×192; housing radial/axial cells: 16/16; film layers: 16.
 - `solution_mode=STEADY_STATE`, `motion_model=STEADY_EQUILIBRIUM`, `omega_ramp_time=0`.
 - Pure-FW68D `SINGLE_PHASE`, FBNS cavitation, STRIATED cavity shear, film energy,
-  polynomial cross-film temperature and `CONDUCTION_2D` bush conduction.
+  finite-volume cross-film temperature and `CONDUCTION_3D` housing conduction.
 - Retain dt=20 us as configuration metadata. Steady Reynolds/energy storage
   terms are disabled and bearing motion is not integrated.
-- Inner pressure/temperature coupling: both normalized changes below 1e-6,
-  maximum 2000 sweeps, outer field relaxation 1, quartic-source relaxation 0.3,
-  inner FBNS tolerance 1e-6 (user-selected on 2026-09-28), and normalized global energy defect below 1e-6. An iteration cap or restored best
+- Inner pressure/temperature coupling: converged FBNS pressure/complementarity
+  residuals below 1e-6 and normalized temperature change below 1e-6,
+  maximum 2000 sweeps, outer field relaxation 1,
+  and normalized global energy defect below 1e-6. Pressure field change is
+  recorded without another stopping threshold. An iteration cap or restored best
   iterate without convergence is a failed trial.
 - Native equilibrium: update bearing position within the pressure/energy loop
   until total fluid force balances the applied load vector to 0.2%. Numerical
@@ -146,21 +148,24 @@ FW68D viscosity table. The boundary is q''=h(T_surface-TC0).
 
 The driver updates the housing and shaft coefficients after each native
 load/thermal solve, using solved mean surface temperatures and relaxation. The mean
-housing outer temperature is reconstructed from the bore mean and exact mean
-radial/Robin resistance. Accept coefficient changes below 1e-3 relative and
+housing outer temperature is read from the resolved outer-surface field.
+Accept coefficient changes below 1e-3 relative and
 wall-temperature changes below 0.01 K, alongside both inner coupling residuals
 below 1e-6. A fixed-coefficient timing trial is explicitly labelled unclosed.
 
 L/D=0.47 is short, so this long-cylinder lateral-surface estimate is approximate.
-The two annular end faces have about 79% of the outside cylindrical area, but
-axial solid conduction/end-face cooling is absent from the r-theta CHT model.
-Confinement and mounting contacts are also unresolved. Report these limits
-and test cooling sensitivity; this is not a full finite-housing heat-loss model.
+The two annular end faces have about 79% of the outside cylindrical area.
+The user confirmed both are exposed to surrounding oil at TC0. They now use
+local natural convection coupled to three-dimensional housing conduction.
+A vertical-plate analogue with characteristic height 85 mm estimates their
+heat transfer (Churchill and Chu, *[Int. J. Heat Mass Transf.](https://doi.org/10.1016/0017-9310(75)90243-4)*, 1975).
+Confinement and mounting contacts remain unresolved; these correlations
+estimate cooling rather than supplying measured coefficients.
 
 ## Remaining comparison information
 
-TC2 and pressure sensor positions are needed to compare measured temperatures
-and pressure at corresponding points. They do not block the numerical solves.
+TC1-3 are at r=26 mm and the axial midplane, at 240/270/300 degrees.
+Only the logged pressure sensor location remains unspecified for comparison.
 Full-length groove, horizontal housing, isothermal shaft and analogous
 materials are explicit modeling assumptions. Revisit cooling sensitivity when
 assessing experimental agreement; chosen coefficient/property variations are
@@ -245,13 +250,14 @@ retained but rejected. The replacement uses pressure-derived mass/enthalpy
 exchange, with no imposed mixing flow, and computes the exact internal profile
 minimum/maximum. No clipping is used to pass acceptance.
 
-Each trial must have a clean solver return, pressure and mean-temperature
-residuals below 1e-6, FBNS residuals below 1e-6, relative mass-rate residual
+Each trial must have a clean solver return, mean-temperature change
+and FBNS residuals below 1e-6, relative mass-rate residual
 at most 1e-8, and normalized global energy defect at most 1e-6. Require finite
 positive gap/viscosity/density, pressure at or above the cavity floor within
 numerical tolerance, film content in [0,1], and film/wall/profile temperatures
 at least TC0 minus 0.001 K. External coefficient closure remains 1e-3 relative
 and 0.01 K. A final case additionally needs vector force error below 0.2%.
+Fixed-position trials also require pressure field change below 1e-6.
 
 A fixed-position `--trial` uses `motion_model=STATIC` and cannot pass as a
 native equilibrium. Production runs require the final `Equilibrium: CONVERGED`
@@ -298,3 +304,61 @@ has no stop-and-export handler, so unsaved intermediate fields were not written.
 The local campaign now renders fbns_tol=1e-6. This does not change the separate
 force, thermal, global conservation or physicality requirements for accepting
 a final experimental prediction, and it does not automatically restart cases.
+
+### September 28 recovery driver changes
+
+The recovered campaign uses `FINITE_VOLUME` with 16 layers and native
+`steady_pressure_inner_only=true`. It continues after the inner FBNS residual
+reaches 1e-6 until temperature, force, profile, global mass/energy and exterior
+cooling closure pass. Pressure field change remains in the diagnostic record.
+
+`steady_output_interval=50` retains intermediate fields and a restart file in
+`results/iterations/`. At a driver runtime deadline, `results/STOP` requests a
+completed-sweep export; a 120-second grace period precedes process-tree cleanup.
+Stopped outputs keep their failed status and cannot become accepted results.
+
+`--initial-state-root /path/to/prior/production` permits a preserved same-case
+state to initialize a fresh solve after changes to the numerical algorithm.
+The driver checks the original configuration hash, experiment/property-table
+hashes, geometry, load direction and physical settings, reads the saved bearing
+position, and records the prior status and state hash. This option imports an
+initial guess only; accepted-result caching still requires matching current
+source, executable, driver, inputs and MPI placement. Native I/O validates all
+state values and initializes new layer fields from legacy mean-temperature seeds.
+
+TC1/TC2/TC3 are comparison probes at radius 26 mm, axial midplane and angles
+240/270/300 degrees. These positions do not set the thermal boundary conditions.
+
+The corrected source snapshot was rebuilt on afml-r6 after 59 local tests
+passed. All 26 selected remote tests and both driver checks passed. A full-mesh
+Case B iteration took 61.96/38.04/27.26 s on 2/4/8 ranks. The campaign therefore
+runs six primary cases on four cores each and the two E temperature bounds
+on two cores each, covering all 28 physical cores without a queued case.
+These short timing pilots were intentionally capped and are not final results.
+
+### Completed resolved campaign, September 28
+
+Remote snapshot: `/home/user/pancake-runs/fw68d-resolved-20260928-e414b50f`.
+All A-F and E-low/high equilibria now pass inner pressure, force, temperature,
+layer/solid change, mass, energy, exterior coefficient and temperature-floor
+checks. Primary cases took 18, 22, 23, 24, 32 and 24 total coupled iterations
+respectively, including all cooling-coefficient passes. E-low/high were moved
+from two to eight freed cores using saved-state recovery; their earlier stop
+records are deliberate reallocations, not accepted CFD solutions.
+
+The maximum load residual is 0.1445%, maximum relative energy residual
+5.10e-10 and maximum relative mass residual 7.43e-10. The fully coupled B
+check with 32 film layers changes torque by 0.0048%, peak pressure by 0.0226%
+and sensor temperatures by at most 0.0021 K. Independent solid conduction
+reproduces saved A/B fields within 5e-6 K; 16-to-32 radial/axial refinement
+at fixed interface heat flux changes sensor temperatures by <=0.0024 K.
+
+Results and plots are in
+`C:/Dev/pancake/results/fw68d_physical_20260928/resolved_results/RESULTS.md`.
+The report includes conditions, all experimental points, sensor errors,
+pressure/temperature/filling contours, convergence histories and the full
+raw-output archive. Numerical closure is established, but friction errors
+range from -38.4% to +103.2% and E is 4.1-4.8 K hotter than experiment.
+F has no cavity: its minimum absolute pressure is 24.60 kPa, above p_cav=0.
+The nominal material/cooling and ideal groove assumptions remain model
+limitations; no coefficient or torque offset was tuned to the measurements.

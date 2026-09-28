@@ -3157,3 +3157,78 @@ The earlier groove-profile undershoot is a separate limitation. Position
 coupling does not justify clipping temperature or weakening its acceptance
 criterion. The unsuccessful reservoir-collocation experiment is preserved
 outside the source snapshot and excluded from this implementation.
+
+### September 28 correction: resolved film energy and exposed housing ends
+
+The FW68D campaign now selects `cross_film_thermal_model = FINITE_VOLUME`.
+The old `POLYNOMIAL` option is retained for reproducibility. Its restricted
+quartic profile and convection limiter can produce subambient interior
+temperatures with positive dissipation and equal-temperature reservoirs.
+Changing convergence tolerances cannot repair that approximation.
+
+Divide the film into N equal layers, with cell-centred temperatures T_k and
+piecewise constant viscosity mu_k. Integrate the inverse viscosity exactly:
+
+    F0 = integral(1/mu dy), F1 = integral(y/mu dy),
+    F2 = integral(y^2/mu dy) - F1^2/F0.
+
+The Reynolds mobility remains F2 and the Couette transport thickness remains
+2 F1/F0. Layer face fluxes follow the corresponding integrated velocity
+profiles and sum to the same conservative FBNS mass flux used by pressure.
+Internal transverse fluxes follow layer continuity. For each layer solve
+
+    sum_faces(cp * mass_flux_out * T_upwind)
+      + sum_neighbours(G * (T_k - T_neighbour)) = viscous_heat_k.
+
+The groove supplies positive net inflow at TC0 and drains negative net flow
+at the solved layer temperature. Axial inflow uses TC0. A continuity-defect
+correction preserves constant temperature under the residual of the pressure
+solve; it is included explicitly in the global energy ledger. Dissipation
+is the exact layer integral of the squared Couette and pressure-driven shear,
+not a clipped or fitted heat source. Its film integral is
+fill * U^2/F0 + F2 * |grad(p)|^2. The layer temperatures, bore temperatures,
+housing nodes and one shaft temperature are solved in one sparse system.
+The unknown is T minus the reference temperature, avoiding cancellation
+against a large absolute-Kelvin baseline. Viscosity is updated on the next
+outer iteration. No physical time derivative is present.
+
+`bush_thermal_model = CONDUCTION_3D` resolves radial, circumferential and axial
+housing conduction. `bush_axial_cells` divides the fluid axial cell count;
+film heat fluxes are conservatively summed onto each solid axial slab.
+Radial links use logarithmic cylindrical resistances. Both annular ends have
+convection to TC0 in series with the half-cell conduction resistance.
+`bush_end_heat_transfer` specifies a fixed coefficient for verification;
+`bush_end_natural_convection = true` instead updates it locally from the
+solved end-surface temperature. For the horizontal shaft, the annular ends
+are vertical. Use a vertical-plate analogue of height D_outer:
+
+    Nu = [0.825 + 0.387 Ra^(1/6) /
+          (1 + (0.492/Pr)^(9/16))^(8/27)]^2, h = k_oil Nu / D_outer.
+
+Oil properties are evaluated at the mean of surface and ambient temperature.
+This is an approximation to finite annular geometry, not measured cooling
+(Churchill and Chu, *[Int. J. Heat Mass Transf.](https://doi.org/10.1016/0017-9310(75)90243-4)*, 1975).
+The outer cylinder retains its separate horizontal-cylinder correlation.
+Its coefficient iteration now uses `temperature_housing_outer`, the actual
+resolved surface temperature; the old axially uniform annulus conversion
+from mean bore temperature is invalid with exposed ends. Housing fields
+`cross_film_solid_k` retain each radial node at each axial slab, allowing
+TC1-3 interpolation at r=26 mm, z=20 mm and theta=240,270,300 degrees.
+The solid inner radius retains the thin-film approximation R, 42.5 um inside
+the physical bore. The shaft retains a global temperature and two rotating
+end-disk convective sinks; its axial conduction is not spatially resolved.
+
+`steady_pressure_inner_only = true` uses the requested inner FBNS residual
+of 1e-6 without an additional pressure-field-change threshold. Force,
+temperature, all layer/solid changes and global energy must still close.
+The temperature floor remains TC0 minus 0.001 K; there is no temperature
+clipping and no calibration to measured thermocouples or torque.
+`steady_output_interval` saves complete, iteration-numbered checkpoints.
+A STOP file requests export after the current iteration and returns failure,
+never a falsely converged result. Version-2 initial-state files preserve
+all film layers; version-1 files seed them uniformly from the saved mean.
+
+Validation includes exact Couette conjugate temperatures, second-order
+through-film refinement (8/16/32 layers), signed groove flow and reverse
+rotation, exact outer-plus-end housing heat loss, natural-convection fixed
+point closure, MPI rank comparisons and stopped-run recovery.

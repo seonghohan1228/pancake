@@ -3,8 +3,10 @@
 import csv
 import json
 import math
+import os
 from pathlib import Path
 import runpy
+import sys
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import xml.etree.ElementTree as ET
@@ -15,7 +17,7 @@ Campaign = driver["Campaign"]
 np = driver["np"]
 
 
-def write_solution(run, case, clearance, force_error=0., marker="CONVERGED"):
+def write_solution(run, case, clearance, force_error=0., marker="CONVERGED", pressure_change=0.):
     """Write a small real VTK/diagnostics fixture with a solved non-seed position."""
     ambient = float(case["tc0_boundary_temperature_k"])
     load = float(case["load_mean_n"])
@@ -24,6 +26,7 @@ def write_solution(run, case, clearance, force_error=0., marker="CONVERGED"):
     fields = {"p": [101325., 101325.], "film_content": [1., 1.],
               "h": [20e-6, 30e-6], "T": [ambient + 1] * 2,
               "T_bearing": [ambient + 1] * 2, "T_journal": [ambient + 1] * 2,
+              "temperature_housing_outer": [ambient + 1] * 2,
               "mu": [.02, .02], "q_bearing": [0., 0.], "q_journal": [0., 0.],
               "friction_torque": [.01, .01],
               "F": [load * force_error, -load, 0.] * 2, "xB": position * 2}
@@ -44,7 +47,7 @@ def write_solution(run, case, clearance, force_error=0., marker="CONVERGED"):
                   "energy_groove_enthalpy_in_W": 0., "energy_mass_imbalance_correction_W": 0.,
                   "energy_feed_mass_kg_s": 0., "cross_film_profile_t_min_K": ambient + 1,
                   "cross_film_profile_t_max_K": ambient + 2, "cross_film_profile_residual": 0.,
-                  "coupling_R_p": 0., "coupling_R_T": 0., "coupling_converged": 1,
+                  "coupling_R_p": pressure_change, "coupling_R_T": 0., "coupling_converged": 1,
                   "coupling_restored_best": 0, "converged": 1}
     with (run / "results/diagnostics.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(diagnostic))
@@ -77,6 +80,16 @@ def main():
         assert math.isclose(result["eps"], .45)
         assert math.isclose(result["psi_deg"], 320.)
         assert result["force_error_rel"] == 0.
+        # Inner pressure acceptance does not add a stricter pressure-change gate.
+        check(write_solution(run, case, clearance, pressure_change=3e-4))
+        for invalid_log in (log.replace("|G|=1e-13", "|G|=1.1e-6"),
+                            log.replace("|FB|=1e-13", "|FB|=1.1e-6")):
+            try:
+                check(invalid_log)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("failed inner pressure equation accepted")
         for force_error, marker in ((.003, "CONVERGED"), (0., "NOT CONVERGED")):
             bad_log = write_solution(run, case, clearance, force_error, marker)
             try:
@@ -114,6 +127,20 @@ def main():
         assert campaign.recheck(old_run, old, case) is None
         assert campaign.find_completed(case, .15, 345., 60., 100.) is None
         assert campaign.recover_checkpoint(case) is None
+        # A preserved failed result can seed a fresh solve, but never satisfy its acceptance.
+        (run / "results/steady_state.dat").write_text("initial guess only")
+        (run / "metrics.json").write_text(json.dumps({**record, "status": "failed",
+                                                     "source_sha256": "previous", "driver_sha256": "previous"}))
+        restart_args = vars(args).copy()
+        restart_args.update(work=str(work / "fresh"), initial_state_root=str(work))
+        warm = Campaign(SimpleNamespace(**restart_args))
+        assert warm.find_completed(case, .15, 345., 60., 100.) is None
+        assert warm.recover_checkpoint(case) == run / "results/steady_state.dat"
+        assert warm.restart_positions["E"] == (result["eps"], result["psi_deg"])
+        assert warm.restart_provenance["E"]["initial_guess_only"]
+        assert warm.restart_provenance["E"]["prior_status"] == "failed"
+        assert warm.h_warm["E"] == (60., 100.)
+        assert not warm.completed["E"]
         calls = []
         def evaluate(case, eps, psi, label):
             calls.append((eps, psi, label))
@@ -124,7 +151,16 @@ def main():
         assert balanced["status"] == "load_and_thermal_closed"
         saved = list((work / "E").glob("result_*.json"))
         assert len(saved) == 1 and math.isclose(json.loads(saved[0].read_text())["eps"], .45)
-    print("FW68D native driver passed: VTK position/force acceptance, single equilibrium call, provenance and wrong-load restart rejection")
+        stop_run = work / "stop_check"
+        stop_run.mkdir()
+        child = ("from pathlib import Path\nimport time\n"
+                 "while not Path('results/STOP').exists(): time.sleep(.01)\n"
+                 "Path('results/steady_state.dat').write_text('saved at stop')\nraise SystemExit(5)\n")
+        returncode, deadline = driver["run_solver"]([sys.executable, "-c", child], stop_run,
+                                                    dict(os.environ), timeout=.1, stop_grace=10)
+        assert deadline and returncode == 5
+        assert (stop_run / "results/steady_state.dat").read_text() == "saved at stop"
+    print("FW68D native driver passed: force/inner-pressure acceptance, cache isolation, warm-start-only recovery and cooperative timeout")
 
 
 if __name__ == "__main__":

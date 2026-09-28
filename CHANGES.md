@@ -1,5 +1,32 @@
 # Change Log
 
+## 2026-09-28 - Resolve film energy and exposed housing ends
+
+- Add conservative finite-volume film energy to remove the restricted
+  quartic-profile convection limitation behind subambient results.
+- Couple film layers to radial/circumferential/axial stainless conduction;
+  include natural convection on both user-confirmed exposed annular ends.
+- Export actual housing outer and internal temperatures for cooling closure
+  and the r=26 mm, axial-midplane thermocouple comparison.
+- Honor the inner-pressure-only 1e-6 stopping choice while retaining force,
+  thermal, mass, energy and physical-temperature acceptance checks.
+- Preserve iteration fields and layer checkpoints on capped/cooperative
+  stops, avoiding lost results from failed or long-running cases.
+- Reconstruct displayed FBNS velocities from conservative mass fluxes,
+  including pressure-driven transport at the cavitation front. Torque and
+  the measured FW68D viscosity interpolation are unchanged.
+- Add analytic, conservation, refinement, reverse-rotation, MPI and recovery
+  regressions. Seven focused native Windows tests and both driver checks
+  passed before the full-resolution pilots; campaign evidence is separate.
+- Complete all 59 native tests, 26 selected remote tests, eight remote
+  equilibria and the fully coupled 32-layer Case B check. Maximum load error
+  is 0.1445%; all profiles remain above TC0 and global energy/mass close.
+  Archive e414b50f records the exact remotely compiled snapshot. The local
+  raw-result archive SHA-256 begins 1894656b; the full manifest is retained.
+- Report remaining experimental disagreement explicitly: A/C sensor errors
+  are below 0.36/0.16 K, but E remains 4.1-4.8 K high and friction does not
+  follow the measured curve. Numerical convergence is not experimental validation.
+
 ## 2026-09-11 - Correct the oil screening geometry
 
 - Rerun the steady oil matrix as case 02c using the user's 43 mm journal

@@ -129,6 +129,23 @@ int main(int argc, char** argv) {
         for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
             check(initial[names[k]](i, j) == expected(k, (mesh.offset_theta + i) * mesh.n_z_global + j),
                   "steady initial guess must round-trip every physical cell exactly");
+    initial.add("cross_film_layer_0", mesh).fill(0.0);
+    initial.add("cross_film_layer_1", mesh).fill(0.0);
+    IO::read_steady_initial_state(guess, initial, mesh, cfg);
+    for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j) {
+        check(initial["cross_film_layer_0"](i, j) == initial["temperature"](i, j),
+              "legacy mean-only guesses must initialize every resolved layer");
+        initial["cross_film_layer_1"](i, j) = initial["temperature"](i, j) + 2.0;
+    }
+    IO::write_steady_initial_state(guess, initial, mesh, cfg);
+    initial["cross_film_layer_0"].fill(0.0);
+    initial["cross_film_layer_1"].fill(0.0);
+    IO::read_steady_initial_state(guess, initial, mesh, cfg);
+    for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j) {
+        check(initial["cross_film_layer_0"](i, j) == initial["temperature"](i, j) &&
+              initial["cross_film_layer_1"](i, j) == initial["temperature"](i, j) + 2.0,
+              "resolved-layer guesses must round-trip every layer without overwriting the mean");
+    }
     SimulationConfig mismatch = cfg;
     mismatch.c *= 2.0;
     bool rejected = false;

@@ -12,6 +12,7 @@
 #include "full_film.hpp"
 #include "fvm.hpp"
 #include "reynolds_coefficients.hpp"
+#include "resolved_cross_film.hpp"
 
 namespace Energy {
 namespace {
@@ -484,6 +485,10 @@ void add_nonconservative_convection_correction(LinearSystem& sys,
 }  // namespace
 
 void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const SimulationConfig& cfg) {
+    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+        ResolvedCrossFilm::solve(fields, mesh, cfg);
+        return;
+    }
     compute_heat_generation(fields, mesh, cfg);
     if (cfg.temperature_model == TemperatureModel::ISOTHERMAL) return;
 
@@ -652,6 +657,8 @@ void solve(Fields& fields, LinearSystem& sys, const Mesh& mesh, const Simulation
 }
 
 Balance balance(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+        return ResolvedCrossFilm::balance(fields, mesh, cfg);
     if (!flux_balanced(cfg)) {
         throw std::invalid_argument("Energy::balance requires FLUX_BALANCED groove mixing");
     }

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -85,6 +86,39 @@ def config_identity(config, ignore=()):
             continue
         lines.append(f"{key} = <ignored>" if key in ignore else line)
     return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
+
+
+def warm_start_identity(config):
+    """Compare physical inputs for an explicitly requested initial guess only."""
+    values = dict(line.split(" = ", 1) for line in config.splitlines() if " = " in line)
+    numerical = {"e", "attitude_angle_deg", "fbns_tol", "solution_table_file",
+                 "bush_outer_heat_transfer", "shaft_ambient_heat_transfer",
+                 "cross_film_thermal_model", "cross_film_layers", "cross_film_profile_order",
+                 "cross_film_quadrature_points", "cross_film_relaxation"}
+    return {key: value for key, value in values.items()
+            if key not in numerical and not key.startswith(("output_", "coupling_", "steady_"))}
+
+
+def run_solver(command, run_dir, environment, timeout, stop_grace=120):
+    """Ask for a saved stop at the deadline; kill the process tree only after grace."""
+    with (run_dir / "run.log").open("w", encoding="utf-8") as stream:
+        process = subprocess.Popen(command, cwd=run_dir, stdout=stream, stderr=subprocess.STDOUT,
+                                   env=environment, start_new_session=os.name != "nt")
+        try:
+            return process.wait(timeout=timeout), False
+        except subprocess.TimeoutExpired:
+            output = run_dir / "results"
+            output.mkdir(exist_ok=True)
+            (output / "STOP").write_text("Driver runtime deadline reached; save before stopping.\n")
+            try:
+                return process.wait(timeout=stop_grace), True
+            except subprocess.TimeoutExpired:
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   stdout=stream, stderr=subprocess.STDOUT, check=False)
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+                return process.wait(), True
 
 
 def mpi_command(mpi, solver, ranks, rankfile=None, platform=sys.platform):
@@ -179,6 +213,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "end_t": 2e-5, "write_interval": 2e-5, "diagnostics_interval": 1,
         "motion_model": "STEADY_EQUILIBRIUM" if native_equilibrium else "STATIC",
         "steady_force_tolerance": FORCE_BALANCE_TOL,
+        "steady_pressure_inner_only": "true" if native_equilibrium else "false",
+        "steady_output_interval": 50,
         "steady_position_step_limit": .05, "steady_position_fd_step": .001,
         "theta_convection_scheme": "UPWIND", "thermal_convection_scheme": "UPWIND",
         "gas_convection_scheme": "UPWIND", "external_load_x": load_vector[0],
@@ -196,9 +232,11 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "rho_cp": rho * float(materials["oil_cp_J_kg_K"]),
         "liquid_specific_heat": materials["oil_cp_J_kg_K"],
         "thermal_conductivity": materials["oil_conductivity_W_m_K"],
-        "cross_film_thermal_model": "POLYNOMIAL", "cross_film_profile_order": 4,
+        "cross_film_thermal_model": "FINITE_VOLUME", "cross_film_layers": 16,
+        "cross_film_profile_order": 4,
         "cross_film_quadrature_points": 6, "cross_film_relaxation": 0.3,
-        "bush_thermal_model": "CONDUCTION_2D",
+        "bush_thermal_model": "CONDUCTION_3D", "bush_axial_cells": 16,
+        "bush_end_natural_convection": "true",
         "bush_thermal_conductivity": materials["bush_conductivity_W_m_K"],
         "bush_outer_radius": boundaries["housing"]["outer_radius_m"],
         "bush_radial_cells": 16, "bush_outer_boundary": "CONVECTION",
@@ -223,7 +261,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "output_dir": str(output_dir.resolve()),
         "output_write_3d": "false", "output_write_flat": "true",
         "output_verbosity": "DETAILED",
-        "output_fields": "pressure,film_content,h,temperature,mu,temperature_journal,temperature_bearing,heat_flux_journal,heat_flux_bearing,fluid_force_x,fluid_force_y,fluid_force_z,pressure_force_x,pressure_force_y,friction_torque,bearing_x,bearing_y,bearing_z",
+        "output_fields": "pressure,film_content,h,temperature,mu,temperature_journal,temperature_bearing,heat_flux_journal,heat_flux_bearing,fluid_force_x,fluid_force_y,fluid_force_z,pressure_force_x,pressure_force_y,friction_torque,bearing_x,bearing_y,bearing_z,temperature_housing_outer," + ",".join(f"cross_film_solid_{k}" for k in range(16)),
     }
     if initial_state_file is not None:
         values["steady_initial_state_file"] = str(Path(initial_state_file).resolve())
@@ -231,8 +269,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         f"{key} = {value}" for key, value in values.items()) + "\n"
 
 
-def read_fields(run_dir):
-    pvd = run_dir / "results/flat/results.pvd"
+def read_fields(run_dir, results_dir=None):
+    pvd = (results_dir or run_dir / "results") / "flat/results.pvd"
     frames = list(ET.parse(pvd).getroot().iter("DataSet"))
     if not frames:
         raise ValueError("no flat VTK frame")
@@ -336,7 +374,8 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
     if density(profile_max - 273.15) <= 0:
         raise ValueError("nonpositive density at hottest cross-film profile point")
     for key in ("coupling_R_p", "coupling_R_T"):
-        if not math.isfinite(float(diagnostic[key])) or float(diagnostic[key]) >= 1e-6:
+        if (not math.isfinite(float(diagnostic[key])) or float(diagnostic[key]) < 0 or
+                ((key == "coupling_R_T" or not native_equilibrium) and float(diagnostic[key]) >= 1e-6)):
             raise ValueError(f"{key} failed: {diagnostic[key]}")
     if int(diagnostic["coupling_converged"]) != 1 or int(diagnostic["coupling_restored_best"]) != 0:
         raise ValueError("pressure/thermal coupling did not converge cleanly")
@@ -394,6 +433,8 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
         "mass_balance_tolerance": MASS_BALANCE_TOL,
         "energy_balance_tolerance": ENERGY_BALANCE_TOL,
         "energy_balance_residual_rel": energy_relative,
+        "pressure_acceptance": ("converged_FBNS_below_1e-6; coupling_R_p_reported_only"
+                                if native_equilibrium else "FBNS_and_coupling_R_p_below_1e-6"),
         "cross_film_profile_t_min_K": profile_min,
         "cross_film_profile_t_max_K": profile_max,
         "cross_film_profile_residual": profile_residual,
@@ -404,6 +445,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
         "T_bore_min_K": float(np.min(fields["T_bearing"])),
         "T_bore_mean_K": float(np.mean(fields["T_bearing"])),
         "T_bore_max_K": float(np.max(fields["T_bearing"])),
+        "T_outer_mean_K": float(np.mean(fields["temperature_housing_outer"])),
         "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
         "energy_diagnostic_status": "global_balance_verified",
         "diagnostics": diagnostic,
@@ -447,6 +489,8 @@ class Campaign:
         self.sequence = 0
         self.h_warm = {}
         self.latest_checkpoint = {}
+        self.restart_positions = {}
+        self.restart_provenance = {}
         self.source_hash = source_sha256()
         self.executable_hash = sha256(self.solver) if self.solver and self.solver.is_file() else None
         self.input_hashes = {"experiment_sha256": sha256(EXPERIMENT),
@@ -542,10 +586,7 @@ class Campaign:
                 ambient = float(case["tc0_boundary_temperature_k"])
                 h_b = float(result["h_bush_W_m2_K"])
                 h_s = float(result["h_shaft_W_m2_K"])
-                outer = outer_temperature(result["T_bore_mean_K"], ambient, h_b,
-                                          self.experiment["geometry"]["journal_radius_m"],
-                                          self.boundaries["housing"]["outer_radius_m"],
-                                          float(self.materials["bush_conductivity_W_m_K"]))
+                outer = result["T_outer_mean_K"]
                 target_b, _ = housing_coefficient(outer, ambient, self.points, self.materials)
                 target_s, _ = shaft_coefficient(result["T_shaft_mean_K"], ambient,
                                                 case["angular_speed_magnitude_rad_s"],
@@ -576,6 +617,40 @@ class Campaign:
                      record["output_state_sha256"] == sha256(checkpoint))):
                 self.latest_checkpoint[key] = checkpoint
                 return checkpoint
+        initial_root = getattr(self.args, "initial_state_root", None)
+        if initial_root:
+            root = Path(initial_root).resolve(strict=True)
+            expected = self.config_for(case, .3, 270., 60., 100., self.work / key / "_probe")
+            candidates = sorted((root / key).glob("*/results/**/steady_state.dat"),
+                                key=lambda path: path.stat().st_mtime, reverse=True)
+            for checkpoint in candidates:
+                run_dir = next((parent for parent in checkpoint.parents if (parent / "config.txt").is_file()), None)
+                if run_dir is None:
+                    continue
+                try:
+                    record = json.loads((run_dir / "metrics.json").read_text())
+                    config = (run_dir / "config.txt").read_text()
+                    if (record.get("case_id") != key or
+                            record.get("config_sha256") != sha256(run_dir / "config.txt") or
+                            record.get("experiment_sha256") != self.input_hashes["experiment_sha256"] or
+                            record.get("property_table_sha256") != self.input_hashes["property_table_sha256"] or
+                            not config_has_current_load(config, case["load_mean_n"]) or
+                            warm_start_identity(config) != warm_start_identity(expected)):
+                        continue
+                    if (checkpoint.parent == run_dir / "results" and record.get("output_state_sha256") and
+                            record["output_state_sha256"] != sha256(checkpoint)):
+                        continue
+                    position = final_position(read_fields(run_dir, checkpoint.parent),
+                                              self.experiment["geometry"]["radial_clearance_m"])
+                    values = dict(line.split(" = ", 1) for line in config.splitlines() if " = " in line)
+                    self.latest_checkpoint[key] = checkpoint
+                    self.restart_positions[key] = position["eps"], position["psi_deg"]
+                    self.h_warm[key] = float(values["bush_outer_heat_transfer"]), float(values["shaft_ambient_heat_transfer"])
+                    self.restart_provenance[key] = {"run_dir": str(run_dir), "prior_status": record.get("status"),
+                                                    "initial_guess_only": True, "source_sha256": record.get("source_sha256")}
+                    return checkpoint
+                except (OSError, ValueError, KeyError, ET.ParseError):
+                    continue
         return None
 
     def single(self, case, eps, psi, h_bush, h_shaft, label):
@@ -587,6 +662,7 @@ class Campaign:
         run_dir = self.work / case["case_id"] / f"{self.sequence:04d}_{label}_{uuid.uuid4().hex[:8]}"
         run_dir.mkdir(parents=True, exist_ok=False)
         checkpoint = self.recover_checkpoint(case)
+        eps, psi = self.restart_positions.pop(case["case_id"], (eps, psi))
         config = self.config_for(case, eps, psi, h_bush, h_shaft,
                                  run_dir / "results", checkpoint)
         config_path = run_dir / "config.txt"
@@ -604,6 +680,7 @@ class Campaign:
             "config_sha256": sha256(config_path), "executable_sha256": self.executable_hash,
             "initial_state_file": str(checkpoint) if checkpoint else None,
             "initial_state_sha256": sha256(checkpoint) if checkpoint else None,
+            "restart_provenance": self.restart_provenance.get(case["case_id"]),
             **self.input_hashes, "status": "started",
         }
         save_json(run_dir / "metrics.json", record)
@@ -611,13 +688,17 @@ class Campaign:
         environment = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
                            MKL_NUM_THREADS="1")
         try:
-            with (run_dir / "run.log").open("w", encoding="utf-8") as stream:
-                process = subprocess.run(command, cwd=run_dir, stdout=stream, stderr=subprocess.STDOUT,
-                                         env=environment, timeout=self.args.timeout)
-            record["returncode"] = process.returncode
+            returncode, deadline_reached = run_solver(command, run_dir, environment, self.args.timeout)
+            record["returncode"] = returncode
+            record["runtime_deadline_reached"] = deadline_reached
             record["wall_seconds"] = time.monotonic() - started
+            state_path = run_dir / "results/steady_state.dat"
+            if state_path.is_file():
+                record["output_state_sha256"] = sha256(state_path)
+            if deadline_reached:
+                raise RuntimeError("runtime deadline reached; stop requested and saved outputs retained")
             log = (run_dir / "run.log").read_text(errors="replace")
-            record.update(check_solution(run_dir, log, process.returncode,
+            record.update(check_solution(run_dir, log, returncode,
                                          float(case["load_mean_n"]), float(self.materials["cavitation_pressure_Pa"]),
                                          float(case["tc0_boundary_temperature_k"]), self.points,
                                          self.native_equilibrium,
@@ -650,6 +731,9 @@ class Campaign:
                 return cached
         ambient = float(case["tc0_boundary_temperature_k"])
         omega = float(case["angular_speed_magnitude_rad_s"])
+        if getattr(self.args, "initial_state_root", None):
+            self.recover_checkpoint(case)
+            eps, psi = self.restart_positions.pop(case["case_id"], (eps, psi))
         if case["case_id"] in self.h_warm:
             h_bush, h_shaft = self.h_warm[case["case_id"]]
         else:
@@ -661,10 +745,7 @@ class Campaign:
         count = thermal_iterations if thermal_iterations is not None else self.args.max_thermal_iterations
         for iteration in range(count):
             result = self.single(case, eps, psi, h_bush, h_shaft, f"{label}_thermal{iteration + 1}")
-            outer = outer_temperature(result["T_bore_mean_K"], ambient, h_bush,
-                                      self.experiment["geometry"]["journal_radius_m"],
-                                      self.boundaries["housing"]["outer_radius_m"],
-                                      float(self.materials["bush_conductivity_W_m_K"]))
+            outer = result["T_outer_mean_K"]
             shaft = result["T_shaft_mean_K"]
             target_bush, housing_meta = housing_coefficient(outer, ambient, self.points, self.materials)
             target_shaft, shaft_meta = shaft_coefficient(shaft, ambient, omega, self.points, self.materials)
@@ -741,6 +822,8 @@ def self_check(campaign):
         if (not config_has_current_load(config, case["load_mean_n"]) or
                 "solution_mode = STEADY_STATE" not in config or
                 values["motion_model"] != "STEADY_EQUILIBRIUM" or
+                values["steady_pressure_inner_only"] != "true" or
+                int(values["steady_output_interval"]) != 50 or
                 float(values["steady_force_tolerance"]) != FORCE_BALANCE_TOL):
             raise ValueError("steady or load config mismatch")
         old_config = config.replace("external_load_y = " + str(float(case["load_mean_n"])),
@@ -757,6 +840,8 @@ def self_check(campaign):
                 values["coupling_keep_best_iterate"] != "true" or
                 float(values["fbns_tol"]) != FBNS_TOL or
                 values["groove_mixing_model"] != "FLUX_BALANCED" or
+                values["cross_film_thermal_model"] != "FINITE_VOLUME" or
+                int(values["cross_film_layers"]) != 16 or
                 float(values["cross_film_relaxation"]) != .3 or
                 float(values["liquid_specific_heat"]) != float(campaign.materials["oil_cp_J_kg_K"])):
             raise ValueError("initial guess, boundary, or fixed-point defaults mismatch")
@@ -834,6 +919,7 @@ def self_check(campaign):
             resistance = 1 + h_bush * outer_radius / float(probe.materials["bush_conductivity_W_m_K"]) * math.log(outer_radius / radius)
             return {"run_dir": str(directory), "eps": .3, "psi_deg": 270.,
                     "T_bore_mean_K": ambient + 5 * resistance,
+                    "T_outer_mean_K": ambient + 5,
                     "T_shaft_mean_K": ambient + 5}
         probe.single = fake_single
         result = probe.evaluate(case, .15, 345, "seed_check")
@@ -857,6 +943,7 @@ def main():
     parser.add_argument("--cases", default="A,B,C,D,E,F", help="comma-separated A-F or E_low,E_high")
     parser.add_argument("--materials", default=str(SETUP), help="JSON with material_settings object")
     parser.add_argument("--rankfile", help="existing OpenMPI rankfile; Linux only")
+    parser.add_argument("--initial-state-root", help="prior campaign work root; compatible fields seed fresh solves only")
     parser.add_argument("--timeout", type=int, default=7200, help="seconds per native solve")
     parser.add_argument("--max-thermal-iterations", type=int, default=30)
     parser.add_argument("--coupling-max-iters", type=int, default=2000,
@@ -869,7 +956,7 @@ def main():
                         help="trial-only number of evaluations; result is unclosed")
     parser.add_argument("--self-check", action="store_true")
     args = parser.parse_args()
-    if (args.coupling_max_iters < 1 or args.max_thermal_iterations < 1 or
+    if (args.coupling_max_iters < 1 or args.max_thermal_iterations < 1 or args.timeout <= 0 or
             args.thermal_iterations < 1 or not 0 < args.coupling_relaxation <= 1):
         parser.error("coupling cap must be positive and fixed relaxation in (0,1]")
     campaign = Campaign(args)

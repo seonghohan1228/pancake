@@ -25,10 +25,10 @@
     "cavitation_threshold": "SCALAR_PCAV",
     "cavitated_film_model": "STRIATED",
     "temperature_model": "ENERGY_EQUATION",
-    "cross_film_thermal_model": "POLYNOMIAL",
+    "cross_film_thermal_model": "FINITE_VOLUME",
     "cross_film_profile_order": 4,
     "cross_film_quadrature_points": 6,
-    "bush_thermal_model": "CONDUCTION_2D",
+    "bush_thermal_model": "CONDUCTION_3D",
     "bush_radial_cells": 16,
     "fluid_property_model": "SINGLE_PHASE",
     "dissolved_gas_species": "AIR",
@@ -63,14 +63,19 @@
     "bc_z_north_val": 101325.0,
     "bc_z_south_thermal": "CONSTANT",
     "bc_z_north_thermal": "CONSTANT",
-    "fbns_tol": 1e-6,
+    "fbns_tol": 1e-06,
     "groove_mixing_model": "FLUX_BALANCED",
     "cross_film_relaxation": 0.3,
     "liquid_specific_heat": 2010.0,
-    "convergence_note": "Pressure and temperature changes below 1e-6 plus normalized global energy residual below 1e-6; full profile temperatures must be >=TC0-0.001 K.",
+    "convergence_note": "FBNS pressure/complementarity residuals below 1e-6; normalized temperature change and global energy residual below 1e-6; pressure field change remains reported without an additional threshold. Force residual below 0.002 and full profile temperatures >= TC0-0.001 K remain mandatory.",
     "steady_force_tolerance": 0.002,
     "steady_position_step_limit": 0.05,
-    "steady_position_fd_step": 0.001
+    "steady_position_fd_step": 0.001,
+    "cross_film_layers": 16,
+    "steady_pressure_inner_only": true,
+    "steady_output_interval": 50,
+    "bush_axial_cells": 16,
+    "bush_end_natural_convection": true
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
@@ -150,7 +155,11 @@
   },
   "physical_inputs_required": {
     "logged_pressure_sensor_location_for_comparison_only": null,
-    "TC2_sensor_position_for_comparison_only": null
+    "TC2_sensor_position_for_comparison_only": {
+      "radius_m": 0.026,
+      "z_m": 0.02,
+      "theta_deg": 270
+    }
   },
   "additional_cases": [
     {
@@ -169,12 +178,12 @@
     }
   ],
   "acceptance": {
-    "pressure_and_temperature_coupling": "Both normalized changes below 1e-6 with converged status; restored best or iteration cap is a failure.",
+    "pressure_and_temperature_coupling": "Converged inner FBNS pressure/complementarity residuals below 1e-6 and normalized temperature change below 1e-6. Pressure field change is reported only. Restored best or iteration cap is a failure; force, profile, global mass/energy and exterior convection gates remain mandatory.",
     "force_balance": "Native final CONVERGED marker plus independently checked total-fluid-force vector residual below0.002; final position from VTK xB.",
     "fields": "Finite pressure, temperature, torque and exact cross-film extrema; positive gap/viscosity/density; admissible filling; common-ambient lower temperature bound and viscosity-table domain. Global mass and energy diagnostics are mandatory.",
     "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
     "external_convection": "Each native integrated load/thermal solve closes both h coefficients externally to relative1e-3 and wall-temperature change0.01K; next coefficient evaluation seeds from final native position and validated checkpoint.",
-    "fbns": "User-selected inner pressure/FBNS tolerance is 1e-6. The completed campaign was terminated at this inner threshold on 2026-09-28; that stop is not certification of outer pressure, force, thermal or physical convergence.",
+    "fbns": "User-selected inner pressure/FBNS tolerance is 1e-6. Reaching this threshold does not terminate the campaign before native force, thermal and exterior cooling closure.",
     "global_energy_relative_residual_max": 1e-06,
     "liquid_mass_rate_relative_residual_max": 1e-08,
     "cross_film_raw_collocation_residual_max": 1e-06,
@@ -212,11 +221,12 @@
       "physical_bore_radius_m": 0.0215425,
       "physical_radial_wall_thickness_m": 0.020957500000000004,
       "native_cht_inner_radius_m": 0.0215,
-      "native_cht_geometry_note": "Existing r-theta solid solver starts at journal R, a thin-film approximation; axial solid end-face cooling is not represented.",
+      "native_cht_geometry_note": "Resolved r-theta-z housing; radial inner surface at journal R is the existing thin-film approximation (42.5 micrometres inside the nominal bore).",
       "outside_boundary": "Natural convection to still FW68D at case TC0",
       "outside_surface_temperature": "Solved, not set to TC0",
       "annular_end_area_over_lateral_area": 0.7895121727941177,
-      "thermal_conductivity_W_m_K": 15.0
+      "thermal_conductivity_W_m_K": 15.0,
+      "annular_end_boundary": "Both annular faces exposed to still FW68D at TC0; local natural convection with a vertical-plate analogue, characteristic height 85 mm."
     },
     "natural_convection": {
       "status": "implemented in run_steady.py; validating before production",
@@ -235,7 +245,8 @@
       "Nu_D": "(0.60 + 0.387*Ra_D^(1/6)/(1+(0.559/Pr)^(9/16))^(8/27))^2",
       "heat_transfer_W_m2_K": "Nu_D*k_oil/D",
       "coupling_plan": "Update uniform mean h after each integrated native load/thermal solve; repeat only coefficient closure, seeding from solved bearing position and fields.",
-      "limitations": "L/D=0.47 is short: long-cylinder lateral-surface estimate only. Confinement, mounting contacts and annular end-face cooling are not resolved; no measured h is implied."
+      "limitations": "Finite horizontal cylinder and vertical annular faces approximated by standard cylinder and vertical-plate correlations. Confinement and mounting contacts remain unresolved.",
+      "end_correlation_doi": "10.1016/0017-9310(75)90243-4"
     },
     "shaft": {
       "exposed_surfaces": "Two circular shaft ends",
@@ -278,7 +289,7 @@
     "BVC32 PVE cp and k are constant analogues; FW68D nu(T) and suppliedrho(T) unchanged.",
     "Horizontal housing; full-length axial groove.",
     "Shaft is represented by one equilibrated temperature; two circularendfaces43mm diameter convect toTC0.",
-    "Housing r-theta conduction lacks axial/endfacecooling; assesscoolingsensitivity.",
+    "Housing r-theta-z conduction includes outer-cylinder and both annular-end natural convection to TC0.",
     "FLUX_BALANCED ideal pressure-fed groove: signed mass exchange follows the solved FBNS face divergence, supplies oil at TC0 and drains at the solved groove temperature; deep-groove recirculation remains unresolved."
   ],
   "material_sensitivity_plan": {
@@ -288,5 +299,23 @@
       2.0
     ],
     "meaning": "Chosen sensitivity scenarios, not measured uncertainty bounds; evaluate if nominal comparison requires them."
+  },
+  "comparison_sensor_locations": {
+    "TC1": {
+      "radius_m": 0.026,
+      "z_m": 0.02,
+      "theta_deg": 240
+    },
+    "TC2": {
+      "radius_m": 0.026,
+      "z_m": 0.02,
+      "theta_deg": 270
+    },
+    "TC3": {
+      "radius_m": 0.026,
+      "z_m": 0.02,
+      "theta_deg": 300
+    },
+    "authority": "User-confirmed 2026-09-28; comparison only, not thermal boundary conditions"
   }
 }

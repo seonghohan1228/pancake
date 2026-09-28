@@ -2668,3 +2668,16 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Set the local campaign FBNS tolerance to 1e-6 for any later authorized run.
 - [ ] Add a portable stop-and-export path before a campaign that needs intermediate field recovery.
 - [ ] Resolve the cross-film physicality defect before accepting final temperature comparisons.
+
+### September 28 - Resolved energy and exposed housing ends
+
+- [x] Replace the restricted polynomial energy approximation with selectable conservative film layers.
+- [x] Include both exposed annular housing ends and axial housing conduction.
+- [x] Export solid temperatures at sensor locations and actual outer surface temperature for convection closure.
+- [x] Add inner-pressure-only stopping and recoverable intermediate field export.
+- [x] Pass analytic/refinement/conservation/reverse-rotation and 1/2/4-rank local checks, plus driver recovery checks.
+- [x] Complete A/B/E full-resolution local pilots, all 59 local tests, and remote rebuild with 26 selected tests plus driver checks.
+- [x] Rerun all six cases and E temperature bounds on isolated remote core groups; all eight pass force, thermal, conservation and physicality checks.
+- [x] Check housing/film discretization sensitivity: A/B solid refinement changes sensors by <=0.0024 K; fully coupled B 16-to-32 layers changes torque 0.0048% and sensors <=0.0021 K.
+- [x] Generate converged load, temperature, friction and cavitation comparisons against all 693 experimental windows and the original 103 displayed points.
+- [ ] Resolve model/experiment disagreement: E remains 4.1-4.8 K too hot; primary-case friction errors range from -38.4% to +103.2%. Do not fit physical inputs to hide these discrepancies.

@@ -22,6 +22,16 @@ namespace {
 constexpr std::array<const char*, 4> initial_state_fields = {
     "pressure", "theta", "temperature", "cross_film_collocation"};
 
+std::vector<std::string> initial_state_names(const Fields& fields) {
+    std::vector<std::string> names(initial_state_fields.begin(), initial_state_fields.end());
+    for (int layer = 0; ; ++layer) {
+        const std::string name = "cross_film_layer_" + std::to_string(layer);
+        if (!fields.has(name)) break;
+        names.push_back(name);
+    }
+    return names;
+}
+
 void initial_state_error(std::string error, const Mesh& mesh) {
     int length = mesh.rank == 0 ? static_cast<int>(error.size()) : 0;
     MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -45,7 +55,7 @@ bool admissible_initial_value(int field, double value, const SimulationConfig& c
     return std::isfinite(value) &&
         (field != 0 || value >= cfg.effective_p_cav() - 1e-8) &&
         (field != 1 || (value >= 0.0 && value <= 1.0 + 1e-12)) &&
-        (field != 2 || value > 0.0);
+        ((field != 2 && field < 4) || value > 0.0);
 }
 
 bool processor_directory(const std::string& name) {
@@ -95,11 +105,12 @@ void write_steady_initial_state(const fs::path& path, const Fields& fields,
     std::vector<int> counts, offsets;
     initial_state_layout(mesh, counts, offsets);
     const size_t total = static_cast<size_t>(mesh.n_theta_global) * mesh.n_z_global;
-    std::array<std::vector<double>, 4> gathered;
+    const auto names = initial_state_names(fields);
+    std::vector<std::vector<double>> gathered(names.size());
     int invalid = 0;
-    for (int k = 0; k < 4; ++k) {
+    for (size_t k = 0; k < names.size(); ++k) {
         std::vector<double> local(counts[mesh.rank]);
-        const char* name = initial_state_fields[k];
+        const std::string& name = names[k];
         for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j) {
             const double value = fields.has(name) ? fields[name](i, j) : 0.0;
             local[static_cast<size_t>(i) * mesh.n_z_local + j] = value;
@@ -116,11 +127,12 @@ void write_steady_initial_state(const fs::path& path, const Fields& fields,
         if (any_invalid) error = "refusing to write inadmissible fields";
         else {
             std::ofstream stream(path);
-            stream << std::setprecision(17) << "PANCAKE_STEADY_GUESS 1\n"
+            stream << std::setprecision(17) << "PANCAKE_STEADY_GUESS " << (names.size() > 4 ? 2 : 1) << '\n'
                    << mesh.n_theta_global << ' ' << mesh.n_z_global << ' '
                    << cfg.R << ' ' << cfg.c << ' ' << cfg.L << '\n';
-            for (int k = 0; k < 4; ++k) {
-                stream << initial_state_fields[k] << '\n';
+            if (names.size() > 4) stream << names.size() << '\n';
+            for (size_t k = 0; k < names.size(); ++k) {
+                stream << names[k] << '\n';
                 for (double value : gathered[k]) stream << value << '\n';
             }
             stream.close();
@@ -133,7 +145,9 @@ void write_steady_initial_state(const fs::path& path, const Fields& fields,
 void read_steady_initial_state(const fs::path& path, Fields& fields,
                                const Mesh& mesh, const SimulationConfig& cfg) {
     const size_t total = static_cast<size_t>(mesh.n_theta_global) * mesh.n_z_global;
-    std::array<std::vector<double>, 4> gathered;
+    const auto names = initial_state_names(fields);
+    std::vector<std::vector<double>> gathered(names.size());
+    int stored_count = 4;
     std::string error;
     if (mesh.rank == 0) {
         std::ifstream stream(path);
@@ -141,14 +155,18 @@ void read_steady_initial_state(const fs::path& path, Fields& fields,
         int version = 0, nt = 0, nz = 0;
         double radius = 0.0, clearance = 0.0, length = 0.0;
         stream >> magic >> version >> nt >> nz >> radius >> clearance >> length;
-        if (!stream || magic != "PANCAKE_STEADY_GUESS" || version != 1 ||
+        if (!stream || magic != "PANCAKE_STEADY_GUESS" || (version != 1 && version != 2) ||
             nt != mesh.n_theta_global || nz != mesh.n_z_global ||
             radius != cfg.R || clearance != cfg.c || length != cfg.L) {
             error = "missing, malformed, or incompatible file " + path.string();
         }
-        for (int k = 0; k < 4 && error.empty(); ++k) {
+        if (error.empty() && version == 2) {
+            stream >> stored_count;
+            if (!stream || stored_count != static_cast<int>(names.size())) error = "incompatible cross-film layer count";
+        }
+        for (int k = 0; k < stored_count && error.empty(); ++k) {
             stream >> name;
-            if (name != initial_state_fields[k]) { error = "unexpected field " + name; break; }
+            if (name != names[k]) { error = "unexpected field " + name; break; }
             gathered[k].resize(total);
             for (double& value : gathered[k]) {
                 if (!(stream >> value) || !admissible_initial_value(k, value, cfg)) {
@@ -160,16 +178,28 @@ void read_steady_initial_state(const fs::path& path, Fields& fields,
         if (error.empty() && (stream >> name)) error = "unexpected trailing data";
     }
     initial_state_error(error, mesh);
+    MPI_Bcast(&stored_count, 1, MPI_INT, 0, MPI_COMM_WORLD);
     std::vector<int> counts, offsets;
     initial_state_layout(mesh, counts, offsets);
-    for (int k = 0; k < 4; ++k) {
+    for (int k = 0; k < stored_count; ++k) {
         std::vector<double> local(counts[mesh.rank]);
         MPI_Scatterv(gathered[k].data(), counts.data(), offsets.data(), MPI_DOUBLE,
                      local.data(), counts[mesh.rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        if (!fields.has(initial_state_fields[k])) continue;
-        Field& field = fields[initial_state_fields[k]];
+        if (!fields.has(names[k])) continue;
+        Field& field = fields[names[k]];
         for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
             field(i, j) = local[static_cast<size_t>(i) * mesh.n_z_local + j];
+    }
+    // Legacy mean-only states seed every layer uniformly; they are initial guesses.
+    for (size_t k = stored_count; k < names.size(); ++k)
+        for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
+            fields[names[k]](i, j) = fields["temperature"](i, j);
+    if (fields.has("cross_film_layer_initialized")) {
+        fields["cross_film_layer_initialized"].fill(1.0);
+        for (const char* name : {"cross_film_t_shaft", "cross_film_t_bush"})
+            if (fields.has(name))
+                for (int i = 0; i < mesh.n_theta_local; ++i) for (int j = 0; j < mesh.n_z_local; ++j)
+                    fields[name](i,j) = fields["temperature"](i,j);
     }
 }
 

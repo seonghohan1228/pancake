@@ -7,6 +7,8 @@ namespace Coupling {
 
 Controller::Controller(const SimulationConfig& cfg) {
     tolerance_ = cfg.coupling_tolerance;
+    pressure_inner_only_ = cfg.steady_pressure_inner_only;
+    status_.pressure_inner_only = pressure_inner_only_;
     max_iters_ = std::max(1, cfg.coupling_max_iters);
     keep_best_ = cfg.coupling_keep_best_iterate;
     adaptive_ = cfg.coupling_relaxation_mode == CouplingRelaxationMode::ADAPTIVE;
@@ -22,7 +24,7 @@ Controller::Controller(const SimulationConfig& cfg) {
 
 bool Controller::record(int outer, double R_p, double R_T, double R_g,
                         bool additional_balance_converged) {
-    const double r = residual_metric(R_p, R_T, R_g);
+    const double r = residual_metric(pressure_inner_only_ ? 0.0 : R_p, R_T, R_g);
 
     // Relaxation schedule. FIXED leaves omega_ at its constructed value, so the
     // sequence of updates is byte-for-byte the historical one.
@@ -73,6 +75,7 @@ std::string Controller::summary_line() const {
       << " R_T=" << status_.R_T << " R_g=" << status_.R_g
       << " | " << (status_.converged ? "CONVERGED" : "NOT CONVERGED")
       << " (tol=" << tolerance_ << ")";
+    if (pressure_inner_only_) s << " pressure-stop=inner-FBNS (R_p reported only)";
     if (!status_.converged && status_.cap_exhausted) {
         s << " -- hit coupling_max_iters=" << max_iters_;
     }

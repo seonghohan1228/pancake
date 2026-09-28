@@ -29,6 +29,7 @@
 #include "mesh.hpp"
 #include "property_table_io.hpp"
 #include "reynolds.hpp"
+#include "resolved_cross_film.hpp"
 #include "utils.hpp"
 
 #ifdef _WIN32
@@ -514,7 +515,15 @@ int main(int argc, char** argv) {
 
                 comm.update_ghosts(fields["h"]);
                 comm.update_ghosts(fields["temperature"]);
-                Energy::solve(fields, sys, mesh, step_cfg);
+                try {
+                    Energy::solve(fields, sys, mesh, step_cfg);
+                    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+                        cross_film_state = ResolvedCrossFilm::diagnostics(fields, mesh, step_cfg);
+                } catch (const std::exception& ex) {
+                    nonlinear_failed = true;
+                    Utils::log(ex.what(), Utils::Color::RED, 1);
+                    break;
+                }
 
                 coupling_iters = outer + 1;
                 if (steady_state) {
@@ -529,8 +538,9 @@ int main(int argc, char** argv) {
                          cross_film_state.profile_residual < cfg.coupling_tolerance);
                     double coupling_R_E = std::numeric_limits<double>::quiet_NaN();
                     if (cfg.groove_mixing_model == GrooveMixingModel::FLUX_BALANCED) {
-                        if (energy_balanced &&
-                            std::max(coupling_R_p, coupling_R_T) < cfg.coupling_tolerance) {
+                        if (energy_balanced && coupling_R_T < cfg.coupling_tolerance &&
+                            (cfg.steady_pressure_inner_only ? elrod_stats.converged :
+                             coupling_R_p < cfg.coupling_tolerance)) {
                             comm.update_ghosts(fields["temperature"]);
                             const auto ledger = Energy::balance(fields, mesh, step_cfg);
                             coupling_R_E = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
@@ -566,6 +576,7 @@ int main(int argc, char** argv) {
                         MPI_Bcast(&history_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
                         if (history_failed) throw std::runtime_error("Cannot append equilibrium history");
                     }
+                    if (cfg.steady_pressure_inner_only) energy_balanced = energy_balanced && elrod_stats.converged;
                     const bool tolerance_met = coupling_control.record(
                         outer, coupling_R_p, coupling_R_T, coupling_R_g, energy_balanced);
                     if (cfg.log_coupling_history) {
@@ -587,6 +598,46 @@ int main(int argc, char** argv) {
                         best_elrod_stats = elrod_stats;
                         best_forces = forces;
                         best_cross_film_state = cross_film_state;
+                    }
+                    int requested_stop = 0;
+                    if (mesh.rank == 0) {
+                        std::error_code stop_error;
+                        requested_stop = fs::exists(fs::path(cfg.output_dir) / "STOP", stop_error) ? 1 : 0;
+                    }
+                    MPI_Bcast(&requested_stop, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                    const bool snapshot_now = requested_stop || (cfg.steady_output_interval > 0 &&
+                        ((outer + 1) % cfg.steady_output_interval == 0 || outer + 1 == max_coupling));
+                    if (snapshot_now) {
+                        SimulationConfig snapshot_cfg = cfg;
+                        std::ostringstream iteration_name;
+                        iteration_name << std::setw(6) << std::setfill('0') << (outer + 1);
+                        snapshot_cfg.output_dir = (fs::path(cfg.output_dir) / "iterations" / iteration_name.str()).string();
+                        IO::prepare_output_directory(snapshot_cfg);
+                        comm.update_ghosts(fields["velocity_theta"]);
+                        comm.update_ghosts(fields["velocity_z"]);
+                        IO::write_timestep(0.0, 0, mesh, fields, snapshot_cfg);
+                        if (FBNS::active(cfg) && cfg.fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+                            cfg.gas_pressure_coupling == GasPressureCoupling::NONE && cfg.dissolved_gas_initial == 0.0) {
+                            IO::write_steady_initial_state(fs::path(snapshot_cfg.output_dir) / "steady_state.dat", fields, mesh, cfg);
+                        }
+                        MPI_Barrier(MPI_COMM_WORLD);
+                        int snapshot_failed = 0;
+                        if (mesh.rank == 0) {
+                            std::ofstream metadata(fs::path(snapshot_cfg.output_dir) / "iteration.csv");
+                            metadata << "iteration,converged,requested_stop,x_m,y_m,R_p,R_T,R_X,R_F\n"
+                                << std::setprecision(17) << (outer + 1) << ',' << tolerance_met << ',' << requested_stop
+                                << ',' << bearing_state.x << ',' << bearing_state.y << ',' << coupling_R_p << ',' << coupling_R_T
+                                << ',' << cross_film_state.profile_residual << ',' << equilibrium_stats.force_residual << '\n';
+                            metadata.close();
+                            snapshot_failed = !metadata;
+                        }
+                        MPI_Bcast(&snapshot_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                        if (snapshot_failed) throw std::runtime_error("Cannot complete steady iteration snapshot");
+                    }
+                    if (requested_stop) {
+                        nonlinear_failed = true;
+                        Utils::log("Requested steady stop: exporting latest completed iteration; not accepted as converged.", Utils::Color::YELLOW, 1);
+                        break;
                     }
                     if (tolerance_met) break;
                     relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);

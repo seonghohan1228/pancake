@@ -163,7 +163,7 @@ enum class CavitatedFilmModel { FULL_FILM, STRIATED };
 // This is the single highest-level switch for the whole cross-film model: with
 // NONE nothing in the cross-film module runs and the results are bit-identical
 // to the pre-model solver.
-enum class CrossFilmModel { NONE, POLYNOMIAL };
+enum class CrossFilmModel { NONE, POLYNOMIAL, FINITE_VOLUME };
 // How the bush closes the film-to-bush heat flux (only read when the cross-film
 // model is active):
 //   LOCAL        - per-cell 1-D radial conduction through the wall in series with
@@ -174,7 +174,7 @@ enum class CrossFilmModel { NONE, POLYNOMIAL };
 //                  own bush model. Heat picked up in the loaded arc can leave at a
 //                  different angular position, which is the circumferential
 //                  redistribution a local closure has no representation of.
-enum class BushThermalModel { LOCAL, CONDUCTION_2D };
+enum class BushThermalModel { LOCAL, CONDUCTION_2D, CONDUCTION_3D };
 // Outer-surface boundary condition of the 2-D bush (also selects the outer limit
 // of the LOCAL closure's series resistance):
 //   CONVECTION        - Robin, bush_outer_heat_transfer to thermal_ambient_temperature
@@ -453,6 +453,7 @@ inline const char* to_config_value(CrossFilmModel model) {
     switch (model) {
         case CrossFilmModel::NONE: return "NONE";
         case CrossFilmModel::POLYNOMIAL: return "POLYNOMIAL";
+        case CrossFilmModel::FINITE_VOLUME: return "FINITE_VOLUME";
     }
     return "NONE";
 }
@@ -461,6 +462,7 @@ inline const char* to_config_value(BushThermalModel model) {
     switch (model) {
         case BushThermalModel::LOCAL: return "LOCAL";
         case BushThermalModel::CONDUCTION_2D: return "CONDUCTION_2D";
+        case BushThermalModel::CONDUCTION_3D: return "CONDUCTION_3D";
     }
     return "LOCAL";
 }
@@ -639,6 +641,7 @@ inline TemperatureModel temperature_model_from_config(std::string value) {
 }
 
 inline CrossFilmModel cross_film_model_from_config(std::string value) {
+    if (value == "FINITE_VOLUME" || value == "finite_volume") return CrossFilmModel::FINITE_VOLUME;
     value = normalise_config_token(value);
     if (value == "POLYNOMIAL" || value == "LUND_TONNESEN" || value == "PROFILE" ||
         value == "CROSS_FILM" || value == "ON" || value == "TRUE") {
@@ -649,6 +652,7 @@ inline CrossFilmModel cross_film_model_from_config(std::string value) {
 
 inline BushThermalModel bush_thermal_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "CONDUCTION_3D") return BushThermalModel::CONDUCTION_3D;
     if (value == "CONDUCTION_2D" || value == "CONDUCTION2D" || value == "2D" ||
         value == "FERRON" || value == "ANNULUS") {
         return BushThermalModel::CONDUCTION_2D;
@@ -846,6 +850,8 @@ struct SimulationConfig {
     int cross_film_profile_order = 4;
     // Number of Gauss-Legendre points used for the F0/F1/F2 integrals across the gap.
     int cross_film_quadrature_points = 6;
+    /// Number of equal finite-volume layers across the gap.
+    int cross_film_layers = 16;
     // Under-relaxation of the order-4 midplane collocation source between outer
     // iterations. 1.0 (no relaxation) converges on the validation rigs; the lever
     // exists because the collocation is the one part of the model that reads a
@@ -880,6 +886,9 @@ struct SimulationConfig {
     // discretisation is exact for it, so this only resolves the (weak) radial
     // variation of the circumferential spreading; 16 is ample.
     int bush_radial_cells = 16;
+    int bush_axial_cells = 16; // Solid axial slabs, each coupled to an integral number of film cells.
+    double bush_end_heat_transfer = 0.0; // Both annular faces; zero is insulated.
+    bool bush_end_natural_convection = false; // Vertical-plate analogue in the same surrounding oil.
     // Outer-surface condition of the bush, for both closures.
     BushOuterBoundary bush_outer_boundary = BushOuterBoundary::CONVECTION;
 
@@ -1062,6 +1071,8 @@ struct SimulationConfig {
     // step as before.
     int    coupling_max_iters = 30;
     double coupling_tolerance = 1e-6;        // on normalized max pressure/temperature change
+    // FBNS equation convergence replaces the pressure-change stopping gate only.
+    bool steady_pressure_inner_only = false;
     double coupling_relaxation = 1.0;        // under-relaxation in (0, 1]; 1 = none
     // Best-iterate rollback. A loop that exhausts coupling_max_iters without
     // meeting the tolerance may end on an iterate that is WORSE than one it
@@ -1093,6 +1104,8 @@ struct SimulationConfig {
     // Diagnostics: per-step global mass balances and solver-convergence logging
     // (results/<run>/diagnostics.csv). Interval in steps; <= 0 disables.
     int diagnostics_interval = 1;
+    // Full steady iterate output cadence; zero disables intermediate snapshots.
+    int steady_output_interval = 0;
 
     // Non-fatal notes produced while parsing (e.g. ignored legacy keys).
     std::vector<std::string> parse_warnings;
@@ -1196,6 +1209,7 @@ struct SimulationConfig {
             else if (key == "journal_heat_transfer") journal_heat_transfer = std::stod(value);
             else if (key == "bearing_heat_transfer") bearing_heat_transfer = std::stod(value);
             else if (key == "cross_film_thermal_model") cross_film_thermal_model = cross_film_model_from_config(value);
+            else if (key == "cross_film_layers") cross_film_layers = std::stoi(value);
             else if (key == "cross_film_profile_order") cross_film_profile_order = std::stoi(value);
             else if (key == "cross_film_quadrature_points") cross_film_quadrature_points = std::stoi(value);
             else if (key == "cross_film_relaxation") cross_film_relaxation = std::stod(value);
@@ -1209,6 +1223,13 @@ struct SimulationConfig {
             else if (key == "bush_outer_temperature") bush_outer_temperature = std::stod(value);
             else if (key == "bush_thermal_model") bush_thermal_model = bush_thermal_model_from_config(value);
             else if (key == "bush_radial_cells") bush_radial_cells = std::stoi(value);
+            else if (key == "bush_axial_cells") bush_axial_cells = std::stoi(value);
+            else if (key == "bush_end_heat_transfer") bush_end_heat_transfer = std::stod(value);
+            else if (key == "bush_end_natural_convection") {
+                if (is_true(value)) bush_end_natural_convection = true;
+                else if (is_false(value)) bush_end_natural_convection = false;
+                else parse_errors.push_back("bush_end_natural_convection must be true or false.");
+            }
             else if (key == "bush_outer_boundary") bush_outer_boundary = bush_outer_boundary_from_config(value);
             else if (key == "groove_mixing_model") groove_mixing_model = groove_mixing_model_from_config(value);
             else if (key == "fluid_property_model") fluid_property_model = fluid_property_model_from_config(value);
@@ -1252,6 +1273,7 @@ struct SimulationConfig {
             else if (key == "void_coupling_relaxation") void_coupling_relaxation = std::stod(value);
             else if (key == "mu_gas") mu_gas = std::stod(value);
             else if (key == "diagnostics_interval") diagnostics_interval = std::stoi(value);
+            else if (key == "steady_output_interval") steady_output_interval = std::stoi(value);
             else if (key == "property_reference_pressure") property_reference_pressure = std::stod(value);
             else if (key == "property_reference_temperature") property_reference_temperature = std::stod(value);
             else if (key == "solubility_table") solubility_table = parse_property_table(value);
@@ -1341,6 +1363,11 @@ struct SimulationConfig {
             }
             else if (key == "coupling_max_iters") coupling_max_iters = std::stoi(value);
             else if (key == "coupling_tolerance") coupling_tolerance = std::stod(value);
+            else if (key == "steady_pressure_inner_only") {
+                if (is_true(value)) steady_pressure_inner_only = true;
+                else if (is_false(value)) steady_pressure_inner_only = false;
+                else parse_errors.push_back("steady_pressure_inner_only must be true or false.");
+            }
             else if (key == "coupling_relaxation") coupling_relaxation = std::stod(value);
             else if (key == "coupling_keep_best_iterate") {
                 if (is_true(value)) coupling_keep_best_iterate = true;
@@ -1577,6 +1604,17 @@ struct SimulationConfig {
             }
         }
         if (cross_film_thermal_model != CrossFilmModel::NONE) {
+            if (cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                if (cross_film_layers < 2 || cross_film_layers > 128)
+                    error("cross_film_layers must be between 2 and 128.");
+                if (solution_mode != SolutionMode::STEADY_STATE ||
+                    cavitation_model != CavitationModel::FBNS ||
+                    fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
+                    groove_mixing_model != GrooveMixingModel::FLUX_BALANCED ||
+                    thermal_convection_scheme != ConvectionScheme::UPWIND ||
+                    liquid_specific_heat <= 0.0)
+                    error("FINITE_VOLUME requires steady single-phase FBNS, FLUX_BALANCED, upwind energy and liquid_specific_heat > 0.");
+            }
             if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
                 error("cross_film_thermal_model requires temperature_model = ENERGY_EQUATION; "
                       "there is no temperature field for it to build a profile from.");
@@ -1605,7 +1643,18 @@ struct SimulationConfig {
             if (bush_outer_radius > 0.0 && bush_outer_radius <= R) {
                 error("bush_outer_radius must exceed R.");
             }
-            if (bush_thermal_model == BushThermalModel::CONDUCTION_2D) {
+            if (bush_thermal_model == BushThermalModel::CONDUCTION_3D) {
+                if (cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME)
+                    error("CONDUCTION_3D housing requires FINITE_VOLUME film energy.");
+                if (bush_axial_cells < 1 || bush_axial_cells > n_z_global || n_z_global % bush_axial_cells != 0)
+                    error("bush_axial_cells must be a positive divisor of n_z_global.");
+                require_nonnegative(bush_end_heat_transfer, "bush_end_heat_transfer");
+                if (bush_end_natural_convection && density_model != DensityModel::LINEAR_TEMPERATURE)
+                    error("Housing end natural convection requires LINEAR_TEMPERATURE density for thermal expansion.");
+            }
+            else if (bush_end_heat_transfer != 0 || bush_end_natural_convection)
+                error("Housing end convection requires CONDUCTION_3D.");
+            if (bush_thermal_model != BushThermalModel::LOCAL) {
                 if (bush_radial_cells < 1 || bush_radial_cells > 512) {
                     error("bush_radial_cells must be between 1 and 512.");
                 }
@@ -1628,7 +1677,7 @@ struct SimulationConfig {
                      "bush_outer_heat_transfer is IGNORED.");
             }
         }
-        if (bush_thermal_model == BushThermalModel::CONDUCTION_2D &&
+        if (bush_thermal_model != BushThermalModel::LOCAL &&
             cross_film_thermal_model == CrossFilmModel::NONE) {
             error("bush_thermal_model = CONDUCTION_2D requires "
                   "cross_film_thermal_model = POLYNOMIAL; the conjugate bush only exists "
@@ -1861,6 +1910,11 @@ struct SimulationConfig {
         if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
         if (!finite(coupling_tolerance) || coupling_tolerance <= 0.0) {
             error("coupling_tolerance must be positive.");
+        }
+        if (steady_output_interval < 0) error("steady_output_interval must be nonnegative.");
+        if (steady_pressure_inner_only &&
+            (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS)) {
+            error("steady_pressure_inner_only requires steady FBNS.");
         }
         if (!finite(coupling_relaxation) || coupling_relaxation <= 0.0 || coupling_relaxation > 1.0) {
             error("coupling_relaxation must lie in (0, 1].");
@@ -2459,7 +2513,9 @@ struct SimulationConfig {
             << "# Escalation rungs (0-2) tried before a failed linear solve aborts the run.\n"
             << "linear_solver_fallbacks = " << linear_solver_fallbacks << "\n"
             << "# Per-step mass-balance / convergence CSV cadence in steps; <= 0 disables.\n"
-            << "diagnostics_interval = " << diagnostics_interval << "\n\n";
+            << "diagnostics_interval = " << diagnostics_interval << "\n"
+            << "steady_output_interval = " << steady_output_interval << "\n"
+            << "steady_pressure_inner_only = " << (steady_pressure_inner_only ? "true" : "false") << "\n\n";
 
         out << "# Physics\n"
             << "omega = " << omega << "\n"
@@ -2491,6 +2547,7 @@ struct SimulationConfig {
             << "# two Newton-cooling coefficients above) and the Dowson F0/F1/F2 viscosity\n"
             << "# integrals in the Reynolds equation. NONE is bit-identical to the model-free solver.\n"
             << "cross_film_thermal_model = " << to_config_value(cross_film_thermal_model) << "\n"
+            << "cross_film_layers = " << cross_film_layers << "\n"
             << "cross_film_profile_order = " << cross_film_profile_order << "\n"
             << "cross_film_quadrature_points = " << cross_film_quadrature_points << "\n"
             << "cross_film_relaxation = " << cross_film_relaxation << "\n"
@@ -2508,6 +2565,9 @@ struct SimulationConfig {
             << "# CONDUCTION_2D (steady (r, theta) conduction in the bush annulus).\n"
             << "bush_thermal_model = " << to_config_value(bush_thermal_model) << "\n"
             << "bush_radial_cells = " << bush_radial_cells << "\n"
+            << "bush_axial_cells = " << bush_axial_cells << "\n"
+            << "bush_end_heat_transfer = " << bush_end_heat_transfer << "\n"
+            << "bush_end_natural_convection = " << (bush_end_natural_convection ? "true" : "false") << "\n"
             << "# bush_outer_boundary options: CONVECTION (Robin), FIXED_TEMPERATURE\n"
             << "bush_outer_boundary = " << to_config_value(bush_outer_boundary) << "\n"
             << "# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCED\n"
@@ -2725,13 +2785,13 @@ struct SimulationConfig {
             "journal_wall_temperature", "bearing_wall_temperature", "rho_cp", "liquid_specific_heat",
             "thermal_conductivity", "gas_heat_capacity_cv", "dissolved_heat_capacity", "desorption_internal_energy", "gas_thermal_conductivity", "journal_heat_transfer",
             "bearing_heat_transfer", "cross_film_thermal_model",
-            "cross_film_profile_order", "cross_film_quadrature_points",
+            "cross_film_layers", "cross_film_profile_order", "cross_film_quadrature_points",
             "cross_film_relaxation", "shaft_ambient_heat_transfer",
             "shaft_ambient_area_ratio", "thermal_ambient_temperature",
             "shaft_ambient_temperature",
             "bush_thermal_conductivity", "bush_outer_radius",
             "bush_outer_heat_transfer", "bush_outer_temperature",
-            "bush_thermal_model", "bush_radial_cells",
+            "bush_thermal_model", "bush_radial_cells", "bush_axial_cells", "bush_end_heat_transfer", "bush_end_natural_convection",
             "bush_outer_boundary", "groove_mixing_model", "fluid_property_model",
             "dissolved_gas_species", "solubility_model", "oil_gas_solution_model",
             "density_model", "liquid_viscosity_model", "viscosity_model",
@@ -2746,7 +2806,7 @@ struct SimulationConfig {
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",
             "gas_alpha_max", "gas_pressure_floor", "mixture_viscosity_model",
             "gas_mixture_viscosity_model", "gas_pressure_coupling",
-            "void_coupling_relaxation", "mu_gas", "diagnostics_interval",
+            "void_coupling_relaxation", "mu_gas", "diagnostics_interval", "steady_output_interval", "steady_pressure_inner_only",
             "property_reference_pressure", "property_reference_temperature",
             "solubility_table", "density_table", "viscosity_table",
             "solubility_table_file", "viscosity_table_file", "viscosity_composition_file", "density_table_file",

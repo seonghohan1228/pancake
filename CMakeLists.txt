@@ -174,6 +174,7 @@ if(PANCAKE_BUILD_SOLVER)
         src/communicator.cpp
         src/coupling.cpp
         src/cross_film.cpp
+        src/resolved_cross_film.cpp
         src/diagnostics.cpp
         src/energy.cpp
         src/fbns.cpp

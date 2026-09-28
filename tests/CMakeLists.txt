@@ -57,6 +57,11 @@ target_compile_definitions(test_property_tables PRIVATE
     PANCAKE_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 add_pancake_test(test_bush_conduction)
 add_pancake_test(test_cross_film)
+add_pancake_test(test_resolved_cross_film)
+foreach(ranks 1 4)
+    add_test(NAME test_resolved_cross_film_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_resolved_cross_film>)
+endforeach()
 # -n 4 covers the all-reduce/redistribute path of the 2-D bush on an odd split.
 add_test(NAME test_cross_film_mpi4
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_cross_film>)
