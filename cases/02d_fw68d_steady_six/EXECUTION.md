@@ -241,3 +241,40 @@ despite the preceding yes response. It requires explicit authorization of
 the named local launcher transfer to user@143.248.99.6. A full-sentence
 approval question is pending; no B upload or launch succeeded. Existing
 A/C/E computations continue.
+
+
+## September 28 11:34 KST: first accepted equilibrium
+
+Case E completed the full thermal and position search. The final result is
+`diagnostic_trials/E/E/result_5bf30b10.json`, supported by inner evaluation
+`0050_force6_step1_thermal2_e9e1d1ec`. The executable and production-source
+hashes are unchanged from v3. Epsilon=0.5915322966040504 and attitude
+131.08340747690076 degrees; fluid force is (-0.0000174,461.652433) N
+against the target (0,461.252102) N. Relative vector load error is
+0.0008679225 (0.0867923%), below 0.2%.
+
+The final inner solve returned 0, with coupling converged and no restored
+iterate. Absolute relative mass defect is 1.27215e-9, energy defect
+9.68616e-7, and raw profile defect 1.74979e-8. External-coefficient mismatch
+is 1.66634e-5 and wall-temperature change 0.000297556 K. All configured
+acceptance gates pass. Mean-film temperatures span 53.07397--58.93606 C;
+the exact reconstructed profile spans 51.87065--59.32023 C, above TC0.
+Minimum gap is 17.35998 micrometres, maximum pressure 882.0366 kPa,
+shaft torque 0.29517068 Nm and cavitated area fraction 0.5067274 using
+film content below 0.999. This establishes numerical/model admissibility;
+experimental agreement is still to be assessed.
+
+The complete E final fields, result and force history, config, logs, source
+snapshot and build/test provenance were returned under
+`C:/Dev/pancake/results/fw68d_physical_20260928/final/E/`.
+At the same status check A/C searches were active with best thermally
+closed vector-load errors 35.5025% and 8.83798%; they were not accepted.
+B remained unlaunched pending the explicit transfer authorization.
+
+At 11:34:56 KST the already-deployed driver started D, followed sequentially
+by F, E_low and E_high, on E's freed cores 16--23 (eight ranks). PID 151952
+uses work directory `remaining_cases`, log `remaining_cases_driver.log`,
+4000 coupling iterations maximum and 7200 s per inner solve. D's first
+config and MPI startup were verified. No new source was uploaded for this
+launch. Later cases remain queued; an earlier failure stops this driver and
+requires inspection before the remaining queue can continue.

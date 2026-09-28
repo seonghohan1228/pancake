@@ -2606,3 +2606,13 @@ numerical diagnosis only and do not complete an experimental comparison.
 - [x] Pass Case E inner conservation and physical checks at its trial position.
 - [ ] Finish external cooling and force closure; an inner pass is not an
   accepted experimental case.
+
+### September 28 accepted-case progress
+
+- [x] Complete Case E force and thermal closure and return the full evidence.
+- [ ] Complete A/C position searches; latest accepted-position errors remain
+  above the 0.2% target.
+- [x] Start D on E's freed eight-core slot and queue F/E_low/E_high.
+- [ ] Resolve B's blocked launcher transfer through explicit file/host approval.
+- [ ] Finish all remaining cases and experimental temperature/friction/cavity
+  comparisons before declaring the campaign complete or merging the task.
