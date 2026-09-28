@@ -4141,3 +4141,14 @@ These intermediate histories are not accepted experimental predictions.
 The separate local E short check reached its 360-second time cap after 31
 iterations/corrections, without thermal convergence; the remote run has the
 normal longer limit. No temperature tolerance or physicality test was relaxed.
+
+
+## 2026-09-28 - Apply requested inner pressure tolerance and stop cases
+
+Set the FW68D campaign FBNS tolerance to 1e-6 after the user explicitly chose
+the inner pressure-equation residual. Terminate all seven active workstation
+cases that had already met it, including the temporarily paused E-low case;
+B was already rejected by its thermal-profile physical check. Keep stopped
+results distinct from accepted coupled solutions. Preserve all saved outputs
+and synchronize them locally. No new simulation was launched. The executable
+of the preserved runs remains revision 23fcbe7 with its original input hashes.

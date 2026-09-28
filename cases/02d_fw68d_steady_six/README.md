@@ -42,7 +42,7 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
   terms are disabled and bearing motion is not integrated.
 - Inner pressure/temperature coupling: both normalized changes below 1e-6,
   maximum 2000 sweeps, outer field relaxation 1, quartic-source relaxation 0.3,
-  inner FBNS tolerance 1e-12, and normalized global energy defect below 1e-6. An iteration cap or restored best
+  inner FBNS tolerance 1e-6 (user-selected on 2026-09-28), and normalized global energy defect below 1e-6. An iteration cap or restored best
   iterate without convergence is a failed trial.
 - Native equilibrium: update bearing position within the pressure/energy loop
   until total fluid force balances the applied load vector to 0.2%. Numerical
@@ -246,7 +246,7 @@ exchange, with no imposed mixing flow, and computes the exact internal profile
 minimum/maximum. No clipping is used to pass acceptance.
 
 Each trial must have a clean solver return, pressure and mean-temperature
-residuals below 1e-6, FBNS residuals below 1e-12, relative mass-rate residual
+residuals below 1e-6, FBNS residuals below 1e-6, relative mass-rate residual
 at most 1e-8, and normalized global energy defect at most 1e-6. Require finite
 positive gap/viscosity/density, pressure at or above the cavity floor within
 numerical tolerance, film content in [0,1], and film/wall/profile temperatures
@@ -285,3 +285,16 @@ The corrected driver must use residual (Fx,Fy+W), keep the groove at 90 degrees,
 and solve new bearing positions. Previous friction and temperature plots are
 not finalized experimental predictions. No physical field may simply be
 rotated: the groove remains fixed while the force reverses.
+
+
+### User-requested inner-pressure stop, 28 September 2026
+
+The user explicitly selected the inner pressure-equation residual, rather than
+the pressure change between coupled CFD iterations, with threshold 1e-6.
+All seven active cases in revision 23fcbe7 were terminated after verifying that
+they had already met this criterion. B had previously failed its thermal-profile
+physical check. Saved fields, checkpoints and logs were preserved; the solver
+has no stop-and-export handler, so unsaved intermediate fields were not written.
+The local campaign now renders fbns_tol=1e-6. This does not change the separate
+force, thermal, global conservation or physicality requirements for accepting
+a final experimental prediction, and it does not automatically restart cases.

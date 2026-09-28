@@ -2658,3 +2658,13 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Complete the equivalent Linux regression checks: 22 focused CTests, four-rank IO/diagnostics and driver acceptance checks passed.
 - [x] Deploy isolated revision 23fcbe7 and restart at 16:47 KST; verify seven cases on 28 disjoint physical cores with the original resolution and strict force/thermal checks.
 - [ ] Resolve any remaining thermal-profile failure and return accepted temperature, friction and cavitation comparisons.
+
+
+### September 28 - User-selected inner pressure stop
+
+- [x] Confirm that the requested 1e-6 criterion refers to the inner pressure-equation residual.
+- [x] Terminate all seven active cases that already reached that threshold and verify zero remaining campaign processes.
+- [x] Preserve and synchronize existing output; mark the cases stopped by the user rather than thermally converged.
+- [x] Set the local campaign FBNS tolerance to 1e-6 for any later authorized run.
+- [ ] Add a portable stop-and-export path before a campaign that needs intermediate field recovery.
+- [ ] Resolve the cross-film physicality defect before accepting final temperature comparisons.
