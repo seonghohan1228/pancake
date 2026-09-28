@@ -2653,7 +2653,8 @@ all downward-load cases solve the wrong confirmed physical configuration.
 
 - [x] Identify that the native steady CFD loop held position fixed while the external driver performed expensive fully converged thermal trials.
 - [x] Stop the superseded workstation jobs and preserve every run and the unsuccessful groove experiment.
-- [ ] Add bearing-position Newton corrections within the steady pressure/cavitation/energy iteration, without physical transient terms.
-- [ ] Verify force sign, geometry/probe consistency, rank consistency, timestep independence and rejection of incomplete solves on native Windows and Linux.
+- [x] Add bearing-position Newton corrections within the steady pressure/cavitation/energy iteration, without physical transient terms.
+- [x] Verify force sign, geometry/probe consistency, timestep independence, frozen temperature probes and rejected-step restoration on native Windows at 1/2/4 MPI ranks; pass 22 affected CTests plus the CLI cap regression.
+- [ ] Complete the equivalent Linux regression checks.
 - [ ] Deploy an isolated snapshot and restart the requested cases in parallel with the original resolution and strict force/thermal checks.
 - [ ] Resolve any remaining thermal-profile failure and return accepted temperature, friction and cavitation comparisons.

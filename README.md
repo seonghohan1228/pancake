@@ -805,7 +805,7 @@ validation and reruns.
 Steady FBNS now computes at least one Newton correction before testing its
 residual exit, so warm starts cannot falsely report zero outer pressure change.
 The FW68D corrected campaign uses an upward applied bearing load, a fixed top
-groove and independent load/CHT searches; earlier downward-load outputs are
+groove and force balance within the steady CFD iteration; earlier downward-load outputs are
 invalid for this experiment. See the case EXECUTION.md for validation records.
 
 Energy solves use temperature rise relative to the reference temperature to

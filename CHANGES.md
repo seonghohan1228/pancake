@@ -4118,3 +4118,13 @@ the groove entrance; that model-consistency issue remains under investigation.
 - Require force equilibrium together with the existing pressure, thermal and conservation convergence checks; record initial and final geometry separately and retain unsuccessful attempts.
 - Preserve the unsuccessful groove collocation experiment outside the deployed source. It is not an accepted thermal-model correction.
 - Validation and remote deployment results are recorded below when completed; this entry alone does not establish accepted physical cases.
+
+Native validation: 22 affected CTests passed, plus the separate CLI equilibrium
+cap regression and driver acceptance/self-checks. The real FBNS equilibrium
+regression recovers a known position from a displaced seed on 1/2/4 ranks,
+checks zero squeeze and unchanged thermal fields during pressure probes,
+rejects inadmissible probe geometry without corrupting state, and recovers
+the same result for inactive dt values 1e-8 and 1e3. A short 720x192 A pilot
+performed six position corrections in 40 CFD sweeps and reduced the final
+force error to 0.08596%; its deliberately capped thermal solve remains
+unconverged and is not an accepted case. Linux deployment is still pending.
