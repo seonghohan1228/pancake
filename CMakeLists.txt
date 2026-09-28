@@ -184,6 +184,7 @@ if(PANCAKE_BUILD_SOLVER)
         src/gas_transport.cpp
         src/io.cpp
         src/journal_motion.cpp
+        src/steady_equilibrium.cpp
         src/linear_system.cpp
         src/mesh.cpp
         src/property_table_io.cpp

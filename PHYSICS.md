@@ -3097,3 +3097,63 @@ so stationary field updates cannot conceal a failed energy balance.
 
 This numerical correction is distinct from A's21.7mK profile undershoot at
 the groove entrance; that model-consistency issue remains under investigation.
+
+
+## 2026-09-28 - Position coupled into the steady bearing solve
+
+The requested steady equilibrium has no physical time derivatives. Bearing
+position remains an unknown; setting all storage terms to zero does not fix
+that position. The earlier external force controller solved the same algebraic
+force condition, but fully converged temperature for each trial geometry. That
+execution path is superseded for this campaign by position corrections inside
+the pressure/cavitation/energy coupling iteration.
+
+Let the bearing-centre displacement from the fixed journal centre be
+\(\mathbf b=(b_x,b_y)\). With the existing tilt convention,
+
+\[
+h(\theta,z)=c+b_x\cos\theta+b_y\sin\theta
+ -(s_x\cos\theta+s_y\sin\theta)(z-L/2),\qquad \partial h/\partial t=0.
+\]
+
+At every steady coupling iteration, solve the steady Reynolds/cavitation
+system with current temperature-dependent coefficients, integrate the total
+fluid force on the bearing, and form
+
+\[
+\mathbf r_F(\mathbf b)=\mathbf F_{\rm fluid}(p,\phi,T,\mathbf b)
+                     +\mathbf W_{\rm applied}=\mathbf0.
+\]
+
+For this rig \(\mathbf W_{\rm applied}=(0,+W)\). Both Cartesian force
+components are required. The pressure force and viscous surface force use the
+same geometry and pressure as the accepted pressure solve.
+
+A two-variable finite-difference Newton correction acts on \(b_x/c,b_y/c\).
+Each derivative probe freezes the current thermal state and solves only
+pressure/cavitation. For a frozen dimensionless cross-film viscosity profile,
+changing the local gap by the ratio \(r=h_{\rm trial}/h_{\rm base}\) scales
+\(F_0,F_1,F_2\) by \(r,r^2,r^3\), respectively, and the effective Couette
+gap by \(r\). Keeping those coefficients unchanged would give an incorrect
+force Jacobian. Restore the same base fields before each probe, bound the
+position correction, and backtrack until the trial has positive clearance,
+converged pressure/cavitation and a reduced force norm.
+
+Continue the energy/CHT update at the accepted geometry and repeat the complete
+steady coupling iteration. This is a nonlinear algebraic equilibrium solve;
+no bearing mass, acceleration, physical velocity, pseudo-time storage or
+squeeze-film source is introduced by a position correction. The groove remains
+at its prescribed angular location.
+
+The same final iterate must satisfy force balance, pressure and temperature
+change tolerances, cross-film profile convergence and the discrete global
+energy balance. The campaign separately verifies mass balance, admissible
+fields, and exterior heat-transfer-coefficient closure. A low pressure or
+temperature change with a high force imbalance cannot declare convergence.
+Final bearing position and its initial guess are recorded separately. Failed
+or capped iterations remain diagnostic evidence, never accepted equilibria.
+
+The earlier groove-profile undershoot is a separate limitation. Position
+coupling does not justify clipping temperature or weakening its acceptance
+criterion. The unsuccessful reservoir-collocation experiment is preserved
+outside the source snapshot and excluded from this implementation.

@@ -783,8 +783,8 @@ startup hit the minimum-film guard, so its multicore choice remains unresolved.
 
 The [A–F steady campaign](cases/02d_fw68d_steady_six/README.md) supersedes the
 24-point transient plan. It preserves the supplied experimental inputs, uses
-TC0 as inlet/ambient reference, and solves eccentricity/attitude by load balance
-around steady energy/CHT evaluations. The specified 5 mm groove is opposite
+TC0 as inlet/ambient reference, and adjusts the bearing position within the steady pressure/cavitation/energy
+iteration to balance the applied load. The specified 5 mm groove is opposite
 the load; the 85 mm OD stainless housing uses estimated natural convection
 to still oil at TC0. The runnable driver uses atmospheric groove/end reservoirs,
 zero absolute cavity pressure, analogous PVE/stainless thermal properties, and
@@ -811,3 +811,20 @@ invalid for this experiment. See the case EXECUTION.md for validation records.
 Energy solves use temperature rise relative to the reference temperature to
 avoid an absolute-Kelvin linear accuracy floor; physical temperatures and
 acceptance tolerances are unchanged.
+
+
+### Steady bearing-position equilibrium
+
+Select `solution_mode = STEADY_STATE` and
+`motion_model = STEADY_EQUILIBRIUM` to solve bearing position together with
+steady pressure, cavitation and energy. Input eccentricity and attitude are
+initial guesses. Each CFD coupling iteration can correct position using the
+integrated fluid-force imbalance; no physical timestep or bearing inertia
+controls this correction. The final force and thermal convergence checks must
+all pass at the same position. `STATIC` remains a prescribed-position solve;
+`MOVING_BEARING` retains its physical transient motion model.
+
+The FW68D case driver retains the external natural-convection coefficient
+iteration, but no longer fully converges a separate thermal CFD problem for
+each force-Jacobian probe. See [PHYSICS.md](PHYSICS.md) for the equations and
+the case execution record for validation status.

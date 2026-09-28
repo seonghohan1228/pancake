@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <exception>
+#include <fstream>
+#include <iomanip>
 #include <filesystem>
 #include <limits>
 #include <sstream>
@@ -22,6 +24,7 @@
 #include "gas_transport.hpp"
 #include "io.hpp"
 #include "journal_motion.hpp"
+#include "steady_equilibrium.hpp"
 #include "linear_system.hpp"
 #include "mesh.hpp"
 #include "property_table_io.hpp"
@@ -113,12 +116,13 @@ void relax_field(Field& field, const Field& prev, double omega, const Mesh& mesh
 void update_film_geometry(Fields& fields, const Mesh& mesh,
                           const SimulationConfig& cfg,
                           const JournalMotion::BearingState& bearing_state) {
-    if (cfg.motion_model == MotionModel::MOVING_BEARING) {
+    if (cfg.motion_model != MotionModel::STATIC) {
         FilmThickness::compute_moving_bearing(fields["h"], fields["dh_dt"], mesh, cfg, bearing_state);
     } else {
         FilmThickness::compute_static(fields["h"], mesh, cfg);
         fields["dh_dt"].fill(0.0);
     }
+    if (cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM) fields["dh_dt"].fill(0.0);
     JournalMotion::write_state_fields(fields, bearing_state, cfg);
 }
 }
@@ -288,6 +292,8 @@ int main(int argc, char** argv) {
         double output_time = 0;
         int step = 0;
         const bool steady_state = cfg.solution_mode == SolutionMode::STEADY_STATE;
+        const bool equilibrium = cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM;
+        if (equilibrium) bearing_state.vx = bearing_state.vy = bearing_state.vz = 0.0;
         Reynolds::ForceComponents previous_forces;
         if (!steady_state) {
             SimulationConfig initial_cfg = cfg;
@@ -319,7 +325,7 @@ int main(int argc, char** argv) {
             step_cfg.omega = cfg.omega_at_time(t);
 
             update_film_geometry(fields, mesh, cfg, bearing_state);
-            const double h_min = global_min_field(fields["h"], mesh);
+            double h_min = global_min_field(fields["h"], mesh);
             if (cfg.stop_on_nonpositive_film && h_min <= cfg.min_film_thickness) {
                 nonlinear_failed = true;
                 Utils::log("Stopping: minimum film thickness reached " + std::to_string(h_min),
@@ -347,13 +353,31 @@ int main(int argc, char** argv) {
             // best-iterate bookkeeping. The snapshot below is what makes a
             // cap-exhausted run deliver its lowest-residual iterate instead of
             // whatever the limit cycle happened to land on.
-            Coupling::Controller coupling_control(cfg);
+            SimulationConfig coupling_cfg = cfg;
+            // A mechanical iterate must never roll back by thermal residual alone.
+            if (equilibrium) coupling_cfg.coupling_keep_best_iterate = false;
+            Coupling::Controller coupling_control(coupling_cfg);
+            SteadyEquilibrium::Stats equilibrium_stats;
+            std::ofstream equilibrium_history;
+            if (equilibrium && mesh.rank == 0) {
+                std::error_code history_error;
+                fs::create_directories(cfg.output_dir, history_error);
+                equilibrium_history.open(fs::path(cfg.output_dir) / "equilibrium_history.csv");
+                equilibrium_history << "iteration,force_residual,x_m,y_m,position_change,pressure_solves,R_p,R_T,R_X,fluid_x_N,fluid_y_N\n";
+                equilibrium_history << std::setprecision(17);
+
+            }
+            if (equilibrium) {
+                int history_failed = mesh.rank == 0 && !equilibrium_history ? 1 : 0;
+                MPI_Bcast(&history_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                if (history_failed) throw std::runtime_error("Cannot write equilibrium_history.csv");
+            }
             Coupling::Snapshot coupling_best;
             Reynolds::ElrodStats best_elrod_stats;
             Reynolds::ForceComponents best_forces;
             CrossFilm::WallState best_cross_film_state;
             const bool track_best =
-                steady_state && cfg.coupling_keep_best_iterate && max_coupling > 1;
+                steady_state && !equilibrium && cfg.coupling_keep_best_iterate && max_coupling > 1;
 
             for (int outer = 0; outer < max_coupling; ++outer) {
                 if (coupled) {
@@ -406,7 +430,18 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["cross_film_couette_h"]);
                 }
 
-                if (FBNS::active(cfg)) {
+                if (equilibrium) {
+                    try {
+                        equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(), Utils::Color::RED, 1);
+                        break;
+                    }
+                    elrod_stats.outer_iters = equilibrium_stats.pressure.newton_iters;
+                    elrod_stats.max_theta_change = equilibrium_stats.pressure.max_theta_change;
+                    elrod_stats.converged = equilibrium_stats.pressure.converged;
+                } else if (FBNS::active(cfg)) {
                     // The FBNS Newton stats are reported through the same
                     // diagnostics columns: outer_iters is the Newton count and
                     // flag_flips stays 0 (there is no switch function to flip).
@@ -506,6 +541,31 @@ int main(int argc, char** argv) {
                             energy_balanced = false;
                         }
                     }
+                    if (equilibrium) {
+                        equilibrium_stats.force_residual = SteadyEquilibrium::force_residual(forces, step_cfg);
+                        energy_balanced = energy_balanced &&
+                            std::isfinite(equilibrium_stats.force_residual) &&
+                            equilibrium_stats.force_residual < cfg.steady_force_tolerance &&
+                            equilibrium_stats.position_change < cfg.coupling_tolerance;
+                        std::ostringstream e;
+                        e << std::setprecision(17) << "Equilibrium iter=" << (outer + 1)
+                          << " R_F=" << equilibrium_stats.force_residual
+                          << " x=" << bearing_state.x << " y=" << bearing_state.y
+                          << " position_change=" << equilibrium_stats.position_change
+                          << " pressure_solves=" << equilibrium_stats.pressure_solves;
+                        Utils::log(e.str(), Utils::Color::BLUE, 1);
+                        if (mesh.rank == 0) {
+                            equilibrium_history << (outer+1) << ',' << equilibrium_stats.force_residual
+                                << ',' << bearing_state.x << ',' << bearing_state.y << ',' << equilibrium_stats.position_change
+                                << ',' << equilibrium_stats.pressure_solves << ',' << coupling_R_p << ',' << coupling_R_T
+                                << ',' << cross_film_state.profile_residual << ',' << forces.fluid_x << ',' << forces.fluid_y << '\n';
+                            equilibrium_history.flush();
+
+                        }
+                        int history_failed = mesh.rank == 0 && !equilibrium_history ? 1 : 0;
+                        MPI_Bcast(&history_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                        if (history_failed) throw std::runtime_error("Cannot append equilibrium history");
+                    }
                     const bool tolerance_met = coupling_control.record(
                         outer, coupling_R_p, coupling_R_T, coupling_R_g, energy_balanced);
                     if (cfg.log_coupling_history) {
@@ -543,6 +603,15 @@ int main(int argc, char** argv) {
                     forces = best_forces;
                     cross_film_state = best_cross_film_state;
                 }
+            }
+            if (equilibrium) {
+                h_min = global_min_field(fields["h"], mesh);
+                std::ostringstream e;
+                e << std::setprecision(17) << "Equilibrium: "
+                  << (!nonlinear_failed && coupling_control.status().converged ? "CONVERGED" : "NOT CONVERGED")
+                  << " R_F=" << equilibrium_stats.force_residual
+                  << " x=" << bearing_state.x << " y=" << bearing_state.y;
+                Utils::log(e.str(), Utils::Color::CYAN, 1);
             }
             // The non-convergence verdict is not optional output: a run that ends
             // on the cap without meeting coupling_tolerance must say so whether or

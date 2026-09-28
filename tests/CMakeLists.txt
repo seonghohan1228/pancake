@@ -104,3 +104,14 @@ add_test(NAME test_transient_time
 add_pancake_test(test_ksp_guard)
 set_tests_properties(test_ksp_guard PROPERTIES
     PASS_REGULAR_EXPRESSION "linear solve 'ksp guard probe' failed")
+
+add_pancake_test(test_steady_equilibrium)
+foreach(ranks 1 4)
+    add_test(NAME test_steady_equilibrium_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_steady_equilibrium>)
+endforeach()
+
+add_test(NAME test_steady_equilibrium_failure
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/steady_equilibrium_failure
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_steady_equilibrium_failure.cmake)

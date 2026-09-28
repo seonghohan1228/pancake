@@ -1,0 +1,16 @@
+# An algebraic steady run cannot report success after one displaced position sweep.
+file(MAKE_DIRECTORY "${TEST_DIR}")
+file(WRITE "${TEST_DIR}/config.txt" "R = 0.02\nc = 0.0001\ne = 0.00003\nL = 0.04\nattitude_angle_deg = 320\nn_theta_global = 24\nn_z_global = 8\nomega = 200\nmu = 0.03\nrho = 860\np_cav = 100000\nbc_z_south_val = 100000\nbc_z_north_val = 100000\nsolution_mode = STEADY_STATE\ncavitation_model = FBNS\nfluid_property_model = SINGLE_PHASE\nmotion_model = STEADY_EQUILIBRIUM\nexternal_load_y = 200\nfbns_max_iters = 100\nfbns_tol = 1e-10\ncoupling_max_iters = 1\ntemperature_model = ISOTHERMAL\noutput_dir = ${TEST_DIR}/results\n")
+execute_process(COMMAND "${SOLVER}" -c "${TEST_DIR}/config.txt"
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors TIMEOUT 30)
+if(NOT result EQUAL 4 OR NOT output MATCHES "Equilibrium: NOT CONVERGED")
+    message(FATAL_ERROR "Unclosed load must return failure 4: ${result}\n${output}\n${errors}")
+endif()
+if(output MATCHES "Simulation finished successfully" OR output MATCHES "Equilibrium: CONVERGED")
+    message(FATAL_ERROR "Unclosed load reported success: ${output}")
+endif()
+file(STRINGS "${TEST_DIR}/results/equilibrium_history.csv" history)
+list(LENGTH history lines)
+if(NOT lines EQUAL 2)
+    message(FATAL_ERROR "One CFD sweep must produce exactly one native history row: ${history}")
+endif()

@@ -1,5 +1,5 @@
 {
-  "status": "physical_closure_repair_under_full_resolution_validation",
+  "status": "native_steady_equilibrium_under_validation",
   "case_ids": [
     "A",
     "B",
@@ -11,7 +11,7 @@
   "experiment": "experiment.json",
   "common_solver_settings": {
     "solution_mode": "STEADY_STATE",
-    "motion_model": "STATIC",
+    "motion_model": "STEADY_EQUILIBRIUM",
     "load_angle_deg": 90,
     "R": 0.0215,
     "L": 0.04,
@@ -67,7 +67,10 @@
     "groove_mixing_model": "FLUX_BALANCED",
     "cross_film_relaxation": 0.3,
     "liquid_specific_heat": 2010.0,
-    "convergence_note": "Pressure and temperature changes below 1e-6 plus normalized global energy residual below 1e-6; full profile temperatures must be >=TC0-0.001 K."
+    "convergence_note": "Pressure and temperature changes below 1e-6 plus normalized global energy residual below 1e-6; full profile temperatures must be >=TC0-0.001 K.",
+    "steady_force_tolerance": 0.002,
+    "steady_position_step_limit": 0.05,
+    "steady_position_fd_step": 0.001
   },
   "per_case_mapping": {
     "omega": "angular_speed_magnitude_rad_s",
@@ -108,17 +111,42 @@
       -1
     ],
     "initial_positions": {
-      "A": [0.85, 300.0],
-      "B": [0.6, 320.0],
-      "C": [0.6, 320.0],
-      "D": [0.35, 335.0],
-      "E": [0.15, 345.0],
-      "F": [0.15, 345.0],
-      "E_low": [0.15, 345.0],
-      "E_high": [0.15, 345.0]
+      "A": [
+        0.85,
+        300.0
+      ],
+      "B": [
+        0.6,
+        320.0
+      ],
+      "C": [
+        0.6,
+        320.0
+      ],
+      "D": [
+        0.35,
+        335.0
+      ],
+      "E": [
+        0.15,
+        345.0
+      ],
+      "F": [
+        0.15,
+        345.0
+      ],
+      "E_low": [
+        0.15,
+        345.0
+      ],
+      "E_high": [
+        0.15,
+        345.0
+      ]
     },
     "initial_position_note": "Seeds put the bearing centre above the stationary journal centre: B=-e(cos psi,sin psi). The old seeds were rotated 180 degrees only as initial guesses; the unchanged top groove prevents treating old solutions as a symmetry-equivalent campaign.",
-    "restart_policy": "Saved configurations must contain the confirmed +y applied load and matching input hashes; old downward-load results and checkpoints are excluded."
+    "restart_policy": "Saved configurations must contain the confirmed +y applied load and matching input hashes; old downward-load results and checkpoints are excluded.",
+    "algorithm": "Native position updates within the steady pressure/cavitation/energy loop; no physical motion integration or external position probes."
   },
   "physical_inputs_required": {
     "logged_pressure_sensor_location_for_comparison_only": null,
@@ -142,10 +170,10 @@
   ],
   "acceptance": {
     "pressure_and_temperature_coupling": "Both normalized changes below 1e-6 with converged status; restored best or iteration cap is a failure.",
-    "force_balance": "Vector residual relative to specified load below 0.002 after a converged thermal solve.",
+    "force_balance": "Native final CONVERGED marker plus independently checked total-fluid-force vector residual below0.002; final position from VTK xB.",
     "fields": "Finite pressure, temperature, torque and exact cross-film extrema; positive gap/viscosity/density; admissible filling; common-ambient lower temperature bound and viscosity-table domain. Global mass and energy diagnostics are mandatory.",
     "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
-    "external_convection": "Each force evaluation must close both h coefficients to relative1e-3 and wall-temperature change0.01K after an inner converged pressure/thermal solve.",
+    "external_convection": "Each native integrated load/thermal solve closes both h coefficients externally to relative1e-3 and wall-temperature change0.01K; next coefficient evaluation seeds from final native position and validated checkpoint.",
     "fbns": "Scaled mass and complementarity residuals below1e-12; inner solve must not mask an outer pressure step larger than1e-6.",
     "global_energy_relative_residual_max": 1e-06,
     "liquid_mass_rate_relative_residual_max": 1e-08,
@@ -206,7 +234,7 @@
       "Ra_D": "9.80665*beta*abs(T_surface-TC0)*D^3/(nu*alpha)",
       "Nu_D": "(0.60 + 0.387*Ra_D^(1/6)/(1+(0.559/Pr)^(9/16))^(8/27))^2",
       "heat_transfer_W_m2_K": "Nu_D*k_oil/D",
-      "coupling_plan": "Update a uniform mean h using converged mean outer surface temperature within each load-balance evaluation; re-solve thermal/pressure coupling until h and surface temperature settle.",
+      "coupling_plan": "Update uniform mean h after each integrated native load/thermal solve; repeat only coefficient closure, seeding from solved bearing position and fields.",
       "limitations": "L/D=0.47 is short: long-cylinder lateral-surface estimate only. Confinement, mounting contacts and annular end-face cooling are not resolved; no measured h is implied."
     },
     "shaft": {

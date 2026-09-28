@@ -2647,3 +2647,13 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [ ] Deploy the shifted solve and recover D/F without weakening acceptance.
 - [ ] Repair the groove-entry cross-film cooling inconsistency and revalidate A.
 - [ ] Recompute final corrected equilibria before reporting comparisons.
+
+
+### September 28 - Integrated steady force equilibrium
+
+- [x] Identify that the native steady CFD loop held position fixed while the external driver performed expensive fully converged thermal trials.
+- [x] Stop the superseded workstation jobs and preserve every run and the unsuccessful groove experiment.
+- [ ] Add bearing-position Newton corrections within the steady pressure/cavitation/energy iteration, without physical transient terms.
+- [ ] Verify force sign, geometry/probe consistency, rank consistency, timestep independence and rejection of incomplete solves on native Windows and Linux.
+- [ ] Deploy an isolated snapshot and restart the requested cases in parallel with the original resolution and strict force/thermal checks.
+- [ ] Resolve any remaining thermal-profile failure and return accepted temperature, friction and cavitation comparisons.

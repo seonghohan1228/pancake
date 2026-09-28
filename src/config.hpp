@@ -42,7 +42,7 @@ enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 ///   CONSTANT      - fed supply / reservoir end: entering oil carries a fixed
 ///                   (constant) supply temperature temperature_reference.
 enum class ThermalInflowMode { ZERO_GRADIENT, CONSTANT };
-enum class MotionModel { STATIC, MOVING_BEARING };
+enum class MotionModel { STATIC, MOVING_BEARING, STEADY_EQUILIBRIUM };
 // Integrator for the bearing equation of motion only (field solves are
 // backward-Euler), ordered by increasing order/accuracy. EULER_IMPLICIT (stable)
 // and RK4 (accurate) are maintained; the others are kept as references.
@@ -417,6 +417,7 @@ inline const char* to_config_value(MotionModel model) {
     switch (model) {
         case MotionModel::STATIC: return "STATIC";
         case MotionModel::MOVING_BEARING: return "MOVING_BEARING";
+        case MotionModel::STEADY_EQUILIBRIUM: return "STEADY_EQUILIBRIUM";
     }
     return "STATIC";
 }
@@ -575,6 +576,7 @@ inline MixtureViscosityModel mixture_viscosity_model_from_config(std::string val
 
 inline MotionModel motion_model_from_config(std::string value) {
     value = normalise_config_token(value);
+    if (value == "STEADY_EQUILIBRIUM") return MotionModel::STEADY_EQUILIBRIUM;
     if (value == "MOVING_BEARING" || value == "DYNAMIC" || value == "BEARING") {
         return MotionModel::MOVING_BEARING;
     }
@@ -961,6 +963,9 @@ struct SimulationConfig {
 
     // Bearing motion: outer bearing moves while the shaft remains fixed.
     MotionModel motion_model = MotionModel::STATIC;
+    double steady_force_tolerance = 0.002;
+    double steady_position_step_limit = 0.05; // maximum correction / clearance
+    double steady_position_fd_step = 0.001; // Jacobian perturbation / clearance
     bool bearing_initial_from_attitude = true;
     double bearing_initial_x = 0.0;
     double bearing_initial_y = 0.0;
@@ -1260,6 +1265,9 @@ struct SimulationConfig {
             else if (key == "kinematic_viscosity_log_interpolation") kinematic_viscosity_log_interpolation = is_true(value);
             else if (key == "density_table_file") density_table_file = value;
             else if (key == "motion_model") motion_model = motion_model_from_config(value);
+            else if (key == "steady_force_tolerance") steady_force_tolerance = std::stod(value);
+            else if (key == "steady_position_step_limit") steady_position_step_limit = std::stod(value);
+            else if (key == "steady_position_fd_step") steady_position_fd_step = std::stod(value);
             else if (key == "bearing_initial_from_attitude") {
                 if (is_true(value)) bearing_initial_from_attitude = true;
                 else if (is_false(value)) bearing_initial_from_attitude = false;
@@ -1650,6 +1658,30 @@ struct SimulationConfig {
         }
         if (motion_model == MotionModel::MOVING_BEARING) {
             require_positive(bearing_mass, "bearing_mass");
+        }
+        if (motion_model == MotionModel::STEADY_EQUILIBRIUM) {
+            if (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
+                fluid_property_model != FluidPropertyModel::SINGLE_PHASE || dissolved_gas_initial != 0.0 ||
+                dissolved_gas_henry_coeff != 0.0 || gas_pressure_coupling != GasPressureCoupling::NONE)
+                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS with gas_pressure_coupling = NONE.");
+            require_positive(steady_force_tolerance, "steady_force_tolerance");
+            require_positive(steady_position_step_limit, "steady_position_step_limit");
+            require_positive(steady_position_fd_step, "steady_position_fd_step");
+            if (!finite(external_load_x) || !finite(external_load_y) ||
+                std::hypot(external_load_x, external_load_y) <= 0.0)
+                error("STEADY_EQUILIBRIUM requires a nonzero finite in-plane external load.");
+            if (bearing_initial_z != 0.0 || (!bearing_initial_from_attitude &&
+                (!finite(bearing_initial_x) || !finite(bearing_initial_y))))
+                error("STEADY_EQUILIBRIUM requires a finite in-plane initial bearing position and bearing_initial_z = 0.");
+            const double initial_x = bearing_initial_from_attitude ? -e*std::cos(attitude_angle_deg*3.14159265358979323846/180.0) : bearing_initial_x;
+            const double initial_y = bearing_initial_from_attitude ? -e*std::sin(attitude_angle_deg*3.14159265358979323846/180.0) : bearing_initial_y;
+            const double end_offset = 0.5*L;
+            const double max_offset = std::max(std::hypot(initial_x-tilt_slope_x*end_offset,initial_y-tilt_slope_y*end_offset),
+                std::hypot(initial_x+tilt_slope_x*end_offset,initial_y+tilt_slope_y*end_offset));
+            if (!finite(max_offset) || c-max_offset <= min_film_thickness)
+                error("STEADY_EQUILIBRIUM initial position violates continuous minimum film thickness.");
+            if (external_load_z != 0.0 || bearing_stiffness_x != 0.0 || bearing_stiffness_y != 0.0)
+                error("STEADY_EQUILIBRIUM supports two in-plane load components without bearing springs.");
         }
 
         require_pressure(bc_z_south_type, bc_z_south_val, "bc_z_south_val");
@@ -2540,8 +2572,11 @@ struct SimulationConfig {
             << "density_table_file = " << density_table_file.generic_string() << "\n\n";
 
         out << "# Bearing Motion\n"
-            << "# motion_model options: STATIC, MOVING_BEARING\n"
+            << "# motion_model options: STATIC, MOVING_BEARING, STEADY_EQUILIBRIUM\n"
             << "motion_model = " << to_config_value(motion_model) << "\n"
+            << "steady_force_tolerance = " << steady_force_tolerance << "\n"
+            << "steady_position_step_limit = " << steady_position_step_limit << "\n"
+            << "steady_position_fd_step = " << steady_position_fd_step << "\n"
             << "bearing_initial_from_attitude = " << (bearing_initial_from_attitude ? "true" : "false") << "\n"
             << "bearing_initial_x = " << bearing_initial_x << "\n"
             << "bearing_initial_y = " << bearing_initial_y << "\n"
@@ -2715,7 +2750,7 @@ struct SimulationConfig {
             "property_reference_pressure", "property_reference_temperature",
             "solubility_table", "density_table", "viscosity_table",
             "solubility_table_file", "viscosity_table_file", "viscosity_composition_file", "density_table_file",
-            "motion_model", "bearing_initial_from_attitude", "bearing_initial_x",
+            "motion_model", "steady_force_tolerance", "steady_position_step_limit", "steady_position_fd_step", "bearing_initial_from_attitude", "bearing_initial_x",
             "bearing_initial_y", "bearing_initial_z", "bearing_initial_vx",
             "bearing_initial_vy", "bearing_initial_vz", "bearing_mass",
             "bearing_stiffness_x", "bearing_stiffness_y", "bearing_stiffness_z",

@@ -4109,3 +4109,12 @@ so stationary field updates cannot conceal a failed energy balance.
 
 This numerical correction is distinct from A's21.7mK profile undershoot at
 the groove entrance; that model-consistency issue remains under investigation.
+
+
+## 2026-09-28 - Couple bearing position into steady CFD iterations
+
+- Replace the campaign's fully nested external force search with a native steady equilibrium mode. Position is corrected during pressure/cavitation/energy iteration, while every physical storage and squeeze term remains absent.
+- Compute a bounded two-component force Newton step using pressure-only probes at frozen thermal coefficients; adjust the gap-dependent Dowson integrals consistently and preserve valid base states during rejected probes.
+- Require force equilibrium together with the existing pressure, thermal and conservation convergence checks; record initial and final geometry separately and retain unsuccessful attempts.
+- Preserve the unsuccessful groove collocation experiment outside the deployed source. It is not an accepted thermal-model correction.
+- Validation and remote deployment results are recorded below when completed; this entry alone does not establish accepted physical cases.

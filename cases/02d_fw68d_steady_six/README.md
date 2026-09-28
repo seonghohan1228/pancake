@@ -1,8 +1,9 @@
 # Six steady FW68D comparisons: A–F
 
 This campaign replaces the earlier 24-point transient plan with the six cases
-selected by the user. It uses a steady pressure–energy–CHT solve and an outer
-load-balance search. The package now includes the groove, housing and still-oil
+selected by the user. It solves steady pressure, cavitation, energy and bearing
+position together in C++. Python updates only the exterior cooling coefficients.
+The package now includes the groove, housing and still-oil
 cooling. The user supplied 1 atm reservoirs and exposed shaft ends and
 authorized ordinary/similar material properties. The original batch is preserved as a failed/stopped baseline. The September 28
 repair adds conservative feed energy and physical acceptance checks; the new
@@ -34,7 +35,7 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
 
 - Geometry: R=0.0215 m, L=0.040 m, radial clearance c=42.5e-6 m; bore 43.085 mm.
 - Film mesh: 720×192; bush radial cells: 16; cross-film order 4, quadrature 6.
-- `solution_mode=STEADY_STATE`, `motion_model=STATIC`, `omega_ramp_time=0`.
+- `solution_mode=STEADY_STATE`, `motion_model=STEADY_EQUILIBRIUM`, `omega_ramp_time=0`.
 - Pure-FW68D `SINGLE_PHASE`, FBNS cavitation, STRIATED cavity shear, film energy,
   polynomial cross-film temperature and `CONDUCTION_2D` bush conduction.
 - Retain dt=20 us as configuration metadata. Steady Reynolds/energy storage
@@ -43,25 +44,24 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
   maximum 2000 sweeps, outer field relaxation 1, quartic-source relaxation 0.3,
   inner FBNS tolerance 1e-12, and normalized global energy defect below 1e-6. An iteration cap or restored best
   iterate without convergence is a failed trial.
-- Outer equilibrium: vary eccentricity and attitude until the total fluid force
-  on the bearing balances the specified applied load vector to 0.2%.
+- Native equilibrium: update bearing position within the pressure/energy loop
+  until total fluid force balances the applied load vector to 0.2%. Numerical
+  position steps are limited to 0.05 clearance, with pressure-only position
+  probes separated by 0.001 clearance. No physical bearing motion is integrated.
 
 Eccentricity and attitude are solved outputs, so measured values are not needed
 for this load-controlled calculation. The user confirmed an upward push from
 below: applied load (0,+W), actuator contact at the bottom (270 degrees), and
 the groove at the top (90 degrees). The groove is opposite the actuator contact,
 not opposite the applied force vector. The fluid-on-bearing target is (0,-W). `load_angle_deg` currently does not rotate the solver force target;
-the outer search must use explicit force-vector components in the chosen frame.
-The static geometry in each inner solve represents an equilibrium position of
-the loaded bearing, with the journal centre fixed and the journal rotating.
+the native solve uses explicit force-vector components in the chosen frame.
+Bearing position changes are numerical equilibrium corrections. The journal
+centre stays fixed, and the journal rotates at the specified speed.
 
-The reusable pattern is the damped two-variable Newton search in
-[the corrected oil scan](../02c_oil_corrected_geometry/run_scan.py), with both
-pressure and temperature convergence checks from
-[the Ferron CHT workflow](../01e_ferron_terra_repro/force_balance.py).
-Neither script may be run unchanged: both contain case-specific geometry,
-feed and thermal assumptions. The new setup is in `steady_setup.json`, which
-is a preparation record, not a runnable solver configuration.
+`steady_setup.json` records inputs and acceptance. `run_steady.py` generates
+native configurations and retains each cooling-coefficient evaluation. It
+uses the final solved position and validated field checkpoint as the next
+coefficient evaluation's initial guess. There is no external load search.
 
 ## Temperature and property assignment
 
@@ -144,8 +144,8 @@ alpha=k_o/(rho cp), Pr=nu/alpha, Ra_D=g beta |T_surface-TC0| D^3/(nu alpha),
 and beta=0.7284/rho from the supplied density approximation. Use the supplied
 FW68D viscosity table. The boundary is q''=h(T_surface-TC0).
 
-The driver iterates the housing and shaft coefficients within every force
-evaluation, using solved mean surface temperatures and relaxation. The mean
+The driver updates the housing and shaft coefficients after each native
+load/thermal solve, using solved mean surface temperatures and relaxation. The mean
 housing outer temperature is reconstructed from the bore mean and exact mean
 radial/Robin resistance. Accept coefficient changes below 1e-3 relative and
 wall-temperature changes below 0.01 K, alongside both inner coupling residuals
@@ -168,8 +168,8 @@ sensitivity scenarios, not measured confidence bounds.
 
 ## Execution and acceptance
 
-`run_steady.py` renders the exact cases and iterates eccentricity/attitude to
-fluid-on-bearing target (0,+W). The F0/F1 wall-stress correction is implemented
+`run_steady.py` renders the exact cases with native equilibrium for the
+fluid-on-bearing target (0,-W). The F0/F1 wall-stress correction is implemented
 and checked against variable-viscosity and uniform-viscosity limits. Every
 solver attempt retains its config, log, hashes, diagnostic table and fields;
 failed or capped inner/thermal/force solves remain failed.
@@ -180,7 +180,7 @@ python run_steady.py --solver /absolute/path/pancake --ranks 2 \
   --work /absolute/path/new-results --cases F,E,D,C,B,A,E_low,E_high
 ```
 
-A frozen-position timing call is `--trial F .15 165 --thermal-iterations 1`.
+A frozen-position timing call is `--trial F .15 345 --thermal-iterations 1`.
 It is not load-balanced or externally thermally converged. On Open MPI only,
 `--rankfile` assigns one rank to each chosen physical core. The workstation
 left ranks unbound with `--cpu-list`, so that option is not used. The user-requested resolution remains 720 by 192 throughout.
@@ -191,8 +191,9 @@ and return of evidence. Preserve every failed evaluation and record source,
 input and executable hashes, rank layout, residuals and return codes. Existing
 coarse transient timings do not establish an optimum for these steady solves.
 
-A completed comparison must report inner thermal/pressure convergence and outer
-vector load closure separately; finite fields, positive gap and liquid filling;
+A completed comparison must report pressure/thermal convergence, native
+vector load closure and exterior cooling-coefficient closure separately;
+finite fields, positive gap and liquid filling;
 minimum gap, eccentricity and attitude; film and wall temperature maps; torque
 and f=M/(W R); cavity area/fronts and filling deficit. Keep mass/heat-balance
 diagnostics with the results and identify any diagnostic the solver does not
@@ -252,11 +253,27 @@ numerical tolerance, film content in [0,1], and film/wall/profile temperatures
 at least TC0 minus 0.001 K. External coefficient closure remains 1e-3 relative
 and 0.01 K. A final case additionally needs vector force error below 0.2%.
 
-A converged fixed-position solve is only a trial in the position search.
-The driver changes eccentricity and attitude, bounds/backtracks Newton steps,
-and re-closes the thermal problem. It loads only validated same-case steady
-fields as numerical guesses, preserving every rejected attempt and recording
-source, executable, input, checkpoint and MPI provenance.
+A fixed-position `--trial` uses `motion_model=STATIC` and cannot pass as a
+native equilibrium. Production runs require the final `Equilibrium: CONVERGED`
+marker and independently verify the VTK total-fluid-force vector against the
+applied load. Native position is read from VTK `xB`; reported eccentricity and
+attitude describe that final position. `seed_eps` and `seed_psi_deg` preserve
+the configuration's initial guess.
+
+The driver accepts cached runs only with matching source, executable, driver,
+input, rank count, rankfile and native-mode provenance. It rechecks physical
+and convergence evidence before reusing a same-case checkpoint. Legacy
+external-search results remain preserved but cannot masquerade as native results.
+
+### September 28 native equilibrium driver update
+
+Removed the external position Newton loop and its full thermal solves for
+base, finite-difference and backtracking geometry evaluations. Each exterior
+coefficient update now runs one integrated native steady solve. The existing
+housing and shaft correlations, coefficient tolerances, case inputs and full
+resolution are retained. The driver self-check exercises final-position signs,
+invalid position rejection, independent/native force failures, cache provenance,
+trial isolation and reuse of the solved position for the next coefficient update.
 
 
 ## September 28 load-direction correction
