@@ -35,6 +35,23 @@ MASS_BALANCE_TOL = 1e-8
 ENERGY_BALANCE_TOL = 1e-6
 
 
+def applied_load(load):
+    """The actuator below the bearing applies the measured load along +y."""
+    return np.array([0.0, float(load)])
+
+
+def force_residual(fx, fy, load):
+    return np.array([fx, fy]) + applied_load(load)
+
+
+def config_has_current_load(config, load):
+    values = dict(line.split(" = ", 1) for line in config.splitlines() if " = " in line)
+    force = applied_load(load)
+    expected = {"external_load_x": force[0], "external_load_y": force[1],
+                "external_load_z": 0.0, "load_angle_deg": 90.0}
+    return all(float(values.get(key, "nan")) == value for key, value in expected.items())
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -149,19 +166,20 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
     clearance = float(geometry["radial_clearance_m"])
     temperature = float(case["tc0_boundary_temperature_k"])
     load = float(case["load_mean_n"])
+    load_vector = applied_load(load)
     omega = float(case["angular_speed_magnitude_rad_s"])
     rho = density(temperature - 273.15)
     nu = viscosity(temperature - 273.15, experiment["viscosity"]["points"])
     values = {
         "R": radius, "c": clearance, "e": eps * clearance,
         "L": geometry["bearing_length_m"], "attitude_angle_deg": psi,
-        "load_angle_deg": -90, "omega": omega, "n_theta_global": 720,
+        "load_angle_deg": 90, "omega": omega, "n_theta_global": 720,
         "n_z_global": 192, "solution_mode": "STEADY_STATE", "dt": 2e-5,
         "end_t": 2e-5, "write_interval": 2e-5, "diagnostics_interval": 1,
         "motion_model": "STATIC", "motion_time_method": "EULER_IMPLICIT",
         "theta_convection_scheme": "UPWIND", "thermal_convection_scheme": "UPWIND",
-        "gas_convection_scheme": "UPWIND", "external_load_x": 0,
-        "external_load_y": -load, "external_load_z": 0,
+        "gas_convection_scheme": "UPWIND", "external_load_x": load_vector[0],
+        "external_load_y": load_vector[1], "external_load_z": 0,
         "cavitation_model": "FBNS", "fbns_tol": FBNS_TOL,
         "cavitation_threshold": "SCALAR_PCAV",
         "cavitated_film_model": "STRIATED", "gas_pressure_coupling": "NONE",
@@ -329,7 +347,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
         raise ValueError("nonfinite integrated force or torque")
     return {
         "Fx_N": fx, "Fy_N": fy, "Fz_N": fz, "torque_Nm": torque,
-        "force_error_rel": math.hypot(fx, fy - load) / load,
+        "force_error_rel": float(np.linalg.norm(force_residual(fx, fy, load))) / load,
         "h_min_m": float(np.min(fields["h"])),
         "mu_min_Pa_s": float(np.min(fields["mu"])),
         "rho_min_kg_m3": float(np.min(rho)),
@@ -361,6 +379,12 @@ class Campaign:
         self.setup = json.loads(self.materials_path.read_text(encoding="utf-8"))
         self.materials = self.setup["material_settings"]
         self.boundaries = self.setup["specified_boundaries"]
+        balance_setup = self.setup["force_balance"]
+        if (balance_setup["applied_load_unit_vector"] != [0, 1] or
+                balance_setup["target_fluid_force_unit_vector"] != [0, -1] or
+                balance_setup["load_direction_deg"] != 90 or
+                self.boundaries["groove"]["theta_deg"] != 90):
+            raise ValueError("setup must use upward actuator load, downward fluid target, and top groove")
         self.cases = {item["case_id"]: item for item in self.experiment["cases"]}
         for extra in self.setup.get("additional_cases", []):
             case = dict(self.cases[extra["base_case"]])
@@ -413,6 +437,10 @@ class Campaign:
         if run_dir in self.rechecked:
             return self.rechecked[run_dir]
         try:
+            config_path = run_dir / "config.txt"
+            if (record.get("config_sha256") != sha256(config_path) or
+                    not config_has_current_load(config_path.read_text(), case["load_mean_n"])):
+                return None
             checked = check_solution(run_dir, (run_dir / "run.log").read_text(errors="replace"),
                                      0, float(case["load_mean_n"]),
                                      float(self.materials["cavitation_pressure_Pa"]),
@@ -564,6 +592,8 @@ class Campaign:
     def evaluate(self, case, eps, psi, label, thermal_iterations=None):
         if not .0 < eps < .995:
             raise ValueError("eccentricity ratio must lie in (0, 0.995)")
+        if not math.isfinite(psi):
+            raise ValueError("attitude angle must be finite")
         if thermal_iterations is None:
             cached = self.find_completed(case, eps, psi, closed=True)
             if cached is not None:
@@ -635,7 +665,7 @@ class Campaign:
         history_path = self.work / case["case_id"] / f"force_history_{uuid.uuid4().hex[:8]}.json"
         for iteration in range(self.args.max_force_iterations):
             result = self.evaluate(case, eps, psi, f"force{iteration}_base")
-            residual = np.array([result["Fx_N"], result["Fy_N"] - load])
+            residual = force_residual(result["Fx_N"], result["Fy_N"], load)
             history.append({"eps": eps, "psi_deg": psi, "force_error_rel": result["force_error_rel"],
                             "run_dir": result["run_dir"]})
             save_json(history_path, history)
@@ -696,6 +726,9 @@ def self_check(campaign):
     if not set(campaign.cases).issuperset(expected):
         raise ValueError("expected exact A-F experimental cases")
     for case in campaign.cases.values():
+        eps, psi = campaign.setup["force_balance"]["initial_positions"][case["case_id"]]
+        if not 0 < eps < .995 or not math.isfinite(psi) or math.sin(math.radians(psi)) >= 0:
+            raise ValueError("initial seed must put bearing centre above fixed journal centre")
         temperature = case["tc0_boundary_temperature_c"]
         nu = viscosity(temperature, campaign.points)
         mu = density(temperature) * nu
@@ -723,8 +756,16 @@ def self_check(campaign):
                 config_identity(warmed, path_keys | {"bush_outer_heat_transfer", "shaft_ambient_heat_transfer"})):
             raise ValueError("closed-position identity changed with h or warm-start path")
         values = dict(line.split(" = ", 1) for line in config.splitlines() if " = " in line)
-        if "external_load_y = -" not in config or "solution_mode = STEADY_STATE" not in config:
+        if (not config_has_current_load(config, case["load_mean_n"]) or
+                "solution_mode = STEADY_STATE" not in config):
             raise ValueError("steady or load config mismatch")
+        old_config = config.replace("external_load_y = " + str(float(case["load_mean_n"])),
+                                    "external_load_y = " + str(-float(case["load_mean_n"])))
+        if (config_has_current_load(old_config, case["load_mean_n"]) or
+                config_identity(config, path_keys) == config_identity(old_config, path_keys)):
+            raise ValueError("old downward-load config was not rejected")
+        if not np.array_equal(force_residual(0.0, -case["load_mean_n"], case["load_mean_n"]), [0, 0]):
+            raise ValueError("fluid target does not oppose upward applied load")
         if (float(values["temperature_initial"]) != amb + 1 or
                 values["coupling_max_iters"] != "2000" or
                 values["coupling_relaxation_mode"] != "FIXED" or
@@ -801,9 +842,7 @@ def main():
     except (OSError, subprocess.TimeoutExpired):
         campaign.mpi_version = ["unavailable"]
     campaign.work.mkdir(parents=True, exist_ok=True)
-    starts = {"A": (.85, 120.), "B": (.6, 140.), "C": (.6, 140.),
-              "D": (.35, 155.), "E": (.15, 165.), "F": (.15, 165.),
-              "E_low": (.15, 165.), "E_high": (.15, 165.)}
+    starts = campaign.setup["force_balance"]["initial_positions"]
     if args.trial:
         key, eps, psi = args.trial
         case = campaign.cases[key]

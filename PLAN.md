@@ -2617,3 +2617,16 @@ numerical diagnosis only and do not complete an experimental comparison.
   solver and inputs; start B on cores 24--27 without a new launcher transfer.
 - [ ] Finish all remaining cases and experimental temperature/friction/cavity
   comparisons before declaring the campaign complete or merging the task.
+
+
+## 2026-09-28 - Correct the confirmed upward bearing push
+
+The earlier completed E milestone above is superseded for experimental use:
+all downward-load cases solve the wrong confirmed physical configuration.
+
+- [x] Identify the user-confirmed upward push and invalidate prior comparisons.
+- [ ] Stop affected workstation drivers and preserve all wrong-direction outputs.
+- [x] Correct explicit load, force residuals, initial attitudes and restart checks.
+- [x] Pass an independent force-sign regression and a short native CFD check.
+- [ ] Deploy a fresh isolated snapshot, rebuild and verify on the workstation.
+- [ ] Recompute A-F and E sensitivities with both load and thermal closure.

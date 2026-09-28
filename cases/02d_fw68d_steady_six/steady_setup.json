@@ -12,6 +12,7 @@
   "common_solver_settings": {
     "solution_mode": "STEADY_STATE",
     "motion_model": "STATIC",
+    "load_angle_deg": 90,
     "R": 0.0215,
     "L": 0.04,
     "c": 4.25e-05,
@@ -75,6 +76,8 @@
     "thermal_ambient_temperature": "tc0_boundary_temperature_k",
     "inflow_temperature": "tc0_boundary_temperature_k for each confirmed feed reservoir",
     "target_load_magnitude_N": "load_mean_n",
+    "external_load_y": "+load_mean_n; confirmed actuator below pushes bearing upward",
+    "target_fluid_force_y": "-load_mean_n",
     "reference_sommerfeld_number": "sommerfeld_number; uses nominal RPM and mu(TC0)",
     "comparison_torque_Nm": "apparent_bearing_torque_nm",
     "comparison_friction": "friction_coefficient",
@@ -92,18 +95,30 @@
       "attitude_angle_deg"
     ],
     "target": "total fluid-on-bearing force equals minus the specified applied load vector",
-    "load_direction_deg": 270,
-    "load_frame": "Chosen coordinates: applied load along -y (270 degrees), groove along +y (90 degrees); positive theta follows journal rotation. This is a coordinate convention, not a further experimental input.",
+    "load_direction_deg": 90,
+    "load_frame": "User confirmed actuator below pushes bearing upward (+y, 90 degrees). Groove remains at the top (+y, 90 degrees). Fluid-on-bearing equilibrium target is downward (-y). Positive theta follows journal rotation.",
     "relative_vector_error_limit": 0.002,
     "note": "Do not treat input eccentricity as measured or infer it from matched S. load_angle_deg alone does not control force direction in the current solver.",
     "applied_load_unit_vector": [
       0,
-      -1
+      1
     ],
     "target_fluid_force_unit_vector": [
       0,
-      1
-    ]
+      -1
+    ],
+    "initial_positions": {
+      "A": [0.85, 300.0],
+      "B": [0.6, 320.0],
+      "C": [0.6, 320.0],
+      "D": [0.35, 335.0],
+      "E": [0.15, 345.0],
+      "F": [0.15, 345.0],
+      "E_low": [0.15, 345.0],
+      "E_high": [0.15, 345.0]
+    },
+    "initial_position_note": "Seeds put the bearing centre above the stationary journal centre: B=-e(cos psi,sin psi). The old seeds were rotated 180 degrees only as initial guesses; the unchanged top groove prevents treating old solutions as a symmetry-equivalent campaign.",
+    "restart_policy": "Saved configurations must contain the confirmed +y applied load and matching input hashes; old downward-load results and checkpoints are excluded."
   },
   "physical_inputs_required": {
     "logged_pressure_sensor_location_for_comparison_only": null,
@@ -139,7 +154,7 @@
     "property_domain": "exact cross-film extrema must stay within supplied viscosity temperature table"
   },
   "specified_boundaries": {
-    "provenance": "User follow-up: 5 mm groove opposite load, same reservoir conditions as bearing ends, p_cav=0, stainless OD85 mm and L40 mm; surrounding still oil at TC0, estimate natural convection.",
+    "provenance": "User confirmed actuator below pushes bearing upward (+y); top groove remains at90 degrees. This supersedes the earlier opposite-load interpretation. Groove width5mm and reservoirs equal bearing ends; p_cav=0, stainless OD85mm and L40mm; surrounding still oil atTC0 with estimated convection.",
     "groove": {
       "type": "GROOVE",
       "width_m": 0.005,
@@ -150,7 +165,7 @@
       "native_inlet_size_deg": 13.298312524795712,
       "pressure": "101325 Pa absolute, equal to both axial-end reservoirs",
       "temperature": "Each case TC0, same as the axial-end reservoir.",
-      "thermal_closure": "Fed reservoir at TC0; native PINNED groove temperature, no measured hot-oil mixing fraction.",
+      "thermal_closure": "FLUX_BALANCED reservoir at TC0 supplies incoming oil and drains at the solved local groove temperature; groove film temperature is not pinned.",
       "resolved_theta_columns": 26,
       "resolved_arc_width_m": 0.00488783820344142
     },

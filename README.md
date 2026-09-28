@@ -790,3 +790,13 @@ to still oil at TC0. The runnable driver uses atmospheric groove/end reservoirs,
 zero absolute cavity pressure, analogous PVE/stainless thermal properties, and
 convective cooling from both shaft ends. Validation and accepted equilibrium
 results are recorded with the campaign; failed trials are retained.
+
+
+### FW68D load orientation correction (2026-09-28)
+
+For `cases/02d_fw68d_steady_six`, the confirmed rig pushes the bearing upward
+from below, while the groove remains at the top. Applied force is (0,+W) and
+the required fluid-on-bearing force is (0,-W). The old downward-load campaign,
+including its converged E result, was invalidated for experimental comparison.
+Historical outputs are preserved; follow the case EXECUTION.md for corrected
+validation and reruns.

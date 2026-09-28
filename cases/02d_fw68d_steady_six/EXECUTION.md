@@ -297,3 +297,49 @@ models and acceptance tolerances remain v3. First config SHA256 is
 94c12bba983db41fc463aac992b63ec05380cc70639826d067e410b36987ca7c.
 B is running a full thermal/position search, and its former upload-approval
 question is no longer a prerequisite for this execution.
+
+
+## September 28: prior campaign invalidated by confirmed upward push
+
+The user confirmed the actuator below the bearing pushes it upward, with the
+groove at the top. Previous runs explicitly used external_load_y=-W and the
+outer search targeted Fy=+W. Every old case, including the numerically closed
+E above, is invalid for the confirmed experiment. Its 66.02% friction mismatch
+and near-groove temperature interpretation are results of the wrong physical
+configuration. They are preserved for audit and are not final comparisons.
+
+Corrected requirements are external_load_y=+W, fluid-force target Fy=-W,
+residual (Fx,Fy+W), and groove theta=90 degrees. The new campaign requires a
+fresh work directory and verified inputs; old equilibria are not reusable.
+Stopping, tests, hashes and replacement launches will be recorded below.
+
+### Corrected-direction local validation
+
+The driver now shares one applied-load vector (0,+W) across configuration,
+force-error checks and the Newton residual. Its startup angles are A300,
+B/C320, D335 and E/F/variants345 degrees; these are only initial guesses.
+Angle is unrestricted and eccentricity remains bounded. Saved config hashes
+and the explicit upward-load components must pass before a cached result,
+position or checkpoint can be reused. Python self-check and the two-start
+force-search/old-cache rejection regression pass, as does git diff --check.
+
+Native Release rebuild and the existing test_forces/test_journal_motion pass.
+A four-rank C diagnostic at eps0.6, psi300 used the full720x192 grid, exact
+TC0 and pressure/geometry/viscosity inputs, with energy disabled solely to
+isolate the force sign. Return code0 in7.110s; fluid force is
+(-657.835884,-1334.774681)N, minimum gap17.00024um at300.25degrees, and
+the bearing centre lies above the journal. Pressure/filling/gap checks pass.
+This does not establish a load or thermal equilibrium. Evidence is under
+C:/Dev/pancake/results/fw68d_physical_20260928/load_orientation_correction/.
+
+Native executable SHA256:
+ffdf96db9829b075b480c7d9ad99e0ba4e9ae7c221fc82530abe45efe72a3640.
+Production C++ aggregate hash remains
+fc32d207b6bad1bb8e7736a16a95629d38c5525fc4328d428058eef8293e9163.
+Driver SHA256 after correction:
+eb8bdae2efbb2b905de36da10fe7620dcdd18bdeb9c9e9fe75d652284e8edeb1.
+
+The attempted targeted stop of the old workstation campaign was rejected by
+automatic approval review, which required explicit authorization to interrupt
+the jobs. No termination signals were sent. The exact host/campaign stop
+question is pending; no corrected remote campaign has been launched yet.

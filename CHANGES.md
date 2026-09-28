@@ -4053,3 +4053,23 @@ expected 940 and 925.764 kg/m³, with dynamic viscosities 0.033438291 and
 
 - Add a standalone analytic force-balance check: two initial positions reach the
   same equilibrium after a failed full Newton step, exercising backtracking.
+
+
+## 2026-09-28 - Correct FW68D load orientation
+
+- The user confirmed an upward push from the lower actuator, with the groove
+  at the top. The previous downward-force assumption was wrong, rather than
+  an arbitrary coordinate choice, because the groove position stays fixed.
+- Invalidate the old A-F campaign and E comparison for experimental use while
+  retaining raw numerical results and provenance. Corrected cases require
+  applied force (0,+W), fluid-force target (0,-W), and new position searches.
+
+- Use the same applied-load helper in config generation and every force residual.
+  Keep the groove fixed at 90 degrees and move numerical attitude guesses into
+  the upward-bearing half-plane, without rotating saved physical fields.
+- Reject cached outputs/checkpoints with old load components or mismatched
+  config hashes. A regression proves rejection even when other provenance
+  matches, and verifies two-start convergence to downward fluid force.
+- Rebuild natively; existing force/motion tests, driver tests and a four-rank
+  720x192 isothermal direction check pass. Corrected thermal equilibria remain
+  pending; the old results are not relabelled as corrected.

@@ -47,9 +47,10 @@ multiple CFD evaluations. No physical timestep refinement applies to steady mode
   on the bearing balances the specified applied load vector to 0.2%.
 
 Eccentricity and attitude are solved outputs, so measured values are not needed
-for this load-controlled calculation. Choose applied load along -y (270 degrees)
-and the opposite groove at +y (90 degrees). The fluid-on-bearing target is
-(0,+W). `load_angle_deg` currently does not rotate the solver force target;
+for this load-controlled calculation. The user confirmed an upward push from
+below: applied load (0,+W), actuator contact at the bottom (270 degrees), and
+the groove at the top (90 degrees). The groove is opposite the actuator contact,
+not opposite the applied force vector. The fluid-on-bearing target is (0,-W). `load_angle_deg` currently does not rotate the solver force target;
 the outer search must use explicit force-vector components in the chosen frame.
 The static geometry in each inner solve represents an equilibrium position of
 the loaded bearing, with the journal centre fixed and the journal rotating.
@@ -256,3 +257,14 @@ The driver changes eccentricity and attitude, bounds/backtracks Newton steps,
 and re-closes the thermal problem. It loads only validated same-case steady
 fields as numerical guesses, preserving every rejected attempt and recording
 source, executable, input, checkpoint and MPI provenance.
+
+
+## September 28 load-direction correction
+
+The earlier downward-load campaign, including numerically converged Case E,
+was invalidated when the user confirmed a push upward from below. Those
+outputs remain preserved as historical evidence of the wrong physical setup.
+The corrected driver must use residual (Fx,Fy+W), keep the groove at 90 degrees,
+and solve new bearing positions. Previous friction and temperature plots are
+not finalized experimental predictions. No physical field may simply be
+rotated: the groove remains fixed while the force reverses.

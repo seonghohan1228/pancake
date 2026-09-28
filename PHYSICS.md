@@ -2807,8 +2807,11 @@ match the existing cross-film flow integrals; see the case plan.
 
 ### FW68D groove and external natural convection update (2026-09-27)
 
-The groove is opposite the applied load. Choose load (0,-W), groove theta=90
-degrees and target fluid-on-bearing force (0,+W). Its 5 mm bore arc converts
+The original interpretation in this section used load (0,-W) with groove
+theta=90 degrees. It was superseded on September 28 after the user clarified
+a push from below: applied force (0,+W), groove theta=90 degrees, and target
+fluid-on-bearing force (0,-W). The groove is opposite the actuator contact
+location, not opposite the force vector. Its 5 mm bore arc converts
 to 13.2983125 degrees; the native groove spans all axial film cells. Its
 reservoir pressure and temperature match the bearing ends, with TC0 supplying
 the temperature. The requested cavity plateau is 0 Pa, pending its datum;
@@ -3042,3 +3045,23 @@ rank decomposition may differ. The campaign uses only same-case states with
 matching source/executable/input provenance and rechecks their diagnostics.
 Neither a saved state nor a cached fixed-position result establishes load
 balance. Failed attempts and their files remain available for diagnosis.
+
+
+### FW68D upward push and force-vector correction (2026-09-28)
+
+With the journal centre fixed and the actuator below the bearing, the applied
+force on the housing is W_app=(0,+W). Fluid-on-bearing equilibrium is
+F_fluid+W_app=0, so the two-component residual is (Fx,Fy+W), normalized by W.
+The feed groove remains at theta=90 degrees and the contact location is
+theta=270 degrees. Setting load_angle_deg=90 alone has no effect on the
+static inner solve; the explicit external-load components and outer force
+residual must agree. This correction does not change journal RPM.
+
+For the static film law h=c-e*cos(theta-psi), the bearing centre relative to
+the journal is b=-e*(cos(psi),sin(psi)). Upward-bearing equilibria therefore
+require searching the opposite attitude half-plane from the invalidated
+downward-load campaign. The original E temperature peak near the top groove
+belonged to the wrong load configuration; it is not evidence for the corrected
+experiment. All previous case outputs are retained, but their numerical
+convergence is insufficient for physical acceptance. Fresh inputs/results and
+provenance prevent reuse as corrected equilibria.
