@@ -3232,3 +3232,54 @@ Validation includes exact Couette conjugate temperatures, second-order
 through-film refinement (8/16/32 layers), signed groove flow and reverse
 rotation, exact outer-plus-end housing heat loss, natural-convection fixed
 point closure, MPI rank comparisons and stopped-run recovery.
+
+### September 29 - Optional reversible pressure work
+
+`thermal_pressure_work = true` adds compression heating and decompression
+cooling to steady `FINITE_VOLUME` film energy. The default is false,
+preserving previous results. It requires `SINGLE_PHASE` properties and
+`LINEAR_TEMPERATURE` liquid density. The temperature equation is
+
+    rho cp u.grad(T) = div(k grad(T)) + Phi + beta T u.grad(p),
+    beta = -(1/rho) d(rho)/dT.
+
+T in the added term is absolute Kelvin. For FW68D, rho_T = d(rho)/dT =
+-0.7284 kg/(m3 K). Density and beta use the same cell-mean liquid density
+as the layer mass fluxes. Each layer's integrated source is
+
+    W_k = -rho_T T_k / rho_P^2 * D_k,
+    D_k = 0.5 [m_e(p_E-p_P) + m_w(p_P-p_W)
+             + m_n(p_N-p_P) + m_s(p_P-p_S)].
+
+m_e and m_w are signed in increasing theta; m_n and m_s in increasing z,
+exactly as in the conservative layer mass operator. At an axial reservoir
+the cell-centre-to-face pressure jump has full weight instead of one half.
+Boundary pressure is max(p_boundary,p_cav), matching FBNS. Axial faces
+suppressed by the groove mass operator are also suppressed here. Pressure
+is uniform across film thickness, so transverse pressure work is zero.
+There is no extra filling multiplier: liquid content already enters the
+mass fluxes. Pressure transport through rupture/reformation faces remains.
+
+Pressure, density and the previous layer temperature freeze W_k during
+one linear energy solve; subsequent coupled iterations update them.
+Positive work heats, negative work cools, with no sign clipping. Constant
+pressure offsets have no effect. `pressure_work` stores summed layer work
+per film area (W/m2); `heat_generation` remains viscous dissipation only.
+`energy_pressure_work_W` stores the signed global integral. The ledger is
+
+    wall_heat + axial_enthalpy_out - groove_enthalpy_in
+      - mass_defect_correction - viscous_heat - pressure_work = 0.
+
+The ledger uses the source actually assembled. A small linear residual
+alone does not establish nonlinear convergence: layer/solid temperature,
+force, mass and exterior-convection closure remain required. For the
+enabled option only, the case driver does not reject subambient liquid
+temperature solely because it is below TC0: decompression can cool liquid.
+Finite temperatures, viscosity-table limits, positive density and existing
+convergence checks still apply. The default positive-heating model retains
+the TC0 temperature-floor check.
+
+This liquid sensible-energy correction does not add gas/vapor, latent heat
+or pressure-dependent density, and does not change cavitation closure.
+Tests cover uniform-pressure equivalence, compression/decompression signs,
+analytic axial work, pressure-datum invariance, conservation and MPI ranks.

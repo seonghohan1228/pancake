@@ -2681,3 +2681,10 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Check housing/film discretization sensitivity: A/B solid refinement changes sensors by <=0.0024 K; fully coupled B 16-to-32 layers changes torque 0.0048% and sensors <=0.0021 K.
 - [x] Generate converged load, temperature, friction and cavitation comparisons against all 693 experimental windows and the original 103 displayed points.
 - [ ] Resolve model/experiment disagreement: E remains 4.1-4.8 K too hot; primary-case friction errors range from -38.4% to +103.2%. Do not fit physical inputs to hide these discrepancies.
+
+### September 29 - Single-case pressure-work sensitivity
+
+- [x] Add optional liquid compression/decompression work and a separate energy-ledger channel without changing cavitation closure.
+- [x] Pass sign, uniform-pressure, analytic magnitude, pressure-reference and conservation checks locally and remotely.
+- [x] Launch one B sensitivity on eight workstation ranks, preserving original inputs, results and hashes.
+- [x] Close force balance, film/housing temperatures and exterior convection; compare absolute temperatures over the full circumference with the original B and TC1-3. Fourteen iterations in two cooling passes took 154.5 s; load error 0.09476%, profile residual 9.62e-7. TC3 changed by only -0.01336 K; the measured TC2-to-TC3 drop remains unexplained by this term.

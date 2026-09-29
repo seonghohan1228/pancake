@@ -852,6 +852,8 @@ struct SimulationConfig {
     int cross_film_quadrature_points = 6;
     /// Number of equal finite-volume layers across the gap.
     int cross_film_layers = 16;
+    /// Reversible beta*T*u.grad(p) work in steady resolved liquid energy.
+    bool thermal_pressure_work = false;
     // Under-relaxation of the order-4 midplane collocation source between outer
     // iterations. 1.0 (no relaxation) converges on the validation rigs; the lever
     // exists because the collocation is the one part of the model that reads a
@@ -1210,6 +1212,7 @@ struct SimulationConfig {
             else if (key == "bearing_heat_transfer") bearing_heat_transfer = std::stod(value);
             else if (key == "cross_film_thermal_model") cross_film_thermal_model = cross_film_model_from_config(value);
             else if (key == "cross_film_layers") cross_film_layers = std::stoi(value);
+            else if (key == "thermal_pressure_work") thermal_pressure_work = is_true(value);
             else if (key == "cross_film_profile_order") cross_film_profile_order = std::stoi(value);
             else if (key == "cross_film_quadrature_points") cross_film_quadrature_points = std::stoi(value);
             else if (key == "cross_film_relaxation") cross_film_relaxation = std::stod(value);
@@ -1603,6 +1606,11 @@ struct SimulationConfig {
                      "thermal_ambient_temperature instead.");
             }
         }
+        if (thermal_pressure_work &&
+            (cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME ||
+             fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
+             density_model != DensityModel::LINEAR_TEMPERATURE))
+            error("thermal_pressure_work requires FINITE_VOLUME, SINGLE_PHASE and LINEAR_TEMPERATURE density.");
         if (cross_film_thermal_model != CrossFilmModel::NONE) {
             if (cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
                 if (cross_film_layers < 2 || cross_film_layers > 128)
@@ -2548,6 +2556,7 @@ struct SimulationConfig {
             << "# integrals in the Reynolds equation. NONE is bit-identical to the model-free solver.\n"
             << "cross_film_thermal_model = " << to_config_value(cross_film_thermal_model) << "\n"
             << "cross_film_layers = " << cross_film_layers << "\n"
+            << "thermal_pressure_work = " << (thermal_pressure_work ? "true" : "false") << "\n"
             << "cross_film_profile_order = " << cross_film_profile_order << "\n"
             << "cross_film_quadrature_points = " << cross_film_quadrature_points << "\n"
             << "cross_film_relaxation = " << cross_film_relaxation << "\n"
@@ -2785,7 +2794,7 @@ struct SimulationConfig {
             "journal_wall_temperature", "bearing_wall_temperature", "rho_cp", "liquid_specific_heat",
             "thermal_conductivity", "gas_heat_capacity_cv", "dissolved_heat_capacity", "desorption_internal_energy", "gas_thermal_conductivity", "journal_heat_transfer",
             "bearing_heat_transfer", "cross_film_thermal_model",
-            "cross_film_layers", "cross_film_profile_order", "cross_film_quadrature_points",
+            "cross_film_layers", "thermal_pressure_work", "cross_film_profile_order", "cross_film_quadrature_points",
             "cross_film_relaxation", "shaft_ambient_heat_transfer",
             "shaft_ambient_area_ratio", "thermal_ambient_temperature",
             "shaft_ambient_temperature",

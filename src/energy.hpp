@@ -17,6 +17,7 @@ namespace Energy {
         double residual_W = 0.0;
         double scale_W = 0.0;
         double viscous_heat_W = 0.0;
+        double pressure_work_W = 0.0;
         double wall_heat_W = 0.0;
         double axial_enthalpy_out_W = 0.0;
         double groove_enthalpy_in_W = 0.0;

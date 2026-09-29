@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-09-29 - Test liquid compression and decompression work
+
+- Add optional steady finite-volume `beta*T*u.grad(p)` energy work using
+  the existing conservative layer mass fluxes and FW68D thermal expansion.
+  Keep viscous dissipation separate, preserve the cavitation model, and
+  default the option off to reproduce earlier solutions.
+- Include the signed source in local fields and the global energy ledger.
+  Retain force and full thermal convergence; allow physical decompression
+  cooling without clipping or rejecting a temperature solely below TC0.
+- Verify zero-gradient equivalence, analytic axial decompression,
+  compression sign, pressure-reference independence and energy closure
+  on native Windows and Linux, including one/four MPI ranks.
+- Run one B sensitivity at 1500 rpm, 3237.8 N and TC0=61.4869 C with the
+  original 720x192 grid and 16 film layers. Preserve the original solution
+  and seed the new force-balanced solution from it. Campaign evidence and
+  full-circle comparisons are stored under
+  `results/fw68d_pressure_work_20260929` (generated files, not source).
+- Accepted B after 14 iterations in two cooling passes (154.5 s): load
+  error 0.09476%, layer/solid residual 9.62e-7, energy residual 6.81e-11.
+  TC1/2/3 changes are +0.05074/+0.04096/-0.01336 K. Net pressure work
+  is -0.002936 W; torque changes from 0.30896068 to 0.30889021 N m.
+  This sensitivity does not reproduce the measured 1.334 K TC2-to-TC3 drop.
+
 ## 2026-09-28 - Resolve film energy and exposed housing ends
 
 - Add conservative finite-volume film energy to remove the restricted

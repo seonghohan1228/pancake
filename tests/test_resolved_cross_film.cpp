@@ -134,6 +134,53 @@ void housing_ends_test() {
     if(mesh.rank==0)std::cout<<"housing_heat_W="<<loss<<" natural_profile_residual="<<natural.profile_residual<<'\n';
 }
 
+void pressure_work_test(double pressure_offset) {
+    auto cfg=config(8);cfg.omega=0;cfg.n_z_global=12;
+    cfg.thermal_pressure_work=true;cfg.density_model=DensityModel::LINEAR_TEMPERATURE;
+    cfg.fluid_property_model=FluidPropertyModel::SINGLE_PHASE;
+    cfg.rho=cfg.density_temperature_intercept+cfg.density_temperature_slope*(300-273.15);
+    cfg.bc_z_south_val=200000+pressure_offset;cfg.bc_z_north_val=100000+pressure_offset;
+    Mesh mesh(cfg);Communicator comm(mesh);Fields f;register_fields(f,mesh,cfg);
+    for(int i=0;i<mesh.n_theta_local;++i)for(int j=0;j<mesh.n_z_local;++j)
+        f["pressure"](i,j)=cfg.bc_z_south_val+(j+.5)/mesh.n_z_local*(cfg.bc_z_north_val-cfg.bc_z_south_val);
+    comm.update_ghosts(f);CrossFilm::update(f,mesh,cfg);ResolvedCrossFilm::solve(f,mesh,cfg);
+    const double dp=cfg.bc_z_north_val-cfg.bc_z_south_val;
+    const double mass=-cfg.rho*std::pow(cfg.c,3)/(12*cfg.mu)*dp/cfg.L*2*M_PI*cfg.R;
+    const double expected=-cfg.density_temperature_slope*300/(cfg.rho*cfg.rho)*mass*dp;
+    const auto ledger=ResolvedCrossFilm::balance(f,mesh,cfg);
+    check(expected<0 && std::abs(ledger.pressure_work_W/expected-1)<1e-10,
+          "axial decompression work must match beta*T/rho*mass*pressure_drop, independent of pressure datum");
+    check(std::abs(ledger.residual_W)/ledger.scale_W<1e-8,"pressure work must close the extended energy ledger");
+    if(mesh.rank==0)std::cout<<"pressure_offset="<<pressure_offset<<" pressure_work_W="<<ledger.pressure_work_W<<'\n';
+}
+
+void compression_sign_test() {
+    auto cfg=config(8);cfg.fluid_property_model=FluidPropertyModel::SINGLE_PHASE;
+    cfg.density_model=DensityModel::LINEAR_TEMPERATURE;
+    cfg.rho=cfg.density_temperature_intercept+cfg.density_temperature_slope*(300-273.15);
+    Mesh mesh(cfg);Communicator comm(mesh);Fields f;register_fields(f,mesh,cfg);
+    comm.update_ghosts(f);CrossFilm::update(f,mesh,cfg);ResolvedCrossFilm::solve(f,mesh,cfg);
+    const double baseline=ResolvedCrossFilm::diagnostics(f,mesh,cfg).t_shaft;
+    cfg.thermal_pressure_work=true;
+    ResolvedCrossFilm::solve(f,mesh,cfg);
+    check(std::abs(ResolvedCrossFilm::diagnostics(f,mesh,cfg).t_shaft-baseline)<1e-8,
+          "uniform pressure must give identical temperatures with pressure work enabled");
+    check(ResolvedCrossFilm::balance(f,mesh,cfg).pressure_work_W==0,
+          "uniform pressure must produce exactly zero pressure work");
+    for(int i=0;i<mesh.n_theta_local;++i)for(int j=0;j<mesh.n_z_local;++j)
+        f["pressure"](i,j)=101325+10000*std::sin((mesh.offset_theta+i+.5)*mesh.get_d_theta());
+    comm.update_ghosts(f);ResolvedCrossFilm::solve(f,mesh,cfg);
+    for(int i=0;i<mesh.n_theta_local;++i) {
+        const double theta=(mesh.offset_theta+i+.5)*mesh.get_d_theta();
+        if(std::abs(std::cos(theta))>.9)
+            check(f["pressure_work"](i,mesh.n_z_local/2)*std::cos(theta)>0,
+                  "Couette transport must heat under compression and cool under decompression");
+    }
+    const auto ledger=ResolvedCrossFilm::balance(f,mesh,cfg);
+    check(std::abs(ledger.residual_W)/ledger.scale_W<1e-8,
+          "signed circumferential pressure work must conserve energy");
+}
+
 int main(int argc,char** argv) {
     PetscInitialize(&argc,&argv,nullptr,nullptr);
     {
@@ -141,6 +188,8 @@ int main(int argc,char** argv) {
         check(e16<.27*e8&&e32<.27*e16,"through-film temperature must converge at second order");
         groove_test(157.07963267948966);groove_test(-157.07963267948966);
         housing_ends_test();
+        pressure_work_test(0);pressure_work_test(1000000);
+        compression_sign_test();
     }
     PetscFinalize();return 0;
 }
