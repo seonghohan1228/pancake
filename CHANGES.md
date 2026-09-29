@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-09-29 - Remove the pressure-work sensitivity option
+
+Remove the optional liquid pressure-work source, configuration switch,
+extra diagnostic/field and associated special-case acceptance logic.
+Restore the previously validated thermal implementation, including its
+original temperature-floor check. The single B comparison changed TC3 by
+only -0.01336 K and did not reproduce the measured temperature drop; the
+user judged the added complexity unjustified. Keep the original and trial
+results, source archive and comparison under
+`results/fw68d_pressure_work_20260929` as a documented negative result.
+The implementation entry below records the experiment, not a retained
+solver capability.
+Rebuilt locally and passed all five affected CTests and both driver checks.
+The solver sources, case driver and resolved-film tests match validated
+baseline 4181151 exactly; the existing baseline campaign remains applicable.
+
 ## 2026-09-29 - Test liquid compression and decompression work
 
 - Add optional steady finite-volume `beta*T*u.grad(p)` energy work using

@@ -123,18 +123,6 @@ struct Fluxes {
     double divergence(int i,int j,int k,bool feed) const {
         return e(i,j,k)-e(i-1,j,k)+(j+1<nz||!feed?z(i,j,k):0)-(j>0||!feed?z(i,j-1,k):0);
     }
-    // Integral of rho*u.grad(p), using the mass operator's face fluxes.
-    double pressure_transport(const Fields& f,const SimulationConfig& cfg,int i,int j,int k,bool feed) const {
-        const auto& p=f["pressure"];
-        double work=.5*(e(i,j,k)*(p(i+1,j)-p(i,j))+e(i-1,j,k)*(p(i,j)-p(i-1,j)));
-        if(j+1<nz)work+=.5*z(i,j,k)*(p(i,j+1)-p(i,j));
-        else if(!feed && cfg.bc_z_north_type==BCType::DIRICHLET)
-            work+=z(i,j,k)*(std::max(cfg.bc_z_north_val,cfg.effective_p_cav())-p(i,j));
-        if(j>0)work+=.5*z(i,j-1,k)*(p(i,j)-p(i,j-1));
-        else if(!feed && cfg.bc_z_south_type==BCType::DIRICHLET)
-            work+=z(i,-1,k)*(p(i,j)-std::max(cfg.bc_z_south_val,cfg.effective_p_cav()));
-        return work;
-    }
 };
 
 // Owning PETSc objects ensures exceptions do not leak a production-size matrix.
@@ -145,7 +133,6 @@ struct System {
 }
 
 void register_fields(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
-    f.add("pressure_work",mesh).fill(0);
     for(int k=0;k<cfg.cross_film_layers;++k) {
         f.add(layer_name(k),mesh).fill(cfg.temperature_initial);
         f.add(viscosity_name(k),mesh).fill(1.0/cfg.mu);
@@ -256,7 +243,7 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     for(int i=0;i<nt;++i) for(int j=0;j<nz;++j) {
         const bool feed=inlet_at(mesh,cfg,i,j)!=nullptr;
         double net=0;for(int k=0;k<n;++k)net+=flux.divergence(i,j,k,feed);
-        double transverse=0,heat_total=0,pressure_work_total=0;
+        double transverse=0,heat_total=0;
         const double h=f["h"](i,j),dy=h/n,kth=value(f,"k_liquid_solution",cfg.thermal_conductivity,i,j);
         const double fill=liquid(f,cfg,i,j),gfilm=film_conductance(f,cfg,i,j)*area;
         const double ghalf=kth*fill/dy*area;
@@ -319,16 +306,9 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
             const double tau=-u*std::sqrt(fill)/f0+gp*(y-ybar),tauz=gz*(y-ybar);
             const double heat=f[viscosity_name(k)](i,j)*dy*(tau*tau+tauz*tauz+(gp*gp+gz*gz)*dy*dy/12);
             heat_total+=heat;source+=heat*area;
-            if(cfg.thermal_pressure_work) {
-                const double rho=value(f,"rho_liquid_solution",cfg.rho,i,j);
-                const double work=-cfg.density_temperature_slope*old/(rho*rho)*
-                    flux.pressure_transport(f,cfg,i,j,k,feed);
-                source+=work;pressure_work_total+=work;
-            }
             add(row,row,diag);VecSetValue(system.rhs,row,source,INSERT_VALUES);
         }
         f["heat_generation"](i,j)=heat_total;
-        f["pressure_work"](i,j)=pressure_work_total/area;
     }
     add(shaft,shaft,shaft_diag);
     const double sink=cfg.shaft_ambient_heat_transfer*cfg.shaft_ambient_area_ratio*2*M_PI*mesh.R*mesh.L;
@@ -443,12 +423,11 @@ Energy::Balance balance(const Fields& f,const Mesh& mesh,const SimulationConfig&
     Fluxes flux(f,mesh,cfg);
     const int n=cfg.cross_film_layers,nz=mesh.n_z_local;
     const double cp=cfg.liquid_specific_heat,ref=cfg.temperature_reference,area=mesh.cell_volume();
-    double values[7]={0,0,0,0,0,0,0}; // heat, wall, axial, feed, continuity defect, mass, pressure work
+    double values[6]={0,0,0,0,0,0}; // heat, wall, axial, feed, continuity defect, mass
     for(int i=0;i<mesh.n_theta_local;++i)for(int j=0;j<nz;++j) {
         const auto* inlet=inlet_at(mesh,cfg,i,j);double net=0;
         for(int k=0;k<n;++k)net+=flux.divergence(i,j,k,inlet!=nullptr);
         values[0]+=f["heat_generation"](i,j)*area;
-        values[6]+=f["pressure_work"](i,j)*area;
         values[1]+=f["cross_film_wall_flux"](i,j)*area;
         for(int k=0;k<n;++k) {
             const double t=f[layer_name(k)](i,j)-ref;
@@ -468,13 +447,12 @@ Energy::Balance balance(const Fields& f,const Mesh& mesh,const SimulationConfig&
         }
         if(inlet)values[5]+=net;
     }
-    MPI_Allreduce(MPI_IN_PLACE,values,7,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE,values,6,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
     Energy::Balance result;
     result.viscous_heat_W=values[0];result.wall_heat_W=values[1];result.axial_enthalpy_out_W=values[2];
     result.groove_enthalpy_in_W=values[3];result.mass_imbalance_correction_W=values[4];result.feed_mass_kg_s=values[5];
-    result.pressure_work_W=values[6];
-    result.residual_W=values[2]+values[1]-values[0]-values[3]-values[4]-values[6];
-    result.scale_W=std::abs(values[0])+std::abs(values[1])+std::abs(values[2])+std::abs(values[3])+std::abs(values[4])+std::abs(values[6]);
+    result.residual_W=values[2]+values[1]-values[0]-values[3]-values[4];
+    result.scale_W=std::abs(values[0])+std::abs(values[1])+std::abs(values[2])+std::abs(values[3])+std::abs(values[4]);
     return result;
 }
 

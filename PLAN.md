@@ -2688,3 +2688,4 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Pass sign, uniform-pressure, analytic magnitude, pressure-reference and conservation checks locally and remotely.
 - [x] Launch one B sensitivity on eight workstation ranks, preserving original inputs, results and hashes.
 - [x] Close force balance, film/housing temperatures and exterior convection; compare absolute temperatures over the full circumference with the original B and TC1-3. Fourteen iterations in two cooling passes took 154.5 s; load error 0.09476%, profile residual 9.62e-7. TC3 changed by only -0.01336 K; the measured TC2-to-TC3 drop remains unexplained by this term.
+- [x] Remove the pressure-work option after the user judged its small effect insufficient to justify the complexity. Restore the validated thermal implementation and preserve the complete trial as a negative result.
