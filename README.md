@@ -839,3 +839,13 @@ energy checks remain independent. See [PHYSICS.md](PHYSICS.md) for equations,
 natural-convection assumptions and sensor extraction. Intermediate fields
 are exported every 50 iterations; a file named STOP in the output directory
 requests a recoverable nonconverged stop after the current iteration.
+
+### LGE thermal-expansion campaign (2026-10-17)
+
+The A-F homogeneous free-expansion campaign, isolated remote workflow and numerical-resolution checks are documented in [THERMAL_EXPANSION.md](cases/02d_fw68d_steady_six/THERMAL_EXPANSION.md). It preserves the original thermal boundaries and corrected experimental torque.
+
+All six cases completed with tighter matched nominal/expanded checks. Expansion
+raises torque by 0.047-0.272% and slightly worsens all TC1-3 errors. It removes
+less than 1% of the original torque discrepancy in the cases that improve.
+The comparison, dimensions, residuals, iteration histories and raw evidence are
+retained under `results/lge_thermal_expansion_20261017` in the parent checkout.

@@ -3243,3 +3243,69 @@ removed and the validated viscous-heating/CHT implementation restored.
 The source snapshot, converged results and full-circle comparison remain
 in `results/fw68d_pressure_work_20260929`. Reproducing that trial requires
 its archived source; it is not part of the current solver model.
+
+## Homogeneous thermal-expansion sensitivity (2026-10-17)
+
+The optional external geometry iteration uses the solved isothermal shaft
+temperature, $T_s$, and the volume-mean monolithic bearing/housing temperature,
+$T_b$. Both bodies use the specified 304 analogue, $\alpha=16\times10^{-6}$
+K$^{-1}$. The reference temperature is $T_0=20$ C, with
+$D_{s0}=0.043$ m, $D_{b0}=0.043085$ m, $L_0=0.04$ m and $D_{o0}=0.085$ m:
+
+$$
+D_s=D_{s0}[1+\alpha(T_s-T_0)],\qquad
+D_b=D_{b0}[1+\alpha(T_b-T_0)],\qquad
+c=\frac{D_b-D_s}{2},
+$$
+
+$$
+L=L_0[1+\alpha(T_b-T_0)],\qquad
+D_o=D_{o0}[1+\alpha(T_b-T_0)].
+$$
+
+Temperature differences are in kelvin. Every update starts from these original
+reference dimensions; it never multiplies an already-expanded geometry by
+another expansion factor. Equal shaft and bearing warming therefore gives
+$c=c_0[1+\alpha(T-T_0)]$ rather than a spurious change caused by accumulated strain.
+
+For the actual solid mesh of a solve, radial edges run from the shaft radius
+$R=D_s/2$ to $R_o=D_o/2$. With equal angular and axial cell sizes,
+
+$$
+w_k=\frac{r_{k+1}^2-r_k^2}{R_o^2-R^2},\qquad
+T_b=\sum_{k=0}^{15}w_k\left(\frac{1}{N_\theta N_{z,s}}
+\sum_{i=0}^{N_\theta-1}\sum_{j=0}^{N_{z,s}-1}T_{kij}\right).
+$$
+
+Here $N_\theta=720$ and $N_{z,s}=16$. Each native solid axial slab is repeated
+into 12 of the 192 film output rows. Postprocessing verifies this repetition
+and uses all 16 radial fields; bore temperature and TC0 do not replace the
+volume mean. The conduction inner radius remains $R$, while the physical bore
+is $R+c$. This preserves the existing thin-film approximation during the test.
+
+Each geometry receives a fresh coupled force, cavitation, energy and exterior
+cooling solve. Only cooling iterations at the same geometry reuse a validated
+checkpoint. The native configuration updates $R,c,L,R_o$, so the surface speed
+$\omega R$, gap field, torque integral, conduction mesh and exposed areas follow
+the new dimensions. Exterior cooling uses $D_o$ for the housing and $R$ for
+the rotating disks. Two shaft disks have area $2\pi R^2$, giving the existing
+normalized cooling-area ratio $R/L$. The groove keeps its original angular
+width, 90-degree centre and full-length convention. Sensor radii scale as
+$r_{TC}=0.026(L/L_0)$ m, at $z=L/2$ and 240/270/300 degrees. The shaft centre
+remains fixed; load-balanced bearing displacement adds no translational velocity.
+
+After closure, the new $T_s,T_b$ propose the next dimensions. Feedback converges
+when $|\Delta c|\leq10^{-9}$ m and each of
+$|\Delta D_s|,|\Delta D_b|,|\Delta L|,|\Delta D_o|\leq10^{-8}$ m. At most five
+geometry updates are allowed; reaching that cap without closure is reported
+as unresolved. These are numerical stopping criteria, not measurement errors.
+Fresh nominal and expanded repeats tighten force tolerance from 0.002 to
+$2\times10^{-5}$, FBNS/thermal criteria from $10^{-6}$ to $10^{-8}$, exterior
+coefficient closure from $10^{-3}$ to $10^{-5}$ and surface-temperature change
+from 0.01 to 0.0001 K. Paired responses separate expansion from stopping error.
+
+The model excludes stress, restraint, nonuniform thermoelastic distortion,
+elastic load deformation, contact and different stainless grades. It does not
+change measured temperatures, oil laws or the corrected experimental torque.
+See [Thermal-expansion campaign](cases/02d_fw68d_steady_six/THERMAL_EXPANSION.md)
+for the implementation trace, evidence and results.

@@ -2689,3 +2689,11 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Launch one B sensitivity on eight workstation ranks, preserving original inputs, results and hashes.
 - [x] Close force balance, film/housing temperatures and exterior convection; compare absolute temperatures over the full circumference with the original B and TC1-3. Fourteen iterations in two cooling passes took 154.5 s; load error 0.09476%, profile residual 9.62e-7. TC3 changed by only -0.01336 K; the measured TC2-to-TC3 drop remains unexplained by this term.
 - [x] Remove the pressure-work option after the user judged its small effect insufficient to justify the complexity. Restore the validated thermal implementation and preserve the complete trial as a negative result.
+
+## 2026-10-17: A-F homogeneous thermal expansion
+
+- [x] Preserve prior results and unrelated sensitivity edits in a separate task checkout.
+- [x] Verify archived native source, unchanged rendering and full-precision starting geometry.
+- [x] Implement and check per-case geometry, cooling dimensions and moving sensor sampling.
+- [x] Complete isolated remote A-F first passes, geometry feedback and tighter matched repeats. All six converge; B/E require one geometry update, others zero.
+- [x] Retrieve raw evidence and report torque, sensor errors, closure and numerical resolution. Verified the 2.44 GB archive and all 60 accepted field/configuration/checkpoint files; all response signs are resolved on the retained mesh.

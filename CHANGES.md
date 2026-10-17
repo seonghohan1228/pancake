@@ -4218,3 +4218,37 @@ B was already rejected by its thermal-profile physical check. Keep stopped
 results distinct from accepted coupled solutions. Preserve all saved outputs
 and synchronize them locally. No new simulation was launched. The executable
 of the preserved runs remains revision 23fcbe7 with its original input hashes.
+
+## 2026-10-17: Per-case thermal-expansion comparison
+
+Added optional case geometry to the steady FW68D driver while preserving its nominal rendering. Housing correlation diameter, exposed shaft radius, disk area ratio and eccentricity seed now follow each geometry. Added a campaign worker that volume-averages all solid shells, verifies axial slab repetition, resamples scaled sensors and updates dimensions from the 20 C reference. Optional convergence settings can only tighten the baseline. All geometry changes receive fresh fields. This isolates free expansion from the unrelated thermal-boundary sensitivity work; native equations are unchanged. See cases/02d_fw68d_steady_six/THERMAL_EXPANSION.md for the mechanism, checks, provenance and run policy.
+
+Completed all A-F remote runs and independent raw-field checks: six tight
+nominals, eight normal expanded stages (including B/E feedback updates), and
+six tight expanded repeats. The rebuilt Linux binary matches the archived
+baseline SHA-256 exactly. Matched torque increases are A 0.061278%,
+B 0.271758%, C 0.047152%, D 0.076815%, E 0.270900%, F 0.084735%.
+All torque and sensor response signs survive the tighter stopping check.
+Torque agreement improves in A-D but worsens in E/F; no case removes as much
+as 1% of its original torque residual through expansion. All 18 absolute
+sensor errors worsen. No physical input or torque correction was fitted.
+
+The campaign took 2 h 8 min 48 s and 31.291 allocated native MPI core-hours.
+It retains 87 successful native calls and six failed first-launch calls caused
+by CRLF OpenMPI rankfiles. Corrected LF rankfiles used a new output tree.
+Local Windows build/eight focused CTests and the complete 59-test Linux set
+passed; the initial Windows runtime-path and missing Linux fixture failures
+are preserved with their successful retries. The standalone reporter verifies
+configuration/checkpoint/source identities, all closure gates, reference-based
+geometry feedback and scaled sensor sampling before writing tables and a
+300 dpi comparison figure. Detailed equations were added to PHYSICS.md so the
+temperature averaging, area changes and feedback stopping choices are explicit.
+
+Retrieved the 2,436,978,471-byte evidence archive, verified SHA-256
+`3dc87841c321d3209330378976b73321266bff013e687df124f72a11a781d9fd`,
+and independently checked all 60 accepted configuration/checkpoint/NPZ hashes
+after extraction. The inspected 300 dpi figure, full results and raw evidence
+are in `results/lge_thermal_expansion_20261017` in the parent checkout.
+The final displayed history marks nominal geometry feedback as "not applied"
+instead of a placeholder zero; a render audit preserves both report hashes
+and confirms that the numerical results and original archive are unchanged.
