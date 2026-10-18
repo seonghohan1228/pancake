@@ -92,14 +92,108 @@ int main() {
     near(copy.density_temperature_intercept, 1000, "Round-trip intercept");
     near(copy.density_temperature_slope, -1, "Round-trip slope");
 
-    // Failure must clear both tables, including when reloading a previously valid file.
     const auto bad = std::filesystem::temp_directory_path() / "pancake_fw68d_invalid.csv";
+    // c=0 is no-species bookkeeping for a fixed-property surrogate, not its measured composition.
+    {
+        std::ofstream out(bad);
+        out << "c_mass_fraction,T_C,P_MPa,viscosity_mm2s\n0,30,,8\n0,40,,2\n";
+    }
+    SimulationConfig fixed = cfg;
+    fixed.solution_table_file = bad;
+    fixed.cavitation_model = CavitationModel::FBNS;
+    fixed.dissolved_gas_species = DissolvedGasSpecies::AIR;
+    fixed.dissolved_gas_initial = 0;
+    fixed.dissolved_gas_henry_coeff = 0;
+    fixed.solubility_model = SolubilityModel::HENRY;
+    fixed.density_model = DensityModel::CONSTANT;
+    fixed.rho = 950;
+    fixed.kinematic_viscosity_log_interpolation = true;
+    errors.clear();
+    FluidProperties::load_config_property_tables(fixed, errors);
+    fixed.validate(errors, warnings);
+    check(errors.empty(), "Viscosity-only fixed-property configuration must load and validate");
+    check(fixed.solubility_curve_table.empty() && fixed.kinematic_composition_table.axis.size() == 1,
+          "Viscosity-only input must not invent a solubility curve");
+    near(FluidProperties::liquid_solution_viscosity(0, p, 303.15, fixed), 950 * 8e-6,
+         "Singleton table preserves the first Celsius/SI node");
+    near(FluidProperties::liquid_solution_viscosity(0, p, 308.15, fixed), 950 * 4e-6,
+         "Singleton table interpolates log nu linearly in Celsius");
+    near(FluidProperties::liquid_solution_viscosity(0, p, 313.15, fixed), 950 * 2e-6,
+         "Singleton table preserves the last Celsius/SI node");
+    rejects([&] { FluidProperties::liquid_solution_viscosity(0, p, 303.14, fixed); },
+            "Singleton table must reject temperature below its range");
+    rejects([&] { FluidProperties::liquid_solution_viscosity(0, p, 313.16, fixed); },
+            "Singleton table must reject temperature above its range");
+    rejects([&] { fixed.kinematic_composition_table.interpolate(.1, 308.15, false, true); },
+            "Singleton table must reject a tracked composition outside its zero node");
+    auto thermal = fixed;
+    thermal.solution_mode = SolutionMode::STEADY_STATE;
+    thermal.temperature_model = TemperatureModel::ENERGY_EQUATION;
+    thermal.cross_film_thermal_model = CrossFilmModel::FINITE_VOLUME;
+    thermal.groove_mixing_model = GrooveMixingModel::FLUX_BALANCED;
+    InletConfig groove;
+    groove.type = InletConfig::Type::GROOVE;
+    groove.theta = 90;
+    groove.size = 15;
+    groove.p_supply = 1500000;
+    groove.feeds_fresh_oil = true;
+    groove.t_supply = 303.15;
+    thermal.inlets = {groove};
+    thermal.thermal_convection_scheme = ConvectionScheme::UPWIND;
+    thermal.liquid_specific_heat = 2010;
+    thermal.bush_thermal_model = BushThermalModel::CONDUCTION_3D;
+    thermal.bush_outer_radius = thermal.R + .02;
+    thermal.bush_axial_cells = thermal.n_z_global;
+    thermal.bush_end_natural_convection = true;
+    thermal.density_temperature_slope = -.7284;
+    errors.clear();
+    warnings.clear();
+    thermal.validate(errors, warnings);
+    for (const auto& error : errors) std::cerr << error << '\n';
+    check(errors.empty(), "Constant-density conjugate housing accepts explicit Boussinesq buoyancy");
+    check(std::any_of(warnings.begin(), warnings.end(), [](const auto& warning) {
+        return warning.find("only for exterior housing-end buoyancy") != std::string::npos;
+    }), "Constant-density buoyancy assumption must be reported");
+    near(FluidProperties::liquid_solution_density(0, p, 350, thermal), 950,
+         "Buoyancy slope must not change the constant liquid density");
+    for (double slope : {0., 1., std::numeric_limits<double>::quiet_NaN(),
+                         -std::numeric_limits<double>::infinity()}) {
+        thermal.density_temperature_slope = slope;
+        errors.clear();
+        thermal.validate(errors, warnings);
+        check(!errors.empty(), "Constant-density end convection rejects invalid buoyancy slopes");
+    }
+    thermal.density_temperature_slope = -.7284;
+    thermal.density_model = DensityModel::MIXTURE;
+    thermal.dissolved_gas_liquid_density = 1000;
+    errors.clear();
+    thermal.validate(errors, warnings);
+    check(std::any_of(errors.begin(), errors.end(), [](const auto& error) {
+        return error.find("Housing end natural convection requires") != std::string::npos;
+    }), "End convection must still reject unsupported density models");
+    fixed.solubility_model = SolubilityModel::CURVE_TABLE;
+    errors.clear();
+    fixed.validate(errors, warnings);
+    check(!errors.empty(), "Viscosity-only input cannot support CURVE_TABLE solubility");
+
+    // Failure must clear both tables, including when reloading a previously valid file.
     for (const char* row : {".1,40,0.1,NaN", ".1,40,-1,10", "1.1,40,1,10", ".1,40,1,10junk"}) {
         { std::ofstream out(bad); out << "c_mass_fraction,T_C,P_MPa,viscosity_mm2s\n" << row << '\n'; }
         std::string error;
         PropertyCurveTable solubility = cfg.solubility_curve_table, viscosity = table;
         FluidProperties::load_solution_table_csv(bad, solubility, viscosity, error);
         check(!error.empty() && solubility.empty() && viscosity.empty(), "Bad CSV must fail without stale data");
+    }
+    for (const char* rows : {"0,30,,8\n", "0,30,,8\n0,30,,2\n",
+                            ".3,30,,8\n.3,40,,2\n",
+                            "0,30,,8\n0,40,,2\n.3,30,1,4\n.3,40,1,1\n",
+                            ".3,30,1,8\n.3,40,2,2\n"}) {
+        { std::ofstream out(bad); out << "c_mass_fraction,T_C,P_MPa,viscosity_mm2s\n" << rows; }
+        std::string error;
+        PropertyCurveTable solubility = cfg.solubility_curve_table, viscosity = table;
+        FluidProperties::load_solution_table_csv(bad, solubility, viscosity, error);
+        check(!error.empty() && solubility.empty() && viscosity.empty(),
+              "Incomplete viscosity or partial solubility input must retain strict rejection");
     }
     std::filesystem::remove(bad);
     std::cout << "PASS: FW68D source nodes, interpolation, density, SI conversion, bounds and config\n";

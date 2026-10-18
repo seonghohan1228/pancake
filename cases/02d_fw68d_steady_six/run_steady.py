@@ -133,8 +133,28 @@ def mpi_command(mpi, solver, ranks, rankfile=None, platform=sys.platform):
     return command + ["-n", str(ranks), str(solver), "--config", "config.txt"]
 
 
-def density(temperature_c):
+def density(temperature_c, materials=None):
+    if materials and "oil_density_kg_m3" in materials:
+        rho = float(materials["oil_density_kg_m3"])
+        if not math.isfinite(rho) or rho <= 0:
+            raise ValueError("oil_density_kg_m3 must be finite and positive")
+        return rho
     return 954.9 - 0.7284 * temperature_c
+
+
+def angular_speed(case):
+    omega = float(case["angular_speed_rad_s"] if "angular_speed_rad_s" in case
+                  else case["angular_speed_magnitude_rad_s"])
+    if not math.isfinite(omega) or omega == 0:
+        raise ValueError("case angular speed must be finite and nonzero")
+    return omega
+
+
+def cross_film_layers(materials):
+    layers = materials.get("cross_film_layers", 16)
+    if type(layers) is not int or layers not in (16, 32):
+        raise ValueError("cross_film_layers must be the integer 16 or 32")
+    return layers
 
 
 def viscosity(temperature_c, points):
@@ -150,11 +170,11 @@ def viscosity(temperature_c, points):
 
 def oil_properties(temperature_c, points, materials):
     nu = viscosity(temperature_c, points)
-    rho = density(temperature_c)
+    rho = density(temperature_c, materials)
     cp = float(materials["oil_cp_J_kg_K"])
     k = float(materials["oil_conductivity_W_m_K"])
-    if min(nu, rho, cp, k) <= 0:
-        raise ValueError("nonpositive oil property")
+    if any(not math.isfinite(value) or value <= 0 for value in (nu, rho, cp, k)):
+        raise ValueError("oil properties must be finite and positive")
     pr = nu * rho * cp / k
     return nu, rho, pr, k
 
@@ -164,7 +184,10 @@ def housing_coefficient(outer_temperature_k, ambient_k, points, materials):
     nu, rho, pr, k = oil_properties(film_c, points, materials)
     diameter = materials.get("housing_outer_diameter_m", 0.085)
     alpha = k / (rho * float(materials["oil_cp_J_kg_K"]))
-    rayleigh = (9.80665 * 0.7284 / rho * abs(outer_temperature_k - ambient_k)
+    beta = float(materials.get("oil_thermal_expansion_1_K", 0.7284 / rho))
+    if not math.isfinite(beta) or beta <= 0:
+        raise ValueError("oil_thermal_expansion_1_K must be finite and positive")
+    rayleigh = (9.80665 * beta * abs(outer_temperature_k - ambient_k)
                 * diameter**3 / (nu * alpha))
     nusselt = (0.60 + 0.387 * rayleigh**(1 / 6)
                 / (1 + (0.559 / pr)**(9 / 16))**(8 / 27))**2
@@ -233,9 +256,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
     temperature = float(case["tc0_boundary_temperature_k"])
     load = float(case["load_mean_n"])
     load_vector = applied_load(load)
-    omega = float(case["angular_speed_magnitude_rad_s"])
-    rho = density(temperature - 273.15)
-    nu = viscosity(temperature - 273.15, experiment["viscosity"]["points"])
+    omega = angular_speed(case)
+    nu, rho, _, _ = oil_properties(temperature - 273.15, experiment["viscosity"]["points"], materials)
     values = {
         "R": radius, "c": clearance, "e": eps * clearance,
         "L": geometry["bearing_length_m"], "attitude_angle_deg": psi,
@@ -263,7 +285,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "rho_cp": rho * float(materials["oil_cp_J_kg_K"]),
         "liquid_specific_heat": materials["oil_cp_J_kg_K"],
         "thermal_conductivity": materials["oil_conductivity_W_m_K"],
-        "cross_film_thermal_model": "FINITE_VOLUME", "cross_film_layers": 16,
+        "cross_film_thermal_model": "FINITE_VOLUME", "cross_film_layers": cross_film_layers(materials),
         "cross_film_profile_order": 4,
         "cross_film_quadrature_points": 6, "cross_film_relaxation": 0.3,
         "bush_thermal_model": "CONDUCTION_3D", "bush_axial_cells": 16,
@@ -294,6 +316,14 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "output_verbosity": "DETAILED",
         "output_fields": "pressure,film_content,h,temperature,mu,temperature_journal,temperature_bearing,heat_flux_journal,heat_flux_bearing,fluid_force_x,fluid_force_y,fluid_force_z,pressure_force_x,pressure_force_y,friction_torque,bearing_x,bearing_y,bearing_z,temperature_housing_outer," + ",".join(f"cross_film_solid_{k}" for k in range(16)),
     }
+    if "oil_density_kg_m3" in materials:
+        beta = float(materials.get("oil_thermal_expansion_1_K", .7284 / rho))
+        if not math.isfinite(beta) or beta <= 0:
+            raise ValueError("oil_thermal_expansion_1_K must be finite and positive")
+        values["density_model"] = "CONSTANT"
+        values["density_temperature_intercept"] = rho
+        # With CONSTANT density this slope supplies annular-end buoyancy only.
+        values["density_temperature_slope"] = -rho * beta
     values.update(case.get("solver_tolerances", {}))
     if initial_state_file is not None:
         values["steady_initial_state_file"] = str(Path(initial_state_file).resolve())
@@ -357,7 +387,7 @@ def check_native_equilibrium(log, force_error):
 
 
 def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, viscosity_points,
-                   native_equilibrium=False, clearance=None):
+                    native_equilibrium=False, clearance=None, materials=None):
     if returncode:
         raise ValueError(f"solver exit code {returncode}")
     diagnostic = last_diagnostic(run_dir)
@@ -403,7 +433,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
     table_max = float(viscosity_points[-1]["temperature_c"]) + 273.15
     if profile_min < table_min or profile_max > table_max:
         raise ValueError("cross-film temperature profile outside FW68D viscosity table")
-    if density(profile_max - 273.15) <= 0:
+    if density(profile_max - 273.15, materials) <= 0:
         raise ValueError("nonpositive density at hottest cross-film profile point")
     for key in ("coupling_R_p", "coupling_R_T"):
         if (not math.isfinite(float(diagnostic[key])) or float(diagnostic[key]) < 0 or
@@ -429,7 +459,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
         raise ValueError("nonpositive film gap")
     if float(np.min(fields["mu"])) <= 0:
         raise ValueError("nonpositive dynamic viscosity")
-    rho = 954.9 - 0.7284 * (fields["T"] - 273.15)
+    rho = density(fields["T"] - 273.15, materials)
     if not np.isfinite(rho).all() or float(np.min(rho)) <= 0:
         raise ValueError("nonpositive or nonfinite density")
     for key in ("T", "T_bearing", "T_journal"):
@@ -487,10 +517,13 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
 class Campaign:
     def __init__(self, args):
         self.args = args
-        self.experiment = json.loads(EXPERIMENT.read_text(encoding="utf-8"))
+        self.experiment_path = Path(getattr(args, "experiment", None) or EXPERIMENT).resolve()
+        self.table_path = Path(getattr(args, "table", None) or TABLE).resolve()
+        self.experiment = json.loads(self.experiment_path.read_text(encoding="utf-8"))
         self.materials_path = Path(args.materials).resolve()
         self.setup = json.loads(self.materials_path.read_text(encoding="utf-8"))
         self.materials = self.setup["material_settings"]
+        cross_film_layers(self.materials)
         self.boundaries = self.setup["specified_boundaries"]
         balance_setup = self.setup["force_balance"]
         if (balance_setup["applied_load_unit_vector"] != [0, 1] or
@@ -526,10 +559,10 @@ class Campaign:
             case["tc0_boundary_temperature_k"] = extra["tc0_boundary_temperature_K"]
             case["nu_mm2_s"] = viscosity(case["tc0_boundary_temperature_c"],
                                             self.experiment["viscosity"]["points"]) * 1e6
-            case["rho_kg_m3"] = density(case["tc0_boundary_temperature_c"])
+            case["rho_kg_m3"] = density(case["tc0_boundary_temperature_c"], self.materials)
             case["mu_pa_s"] = case["rho_kg_m3"] * case["nu_mm2_s"] * 1e-6
             pressure = case["load_mean_n"] / (case["journal_diameter_m"] * case["bearing_length_m"])
-            case["sommerfeld_number"] = (case["mu_pa_s"] * case["rpm_nominal"] / 60 / pressure
+            case["sommerfeld_number"] = (case["mu_pa_s"] * abs(case["rpm_nominal"]) / 60 / pressure
                                          * (case["journal_diameter_m"] / (2 * case["radial_clearance_m"]))**2)
             self.cases[case["case_id"]] = case
         self.points = self.experiment["viscosity"]["points"]
@@ -545,9 +578,9 @@ class Campaign:
         self.restart_provenance = {}
         self.source_hash = source_sha256()
         self.executable_hash = sha256(self.solver) if self.solver and self.solver.is_file() else None
-        self.input_hashes = {"experiment_sha256": sha256(EXPERIMENT),
+        self.input_hashes = {"experiment_sha256": sha256(self.experiment_path),
                              "material_setup_sha256": sha256(self.materials_path),
-                             "property_table_sha256": sha256(TABLE)}
+                             "property_table_sha256": sha256(self.table_path)}
         self.completed = {key: [] for key in self.cases}
         if self.work and self.work.is_dir():
             for path in self.work.glob("*/*/metrics.json"):
@@ -586,7 +619,8 @@ class Campaign:
                                      float(self.materials["cavitation_pressure_Pa"]),
                                      float(case["tc0_boundary_temperature_k"]), self.points,
                                      self.native_equilibrium,
-                                     float(case_geometry(case, self.experiment)["radial_clearance_m"]))
+                                     float(case_geometry(case, self.experiment)["radial_clearance_m"]),
+                                     materials=self.materials)
             result = {**record, **checked, "run_dir": str(run_dir)}
             self.rechecked[run_dir] = result
             return result
@@ -596,7 +630,7 @@ class Campaign:
 
     def config_for(self, case, eps, psi, h_bush, h_shaft, output_dir, initial_state_file=None):
         return render_config(case, self.experiment, self.boundaries, self.materials,
-                             eps, psi, h_bush, h_shaft, output_dir, TABLE,
+                             eps, psi, h_bush, h_shaft, output_dir, self.table_path,
                              self.args.coupling_max_iters, self.args.coupling_relaxation,
                              initial_state_file, self.native_equilibrium)
 
@@ -641,7 +675,7 @@ class Campaign:
                 outer = result["T_outer_mean_K"]
                 target_b, _ = housing_coefficient(outer, ambient, self.points, case_materials(case, self.materials))
                 target_s, _ = shaft_coefficient(result["T_shaft_mean_K"], ambient,
-                                                case["angular_speed_magnitude_rad_s"],
+                                                angular_speed(case),
                                                 self.points, case_materials(case, self.materials))
                 if max(abs(target_b / h_b - 1), abs(target_s / h_s - 1)) >= self.h_tolerance:
                     continue
@@ -754,7 +788,8 @@ class Campaign:
                                          float(case["load_mean_n"]), float(self.materials["cavitation_pressure_Pa"]),
                                          float(case["tc0_boundary_temperature_k"]), self.points,
                                          self.native_equilibrium,
-                                         float(case_geometry(case, self.experiment)["radial_clearance_m"])))
+                                         float(case_geometry(case, self.experiment)["radial_clearance_m"]),
+                                         materials=self.materials))
             record["status"] = "valid_inner_solve"
         except Exception as error:
             record["wall_seconds"] = time.monotonic() - started
@@ -782,7 +817,7 @@ class Campaign:
                 print(f"reusing thermally closed position {cached['run_dir']}", flush=True)
                 return cached
         ambient = float(case["tc0_boundary_temperature_k"])
-        omega = float(case["angular_speed_magnitude_rad_s"])
+        omega = angular_speed(case)
         if getattr(self.args, "initial_state_root", None):
             self.recover_checkpoint(case)
             eps, psi = self.restart_positions.pop(case["case_id"], (eps, psi))
@@ -846,23 +881,23 @@ def self_check(campaign):
             raise ValueError("initial seed must put bearing centre above fixed journal centre")
         temperature = case["tc0_boundary_temperature_c"]
         nu = viscosity(temperature, campaign.points)
-        mu = density(temperature) * nu
+        mu = density(temperature, campaign.materials) * nu
         if not math.isclose(mu, case["mu_pa_s"], rel_tol=2e-12):
             raise ValueError(f"case {case['case_id']} viscosity mismatch")
-        if not math.isclose(case["angular_speed_magnitude_rad_s"],
-                            case["rpm_nominal"] * math.pi / 30, rel_tol=2e-12):
+        if not math.isclose(abs(angular_speed(case)),
+                            abs(case["rpm_nominal"]) * math.pi / 30, rel_tol=2e-12):
             raise ValueError(f"case {case['case_id']} angular speed mismatch")
         if case["case_id"] in expected or case["case_id"] in ("E_low", "E_high"):
             pressure = case["load_mean_n"] / (case["journal_diameter_m"] * case["bearing_length_m"])
-            sommerfeld = mu * (case["rpm_nominal"] / 60) / pressure * (
+            sommerfeld = mu * (abs(case["rpm_nominal"]) / 60) / pressure * (
                 case["journal_diameter_m"] / (2 * case["radial_clearance_m"]))**2
             if not math.isclose(sommerfeld, case["sommerfeld_number"], rel_tol=2e-12):
                 raise ValueError(f"case {case['case_id']} Sommerfeld mismatch")
         amb = case["tc0_boundary_temperature_k"]
         config = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials, .3, 140,
-                               60, 100, Path("/tmp/steady-check"), TABLE)
+                               60, 100, Path("/tmp/steady-check"), campaign.table_path)
         warmed = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials, .3, 140,
-                               61, 101, Path("/tmp/other-output"), TABLE,
+                               61, 101, Path("/tmp/other-output"), campaign.table_path,
                                initial_state_file=Path("/tmp/previous-state.dat"))
         path_keys = {"output_dir", "steady_initial_state_file"}
         if config_identity(config, path_keys) == config_identity(warmed, path_keys):
@@ -910,7 +945,7 @@ def self_check(campaign):
             raise ValueError("groove/axial reservoir and cavity references mismatch")
         outer = outer_temperature(amb + 10, amb, 60, .0215, .0425, 15)
         hb, _ = housing_coefficient(outer, amb, campaign.points, campaign.materials)
-        hs, meta = shaft_coefficient(amb + 10, amb, case["angular_speed_magnitude_rad_s"],
+        hs, meta = shaft_coefficient(amb + 10, amb, angular_speed(case),
                                      campaign.points, campaign.materials)
         if min(hb, hs) <= 0 or not meta["laminar_Re_under_1e5"]:
             raise ValueError("invalid external coefficient or laminar disk assumption")
@@ -928,7 +963,7 @@ def self_check(campaign):
         else:
             raise ValueError("invalid native or VTK force convergence accepted")
     trial = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials,
-                          .3, 140, 60, 100, Path("/tmp/trial"), TABLE, native_equilibrium=False)
+                          .3, 140, 60, 100, Path("/tmp/trial"), campaign.table_path, native_equilibrium=False)
     if "motion_model = STATIC" not in trial or config_identity(trial) == config_identity(config):
         raise ValueError("fixed-position trial was not isolated from native equilibrium")
     record = {"returncode": 0, "source_sha256": campaign.source_hash,
@@ -995,6 +1030,8 @@ def main():
     parser.add_argument("--work", help="new or existing campaign output root")
     parser.add_argument("--cases", default="A,B,C,D,E,F", help="comma-separated A-F or E_low,E_high")
     parser.add_argument("--materials", default=str(SETUP), help="JSON with material_settings object")
+    parser.add_argument("--experiment", default=str(EXPERIMENT), help="case and viscosity-point JSON")
+    parser.add_argument("--table", default=str(TABLE), help="native kinematic-viscosity CSV")
     parser.add_argument("--rankfile", help="existing OpenMPI rankfile; Linux only")
     parser.add_argument("--initial-state-root", help="prior campaign work root; compatible fields seed fresh solves only")
     parser.add_argument("--timeout", type=int, default=7200, help="seconds per native solve")

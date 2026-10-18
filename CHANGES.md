@@ -4252,3 +4252,75 @@ are in `results/lge_thermal_expansion_20261017` in the parent checkout.
 The final displayed history marks nominal geometry feedback as "not applied"
 instead of a placeholder zero; a render audit preserves both report hashes
 and confirms that the numerical results and original archive are unchanged.
+
+## 2026-10-18 — Prepare 17-case undersaturated mixture comparison
+
+Added a campaign for the 17 selected FW68D–R410A windows, retaining the saved
+TC2-based coordinates, all 103 pure-oil observations and six CFD markers. The
+user resolved chamber pressure as the groove/end boundary and confirmed liquid
+at approximately TC0 around exposed surfaces. The conditional chart-30% scenario
+omits species release and uses explicitly declared density/thermal analogues;
+it does not reinterpret the unverified concentration basis.
+
+The solution-table loader now admits one viscosity-only no-species curve with
+blank pressure, while existing mixed-table validation remains strict. The
+shared driver accepts actual experiment/table paths, constant density, a
+separate exterior buoyancy analogue, signed speed and 16/32 film-layer checks.
+Native validation permits the existing annular buoyancy formula with constant
+bulk density and a finite negative buoyancy-only slope. The physical equations
+are unchanged. Default A–F configuration rendering remains byte-identical.
+
+Added independent input/coordinate checks, preserved-run orchestration and a
+raw-field/provenance/convergence verifier with a common-coordinate Stribeck
+overlay. Native property/domain tests and Python driver/launcher tests cover
+the new paths. Local failed smoke/fixture attempts are retained alongside the
+successful repairs. See the campaign README and PHYSICS.md for scope, equations,
+acceptance and limits. Completion and evidence retrieval are recorded below.
+
+The first M02 pilot failed the existing mass-balance gate: its signed relative
+mass residual was -4.553754639e-8, exceeding the 1e-8 magnitude limit despite
+a pressure-equation residual G of 6.023062e-9. All three initial pilot attempts
+remain preserved in `lge-mixture-20261018`. The retry uses the isolated
+`lge-mixture-20261018-pressure-refined` directory with FBNS tolerances of 1e-10
+for normal cases and 1e-12 for tight checks. Force, thermal, mass, energy and
+cooling acceptance criteria remain unchanged. No physical input or equation
+changes for this retry, and no failed iterate counts as an accepted result.
+
+The first M11/M16 native solves satisfied conservation and cooling closure,
+but the worker searched for a closed result using the initial bearing-position
+seed instead of the final cooling call's recorded seed. Both preserved runs
+pass the corrected independent lookup. The worker and reporter now use the
+recorded seed and require the returned run directory to match. The focused
+worker regression accepts the final seed and rejects missing or wrong-run
+closure. The short pressure-refined attempt was interrupted and retained;
+the corrected snapshot runs in `lge-mixture-20261018-corrected`.
+
+The input audit now distinguishes feed viscosity at TC0 from reference
+viscosity at measured TC2. Reporting retains all authoritative experimental
+columns, excludes obsolete preflight proposals from the results CSV, and adds
+verified physical controls plus signed and absolute torque residuals. These
+changes do not alter the experimental coordinates or physical scenario.
+
+## 2026-10-19 — Complete verified mixture comparison
+
+All 17 corrected normal cases pass independent raw-field/provenance checks.
+Bearing torque errors range from -86.31% to -46.68%, and TC1-3 mean absolute
+error is 0.35923 K. All original experiment columns and the 103+6 pure-oil
+coordinates remain unchanged; the overlay was inspected. Tighter M02/M16
+checks change torque by only +0.033291%/+0.009700%, respectively, and probe
+temperatures by at most 0.000124 K. The tight 32-layer M02 check also passes:
+relative to tight 16 layers, torque changes by +3.0671e-6% and probes by at
+most 1.1628e-5 K. This measures the film-normal sensitivity only. All 20 jobs
+finished successfully in 95 min 25.7 s.
+
+Retrieved the 2,702,683,177-byte complete evidence archive and verified
+SHA-256 `c6752b66cb5a1dc6a418326514781798411a0e90a3bf9c1ec753239cf60678f2`,
+plus 4,463 evidence-file hashes. Both prior attempts remain preserved. All
+92 native-call records, including the three interrupted prior calls, account
+for 20.466822 allocated core-hours. The final reports and
+inspected overlay are under `results/lge_mixture_20261018/analysis` in the parent
+checkout. Research-vault attachments, the existing mixture discussion and
+project log now record the completed results and limitations. The separate
+completed A-F expansion results were also retained in their existing discussion.
+No physical parameters were fitted, no full mesh-independence claim was made,
+and no Git push was performed.

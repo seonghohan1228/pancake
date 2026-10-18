@@ -849,3 +849,29 @@ raises torque by 0.047-0.272% and slightly worsens all TC1-3 errors. It removes
 less than 1% of the original torque discrepancy in the cases that improve.
 The comparison, dimensions, residuals, iteration histories and raw evidence are
 retained under `results/lge_thermal_expansion_20261017` in the parent checkout.
+
+### LGE undersaturated mixture comparison (2026-10-18)
+
+The [17-case mixture campaign](cases/02e_lge_mixture/README.md) preserves the
+existing pure-oil coordinates and runs a conditional fixed-chart-30% viscosity
+scenario at nominal geometry. Chamber pressure supplies the groove and both
+ends; TC0 is the feed/liquid-bath proxy. Density and thermal analogues are
+explicit, and refrigerant release is omitted. The viscosity-only table loader
+accepts a single no-tracked-species curve without inventing solubility data.
+The established driver accepts separate experiment/table paths, constant
+density, an exterior buoyancy coefficient and a focused 16/32-layer check.
+The initial M02 pilot failed the unchanged mass-balance criterion. All prior
+attempts remain preserved. The corrected snapshot runs in the separate
+`lge-mixture-20261018-corrected` remote directory with FBNS tolerances of 1e-10
+normally and 1e-12 for refinement checks. Final verification uses the recorded
+seed of the last cooling call. All 17 normal cases pass independent verification.
+Bearing torque errors are -86.31% to -46.68%; TC1-3 errors are -0.134 to
++0.705 K, with a mean absolute error of 0.359 K. Tighter tolerances change
+M02/M16 torque by only +0.03329%/+0.00970%. At tight tolerances, doubling M02's
+film layers changes torque by 0.0000031% and probes by at most 0.000012 K.
+These focused checks do not establish full mesh independence. All raw evidence,
+including failed/interrupted attempts, has been retrieved and hash-verified in
+`results/lge_mixture_20261018` in the parent checkout. The results CSV, inspected
+overlay and methods are in its `analysis` directory; retained research records
+are updated. Physical inputs and acceptance criteria are unchanged.
+See the campaign methods for validity limits, remote execution and acceptance.

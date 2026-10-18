@@ -903,6 +903,7 @@ struct SimulationConfig {
     DensityModel density_model = DensityModel::CONSTANT;
     double density_temperature_intercept = 954.9; // rho(T_C = 0) [kg/m^3]
     double density_temperature_slope = -0.7284;   // d(rho)/d(T_C) [kg/(m^3 K)]
+    // CONSTANT density: end natural convection uses this only as beta = -slope/rho.
     LiquidViscosityModel liquid_viscosity_model = LiquidViscosityModel::CONSTANT;
     double dissolved_gas_initial = 0.0;          // Dissolved gas mass fraction [kg gas / kg liquid solution]
     double dissolved_gas_max = 1.0;              // Upper bound for dissolved gas mass fraction
@@ -1649,8 +1650,15 @@ struct SimulationConfig {
                 if (bush_axial_cells < 1 || bush_axial_cells > n_z_global || n_z_global % bush_axial_cells != 0)
                     error("bush_axial_cells must be a positive divisor of n_z_global.");
                 require_nonnegative(bush_end_heat_transfer, "bush_end_heat_transfer");
-                if (bush_end_natural_convection && density_model != DensityModel::LINEAR_TEMPERATURE)
-                    error("Housing end natural convection requires LINEAR_TEMPERATURE density for thermal expansion.");
+                if (bush_end_natural_convection) {
+                    if (density_model == DensityModel::CONSTANT) {
+                        if (!finite(density_temperature_slope) || density_temperature_slope >= 0.0)
+                            error("CONSTANT density with housing end natural convection requires a finite negative density_temperature_slope for buoyancy.");
+                        else
+                            warn("CONSTANT density: density_temperature_slope is used only for exterior housing-end buoyancy; liquid density remains rho.");
+                    } else if (density_model != DensityModel::LINEAR_TEMPERATURE)
+                        error("Housing end natural convection requires LINEAR_TEMPERATURE or CONSTANT density with an explicit buoyancy slope.");
+                }
             }
             else if (bush_end_heat_transfer != 0 || bush_end_natural_convection)
                 error("Housing end convection requires CONDUCTION_3D.");

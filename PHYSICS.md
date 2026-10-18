@@ -3309,3 +3309,91 @@ elastic load deformation, contact and different stainless grades. It does not
 change measured temperatures, oil laws or the corrected experimental torque.
 See [Thermal-expansion campaign](cases/02d_fw68d_steady_six/THERMAL_EXPANSION.md)
 for the implementation trace, evidence and results.
+
+## Conditional undersaturated FW68D–R410A scenario (18 October 2026)
+
+The 17 selected mixture cases use the same nominal geometry and resolved steady
+Reynolds/FBNS/film-energy/housing-conduction equations as the accepted pure-oil
+campaign. The measured refrigerant content of approximately 30% is not assigned
+a mass or volume basis. The digitized chart's 30% label identifies one
+fixed viscosity curve, with no concentration evolution or phase-release model.
+
+For adjacent decoded nodes $(T_i,\nu_i)$ and $(T_{i+1},\nu_{i+1})$, with Celsius
+temperature and kinematic viscosity in mm²/s, evaluate
+
+$$w=\frac{T-T_i}{T_{i+1}-T_i},\qquad
+\nu(T)=\exp[(1-w)\ln\nu_i+w\ln\nu_{i+1}],\qquad
+\mu(T)=950\,\nu(T)\,10^{-6}\ {\rm Pa\,s}.$$
+
+The calibrated chart coordinates are decoded in logarithmic Kelvin on the
+temperature axis and logarithmic viscosity on the ordinate before this Celsius
+interpolation. Native Kelvin queries have identical interpolation weights.
+Local solved cross-film temperatures determine viscosity. The accepted node
+range is −26.0429574434 to 84.0172809983 °C. Evaluation outside this range fails.
+A viscosity-only table contains one solver coordinate $c=0$ and
+blank pressure. This denotes no tracked species, not the physical absence of
+refrigerant. It leaves solubility empty and cannot support CURVE_TABLE release.
+
+The user confirms common chamber/groove/end pressure and liquid around exposed
+surfaces. Each case therefore applies $p_{\rm res}=10^5p_{\rm measured,bar}$ Pa
+absolute at both ends and the groove. The selected surrogate separately uses
+$p_{\rm cav}=0$ Pa absolute as an oil-vapor-limit idealization while suppressing
+refrigerant release. This is not mixture bubble pressure, refrigerant partial
+pressure or a conclusion that local degassing cannot occur. Native R410A EOS
+data alone cannot replace missing mixture solubility and thermal inputs.
+
+The conditional bulk density is constant at 950 kg/m³. Fluid $c_p=2010$ J/(kg K)
+and $k=0.13$ W/(m K) use the BVC32-PVE analogue. Steel $k_s=15$ W/(m K) uses
+the 304 stainless analogue. Neither fluid value is a measured mixture property.
+Exterior natural convection separately uses the declared Boussinesq analogue
+$\beta=0.7284/950$ K⁻¹. Film density remains 950 kg/m³, and volumetric heat
+capacity is $950c_p$ J/(m³ K). Buoyancy affects only exterior convection
+correlations:
+
+$$\alpha=\frac{k}{\rho c_p},\qquad Pr=\frac{\nu}{\alpha},\qquad
+Ra_\ell=\frac{g\beta|T_s-T_0|\ell^3}{\nu\alpha}.$$
+
+The cylinder and annular-face correlations use the same $\beta$, while rotating
+shaft disks use $Re_R=|\omega|R^2/\nu$. All properties are evaluated at the local
+surface/bath mean temperature. The existing annular implementation obtains
+$\beta=-b/\rho$ from `density_temperature_slope`, denoted by $b$. Under CONSTANT
+density, that slope is explicitly a buoyancy-only input. Validation requires a finite
+negative slope and emits this assumption. LINEAR_TEMPERATURE behavior remains
+unchanged. Both input paths feed the same existing heat-transfer equations.
+
+TC0 supplies feed and external liquid temperatures, not prescribed wall
+temperatures. The 17 experimental plotting coordinates retain measured TC2:
+
+$$S_{\rm ref}=\frac{\mu(TC2)(RPM/60)LD}{W}\left(\frac Rc\right)^2,
+\qquad f_{\rm CFD}=\frac{M_{\rm CFD}}{WR}.$$
+
+Native torque is cylindrical journal shear integrated over theta and axial
+position, including Couette and pressure shear with the existing striated
+cavity treatment. Project it onto rotation for comparison. Exposed disk drag,
+seals, motor losses and resolved groove sidewall drag are not included. Compare
+against the saved bearing residual and separately compare $M_{\rm CFD}+M_{\rm
+reference}(RPM)$ against measured directional motor torque. This reference's
+transfer to pressurized mixture is unverified. Sample housing TC1/2/3 at 26 mm
+radius, 20 mm axial position and 240/270/300°. TC0 has no independent sensor-error
+test because it is the boundary proxy. Tight tolerances and the lowest-S film
+layer refinement quantify numerical sensitivity without validating the physical
+composition, cavity threshold or thermal analogues.
+
+Normal cases use an FBNS pressure/complementarity tolerance of $10^{-10}$;
+tight checks use $10^{-12}$. Normal force and temperature/profile limits remain
+0.002 and $10^{-6}$; tight checks retain $2\times10^{-5}$ and $10^{-8}$.
+The mass-balance magnitude limit remains $10^{-8}$, with normal/tight exterior
+coefficient closure of $10^{-3}/10^{-5}$ and wall-temperature change of
+0.01/0.0001 K. Global energy limits remain $10^{-6}$ normally and $10^{-8}$
+for tight checks.
+
+The initial M02 pilot had signed relative mass residual $-4.553754639\times10^{-8}$,
+so it failed the independent mass gate despite pressure-equation residual
+$G=6.023062\times10^{-9}$. A small scaled pressure residual alone does not
+establish the required global mass balance. All three initial pilot attempts
+remain preserved in `lge-mixture-20261018`. The retry uses the isolated
+`lge-mixture-20261018-corrected` directory and the tighter FBNS settings above;
+the earlier short pressure-refined attempt is also retained. Final cooling
+verification uses the recorded seed of that call. Physical inputs, equations
+and acceptance gates are unchanged.
+Campaign completion remains pending.

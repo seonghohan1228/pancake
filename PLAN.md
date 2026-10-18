@@ -2697,3 +2697,18 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Implement and check per-case geometry, cooling dimensions and moving sensor sampling.
 - [x] Complete isolated remote A-F first passes, geometry feedback and tighter matched repeats. All six converge; B/E require one geometry update, others zero.
 - [x] Retrieve raw evidence and report torque, sensor errors, closure and numerical resolution. Verified the 2.44 GB archive and all 60 accepted field/configuration/checkpoint files; all response signs are resolved on the retained mesh.
+
+## 2026-10-18: 17-case undersaturated mixture comparison
+
+- [x] Preserve the dirty original checkout and prior campaigns in an isolated task branch.
+- [x] Verify all 17 selected coordinates, decoded chart nodes and the unchanged 103 pure-oil points and six CFD markers.
+- [x] Identify the accepted source snapshot and confirm default pure-oil configuration identity.
+- [x] Record user-confirmed chamber/end/groove pressures and the liquid-bath TC0 assumption.
+- [x] Add viscosity-only input support and explicit constant-density/exterior-buoyancy driver handling; retain strict property-domain checks.
+- [x] Preserve all three initial pilot attempts after M02 failed the unchanged mass-balance criterion. Record an isolated retry in `lge-mixture-20261018-pressure-refined`, with normal/tight FBNS tolerances of 1e-10/1e-12 and unchanged physical inputs and acceptance gates.
+- [x] Correct the final cooling-seed lookup, add its regression test and preserve the interrupted pressure-refined attempt.
+- [x] Rebuild the corrected remote snapshot, pass all 59 native tests and accept all three pilots with independent raw-field verification.
+- [x] Complete and independently verify all 17 normal cases; no cases rejected in the corrected campaign.
+- [x] Complete tighter-tolerance M02/M16 checks; torque changes are +0.03329%/+0.00970%, with maximum probe-temperature change 0.000124 K.
+- [x] Complete the tight 32-layer M02 check; its observed torque difference from tight 16 layers is 0.0000031%, and probe differences are at most 0.000012 K. This does not establish full mesh independence.
+- [x] Retrieve and verify raw evidence, report torque/temperature errors, inspect overlay and update research records. Verified the complete archive and 4,463 evidence-file hashes; both prior attempts remain preserved.

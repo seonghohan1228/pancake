@@ -231,8 +231,12 @@ void load_solution_table_csv(const std::filesystem::path& path, PropertyCurveTab
                 pressure_curves[pressure].push_back({t, c});
             }
         }
-        const auto finish = [](auto& groups, PropertyCurveTable& table, bool saturation) {
-            if (groups.size() < 2) throw std::runtime_error("need at least two pressure/concentration curves");
+        // c=0 can also carry a fixed-property surrogate with no tracked dissolved species.
+        const bool viscosity_only = pressure_curves.empty() && concentration_curves.size() == 1 &&
+            concentration_curves.begin()->first == 0;
+        const auto finish = [viscosity_only](auto& groups, PropertyCurveTable& table, bool saturation) {
+            if (groups.size() < 2 && !(viscosity_only && !saturation))
+                throw std::runtime_error("need at least two pressure/concentration curves");
             for (auto& [axis, points] : groups) {
                 std::sort(points.begin(), points.end(), [](auto a, auto b) { return a.x < b.x; });
                 if (points.size() < 2) throw std::runtime_error("each curve needs at least two temperatures");
@@ -245,7 +249,7 @@ void load_solution_table_csv(const std::filesystem::path& path, PropertyCurveTab
                 table.curves.push_back(std::move(points));
             }
         };
-        finish(pressure_curves, solubility, true);
+        if (!viscosity_only) finish(pressure_curves, solubility, true);
         finish(concentration_curves, viscosity, false);
     } catch (const std::exception& error) {
         solubility = {};
