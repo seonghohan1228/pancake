@@ -177,6 +177,16 @@ shaft and housing are symmetric, so interface exchanges cancel in the
 combined energy ledger. A common relaxation factor is applied to film,
 shaft and housing temperatures before the next hydraulic iteration.
 
+For steady COUPLED runs, that controller also damps the layer inverse
+viscosities before integrating every Dowson coefficient. The same profile
+supplies pressure mobility, velocity weights and dissipation. Phase inventories
+remain conservative and are not blended. The first coefficient update is
+undamped. After each pressure/energy sweep, `viscosity_residual` measures the
+maximum relative mismatch from the unrelaxed physical viscosity at the current
+fill, composition and layer temperatures; convergence requires this mismatch
+below the coupling tolerance. See the fixed-point equations in
+[PHYSICS.md](../PHYSICS.md#cavitating-initial-guess-and-load-feedback).
+
 Composition and phase fractions remain depth uniform, and phase equilibrium
 uses film-mean temperature. This is a modeling limitation when cross-film
 thermal gradients materially change local equilibrium composition.

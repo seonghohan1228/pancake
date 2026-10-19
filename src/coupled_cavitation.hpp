@@ -41,7 +41,10 @@ public:
     void initialize(Fields& fields, const SimulationConfig& cfg);
     /// Backward Euler conservation and volume closure, solved simultaneously.
     /// equilibrium=true imposes local phase equilibrium instead of finite rates.
-    Stats solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium = false);
+    /// Disable steady continuation for disposable position trials; rejected
+    /// trials then return without entering the conservative pseudo-time march.
+    Stats solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium = false,
+                bool allow_steady_continuation = true);
     /// Commit accepted inventories as the next step's fixed old state.
     static void store_old_time(Fields& fields);
 private:

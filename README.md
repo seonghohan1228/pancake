@@ -887,3 +887,14 @@ including failed/interrupted attempts, has been retrieved and hash-verified in
 overlay and methods are in its `analysis` directory; retained research records
 are updated. Physical inputs and acceptance criteria are unchanged.
 See the campaign methods for validity limits, remote execution and acceptance.
+
+The [matched thermal gas comparison](cases/02f_lge_mixture_gas/README.md)
+uses an optional `coupled_fbns_initialization` to obtain a cavitating starting
+pressure/film-content field for the COUPLED solve. It preserves the imposed
+load, geometry, composition, temperature and final convergence requirements.
+The preliminary FBNS field is never accepted as the coupled result.
+The resolved steady path damps the complete layer viscosity profile to settle
+fill/viscosity feedback, then checks it against the unrelaxed constitutive law.
+Saved inverse-viscosity layers support an independent campaign acceptance check.
+The load search rejects unresolved trial positions directly so it can try a
+smaller move; the main pressure state retains conservative pseudo-time recovery.

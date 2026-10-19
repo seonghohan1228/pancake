@@ -369,7 +369,7 @@ struct Solver::Impl {
                 result[n++]=fb(undersaturation,s.mass[2]/g_scale);
             } else {
                 result[n++]=(balance[1]+dt*reaction-source_d)/(m_scale*c_scale);
-                result[n++]=total_species;
+                result[n++]=(balance[2]-dt*reaction-source_g)/g_scale;
             }
             if (thermal) result[n++]=energy_balance/(m_scale*(cfg->liquid_specific_heat>0 ? cfg->liquid_specific_heat : cfg->rho_cp/cfg->rho)*10);
         }
@@ -457,9 +457,10 @@ void Solver::store_old_time(Fields& fields) {
     for (int k=1;k<4;++k) fields[names[k]].store_old_time();
     for (auto name : {"h","temperature","internal_energy"}) fields[name].store_old_time();
 }
-Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium) {
+Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium,
+                    bool allow_steady_continuation) {
     if (!(dt>0)) throw std::invalid_argument("Coupled cavitation requires positive time step");
-    if (cfg.solution_mode==SolutionMode::STEADY_STATE && !impl->steady_initializing) {
+    if (allow_steady_continuation && cfg.solution_mode==SolutionMode::STEADY_STATE && !impl->steady_initializing) {
         struct Reset { bool& flag; ~Reset() { flag=false; } } reset{impl->steady_initializing};
         impl->steady_initializing=true;
         Stats result=solve(fields,cfg,dt,equilibrium);
@@ -532,6 +533,14 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     s.unpack(s.x); s.evaluate(s.residual);
     PetscReal norm; PetscInt iterations; SNESConvergedReason reason;
     check(VecNorm(s.residual,NORM_INFINITY,&norm));
+    if (!equilibrium) {
+        // Retain the original total-species gate after the equivalent free-species row transformation.
+        double local_total_species=0,global_total_species=0;
+        for (const double residual : s.species_residual)
+            local_total_species=std::max(local_total_species,std::abs(residual*dt/(s.mesh.cell_volume()*s.m_scale*s.c_scale)));
+        MPI_Allreduce(&local_total_species,&global_total_species,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        norm=std::max(norm,global_total_species);
+    }
     check(SNESGetIterationNumber(s.snes,&iterations));
     check(SNESGetConvergedReason(s.snes,&reason));
     Stats result; result.converged=reason>0 && norm<1e-10; result.iterations=iterations; result.residual=norm;

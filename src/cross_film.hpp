@@ -46,13 +46,15 @@ struct WallState {
     double profile_t_min = 0.0;///< Global minimum of the unmodified cross-film profile [K]
     double profile_t_max = 0.0;///< Global maximum of the unmodified cross-film profile [K]
     double profile_residual = 0.0; ///< Max unrelaxed collocation defect / reference temperature
+    double viscosity_residual = 0.0; ///< Max relative used/physical layer inverse-viscosity mismatch
     bool bush_2d_solved = false;///< True when the 2-D bush annulus was solved this call
     double bush_residual = 0.0; ///< Relative residual of that solve (round-off; it is direct)
 };
 
-/// Rebuild the cross-film profile, the conjugate wall temperatures, the wall
-/// heat-flux closure, and the F-integrals. No-op unless the model is POLYNOMIAL.
-WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg);
+/// Rebuild the selected cross-film closure and flow integrals; no-op for NONE.
+/// relaxation damps the steady COUPLED resolved inverse-viscosity profile only.
+WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg,
+                 double relaxation = 1.0);
 
 /// True when the generalized-Reynolds coefficients are available and should be used.
 inline bool active(const SimulationConfig& cfg) {

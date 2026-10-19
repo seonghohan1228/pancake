@@ -2715,6 +2715,11 @@ all downward-load cases solve the wrong confirmed physical configuration.
 
 ## 2026-10-19 conditional LGE gas comparison
 
+- [x] Complete and independently verify the 17 density-only FBNS reruns and
+  three focused checks. Torque changes by -1.9180% to -0.7521%; the largest
+  sensor change is 0.010101 K. Preserve the original constant-density results.
+- [x] Retrieve the complete density-only archive to the data drive and verify
+  its SHA-256 and all 1,553 recorded evidence-file hashes.
 - [x] Implement and prepare the matched steady COUPLED gas-off/gas-on
   configurations, full `nu(c,T)` chart, strict bubble-pressure support,
   finite-volume resolved cross-film/solid energy path, and shared acceptance
@@ -2732,6 +2737,20 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [ ] Compare only accepted matched runs, audit raw fields and provenance, and
   report gas-on minus gas-off under the stated conditional chart/caloric
   assumptions. Full-grid results remain pending.
+- [x] Add optional cavitating FBNS initialization without changing final
+  COUPLED equations; pass all 66 native Windows tests and seven gas-driver
+  tests. Preserve unsuccessful initial-guess and globalization diagnostics.
+- [x] Resolve the later M02 gas-off load-position stall and hydraulic
+  alternation using a resolved finite-difference step, equivalent free-species
+  row and consistent coefficient damping. Both fresh M02 coarse branches
+  pass original gates plus current-state viscosity consistency; all 66 native
+  and 13 Python gas-driver tests pass.
+- [ ] Rebuild the verified snapshot remotely and complete all 40 matched
+  campaign jobs, including full-grid pilots and focused numerical checks.
+- [x] Bound disposable load trials to direct steady solves and verify the
+  original/density-seeded M02 coarse pairs with unchanged acceptance. A bounded
+  full-grid update from the density-only position reaches 0.01166% force error;
+  its intentional one-outer cap is not an accepted CFD case. All 66 native tests pass.
 - [ ] Obtain exact-grade FW68D/R410A mixture density and caloric/heat-of-solution
   measurements before treating this conditional scenario as a calibrated
   physical prediction.

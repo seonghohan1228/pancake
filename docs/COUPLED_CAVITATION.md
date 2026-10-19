@@ -55,6 +55,15 @@ from shrinking. The inventory-limited equilibrium mass prevents absorption
 from demanding gas that is absent. Backward Euler integrates this model;
 the frozen-pressure exponential used by the old split model is not reused.
 
+For finite-rate or disabled exchange, the nonlinear system uses the dissolved
+balance above and the explicit free-species balance
+\(\partial_t M_g+\nabla_s\cdot F_g=\Gamma\), scaled by the free-mass reference.
+This is the total-species equation minus the dissolved equation. It avoids
+recovering a zero free inventory by subtracting two nearly equal dissolved
+balances. The original normalized total-species residual remains part of the
+final acceptance norm, alongside the unchanged physical bounds. Equilibrium
+continues to use the total-species equation and phase complementarity.
+
 Alternatively, `coupled_phase_equilibrium = true` replaces the kinetic
 equation with complementarity between free mass and undersaturation:
 
@@ -255,3 +264,20 @@ are recorded in the [property review](../results/lge_mixture_density_gas_2026101
 and [caloric input record](../results/lge_mixture_density_gas_20261019/property_review/conditional_caloric_inputs.json).
 The density remains the same pure-oil proxy in both branches,
 `rho(T_C) = 954.9 - 0.7284 T_C kg/m3`; it is not a mixture-density law.
+
+For the steady resolved thermal path, `coupled_fbns_initialization = true`
+can supply a preliminary gas-free FBNS pressure/film-content guess. Geometry,
+composition and temperature remain fixed during that preliminary solve;
+conservative inventories and their old state are reconstructed afterward.
+The option defaults off. It does not replace any COUPLED equation or accept
+an FBNS result as final, and it rejects prescribed free-gas inputs that would
+be lost by gas-free initialization. This addresses a fully flooded starting
+guess that stalled M02 near the wet/dry transition despite converged linear
+solves. Later thermal/position iterations still require independent convergence.
+
+The steady load search permits conservative pseudo-time recovery for its main
+pressure state. Disposable finite-difference and line-search positions use a
+direct steady solve and reject a failed trial before trying another direction
+or smaller displacement. They do not enter the potentially lengthy pseudo-time
+recovery. Every accepted trial retains the same pressure, positivity, phase and
+conservation checks, and rejection restores both fields and histories.

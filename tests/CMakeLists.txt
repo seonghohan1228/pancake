@@ -130,3 +130,8 @@ add_test(NAME test_coupled_equilibrium_failure
     COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
         -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_equilibrium_failure
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_equilibrium_failure.cmake)
+add_test(NAME test_coupled_fbns_initialization
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_fbns_initialization
+        -DMPIEXEC=${MPIEXEC_EXECUTABLE} -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_fbns_initialization.cmake)

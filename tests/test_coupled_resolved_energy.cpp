@@ -65,6 +65,55 @@ void uniform_limit() {
     near(u[1],10*c.dissolved_heat_capacity-c.desorption_internal_energy,1e-8,"explicit dissolved caloric binding analogue");
     if(mesh.rank==0)std::cout<<"zero_gas_energy_residual_W="<<ledger.residual_W<<" shaft_K="<<wall.t_shaft<<" housing_K="<<wall.t_bush_mean<<'\n';
 }
+void viscosity_profile_relaxation() {
+    auto c=config();c.liquid_viscosity_model=LiquidViscosityModel::EMPIRICAL;
+    c.viscosity_temperature_coeff=1800;c.solution_viscosity_gas_coeff=0;c.viscosity_pressure_coeff=0;
+    Mesh mesh(c);Communicator comm(mesh);Fields f;fields(f,mesh,c,.03);
+    f["theta"].fill(.4);
+    CoupledCavitation::Solver solver(mesh,comm,false);solver.initialize(f,c);
+    const auto oil=f["oil_mass"].data,dissolved=f["dissolved_mass"].data,free=f["free_gas_mass"].data;
+    const auto oil_old=f["oil_mass"].old_data,dissolved_old=f["dissolved_mass"].old_data,free_old=f["free_gas_mass"].old_data;
+    CrossFilm::update(f,mesh,c,.001);
+    const double initial=1/(.4*c.mu+.6*c.mu_gas);
+    near(f["cross_film_inv_mu_0"](0,0),initial,1e-12,"first profile must bypass arbitrary registered viscosity seed");
+    f["cross_film_layer_initialized"].fill(1);f["theta"].fill(.8);
+    for(int k=0;k<c.cross_film_layers;++k)
+        f["cross_film_layer_"+std::to_string(k)].fill(300+20.0*k/(c.cross_film_layers-1));
+    CrossFilm::update(f,mesh,c,.25);
+    double f0=0,f1=0,g2=0;
+    for(int k=0;k<c.cross_film_layers;++k) {
+        const double t=f["cross_film_layer_"+std::to_string(k)](0,0);
+        const double physical=1/(.8*c.mu*std::exp(1800*(1/t-1.0/300))+.2*c.mu_gas);
+        const double expected=.25*physical+.75*initial;
+        near(f["cross_film_inv_mu_"+std::to_string(k)](0,0),expected,1e-12,"blend each layer before integrating flow coefficients");
+        const double lo=double(k)/c.cross_film_layers,hi=double(k+1)/c.cross_film_layers;
+        f0+=c.c*(hi-lo)*expected;f1+=c.c*c.c*(hi*hi-lo*lo)*expected/2;
+        g2+=c.c*c.c*c.c*(hi*hi*hi-lo*lo*lo)*expected/3;
+    }
+    near(f["cross_film_f0"](0,0)/f0,1,1e-14,"F0 integrates the blended layer profile");
+    near(f["cross_film_f1"](0,0)/f1,1,1e-14,"F1 integrates the blended layer profile");
+    near(f["cross_film_f2"](0,0)/(g2-f1*f1/f0),1,1e-14,"F2 integrates the same blended layer profile");
+    near(f["cross_film_couette_h"](0,0)/(2*f1/f0),1,1e-14,"Couette weight uses the blended profile");
+    CrossFilm::update(f,mesh,c);
+    require(ResolvedCrossFilm::diagnostics(f,mesh,c).viscosity_residual<1e-14,"omega one must recover the unrelaxed physical profile");
+    const double fixed=f["cross_film_f2"](0,0);
+    CrossFilm::update(f,mesh,c,.01);
+    near(f["cross_film_f2"](0,0)/fixed,1,1e-14,"constitutive fixed point must not depend on relaxation");
+    // Only one rank changes its target: every rank must see the same global gate.
+    if(mesh.rank==mesh.size-1)f["theta"](0,0)=.4;
+    const double before=f["cross_film_inv_mu_0"](0,0);
+    CrossFilm::update(f,mesh,c,1e-8);
+    require(ResolvedCrossFilm::diagnostics(f,mesh,c).viscosity_residual>.49,"tiny relaxation must not hide unrelaxed constitutive mismatch");
+    if(mesh.rank==mesh.size-1)
+        require(std::abs(f["cross_film_inv_mu_0"](0,0)-before)/before<2e-8,"small update despite large constitutive mismatch");
+    require(f["oil_mass"].data==oil && f["dissolved_mass"].data==dissolved && f["free_gas_mass"].data==free &&
+        f["oil_mass"].old_data==oil_old && f["dissolved_mass"].old_data==dissolved_old && f["free_gas_mass"].old_data==free_old,
+        "coefficient relaxation must preserve conservative inventories and history");
+    c.solution_mode=SolutionMode::TRANSIENT;
+    CrossFilm::update(f,mesh,c,1e-8);
+    if(mesh.rank==mesh.size-1)
+        near(f["cross_film_inv_mu_0"](0,0),initial,1e-12,"transient coefficients must remain unrelaxed");
+}
 double phase_transport(double binding) {
     auto c=config();c.fluid_property_model=FluidPropertyModel::TWO_PHASE;c.omega=0;
     c.bc_z_south_val=2e5;c.bc_z_north_val=1e5;
@@ -109,7 +158,7 @@ double phase_transport(double binding) {
 int main(int argc,char** argv) {
     PetscInitialize(&argc,&argv,nullptr,nullptr);
     int failed=0;
-    try {uniform_limit();const double unbound=phase_transport(0),bound=phase_transport(192486.2474970321);require(bound<unbound,"desorption binding energy must cool the conserved phase-energy solution");}
+    try {viscosity_profile_relaxation();uniform_limit();const double unbound=phase_transport(0),bound=phase_transport(192486.2474970321);require(bound<unbound,"desorption binding energy must cool the conserved phase-energy solution");}
     catch(const std::exception& e) {std::cerr<<e.what()<<'\n';failed=1;}
     MPI_Allreduce(MPI_IN_PLACE,&failed,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
     PetscFinalize();return failed;

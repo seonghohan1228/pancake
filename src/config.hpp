@@ -913,6 +913,8 @@ struct SimulationConfig {
     double gas_mass_transfer_rate = 0.0;         // Release rate [1/s]; legacy absorption fallback.
     double gas_absorption_rate = -1.0;          // -1 inherits release rate; 0 disables absorption.
     bool coupled_phase_equilibrium = false;    // COUPLED: equilibrium instead of finite-rate exchange.
+    /// Seed steady resolved COUPLED pressure/film content with a gas-free FBNS solve.
+    bool coupled_fbns_initialization = false;
     /// Separate absorption kinetics; bubble compression alone exchanges no mass.
     double effective_gas_absorption_rate() const {
         return gas_absorption_rate >= 0 ? gas_absorption_rate : gas_mass_transfer_rate;
@@ -1256,6 +1258,11 @@ struct SimulationConfig {
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
             else if (key == "gas_absorption_rate") gas_absorption_rate = std::stod(value);
             else if (key == "coupled_phase_equilibrium") coupled_phase_equilibrium = is_true(value);
+            else if (key == "coupled_fbns_initialization") {
+                if (is_true(value)) coupled_fbns_initialization = true;
+                else if (is_false(value)) coupled_fbns_initialization = false;
+                else parse_errors.push_back("coupled_fbns_initialization must be true or false.");
+            }
             else if (key == "dissolved_gas_diffusivity") dissolved_gas_diffusivity = std::stod(value);
             else if (key == "solution_density_gas_coeff") solution_density_gas_coeff = std::stod(value);
             else if (key == "solution_viscosity_gas_coeff") solution_viscosity_gas_coeff = std::stod(value);
@@ -1864,6 +1871,8 @@ struct SimulationConfig {
                 warn("cavitation_model = FBNS transports the film content with first-order "
                      "upwind (the FBNS discretization); theta_convection_scheme is ignored.");
             }
+        }
+        if (cavitation_model == CavitationModel::FBNS || coupled_fbns_initialization) {
             if (fbns_max_iters <= 0) error("fbns_max_iters must be positive.");
             if (!finite(fbns_tol) || fbns_tol <= 0.0) error("fbns_tol must be positive.");
             if (!finite(fbns_relaxation) || fbns_relaxation <= 0.0 || fbns_relaxation > 1.0) {
@@ -1872,6 +1881,15 @@ struct SimulationConfig {
             if (!finite(fbns_pressure_scale) || fbns_pressure_scale < 0.0) {
                 error("fbns_pressure_scale must be >= 0 (0 = derive it from the operating point).");
             }
+        }
+
+        if (coupled_fbns_initialization) {
+            if (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::COUPLED ||
+                cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME || oil_vapor_temperature_coeff != 0)
+                error("coupled_fbns_initialization requires steady COUPLED FINITE_VOLUME with constant oil vapor pressure.");
+            if (bc_z_south_free_gas_mass_fraction != 0 || bc_z_north_free_gas_mass_fraction != 0 ||
+                std::any_of(inlets.begin(), inlets.end(), [](const auto& inlet) { return inlet.free_gas_mass_fraction != 0; }))
+                error("coupled_fbns_initialization requires gas-free feeds and reservoirs; prescribed free gas cannot be discarded.");
         }
 
         if (cavitation_model == CavitationModel::COUPLED) {
@@ -2616,6 +2634,8 @@ struct SimulationConfig {
             << "# gas_absorption_rate: -1 inherits release rate; 0 disables absorption\n"
             << "gas_absorption_rate = " << gas_absorption_rate << "\n"
             << "coupled_phase_equilibrium = " << (coupled_phase_equilibrium ? "true" : "false") << "\n"
+            << "# Optional gas-free FBNS initial guess; final equations and acceptance remain COUPLED.\n"
+            << "coupled_fbns_initialization = " << (coupled_fbns_initialization ? "true" : "false") << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
             << "solution_density_gas_coeff = " << solution_density_gas_coeff << "\n"
             << "solution_viscosity_gas_coeff = " << solution_viscosity_gas_coeff << "\n"
@@ -2820,7 +2840,7 @@ struct SimulationConfig {
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
-            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "inlet_species", "dissolved_gas_diffusivity",
+            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "coupled_fbns_initialization", "inlet_species", "dissolved_gas_diffusivity",
             "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
             "viscosity_temperature_coeff", "viscosity_pressure_coeff",
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",

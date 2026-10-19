@@ -56,6 +56,21 @@ void recover(bool gas, bool chart = false) {
     cfg.external_load_x = -target_forces.fluid_x; cfg.external_load_y = -target_forces.fluid_y;
     auto state = target; state.x += .03*cfg.c; state.y -= .02*cfg.c;
     geometry(state);
+    const auto trial_oil = fields["oil_mass"].data;
+    const auto trial_old_oil = fields["oil_mass"].old_data;
+    const auto trial_dissolved = fields["dissolved_mass"].data;
+    const auto trial_old_dissolved = fields["dissolved_mass"].old_data;
+    const auto trial_free = fields["free_gas_mass"].data;
+    const auto trial_old_free = fields["free_gas_mass"].old_data;
+    PetscOptionsSetValue(nullptr,"-coupled_snes_max_it","0");
+    const auto capped_trial = solver.solve(fields,cfg,cfg.dt,gas,false);
+    PetscOptionsClearValue(nullptr,"-coupled_snes_max_it");
+    require(!capped_trial.converged && capped_trial.iterations==0,
+            "failed disposable trial returns without pseudo-time continuation");
+    require(fields["oil_mass"].data==trial_oil && fields["oil_mass"].old_data==trial_old_oil &&
+            fields["dissolved_mass"].data==trial_dissolved && fields["dissolved_mass"].old_data==trial_old_dissolved &&
+            fields["free_gas_mass"].data==trial_free && fields["free_gas_mass"].old_data==trial_old_free,
+            "failed direct trial preserves current and old conserved inventories");
     require(solver.solve(fields,cfg,cfg.dt,gas).converged,"displaced coupled base pressure");
     CoupledCavitation::Solver::store_old_time(fields);
     const auto base_h = fields["h"].data;

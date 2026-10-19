@@ -3401,7 +3401,7 @@ the original source, inputs and results remain preserved separately.
 
 # 2026-10-19 conditional LGE gas comparison and steady thermal extension
 
-The separate 02f follow-on is prepared; its full campaign has not launched. It compares paired
+The separate 02f follow-on has launched full-grid remote pilots. It compares paired
 steady COUPLED calculations with gas release disabled/enabled for the same
 17 experimental operating windows. Both branches use the full chart
 `nu(c,T)`, density law, resolved cross-film and housing energy model, geometry,
@@ -3459,6 +3459,86 @@ independent load residuals outside configured limits. It also rejects
 nonfinite/nonphysical fields and any unsupported viscosity/chart or free-gas
 EOS state. These gates establish accepted numerical solutions under the
 scenario assumptions; they do not establish experimental accuracy. The
-gas-on 24×8 pilot passed strict raw-field acceptance; matched 48×16
-relaxation-0.3 pilots are still running. The full campaign is not complete and
+gas-on 24×8 pilot and matched 48×16 M16 relaxation-0.3 checks passed strict
+raw-field acceptance. Three full-grid attempts have been interrupted and
+preserved while the M02 initialization and position solve are diagnosed.
+The full campaign is not complete and
 no campaign-level gas-on/off results are available.
+
+## Cavitating initial guess and load feedback
+
+The optional `coupled_fbns_initialization` first solves gas-free FBNS pressure
+and film content at the unchanged starting geometry, composition and
+temperature. It supplies an initial guess only. Conservative areal inventories
+are then reconstructed as
+\[
+m_o=(1-c_d)\rho_l h\theta_l,\qquad
+m_d=c_d\rho_l h\theta_l,\qquad m_g=0,
+\]
+where \(c_d\) is dissolved refrigerant mass fraction. Current and pseudo-time
+old inventories are initialized consistently. Every subsequent pressure,
+phase, thermal and load solution must pass the original COUPLED gates. The
+option defaults off and rejects configurations with prescribed free gas that
+the preliminary gas-free solve would discard. A preliminary FBNS result is
+never a completed COUPLED solution.
+
+With phase equilibrium disabled, the nonlinear species rows are the dissolved
+and free balances, respectively. Subtracting the dissolved balance from total
+species conservation gives
+\[
+\partial_t m_g+\nabla_s\cdot F_g=\Gamma,
+\]
+including the same incoming and outgoing boundary sources. Solving this row
+directly avoids cancellation between nearly equal dissolved and total-species
+equations when free gas is absent. This is an equation transformation, with no
+change to release physics. The original normalized total-species residual is
+still included in final acceptance; pressure, volume and mass bounds remain
+unchanged.
+
+The resolved steady COUPLED iteration also damps the inverse-viscosity
+profile. With layer index \(k\), its physical target is
+\[
+v_k^*=\left[\theta_l\mu_l(c_d,p,T_k)+(1-\theta_l)\mu_g\right]^{-1},
+\qquad
+v_k^{n+1}=\omega v_k^*+(1-\omega)v_k^n.
+\]
+The first update uses \(v_k^*\) directly. The current outer-controller
+relaxation \(\omega\) applies to all layers before computing the complete
+Dowson integrals. Pressure mobility, velocity weights and shear therefore
+use one consistent profile; the conservative phase inventories are not
+blended. This damps the observed alternating fill/viscosity iteration without
+changing its physical fixed point. After the pressure and energy solves,
+acceptance additionally requires
+\[
+R_\mu=\max_{i,j,k}\frac{|v_k-v_k^*(\theta_l,c_d,p,T_k)|}{v_k^*(\theta_l,c_d,p,T_k)}
+<\texttt{coupling_tolerance}.
+\]
+This comparison uses the unrelaxed current-state law and is independent of
+\(\omega\). The native summary records `viscosity_residual`, and the campaign
+checks it independently from the saved layer temperatures and inverse
+viscosities. Transient and other cavitation paths retain their prior update.
+
+The measured external load is prescribed, while the shaft position is solved:
+\[
+R_F=\frac{\lVert\mathbf F_{\rm film}+\mathbf W\rVert}{\lVert\mathbf W\rVert}
+<\texttt{steady_force_tolerance}.
+\]
+For the aligned circular geometry, \(h_{\min}=c-\sqrt{x^2+y^2}\). A viscosity
+reduction generally decreases capacity at fixed position; the load-controlled
+solve generally responds with greater eccentricity and a smaller minimum
+gap. Thus the Couette shear scale \(\mu U/h\) does not fall in direct
+proportion to viscosity. The position, pressure, local temperature, composition
+and void distribution must be solved together before assigning a torque change.
+
+The position Jacobian and line search evaluate disposable steady pressure
+states. Their failed direct solves are rejected so that the load search can
+try the opposite finite difference or a smaller displacement; pseudo-time
+continuation remains available for the main pressure state. Accepted trials
+must satisfy the same equations and admissibility gates, and rejected trials
+restore both current fields and old histories. A previous accepted CFD shaft
+position is a numerical starting guess only, never an imposed eccentricity.
+
+This load balance contains fluid pressure only. No surface-roughness or
+asperity-contact load/friction law is included, so a small predicted gap does
+not itself introduce contact friction. Reported journal torque remains the
+integrated fluid shear.

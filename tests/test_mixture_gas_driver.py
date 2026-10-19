@@ -88,6 +88,116 @@ class MatchedGasInputsTest(unittest.TestCase):
         caloric = self.caloric()
         self.assertEqual(worker["validate_caloric"](caloric)["mu_gas"], 1.3e-5)
 
+    @staticmethod
+    def layer_viscosity_fixture():
+        import numpy as np
+        config = dict(cross_film_layers="2", density_model="LINEAR_TEMPERATURE",
+            density_temperature_intercept="954.9", density_temperature_slope="-.7284",
+            mu_gas="1.3e-5", coupling_tolerance="1e-8", coupling_relaxation=".3")
+        curves = {0.: [(10., 16.), (50., 1.)], .5: [(10., 4.), (50., .25)]}
+        fields = dict(p=np.full(3, 1e6), film_content=np.array([1., .2, 0.]),
+                      dissolved_gas=np.array([0., .25, .5]))
+        for layer, temperature_c in enumerate((20., 30.)):
+            fields[f"cross_film_layer_{layer}"] = np.full(3, temperature_c+273.15)
+            # Analytic geometric interpolation in concentration and temperature.
+            nu = 16.*4.**(-fields["dissolved_gas"]/.5)*16.**(-(temperature_c-10.)/40.)
+            fields[f"cross_film_inv_mu_{layer}"] = 1/(fields["film_content"]*
+                (954.9-.7284*temperature_c)*nu*1e-6+(1-fields["film_content"])*1.3e-5)
+        return config, fields, curves
+
+    def test_current_state_layer_viscosity_accepts_physical_profile(self):
+        config, fields, curves = self.layer_viscosity_fixture()
+        maximum = worker["check_layer_viscosity"](config, fields, curves)
+        self.assertLess(maximum, 1e-14)
+        fields["cross_film_inv_mu_0"] *= 1+2e-9
+        self.assertAlmostEqual(worker["check_layer_viscosity"](config, fields, curves), 2e-9, delta=1e-14)
+
+    def test_current_state_layer_viscosity_rejects_stale_profile(self):
+        config, fields, curves = self.layer_viscosity_fixture()
+        config["coupling_relaxation"] = "1e-15"
+        fields["cross_film_inv_mu_1"] *= 1.01
+        with self.assertRaisesRegex(ValueError, "constitutive mismatch"):
+            worker["check_layer_viscosity"](config, fields, curves)
+
+    def test_layer_viscosity_matches_strict_scalar_chart_interpolation(self):
+        import numpy as np
+        config, _, curves = self.layer_viscosity_fixture()
+        curves, _ = worker["property_curves"](ROOT / "data/R410A_FW68D/fw68d.csv")
+        concentrations = sorted(curves)
+        samples = concentrations + [(a+b)/2 for a, b in zip(concentrations, concentrations[1:])]
+        temperatures = []
+        for c in samples:
+            contributing = [c] if c in curves else [max(a for a in concentrations if a < c),
+                                                   min(a for a in concentrations if a > c)]
+            low = max(min(t for t, _ in curves[a]) for a in contributing)
+            high = min(max(t for t, _ in curves[a]) for a in contributing)
+            temperatures.append((low+high)/2)
+        t = np.array(temperatures)
+        fill = np.linspace(.1, 1., len(samples))
+        nu = np.array([worker["curve_value"](curves, c, temperature, True)
+                       for c, temperature in zip(samples, temperatures)])
+        inv_mu = 1/(fill*(954.9-.7284*t)*nu*1e-6+(1-fill)*1.3e-5)
+        fields = dict(p=np.full(len(samples), 1e6), dissolved_gas=np.array(samples), film_content=fill)
+        for layer in range(2):
+            fields[f"cross_film_layer_{layer}"] = t+273.15
+            fields[f"cross_film_inv_mu_{layer}"] = inv_mu.copy()
+        self.assertLess(worker["check_layer_viscosity"](config, fields, curves), 1e-13)
+        curves = {0.: [(10., 16.), (50., 1.)], .5: [(40., 4.), (50., .25)]}
+        config, fields, _ = self.layer_viscosity_fixture()
+        fields["dissolved_gas"][:] = 0.
+        for layer in range(2):
+            temperature = fields[f"cross_film_layer_{layer}"]-273.15
+            nu = np.array([worker["curve_value"](curves, 0., float(t), True) for t in temperature])
+            fields[f"cross_film_inv_mu_{layer}"] = 1/(fields["film_content"]*
+                (954.9-.7284*temperature)*nu*1e-6+(1-fields["film_content"])*1.3e-5)
+        self.assertLess(worker["check_layer_viscosity"](config, fields, curves), 1e-13)
+        fields["dissolved_gas"][0] = .25
+        with self.assertRaisesRegex(ValueError, "outside curve"):
+            worker["check_layer_viscosity"](config, fields, curves)
+
+    def test_current_state_layer_viscosity_requires_complete_positive_fields(self):
+        import numpy as np
+        for name in ("cross_film_layer_0", "cross_film_inv_mu_1"):
+            for invalid in (None, np.array([300.]), np.array([np.nan, 300., 300.]),
+                            np.array([np.inf, 300., 300.]), np.array([0., 300., 300.])):
+                with self.subTest(name=name, invalid=invalid):
+                    config, fields, curves = self.layer_viscosity_fixture()
+                    if invalid is None:
+                        del fields[name]
+                    else:
+                        fields[name] = invalid
+                    with self.assertRaises(ValueError):
+                        worker["check_layer_viscosity"](config, fields, curves)
+
+    def test_current_state_layer_viscosity_rejects_unsupported_properties(self):
+        for name, value in (("cross_film_layer_0", 330.), ("dissolved_gas", -.01),
+                            ("dissolved_gas", .51)):
+            with self.subTest(name=name, value=value):
+                config, fields, curves = self.layer_viscosity_fixture()
+                fields[name][0] = value
+                with self.assertRaises(ValueError):
+                    worker["check_layer_viscosity"](config, fields, curves)
+        config, fields, curves = self.layer_viscosity_fixture()
+        config["density_temperature_intercept"] = "1"
+        with self.assertRaisesRegex(ValueError, "liquid density"):
+            worker["check_layer_viscosity"](config, fields, curves)
+
+    def test_native_layer_viscosity_residual_is_required(self):
+        with TemporaryDirectory(dir=ROOT / "tmp") as directory:
+            run = Path(directory)
+            (run / "results").mkdir()
+            (run / "config.txt").write_text("coupling_tolerance = 1e-8\n")
+            summary = dict(converged=1, pressure_converged=1, cap_exhausted=0, restored_best=0,
+                           pressure_residual=1e-14, volume_error=0, R_p=0, R_T=0, R_g=0, profile_residual=0)
+            campaign = worker["Campaign"].__new__(worker["Campaign"])
+            for value in (None, 1e-8, -1., math.nan):
+                with self.subTest(value=value):
+                    if value is not None:
+                        summary["viscosity_residual"] = value
+                    rows(run / "results/coupled_summary.csv", [summary])
+                    with self.assertRaisesRegex(ValueError, "viscosity_residual|nonfinite"):
+                        campaign.check_solution(run, {})
+
     def test_bubble_inverse_requires_strict_supported_state(self):
         inverse = worker["bubble_pressure"]
         curves = {1e5: [(10., .1), (30., .2)], 2e5: [(10., .3), (30., .4)]}
@@ -179,6 +289,10 @@ class MatchedGasInputsTest(unittest.TestCase):
             run = campaign.work / "M16" / "fixture"
             run.mkdir(parents=True)
             (run / "config.txt").write_text(campaign.config_for(case, eps, psi, hb, hs, run / "results"))
+            self.assertEqual(worker["parse_config"]((run / "config.txt").read_text())["coupled_fbns_initialization"], "true")
+            config = worker["parse_config"]((run / "config.txt").read_text())
+            self.assertEqual(float(config["steady_position_fd_step"]), .0001)
+            self.assertEqual(campaign.command()[campaign.command().index("-coupled_snes_atol")+1], "1e-13")
             (run / "run.log").write_text("synthetic shared-cache fixture")
             record = dict(returncode=0, source_sha256=campaign.source_hash, executable_sha256=None,
                 mpi_ranks=4, driver_sha256=campaign.driver_hash, rankfile_sha256=None, native_equilibrium=True,

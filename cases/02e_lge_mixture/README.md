@@ -198,10 +198,30 @@ worker and physical inputs remained frozen during the campaign.
 
 ## Follow-on comparison status (2026-10-19)
 
-The completed campaign above remains the fixed-viscosity 02e scenario. A
-separate matched native COUPLED gas-off/gas-on follow-on is documented in
-[02f_lge_mixture_gas](../02f_lge_mixture_gas/README.md). Its inputs are
-prepared. A gas-on 24×8 pilot passed strict raw-field acceptance; the matched
-48×16 pilots are still running and the full remote campaign has not launched.
-These are separate pilot checks; no campaign-level comparison outcomes should
-be inferred from the completed 02e results.
+The completed campaign above retains its constant-density-950 inputs. The
+separate density-only rerun uses `rho(T_C) = 954.9 - 0.7284 T_C kg/m3` with
+the same fixed-chart-30 viscosity scenario. All 17 cases and three focused
+checks passed remote execution and independent raw-field verification.
+Torque changes by -1.9180% to -0.7521% from the constant-density run.
+Bearing errors remain -86.4178% to -47.2486%; motor diagnostic errors are
+-37.4613% to -6.0799%. The 51 sensor errors span -0.133794 to +0.705606 K,
+with MAE 0.357658 K. The largest sensor change is 0.010101 K.
+
+Tight M02/M16 checks change torque by +0.031515%/+0.009395%; the largest
+sensor difference is 0.000119 K. Tight 32 versus 16 layers changes M02
+torque by 0.00000318% and sensors by at most 0.00001154 K. These focused
+checks do not establish theta/z/housing mesh independence. The density
+rerun has 80 successful native calls and 20.327491 allocated core-hours.
+Its verified summaries are under
+`results/lge_mixture_density_gas_20261019/density_off/analysis` in the parent
+working checkout. The complete archive and extraction are retained under
+`D:/pancake-results/lge_mixture_density_gas_20261019/density_off`.
+Local retrieval verified 1,553 evidence-file hashes and the archive SHA-256
+`471e6c167130043228686d879c43d8be3b72cda91830e0f7e836cf85b0eaacc8`.
+
+The matched native COUPLED gas-off/gas-on follow-on is documented in
+[02f_lge_mixture_gas](../02f_lge_mixture_gas/README.md). Both 48×16 local
+pilots passed; all 65 native tests passed on Windows and remote Linux.
+Its full-grid remote pilots are running. Only that matched pair of
+branches can isolate the conditional gas-release effect; final gas results
+remain pending.

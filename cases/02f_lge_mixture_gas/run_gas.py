@@ -144,6 +144,61 @@ def validate_caloric(caloric):
     return caloric
 
 
+def check_layer_viscosity(config, fields, curves):
+    """Check used inverse viscosities against the unrelaxed current-state law."""
+    if config["density_model"] != "LINEAR_TEMPERATURE":
+        raise ValueError("layer viscosity check requires LINEAR_TEMPERATURE density")
+    shape = fields["p"].shape
+    for name in ("film_content", "dissolved_gas"):
+        value = fields.get(name)
+        if value is None or value.shape != shape or not value.size or not np.isfinite(value).all():
+            raise ValueError(f"missing or nonfinite layer constitutive input: {name}")
+    fill, concentration = fields["film_content"], fields["dissolved_gas"]
+    mu_gas = float(config["mu_gas"])
+    if not math.isfinite(mu_gas) or mu_gas <= 0:
+        raise ValueError("nonpositive or nonfinite gas viscosity")
+    axes = np.array(sorted(curves))
+    if np.any((concentration < axes[0]) | (concentration > axes[-1])):
+        raise ValueError("concentration outside digitized range")
+    upper = np.searchsorted(axes, concentration)
+    lower = np.where(axes[upper] == concentration, upper, upper-1)
+    span = axes[upper]-axes[lower]
+    fraction = np.divide(concentration-axes[lower], span, out=np.zeros_like(concentration), where=span > 0)
+    prepared = []
+    for axis in axes:
+        points = np.array(sorted(curves[axis]))
+        prepared.append((points[:, 0], np.log(points[:, 1])))
+    maximum = 0.
+    for layer in range(int(config["cross_film_layers"])):
+        names = (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}")
+        for name in names:
+            value = fields.get(name)
+            if (value is None or value.shape != shape or not value.size or
+                    not np.isfinite(value).all() or np.any(value <= 0)):
+                raise ValueError(f"missing, nonfinite or nonpositive layer constitutive field: {name}")
+        temperature_c = fields[names[0]]-273.15
+        density = (float(config["density_temperature_intercept"]) +
+                   float(config["density_temperature_slope"])*temperature_c)
+        if not np.isfinite(density).all() or np.any(density <= 0):
+            raise ValueError("nonpositive or nonfinite layer liquid density")
+        log_nu = np.zeros_like(temperature_c)
+        for index, (temperatures, ordinates) in enumerate(prepared):
+            selected = (lower == index) | (upper == index)
+            t = temperature_c[selected]
+            if np.any((t < temperatures[0]) | (t > temperatures[-1])):
+                raise ValueError(f"temperature outside curve {axes[index]:g} range")
+            weight = np.where(lower[selected] == index, 1-fraction[selected], fraction[selected])
+            log_nu[selected] += weight*np.interp(t, temperatures, ordinates)
+        nu = np.exp(log_nu)*1e-6
+        physical = 1/(fill*density*nu+(1-fill)*mu_gas)
+        if not np.isfinite(physical).all() or np.any(physical <= 0):
+            raise ValueError("nonpositive or nonfinite physical layer inverse viscosity")
+        maximum = max(maximum, float(np.max(np.abs(fields[names[1]]-physical)/physical)))
+    if maximum >= float(config["coupling_tolerance"]):
+        raise ValueError("raw layer viscosity constitutive mismatch exceeds requested tolerance")
+    return maximum
+
+
 def prepare(preflight, destination, caloric):
     """Freeze all 34 matched inputs and independent measured-coordinate evidence."""
     caloric = validate_caloric(caloric)
@@ -164,6 +219,7 @@ def prepare(preflight, destination, caloric):
             "incoming_free_gas_mass_fraction": 0.,
             "attribution": "Gas-on minus matched gas-off quantifies release under this conditional model. Existing FBNS STRIATED fixed30 baseline differs structurally and cannot isolate gas effects."},
         caloric_assumptions=caloric,
+        numerical_initialization="One gas-free FBNS pressure/film-content solve at unchanged geometry, composition and temperature initializes conservative COUPLED inventories. Only subsequent COUPLED convergence is accepted.",
         limitations="Conditional mass/absolute chart bases; unmeasured mixture density and caloric proxies; no calibrated pressurized parasitic drag; condition stability does not prove friction/composition steady state. Finite gas EOS and chart domains are hard limits.")
     decisions["thermal_analog_basis"] = "Pure-oil rho(T) proxy, explicit caloric law from caloric_assumptions, k_liquid=.13 and steel k=15 proxies; no measured FW68D mixture caloric data."
     experiment = json.loads((destination / "experiment.json").read_text())
@@ -208,15 +264,17 @@ def prepare(preflight, destination, caloric):
                 if branch == "gas_on" else "Refrigerant release is disabled."))
             setup["force_balance"]["restart_policy"] = (
                 "Fresh conservative species inventories for each cooling call; retain the last native "
-                "equilibrium position as its seed. Legacy FBNS checkpoints are incompatible.")
+                "equilibrium position as its seed. A fresh FBNS pressure/film-content initial guess "
+                "is converted to conservative COUPLED inventories; legacy checkpoints are incompatible.")
             setup["acceptance"].update(
-                pressure_and_temperature_coupling="Native COUPLED pressure residual below 1e-10; volume, R_p, R_T, R_g and profile residuals below configured coupling_tolerance; no exhausted cap or restored-best iterate.",
+                pressure_and_temperature_coupling="Native COUPLED pressure residual below 1e-10; volume, R_p, R_T, R_g, profile and unrelaxed viscosity residuals below configured coupling_tolerance; no exhausted cap or restored-best iterate.",
                 fields="Finite resolved fields, positive gap and viscosity, nonnegative absolute pressure, admissible phase fractions, supported viscosity/bubble-pressure chart and stable free-gas EOS domain at all layers and walls.",
-                external_convection="Both exterior coefficients close to relative 1e-3 and wall-temperature change 0.01 K. Each call starts fresh species inventories at the preceding native equilibrium position.",
-                native_pressure="COUPLED SNES absolute tolerance 1e-10, tightened to 1e-12 for focused checks; independent acceptance pressure residual below 1e-10.",
+                external_convection="Both exterior coefficients close to relative 1e-3 and wall-temperature change 0.01 K normally, tightened to 1e-5 and 1e-4 K for focused checks. Each call starts fresh species inventories at the preceding native equilibrium position.",
+                native_pressure="Common COUPLED SNES absolute tolerance 1e-13 for normal and focused runs, to resolve the unchanged 1e-6 Pa pressure bound at MPa pressure scales; independent acceptance pressure residual below 1e-10. Focused checks tighten load, thermal and exterior-cooling closure.",
                 oil_and_species_balance_relative_residual_max="min(coupling_tolerance, 1e-8), using time-step-independent boundary/feed mass-flux scales",
                 global_energy_relative_residual_max="configured coupling_tolerance",
                 cross_film_raw_collocation_residual_max="configured coupling_tolerance",
+                cross_film_raw_viscosity_relative_mismatch_max="configured coupling_tolerance, independently recomputed from current film content, composition and layer temperature",
                 temperature_floor_K="No supply-temperature floor: desorption can cool the film. Enforce actual property domains.",
                 property_domain="Strict local nu(c,T), chart-supported bubble pressure for gas-on, and free-gas EOS support at mean, layer and wall temperatures.")
             setup["acceptance"].pop("fbns", None)
@@ -295,8 +353,7 @@ class Campaign(driver.Campaign):
 
     def command(self):
         command = super().command()
-        tight = self.setup.get("solver_tolerances", {}).get("coupling_tolerance", 1e-6) < 1e-6
-        return command + ["-coupled_snes_atol", "1e-12" if tight else "1e-10",
+        return command + ["-coupled_snes_atol", "1e-13",
                           "-coupled_sub_pc_type", "lu", "-coupled_snes_monitor",
                           "-coupled_ksp_converged_reason"]
 
@@ -306,7 +363,9 @@ class Campaign(driver.Campaign):
         values = parse_config(super().config_for(case, eps, psi, h_bush, h_shaft, output_dir, initial_state_file))
         values.update(cavitation_model="COUPLED", cavitated_film_model="HOMOGENEOUS",
             steady_pressure_inner_only="false",
+            coupled_fbns_initialization="true",
             coupling_relaxation=.3,
+            steady_position_fd_step=.0001,
             groove_mixing_model="PINNED",
             fluid_property_model="TWO_PHASE" if self.branch == "gas_on" else "SINGLE_PHASE",
             coupled_phase_equilibrium="true" if self.branch == "gas_on" else "false",
@@ -318,7 +377,8 @@ class Campaign(driver.Campaign):
             inlet_species="0 0.3 0", solution_table_file=str(self.table_path),
             gas_pressure_floor=1., **{key: self.caloric[key] for key in CALORIC_KEYS})
         values["output_fields"] += ",pressure_force_z,dissolved_gas,alpha_gas,gas_mass_transfer," + ",".join(
-            f"cross_film_layer_{layer}" for layer in range(int(values["cross_film_layers"])))
+            name for layer in range(int(values["cross_film_layers"]))
+            for name in (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}"))
         return "# Matched conditional native COUPLED branch: " + self.branch + "\n" + "\n".join(
             f"{key} = {value}" for key, value in values.items()) + "\n"
 
@@ -339,8 +399,8 @@ class Campaign(driver.Campaign):
         tolerance = float(config["coupling_tolerance"])
         if not 0 <= summary["pressure_residual"] < 1e-10:
             raise ValueError("native COUPLED pressure residual exceeds 1e-10")
-        for key in ("volume_error", "R_p", "R_T", "R_g", "profile_residual"):
-            if not 0 <= summary[key] < tolerance:
+        for key in ("volume_error", "R_p", "R_T", "R_g", "profile_residual", "viscosity_residual"):
+            if key not in summary or not 0 <= summary[key] < tolerance:
                 raise ValueError(f"native COUPLED {key} fails requested tolerance")
         for component in ("oil", "species"):
             scale, residual = summary[f"{component}_balance_scale_kg_s"], summary[f"{component}_balance_kg_s"]
@@ -370,6 +430,7 @@ class Campaign(driver.Campaign):
         check_layer_eos(config, fields)
         # Evaporation may cool below supply temperature; require actual property domains.
         curves, saturation = property_curves(self.table_path)
+        viscosity_mismatch = check_layer_viscosity(config, fields, curves)
         for concentration, temperature, pressure, alpha in zip(
                 fields["dissolved_gas"], fields["T"]-273.15, fields["p"], fields["alpha_gas"]):
             curve_value(curves, float(concentration), float(temperature), True)
@@ -415,6 +476,7 @@ class Campaign(driver.Campaign):
             "T_outer_mean_K": float(np.mean(fields["temperature_housing_outer"])),
             "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
             "energy_balance_residual_rel": energy, "cross_film_profile_residual": summary["profile_residual"],
+            "cross_film_viscosity_residual": viscosity_mismatch,
             "cross_film_profile_t_min_K": profile_min, "cross_film_profile_t_max_K": profile_max,
             "oil_balance_rel": summary["oil_balance_rel"], "species_balance_rel": summary["species_balance_rel"],
             "alpha_gas_max": float(np.max(fields["alpha_gas"])), "alpha_gas_mean": float(np.mean(fields["alpha_gas"])),
@@ -494,10 +556,15 @@ def check_inputs(inputs, output):
             assert config["cavitation_model"] == "COUPLED"
             assert config["cavitated_film_model"] == "HOMOGENEOUS"
             assert config["steady_pressure_inner_only"] == "false"
+            assert config["coupled_fbns_initialization"] == "true"
             assert float(config["coupling_relaxation"]) == .3
+            assert float(config["steady_position_fd_step"]) == .0001
             assert config["density_model"] == "LINEAR_TEMPERATURE"
             assert float(config["density_temperature_intercept"]) == 954.9
             assert float(config["density_temperature_slope"]) == -.7284
+            output_fields = config["output_fields"].split(",")
+            assert all(name in output_fields for layer in range(int(config["cross_film_layers"]))
+                       for name in (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}"))
             assert config["solution_table_clamp"] == "false"
             assert config["solubility_model"] == "CURVE_TABLE"
             assert float(config["dissolved_gas_initial"]) == .3

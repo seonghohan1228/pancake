@@ -18,10 +18,11 @@ Stats update(Fields& fields, LinearSystem& sys, Communicator& comm, const Mesh& 
     Stats result;
     if ((cfg.cavitation_model == CavitationModel::COUPLED) != (coupled_solver != nullptr))
         throw std::invalid_argument("Equilibrium pressure solver does not match cavitation_model");
-    auto solve_pressure = [&] {
+    auto solve_pressure = [&](bool allow_steady_continuation = true) {
         ++result.pressure_solves;
         if (coupled_solver) {
-            result.coupled = coupled_solver->solve(fields, cfg, cfg.dt, cfg.coupled_phase_equilibrium);
+            result.coupled = coupled_solver->solve(fields, cfg, cfg.dt, cfg.coupled_phase_equilibrium,
+                                                    allow_steady_continuation);
             return result.coupled.converged;
         }
         result.pressure = FBNS::solve(fields, sys, comm, mesh, cfg);
@@ -80,7 +81,7 @@ Stats update(Fields& fields, LinearSystem& sys, Communicator& comm, const Mesh& 
         }
         comm.update_ghosts(fields);
         try {
-            if (!solve_pressure()) return false;
+            if (!solve_pressure(false)) return false;
         } catch (const std::exception&) {
             return false;
         }

@@ -201,10 +201,14 @@ void register_fields(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     }
 }
 
-CrossFilm::WallState update(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
+CrossFilm::WallState update(Fields& f,const Mesh& mesh,const SimulationConfig& cfg,double relaxation) {
     const int n=cfg.cross_film_layers;
     const double area=mesh.cell_volume();
     bool invalid=false;
+    const bool damp=cfg.cavitation_model==CavitationModel::COUPLED &&
+        cfg.solution_mode==SolutionMode::STEADY_STATE;
+    require_valid(damp && !(std::isfinite(relaxation)&&relaxation>0&&relaxation<=1),
+                  "Resolved viscosity relaxation must lie in (0, 1]");
     double reductions[5]={0,0,0,0,0};
     double tmin=std::numeric_limits<double>::infinity(),tmax=-tmin;
     for(int i=0;i<mesh.n_theta_local;++i) for(int j=0;j<mesh.n_z_local;++j) {
@@ -227,6 +231,11 @@ CrossFilm::WallState update(Fields& f,const Mesh& mesh,const SimulationConfig& c
                     1/(f["theta"](i,j)*mul+(1-f["theta"](i,j))*cfg.mu_gas) : ref/(mu*mul);
             } catch(...) {invalid=true;}
             invalid|=!(std::isfinite(t)&&t>0&&std::isfinite(inv)&&inv>0&&std::isfinite(h)&&h>0);
+            if(damp && f["cross_film_layer_initialized"](i,j)!=0 && relaxation<1) {
+                const double previous=f[viscosity_name(k)](i,j);
+                invalid|=!(std::isfinite(previous)&&previous>0);
+                inv=relaxation*inv+(1-relaxation)*previous;
+            }
             f[viscosity_name(k)](i,j)=inv;
             f0+=h*(hi-lo)*inv;f1+=h*h*(hi*hi-lo*lo)*inv/2;
             g2+=h*h*h*(hi*hi*hi-lo*lo*lo)*inv/3;
@@ -623,12 +632,23 @@ Energy::Balance balance(const Fields& f,const Mesh& mesh,const SimulationConfig&
 CrossFilm::WallState diagnostics(const Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     const double area=mesh.cell_volume();
     double sums[4]={0,0,0,0},change=0;
+    double viscosity_residual=0;
+    bool invalid=false;
     double lo=std::numeric_limits<double>::infinity(),hi=-lo;
     for(int i=0;i<mesh.n_theta_local;++i)for(int j=0;j<mesh.n_z_local;++j) {
         const double ts=f["cross_film_t_shaft"](i,j),tb=f["cross_film_t_bush"](i,j);
         lo=std::min({lo,ts,tb});hi=std::max({hi,ts,tb});
         for(int k=0;k<cfg.cross_film_layers;++k) {
             const double t=f[layer_name(k)](i,j);lo=std::min(lo,t);hi=std::max(hi,t);
+            if(cfg.cavitation_model==CavitationModel::COUPLED && cfg.solution_mode==SolutionMode::STEADY_STATE) {
+                try {
+                    const double mul=FluidProperties::liquid_solution_viscosity(f["dissolved_gas"](i,j),f["pressure"](i,j),t,cfg);
+                    const double theta=f["theta"](i,j),target=1/(theta*mul+(1-theta)*cfg.mu_gas);
+                    const double used=f[viscosity_name(k)](i,j);
+                    invalid|=!(std::isfinite(target)&&target>0&&std::isfinite(used)&&used>0);
+                    viscosity_residual=std::max(viscosity_residual,std::abs(used-target)/target);
+                } catch(...) {invalid=true;}
+            }
         }
         if(cfg.bush_thermal_model!=BushThermalModel::LOCAL)
             for(int k=0;k<cfg.bush_radial_cells;++k) {
@@ -641,15 +661,18 @@ CrossFilm::WallState diagnostics(const Fields& f,const Mesh& mesh,const Simulati
         sums[3]+=g*(f[layer_name(cfg.cross_film_layers-1)](i,j)-tb)*area;
         change=std::max(change,f["cross_film_layer_residual"](i,j));
     }
+    require_valid(invalid,"Resolved layer constitutive viscosity is nonphysical");
     MPI_Allreduce(MPI_IN_PLACE,sums,4,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
     MPI_Allreduce(MPI_IN_PLACE,&lo,1,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
     MPI_Allreduce(MPI_IN_PLACE,&hi,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
     MPI_Allreduce(MPI_IN_PLACE,&change,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE,&viscosity_residual,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
     CrossFilm::WallState state;
     const double surface=2*M_PI*mesh.R*mesh.L;
     state.t_shaft=sums[0]/surface;state.t_bush_mean=sums[1]/surface;
     state.q_shaft_net=sums[2];state.q_bush_net=sums[3];
     state.profile_t_min=lo;state.profile_t_max=hi;state.profile_residual=change;
+    state.viscosity_residual=viscosity_residual;
     state.bush_2d_solved=cfg.bush_thermal_model!=BushThermalModel::LOCAL;
     return state;
 }

@@ -1,6 +1,7 @@
 #include <petscsys.h>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <stdexcept>
 #include "coupled_cavitation.hpp"
 #include "r410a.hpp"
@@ -110,6 +111,34 @@ int main(int argc, char** argv) {
         cfg.solution_mode=SolutionMode::STEADY_STATE;
         const auto steady_bearing=solver.solve(fields,cfg,.001);
         require(steady_bearing.converged,"Steady conservative vapor bearing");
+        // Dissolved transport cannot create a free phase when its equation has no source or incoming mass.
+        const double original_p_cav=cfg.p_cav;
+        cfg.fluid_property_model=FluidPropertyModel::SINGLE_PHASE;
+        cfg.dissolved_gas_initial=.3; cfg.p_cav=0;
+        fields["dissolved_gas"].fill(.3); fields["free_gas_mass"].fill(0);
+        for (double eccentricity : {.6,.62,.58,.6}) {
+            for (int i=0;i<mesh.n_theta_local;++i) for(int j=0;j<mesh.n_z_local;++j)
+                fields["h"](i,j)=cfg.c*(1+eccentricity*std::cos((mesh.offset_theta+i+.5)*mesh.get_d_theta()));
+            solver.initialize(fields,cfg);
+            const auto gas_off=solver.solve(fields,cfg,.001);
+            require(gas_off.converged,"Gas-off dissolved mixture pressure solve");
+            require(std::abs(gas_off.oil_balance)<1e-10 && std::abs(gas_off.species_balance)<1e-10,
+                    "Gas-off mixture preserves oil and total species");
+            double bounds[3]={0,0,INFINITY};
+            for (int i=0;i<mesh.n_theta_local;++i) for(int j=0;j<mesh.n_z_local;++j) {
+                bounds[0]=std::min(bounds[0],fields["free_gas_mass"](i,j));
+                bounds[1]=std::min(bounds[1],-fields["free_gas_mass"](i,j));
+                bounds[2]=std::min(bounds[2],fields["pressure"](i,j));
+            }
+            MPI_Allreduce(MPI_IN_PLACE,bounds,3,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+            if(mesh.rank==0)std::cout<<std::setprecision(17)<<"gas_off_invariant eccentricity="<<eccentricity
+                <<" free_min="<<bounds[0]<<" free_max="<<-bounds[1]<<" p_min="<<bounds[2]
+                <<" volume_error="<<gas_off.volume_error<<" oil_balance="<<gas_off.oil_balance
+                <<" species_balance="<<gas_off.species_balance<<" residual="<<gas_off.residual<<'\n';
+            require(bounds[0]==0 && bounds[1]==0,"Source-free free-gas inventory remains exactly zero");
+            require(bounds[2]>=-1e-6,"Gas-off mixture preserves the strict absolute pressure floor");
+        }
+        cfg.p_cav=original_p_cav;
         cfg.solution_mode=SolutionMode::TRANSIENT;
 
         // Independent equilibrium root from Henry's law, gas EOS and conserved

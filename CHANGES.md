@@ -4353,3 +4353,53 @@ Local comparisons and the bounded full-grid check retained the same strict
 nonlinear pressure gate. Preserve both interrupted attempts and their probes.
 Correct inherited FBNS descriptions in future matched input preparation;
 an immutable erratum accompanies the already frozen campaign inputs.
+
+Complete and independently verify the separate 17-case density-only FBNS
+rerun and three focused checks. All 80 native calls return zero and account
+for 20.327491 allocated core-hours. Torque falls by 0.7521–1.9180% relative
+to the retained constant-density-950 campaign; bearing errors remain
+-86.4178% to -47.2486%. Sensor MAE is 0.357658 K and the largest sensor
+change is 0.010101 K. Retrieve the 2,329,412,122-byte archive and verify its
+SHA-256 `471e6c167130043228686d879c43d8be3b72cda91830e0f7e836cf85b0eaacc8`
+and 1,553 evidence-file hashes. Preserve the complete extraction under
+`D:/pancake-results/lge_mixture_density_gas_20261019/density_off` because the
+system drive cannot safely hold both new campaigns and their archives. These results
+do not replace the pending matched COUPLED gas comparison.
+
+Add default-off `coupled_fbns_initialization` for the steady resolved COUPLED
+path. A gas-free FBNS pressure/film-content initial guess is converted into
+conservative inventories at unchanged geometry, composition and temperature;
+the final COUPLED equations and acceptance gates are retained. Reject
+incompatible transient, prescribed-free-gas and variable-vapor-pressure inputs.
+All 66 native Windows tests pass, including four-rank off/on initialization
+checks, and all seven gas-driver tests pass. M02 gas-on passed the full 48×16
+fixed-cooling smoke check after initialization. Gas-off's later load-position
+stall remains under diagnosis; neither the three-outer diagnostic nor a
+stopped run is an accepted comparison result. Preserve the third interrupted
+remote attempt and its complete verified archive before the next rebuild.
+
+Resolve the M02 conditioning problems without changing the physical model.
+Use the algebraically equivalent explicit free-species row while retaining
+the original total-species residual gate. Tighten common SNES absolute
+tolerance to 1e-13 to resolve the existing dimensional pressure floor, and
+reduce the load-position finite-difference step to 0.0001 after measured
+non-descent proposals at 0.001. Damp the layer inverse-viscosity profile
+consistently before integrating pressure mobility, velocity and dissipation.
+Require agreement with the current unrelaxed physical viscosity through a
+new native and independently recomputed raw-field residual; never relax
+conservative inventories. All 66 native and 13 gas-driver tests pass.
+Fresh matched M02 48x16x16 checks pass in 50/52 outer iterations, with
+gas-off/on force errors 0.05625%/0.01936% and viscosity residuals
+1.10018e-7/8.73245e-8. These fixed-cooling local checks justify the isolated
+remote rebuild; full-grid campaign acceptance remains pending.
+
+Bound the work spent on disposable steady load-position trials. The main
+pressure solve retains pseudo-time recovery; finite-difference and line-search
+trials return directly when their steady solve fails, allowing rejection and
+backtracking without a long transient recovery for that trial. All 66 native
+tests pass, including forced failed-trial inventory/history preservation.
+The original-seed M02 coarse off/on torques remain unchanged to floating-point
+precision. Using the verified density-only shaft position as a common numerical
+guess also passes both branches; torque changes are about 0.01%, within the
+normal force tolerance. This changes initialization only. Production-grid
+acceptance and the complete matched campaign remain required.

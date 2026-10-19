@@ -110,13 +110,57 @@ full-grid remote probe reached the unchanged steady pressure gate directly.
 The solver command and its nonlinear/linear progress logs are retained.
 See the [PETSc ASM options](https://petsc.org/release/manualpages/PC/PCASM/).
 
+The inner SNES absolute tolerance is `1e-13` in both normal and focused runs.
+At the approximately 1.4 MPa pressure scale, the former `1e-10` stopping
+tolerance permitted a negative-pressure error larger than the unchanged
+`1e-6 Pa` admissibility bound. Focused runs additionally tighten force,
+thermal and exterior-cooling closure. Gas-off uses the algebraically
+equivalent explicit free-species balance, avoiding subtraction of nearly
+equal dissolved and total-species equations. The original total-species
+residual remains in final acceptance.
+
+The position Jacobian uses `steady_position_fd_step = 0.0001`, a 4.25 nm
+displacement at the nominal clearance. The former 42.5 nm difference was
+several percent of M02's minimum gap and produced a non-descent Newton
+direction on the reduced grid. The smaller step reached the unchanged
+0.2% force criterion without changing geometry or measured load.
+
+Disposable load-position probes and line-search candidates use direct steady
+pressure solves. A failed candidate is rejected without pseudo-time recovery;
+the base pressure state retains that recovery. The verified density-only CFD
+shaft positions can seed both matched branches identically. These are numerical
+initial guesses, not fixed geometry or reused thermal/species checkpoints;
+each branch must independently close its prescribed measured load.
+
+For the steady COUPLED path, the outer controller also damps each layer's
+inverse viscosity before computing all Dowson integrals. This addresses the
+observed alternating liquid-fill/viscosity iteration. The first profile uses
+the physical law directly; later updates blend positive old and current
+profiles. Pressure mobility, velocity weights and shear use those same
+integrals. Conservative phase inventories are not relaxed. A separate
+`viscosity_residual` compares the used profile with the unrelaxed physical
+law at the current fill, composition and layer temperatures. It must satisfy
+the coupling tolerance, and the campaign independently recomputes it from
+saved layer fields. Small relaxation cannot hide a constitutive mismatch.
+
+Both branches enable `coupled_fbns_initialization`. One preliminary gas-free
+FBNS pressure/film-content solve at the prescribed starting position,
+composition and temperature initializes the conservative COUPLED inventories.
+It supplies a cavitating initial guess; the subsequent COUPLED equations and
+all acceptance gates are unchanged. A fully flooded starting guess stalled
+M02's Newton iteration even with converged linear solves, a different shaft
+position and trust-region globalization. The isolated cavitating-seed check
+completed three strict coupled load/thermal updates in both branches. Those
+capped diagnostics are preserved and are not accepted campaign results.
+
 ## Inputs and next campaign step
 
 Evidence provenance and numerical assumptions are collected under
 `results/lge_mixture_density_gas_20261019/property_review/`. The case input
 builder derives from the preserved 02e evidence/preflight and writes 34
 matched configurations, along with strict-domain and provenance manifests.
-The native Windows and remote Linux suites have each passed 65 checks.
+The latest native Windows suite passes 66 checks. The prior remote Linux
+snapshot also passed 66; each new snapshot must pass its complete suite before launch.
 The 40-job campaign includes six paired pilots, 28 remaining cases, four
 tighter-tolerance checks (M02/M16), and two 32-layer checks (M02). Four MPI
 ranks are bound to separate physical cores per case, with at most 24 cores

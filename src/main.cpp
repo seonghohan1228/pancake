@@ -306,6 +306,7 @@ int main(int argc, char** argv) {
         }
 
         LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
+        bool coupled_fbns_initialized = false;
         Field p_outer_prev("p_outer_prev", mesh);  // pre-sweep snapshots for the
         Field T_outer_prev("T_outer_prev", mesh);  // outer (Picard) coupling residual
         Field c_outer_prev("c_outer_prev", mesh);
@@ -461,7 +462,8 @@ int main(int argc, char** argv) {
                 // No-op unless cross_film_thermal_model is enabled.
                 if (CrossFilm::active(cfg)) {
                     try {
-                        cross_film_state = CrossFilm::update(fields, mesh, cfg);
+                        cross_film_state = CrossFilm::update(fields, mesh, cfg,
+                            coupled && steady_state ? coupling_control.relaxation() : 1.0);
                     } catch (const std::exception& ex) {
                         nonlinear_failed = true;
                         Utils::log(ex.what(), Utils::Color::RED, 1);
@@ -474,6 +476,51 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["cross_film_couette_h"]);
                 }
 
+                if (cfg.coupled_fbns_initialization && !coupled_fbns_initialized) {
+                    try {
+                        int invalid_seed = 0;
+                        auto seed_cfg = step_cfg;
+                        seed_cfg.cavitation_model = CavitationModel::FBNS;
+                        seed_cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+                        seed_cfg.coupled_phase_equilibrium = false;
+                        seed_cfg.coupled_fbns_initialization = false;
+                        seed_cfg.cross_film_thermal_model = CrossFilmModel::NONE;
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            invalid_seed |= fields["free_gas_mass"](i,j) != 0 || fields["alpha_gas"](i,j) != 0;
+                            const double c_d = fields["dissolved_gas"](i,j);
+                            const double p = fields["pressure"](i,j), t = fields["temperature"](i,j);
+                            try {
+                                fields["rho_liquid_solution"](i,j) = FluidProperties::liquid_solution_density(c_d,p,t,step_cfg);
+                                fields["mu"](i,j) = FluidProperties::liquid_solution_viscosity(c_d,p,t,step_cfg);
+                            } catch (const std::exception&) { invalid_seed = 1; }
+                        }
+                        MPI_Allreduce(MPI_IN_PLACE,&invalid_seed,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+                        if (invalid_seed) throw std::runtime_error("FBNS initialization requires supported liquid properties and no existing free-gas inventory.");
+                        comm.update_ghosts(fields);
+                        const auto seed = FBNS::solve(fields,sys,comm,mesh,seed_cfg);
+                        double minimum_theta = std::numeric_limits<double>::infinity();
+                        double minimum_pressure = minimum_theta;
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            minimum_theta = std::min(minimum_theta,fields["theta"](i,j));
+                            minimum_pressure = std::min(minimum_pressure,fields["pressure"](i,j));
+                        }
+                        MPI_Allreduce(MPI_IN_PLACE,&minimum_theta,1,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+                        MPI_Allreduce(MPI_IN_PLACE,&minimum_pressure,1,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+                        if (!seed.converged || !std::isfinite(minimum_theta) || minimum_theta <= 0 ||
+                            !std::isfinite(minimum_pressure) || minimum_pressure < cfg.p_cav)
+                            throw std::runtime_error("FBNS initialization did not produce a converged admissible initial guess.");
+                        coupled_solver->initialize(fields,cfg);
+                        coupled_fbns_initialized = true;
+                        std::ostringstream message;
+                        message << std::setprecision(17) << "Coupled FBNS initialization: residual=" << seed.residual
+                            << " iterations=" << seed.newton_iters << " theta_min=" << minimum_theta;
+                        Utils::log(message.str(),Utils::Color::BLUE,1);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(),Utils::Color::RED,1);
+                        break;
+                    }
+                }
                 if (equilibrium) {
                     try {
                         equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state,
@@ -628,6 +675,8 @@ int main(int argc, char** argv) {
                             std::isfinite(coupled_stats.volume_error) &&
                             coupled_stats.volume_error < cfg.coupling_tolerance;
                         if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                            energy_balanced = energy_balanced && std::isfinite(cross_film_state.viscosity_residual) &&
+                                cross_film_state.viscosity_residual < cfg.coupling_tolerance;
                             const auto ledger = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
                             coupling_R_E = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
                             energy_balanced = energy_balanced && std::isfinite(coupling_R_E) &&
@@ -668,6 +717,7 @@ int main(int argc, char** argv) {
                           << " R_T=" << coupling_R_T
                           << " R_g=" << coupling_R_g
                           << " R_X=" << cross_film_state.profile_residual
+                          << " R_mu=" << cross_film_state.viscosity_residual
                           << " R_E=" << coupling_R_E
                           << " omega=" << coupling_control.relaxation()
                           << (coupling_control.is_best() ? " *best" : "");
@@ -781,13 +831,14 @@ int main(int argc, char** argv) {
                 int summary_failed = 0;
                 if (mesh.rank == 0) {
                     std::ofstream summary(fs::path(cfg.output_dir) / "coupled_summary.csv");
-                    summary << "converged,cap_exhausted,restored_best,outer_iters,pressure_converged,pressure_residual,volume_error,oil_balance_kg_s,species_balance_kg_s,liquid_balance_kg_s,energy_residual_W,energy_scale_W,force_residual,R_p,R_T,R_g,profile_residual,x_m,y_m,oil_balance_scale_kg_s,species_balance_scale_kg_s,oil_balance_rel,species_balance_rel\n"
+                    summary << "converged,cap_exhausted,restored_best,outer_iters,pressure_converged,pressure_residual,volume_error,oil_balance_kg_s,species_balance_kg_s,liquid_balance_kg_s,energy_residual_W,energy_scale_W,force_residual,R_p,R_T,R_g,profile_residual,viscosity_residual,x_m,y_m,oil_balance_scale_kg_s,species_balance_scale_kg_s,oil_balance_rel,species_balance_rel\n"
                         << std::setprecision(17) << (!nonlinear_failed && (!coupled_outer || status.converged))
                         << ',' << status.cap_exhausted << ',' << status.restored_best << ',' << coupling_iters
                         << ',' << coupled_stats.converged << ',' << coupled_stats.residual << ',' << coupled_stats.volume_error
                         << ',' << coupled_stats.oil_balance << ',' << coupled_stats.species_balance << ',' << coupled_stats.liquid_balance
                         << ',' << ledger.residual_W << ',' << ledger.scale_W << ',' << equilibrium_stats.force_residual
                         << ',' << status.R_p << ',' << status.R_T << ',' << status.R_g << ',' << cross_film_state.profile_residual
+                        << ',' << cross_film_state.viscosity_residual
                         << ',' << bearing_state.x << ',' << bearing_state.y
                         << ',' << scales.oil << ',' << scales.species
                         << ',' << std::abs(coupled_stats.oil_balance) / std::max(scales.oil, 1e-30)
