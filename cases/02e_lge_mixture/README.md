@@ -195,3 +195,13 @@ The final reporter overlay adds signed/absolute dimensional torque errors; its
 hash is `3860c5a04f1dc2e918eab62bf7bc359940260500ee0981817d9ce5f29721488e`.
 The original reporter and overlay manifests are preserved. Solver, driver,
 worker and physical inputs remained frozen during the campaign.
+
+## Follow-on comparison status (2026-10-19)
+
+The completed campaign above remains the fixed-viscosity 02e scenario. A
+separate matched native COUPLED gas-off/gas-on follow-on is documented in
+[02f_lge_mixture_gas](../02f_lge_mixture_gas/README.md). Its inputs are
+prepared. A gas-on 24×8 pilot passed strict raw-field acceptance; the matched
+48×16 pilots are still running and the full remote campaign has not launched.
+These are separate pilot checks; no campaign-level comparison outcomes should
+be inferred from the completed 02e results.

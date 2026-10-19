@@ -18,6 +18,7 @@ namespace Energy {
         double scale_W = 0.0;
         double viscous_heat_W = 0.0;
         double wall_heat_W = 0.0;
+        double pressure_work_W = 0.0; // p div(Q) + diffusion displacement - feed pV [W]
         double axial_enthalpy_out_W = 0.0;
         double groove_enthalpy_in_W = 0.0;
         double mass_imbalance_correction_W = 0.0;

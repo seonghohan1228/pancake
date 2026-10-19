@@ -1,5 +1,6 @@
 """Check the fixed-chart mixture driver without executing a CFD solve."""
 
+import csv
 import json
 import math
 from pathlib import Path
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 driver = runpy.run_path(str(ROOT / "cases/02d_fw68d_steady_six/run_steady.py"))
+worker = runpy.run_path(str(ROOT / "cases/02e_lge_mixture/run_mixture.py"))
 
 
 def rejects(function):
@@ -19,9 +21,68 @@ def rejects(function):
     raise AssertionError("invalid material or speed accepted")
 
 
+def check_density_preparation(work):
+    """Keep original coordinates and constant inputs while checking the explicit linear scenario."""
+    preflight = work / "preflight"
+    preflight.mkdir()
+    points = [{"temperature_c": 20., "nu_mm2_s": 10.}, {"temperature_c": 80., "nu_mm2_s": 2.}]
+    with (preflight / "viscosity_nodes.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(points[0]))
+        writer.writeheader()
+        writer.writerows(points)
+    rows = []
+    for index in range(1, 18):
+        tc2, rpm, load = 30.+index, 200., 1000.+index
+        nu = driver["viscosity"](tc2, points)
+        rows.append(dict(selected_id=f"M{index:02d}", rpm=rpm, force_n_mean=load,
+            tc0_c_mean=30., tc2_c_mean=tc2, speed_rpm_mean=-rpm, signed_requested_rpm=-rpm,
+            S=950*nu*rpm/60*.04*.043/load*(.0215/42.5e-6)**2,
+            bearing_residual_nm=.2, f=.2/(load*.0215), pressure_bar_abs_mean=15.))
+    with (preflight / "case_matrix.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    (preflight / "solution_viscosity_surrogate.csv").write_text(
+        "c_mass_fraction,T_C,P_MPa,viscosity_mm2s\n0,20,,10\n0,80,,2\n")
+    constant, linear = work / "constant", work / "linear"
+    worker["prepare"](preflight, constant)
+    worker["prepare"](preflight, linear, "LINEAR_TEMPERATURE")
+    worker["check_inputs"](constant, work / "constant_check.json")
+    worker["check_inputs"](linear, work / "linear_check.json", "LINEAR_TEMPERATURE")
+    try:
+        worker["check_inputs"](linear, work / "wrong_check.json")
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("Linear scenario silently accepted as constant")
+    assert not (work / "wrong_check.json").exists()
+    constant_experiment = json.loads((constant / "experiment.json").read_text())
+    linear_experiment = json.loads((linear / "experiment.json").read_text())
+    assert constant_experiment["geometry"] == linear_experiment["geometry"]
+    assert constant_experiment["viscosity"] == linear_experiment["viscosity"]
+    assert "density" not in json.loads((constant / "decisions.json").read_text())
+    for original, changed in zip(constant_experiment["cases"], linear_experiment["cases"]):
+        assert original["measured"] == changed["measured"]
+        assert original["sommerfeld_number"] == changed["sommerfeld_number"]
+        assert original["rho_kg_m3"] == 950.
+        assert changed["rho_kg_m3"] == driver["density"](30.)
+        assert "S_density_reference_TC2" not in original
+        tc2 = float(original["measured"]["tc2_c_mean"])
+        assert changed["S_density_reference_TC2"] == original["sommerfeld_number"]*driver["density"](tc2)/950.
+    materials = json.loads((linear / "M01_setup.json").read_text())["material_settings"]
+    assert "oil_density_kg_m3" not in materials and "oil_thermal_expansion_1_K" not in materials
+    surface, bath = 320., 303.15
+    _, cooling = driver["housing_coefficient"](surface, bath, points, materials)
+    nu, rho, _, k = driver["oil_properties"]((surface+bath)/2-273.15, points, materials)
+    expected_ra = 9.80665*(.7284/rho)*(surface-bath)*.085**3/(nu*k/(rho*2010.))
+    assert math.isclose(cooling["Ra_D"], expected_ra, rel_tol=1e-14)
+    assert driver["density"](30., materials) != driver["density"](60., materials)
+
+
 def main():
     with TemporaryDirectory() as directory:
         work = Path(directory)
+        check_density_preparation(work)
         experiment = json.loads(driver["EXPERIMENT"].read_text())
         setup = json.loads(driver["SETUP"].read_text())
         case = dict(experiment["cases"][0], case_id="M01", tc0_boundary_temperature_c=30.,
@@ -102,7 +163,7 @@ def main():
                         invalid, .3, 270., 60., 100., work, table_path))
         for value in (0., math.nan, math.inf):
             rejects(lambda: driver["angular_speed"]({"angular_speed_rad_s": value}))
-    print("Mixture driver passed: actual input provenance, constant density, signed rotation, cooling and acceptance")
+    print("Mixture driver passed: original coordinates, constant/linear density, actual input provenance, signed rotation, cooling and acceptance")
 
 
 if __name__ == "__main__":

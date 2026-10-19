@@ -1560,9 +1560,11 @@ struct SimulationConfig {
             gas_pressure_coupling == GasPressureCoupling::NONE &&
             dissolved_gas_initial == 0.0 && dissolved_gas_henry_coeff == 0.0 &&
             oil_vapor_temperature_coeff == 0.0;
-        if (!finite(p_cav) || p_cav < 0.0 || (p_cav == 0.0 && !zero_pressure_pure_oil)) {
-            error("p_cav must be a positive absolute pressure, except 0 Pa for gas-free "
-                  "SINGLE_PHASE FBNS with SCALAR_PCAV. Reservoir pressure belongs in "
+        const bool zero_pressure_coupled = cavitation_model == CavitationModel::COUPLED &&
+            cavitation_threshold == CavitationThreshold::SCALAR_PCAV && oil_vapor_temperature_coeff == 0.0;
+        if (!finite(p_cav) || p_cav < 0.0 || (p_cav == 0.0 && !zero_pressure_pure_oil && !zero_pressure_coupled)) {
+            error("p_cav must be positive, except a 0-Pa oil-vapor limit for gas-free "
+                  "SINGLE_PHASE FBNS or COUPLED with SCALAR_PCAV. Reservoir pressure belongs in "
                   "bc_z_south_val / bc_z_north_val.");
         }
         if (!finite(omega_ramp_time) || omega_ramp_time < 0.0) {
@@ -1608,13 +1610,17 @@ struct SimulationConfig {
             if (cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
                 if (cross_film_layers < 2 || cross_film_layers > 128)
                     error("cross_film_layers must be between 2 and 128.");
-                if (solution_mode != SolutionMode::STEADY_STATE ||
-                    cavitation_model != CavitationModel::FBNS ||
-                    fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
-                    groove_mixing_model != GrooveMixingModel::FLUX_BALANCED ||
+                const bool fbns_layers = cavitation_model == CavitationModel::FBNS &&
+                    fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+                    groove_mixing_model == GrooveMixingModel::FLUX_BALANCED;
+                const bool coupled_layers = cavitation_model == CavitationModel::COUPLED &&
+                    groove_mixing_model == GrooveMixingModel::PINNED &&
+                    cavitated_film_model == CavitatedFilmModel::FULL_FILM &&
+                    mixture_viscosity_model == MixtureViscosityModel::DUKLER;
+                if (solution_mode != SolutionMode::STEADY_STATE || (!fbns_layers && !coupled_layers) ||
                     thermal_convection_scheme != ConvectionScheme::UPWIND ||
                     liquid_specific_heat <= 0.0)
-                    error("FINITE_VOLUME requires steady single-phase FBNS, FLUX_BALANCED, upwind energy and liquid_specific_heat > 0.");
+                    error("FINITE_VOLUME requires steady UPWIND energy with positive liquid_specific_heat: single-phase FBNS/FLUX_BALANCED or FULL_FILM DUKLER COUPLED/PINNED.");
             }
             if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
                 error("cross_film_thermal_model requires temperature_model = ENERGY_EQUATION; "
@@ -1717,10 +1723,16 @@ struct SimulationConfig {
             require_positive(bearing_mass, "bearing_mass");
         }
         if (motion_model == MotionModel::STEADY_EQUILIBRIUM) {
-            if (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
-                fluid_property_model != FluidPropertyModel::SINGLE_PHASE || dissolved_gas_initial != 0.0 ||
-                dissolved_gas_henry_coeff != 0.0 || gas_pressure_coupling != GasPressureCoupling::NONE)
-                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS with gas_pressure_coupling = NONE.");
+            const bool fbns_equilibrium = cavitation_model == CavitationModel::FBNS &&
+                fluid_property_model == FluidPropertyModel::SINGLE_PHASE && dissolved_gas_initial == 0.0 &&
+                dissolved_gas_henry_coeff == 0.0 && gas_pressure_coupling == GasPressureCoupling::NONE;
+            const bool coupled_equilibrium = cavitation_model == CavitationModel::COUPLED &&
+                (fluid_property_model == FluidPropertyModel::SINGLE_PHASE ||
+                 (fluid_property_model == FluidPropertyModel::TWO_PHASE && coupled_phase_equilibrium)) &&
+                (temperature_model == TemperatureModel::ISOTHERMAL ||
+                 cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME);
+            if (solution_mode != SolutionMode::STEADY_STATE || (!fbns_equilibrium && !coupled_equilibrium))
+                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS, or SINGLE_PHASE/equilibrium TWO_PHASE COUPLED.");
             require_positive(steady_force_tolerance, "steady_force_tolerance");
             require_positive(steady_position_step_limit, "steady_position_step_limit");
             require_positive(steady_position_fd_step, "steady_position_fd_step");
@@ -1866,8 +1878,8 @@ struct SimulationConfig {
             require_nonnegative(oil_vapor_temperature_coeff,"oil_vapor_temperature_coeff");
             if (cavitation_threshold != CavitationThreshold::SCALAR_PCAV || gas_pressure_coupling != GasPressureCoupling::NONE)
                 error("COUPLED requires SCALAR_PCAV and gas_pressure_coupling = NONE; pressure follows the gas EOS and gap volume.");
-            if (cross_film_thermal_model != CrossFilmModel::NONE)
-                error("COUPLED uses a common film temperature with prescribed wall heat transfer; cross_film_thermal_model must be NONE.");
+            if (cross_film_thermal_model != CrossFilmModel::NONE && cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME)
+                error("COUPLED supports NONE or steady FINITE_VOLUME thermal closure.");
             if (mixture_viscosity_model != MixtureViscosityModel::DUKLER)
                 error("COUPLED currently requires DUKLER volume-weighted mixture viscosity.");
             if (temperature_model == TemperatureModel::ENERGY_EQUATION) {
@@ -2155,7 +2167,7 @@ struct SimulationConfig {
                 warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
             }
             if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate < 0.0) {
-                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables release).");
+                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables finite-rate release; equilibrium is separate).");
             }
             if (!finite(gas_absorption_rate) || (gas_absorption_rate < 0 && gas_absorption_rate != -1))
                 error("gas_absorption_rate must be -1 (inherit release rate) or >= 0 [1/s].");

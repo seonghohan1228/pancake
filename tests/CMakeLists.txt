@@ -111,12 +111,22 @@ set_tests_properties(test_ksp_guard PROPERTIES
     PASS_REGULAR_EXPRESSION "linear solve 'ksp guard probe' failed")
 
 add_pancake_test(test_steady_equilibrium)
+add_pancake_test(test_coupled_equilibrium)
+add_pancake_test(test_coupled_resolved_energy)
+add_test(NAME test_coupled_resolved_energy_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_coupled_resolved_energy>)
 foreach(ranks 1 4)
     add_test(NAME test_steady_equilibrium_mpi${ranks}
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_steady_equilibrium>)
+    add_test(NAME test_coupled_equilibrium_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_coupled_equilibrium>)
 endforeach()
 
 add_test(NAME test_steady_equilibrium_failure
     COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
         -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/steady_equilibrium_failure
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test_steady_equilibrium_failure.cmake)
+add_test(NAME test_coupled_equilibrium_failure
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_equilibrium_failure
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_equilibrium_failure.cmake)

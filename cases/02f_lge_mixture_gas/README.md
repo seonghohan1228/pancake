@@ -1,0 +1,129 @@
+# Conditional LGE gas release comparison (2026-10-19)
+
+This follow-on prepares matched steady COUPLED calculations for the 17
+selected M01–M17 operating windows. It is a conditional model comparison,
+not an experimental validation. Input preparation and all 34 configuration
+checks are complete. Matched 48×16 pilots using relaxation 0.3 passed strict
+raw-field acceptance. The isolated remote build passed all 65 native tests,
+and the full 720×192 campaign is running. These local pilot checks do not
+provide campaign-level gas-effect results; remote cases must pass the gates
+below before they enter the comparison.
+
+## Matched branches
+
+Both branches use the same geometry, measured operating conditions, absolute
+reservoir/groove pressure, full digitized viscosity chart `nu(c,T)`, density
+law, `COUPLED` steady finite-volume thermal model, mesh, wall/feed conditions,
+solid conduction, cooling and load-balance procedure. Coupling relaxation is
+0.3 in both branches. Dissolved composition is initialized uniformly at 0.30
+across the field and supplied at both axial ends; feed free-gas mass fraction
+is zero. Composition and phase fractions are uniform through the gap;
+equilibrium uses film-mean temperature while layer energy and viscosity are
+resolved separately. The branch
+differences are limited to:
+
+| Branch | Fluid property model | Phase equilibrium | Interpretation |
+|---|---|---|---|
+| `gas_off` | `SINGLE_PHASE` | disabled | Composition transports without release |
+| `gas_on` | `TWO_PHASE` | instantaneous local equilibrium | Release follows local bubble-pressure complementarity |
+
+The gas-on minus gas-off result can attribute release effects within this
+shared conditional model. It cannot be compared as a controlled gas effect
+against the earlier 02e FBNS/STRIATED fixed-chart-30 cases, which use a
+different solver and cavitation structure.
+
+## Conditional material assumptions
+
+The chart metadata leaves pressure and concentration bases unspecified. Under
+the user-authorized scenario, the pressure coordinate is interpreted as
+absolute pressure and the concentration coordinate as refrigerant mass
+fraction. The approximately 30% charge observation does not independently
+establish that basis; no fitted or inferred transfer rate is used. The full
+viscosity surface is evaluated without clamping or extrapolation. The
+pressure-temperature chart is inverted at each local composition and
+temperature for the first supported bubble-pressure crossing. Unsupported
+bubble points fail the run. A free R410A phase must also remain within the
+stable EOS domain at every film layer and journal/bearing wall.
+
+The same pure-oil density proxy is retained in both branches:
+
+\[
+\rho(T_C)=954.9-0.7284T_C\quad\mathrm{kg/m^3}.
+\]
+
+This law derives from advanced PVE VG68 formulated for R32, not an identified
+FW68D/R410A mixture density (Zeng et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2021.12.009)*, 2022). The reviewed PVE/R410A study distinguishes actual concentration from saturation solubility, but does not establish FW68D coefficients (Fukuta et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2009.09.015)*, 2010). No verified exact-grade mixture density or heat-of-solution data were found in the bounded source review.
+
+The caloric input record is
+[`conditional_caloric_inputs.json`](conditional_caloric_inputs.json). The full
+source review and checked manuscript excerpts are retained with the campaign
+evidence in `results/lge_mixture_density_gas_20261019/property_review/` in the
+parent working checkout.
+It uses pure saturated-liquid R410A at 20 °C as a dissolved-phase caloric
+analogue with constant heat capacity 1656.9291 J/(kg K), desorption internal
+energy 192486.2475 J/kg, and zero excess mixing energy; free-gas properties
+use the native real-gas EOS, with gas conductivity 0.0129583 W/(m K) and
+viscosity 1.26525×10⁻⁵ Pa s at the 293.15 K, 100 kPa reference. Oil heat
+capacity is 2010 J/(kg K), liquid conductivity 0.13 W/(m K), and steel
+conductivity 15 W/(m K). These are explicit proxies. The R410A analogue is
+not measured FW68D heat of solution, and none of the inputs is fitted to
+torque or temperature.
+
+A future density comparison could use additive liquid specific volumes,
+`1/rho_mix = (1-w)/rho_oil + w/rho_R410A_liquid + v_excess(T,p,w)`, with
+refrigerant mass fraction `w` and excess specific volume `v_excess`. Setting
+`v_excess = 0` is a conditional ideal-volume model. It needs a confirmed
+concentration basis and exact-grade oil/mixture density measurements before
+it can be treated as a FW68D correlation. The R410A gas density cannot serve
+as the dissolved-liquid density. Fukuta et al.'s ideal-volume conversion
+uses saturated-liquid refrigerant density and does not establish an
+actual-pressure partial molar volume model.
+
+## Thermal method and acceptance
+
+The steady thermal extension alternates the coupled pressure/species solve
+with a finite-volume cross-film energy solve and the resolved housing
+conduction network. It updates layer temperatures, local `nu(c,T)`, phase
+properties, wall temperatures and heat fluxes until the coupled solution and
+thermal profile converge. The discrete energy balance includes component
+face enthalpy, pressure work, viscous and pressure-flow dissipation, wall heat
+flux, feed enthalpy, and solid conduction. This is a steady outer iteration;
+it does not add cross-film temperature layers to the transient Newton state.
+See [the coupled energy method](../../docs/COUPLED_ENERGY.md) and
+[the coupled conservation model](../../docs/COUPLED_CAVITATION.md).
+
+The driver requires zero solver return code, native pressure convergence,
+no exhausted cap or restored-best iterate, pressure residual below
+\(10^{-10}\), and coupling, volume, pressure/species/thermal, profile and
+global energy residuals within their requested gates. Oil and species balance
+must satisfy the tighter of configured tolerance and \(10^{-8}\). Independent
+integrated load, finite positive physical fields, strict table support and
+stable free-gas EOS checks must also pass. Failed attempts and outputs are
+preserved; no solver result can be accepted merely because it reached a
+nominal iteration cap.
+
+Both branches use GMRES with overlapping additive Schwarz and local LU
+subdomain solves (`-coupled_sub_pc_type lu`). The default local ILU(0)
+reached its 1000-iteration cap on the production grid. Controlled local
+comparisons reproduced the same first-step equilibrium with LU, and the
+full-grid remote probe reached the unchanged steady pressure gate directly.
+The solver command and its nonlinear/linear progress logs are retained.
+See the [PETSc ASM options](https://petsc.org/release/manualpages/PC/PCASM/).
+
+## Inputs and next campaign step
+
+Evidence provenance and numerical assumptions are collected under
+`results/lge_mixture_density_gas_20261019/property_review/`. The case input
+builder derives from the preserved 02e evidence/preflight and writes 34
+matched configurations, along with strict-domain and provenance manifests.
+The native Windows and remote Linux suites have each passed 65 checks.
+The 40-job campaign includes six paired pilots, 28 remaining cases, four
+tighter-tolerance checks (M02/M16), and two 32-layer checks (M02). Four MPI
+ranks are bound to separate physical cores per case, with at most 24 cores
+across concurrent campaigns. Source/input/executable hashes, runtime versions,
+return codes and convergence diagnostics are retained with all attempts.
+
+The mass-fraction/absolute-pressure interpretation, pure-oil density proxy,
+caloric values and instantaneous-equilibrium assumption remain conditional.
+Condition stability and the measured approximately 30% charge do not prove
+an in-run steady composition or validate the mixture model.

@@ -13,13 +13,23 @@ double force_residual(const Reynolds::ForceComponents& f, const SimulationConfig
 }
 
 Stats update(Fields& fields, LinearSystem& sys, Communicator& comm, const Mesh& mesh,
-             const SimulationConfig& cfg, JournalMotion::BearingState& state) {
+             const SimulationConfig& cfg, JournalMotion::BearingState& state,
+             CoupledCavitation::Solver* coupled_solver) {
     Stats result;
+    if ((cfg.cavitation_model == CavitationModel::COUPLED) != (coupled_solver != nullptr))
+        throw std::invalid_argument("Equilibrium pressure solver does not match cavitation_model");
+    auto solve_pressure = [&] {
+        ++result.pressure_solves;
+        if (coupled_solver) {
+            result.coupled = coupled_solver->solve(fields, cfg, cfg.dt, cfg.coupled_phase_equilibrium);
+            return result.coupled.converged;
+        }
+        result.pressure = FBNS::solve(fields, sys, comm, mesh, cfg);
+        return result.pressure.converged;
+    };
     state.vx = state.vy = state.vz = 0.0;
     fields["dh_dt"].fill(0.0);
-    result.pressure = FBNS::solve(fields, sys, comm, mesh, cfg);
-    ++result.pressure_solves;
-    if (!result.pressure.converged) throw std::runtime_error("Equilibrium base pressure solve did not converge");
+    if (!solve_pressure()) throw std::runtime_error("Equilibrium base pressure solve did not converge");
     result.forces = Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
     result.force_residual = force_residual(result.forces, cfg);
     if (!std::isfinite(result.force_residual)) throw std::runtime_error("Equilibrium force residual is nonfinite");
@@ -28,10 +38,14 @@ Stats update(Fields& fields, LinearSystem& sys, Communicator& comm, const Mesh& 
     const auto base_state = state;
     const auto base_force = result.forces;
     const auto base_pressure = result.pressure;
+    const auto base_coupled = result.coupled;
     Coupling::Snapshot base;
     base.capture(fields);
     const std::vector<double> base_h = fields["h"].data;
-    auto restore = [&] { base.restore(fields); state = base_state; };
+    auto restore = [&] {
+        base.restore(fields); state = base_state;
+        result.pressure = base_pressure; result.coupled = base_coupled; result.forces = base_force;
+    };
     auto solve_position = [&](const JournalMotion::BearingState& trial) {
         restore();
         const double dz = 0.5*cfg.L;
@@ -65,13 +79,11 @@ Stats update(Fields& fields, LinearSystem& sys, Communicator& comm, const Mesh& 
             }
         }
         comm.update_ghosts(fields);
-        ++result.pressure_solves;
         try {
-            result.pressure = FBNS::solve(fields, sys, comm, mesh, cfg);
+            if (!solve_pressure()) return false;
         } catch (const std::exception&) {
             return false;
         }
-        if (!result.pressure.converged) return false;
         result.forces = Reynolds::calculate_macroscopic_properties(fields, mesh, cfg);
         return std::isfinite(force_residual(result.forces, cfg));
     };

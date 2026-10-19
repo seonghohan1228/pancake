@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <array>
 #include "communicator.hpp"
 #include "config.hpp"
 #include "field.hpp"
@@ -10,6 +11,10 @@
 /// remaining volume at partial pressure p-p_v(T); no prescribed gas plateau.
 /// Optional film-averaged temperature follows conservative internal energy.
 namespace CoupledCavitation {
+/// Partial internal energies [J/kg], relative to the configured caloric datum.
+/// The dissolved offset is an explicit binding-energy analogue, not latent heat data.
+double partial_internal_energy(int phase, double temperature, double pressure, const SimulationConfig&);
+std::array<double,3> internal_energies(double temperature, double pressure, const SimulationConfig&);
 struct Stats {
     bool converged = false;
     int iterations = 0;

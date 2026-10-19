@@ -227,3 +227,31 @@ constitutive coefficients are not all supplied in the article
 (Li et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2026.106916)*, 2026).
 It is therefore not a source of an identified FW68D calibration. Quantitative
 reproduction must state which inputs were measured, inferred or unavailable.
+
+## Conditional LGE chart scenario (2026-10-19)
+
+The 02f matched comparison uses the full digitized viscosity surface
+`nu(c,T)` and pressure-temperature saturation chart as conditional
+constitutive inputs. The source chart does not identify its pressure or
+concentration bases. The approved scenario interprets them as absolute
+pressure and refrigerant mass fraction, with uniform initial/feed dissolved
+composition 0.30; this is a scenario definition, not a measurement that the
+user's approximately 30% charge is a mass fraction. Feed free-gas mass
+fraction is zero. No release or absorption rate is fitted or supplied: the
+gas-on branch imposes instantaneous local equilibrium through
+`coupled_phase_equilibrium`, while gas-off transports the same composition
+without release.
+
+The driver inverts the first saturation-chart crossing to obtain local bubble
+pressure and requires strict support at that pressure and temperature. It
+does not clamp unsupported values. Gas-free local liquid may be at pressure
+outside the chart's pressure axis if its computed bubble point remains
+supported; any free phase must satisfy the equilibrium bubble constraint and
+the stable R410A EOS domain at each resolved film layer and wall. Out-of-range
+viscosity, unsupported bubble points, unstable gas states, failed convergence,
+nonzero exit, mass/volume/energy imbalance, or load/profile/thermal gate
+failure reject a run. The R410A property review and explicit caloric inputs
+are recorded in the [property review](../results/lge_mixture_density_gas_20261019/property_review/primary_source_property_review.md)
+and [caloric input record](../results/lge_mixture_density_gas_20261019/property_review/conditional_caloric_inputs.json).
+The density remains the same pure-oil proxy in both branches,
+`rho(T_C) = 954.9 - 0.7284 T_C kg/m3`; it is not a mixture-density law.

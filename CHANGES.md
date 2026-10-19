@@ -4324,3 +4324,32 @@ project log now record the completed results and limitations. The separate
 completed A-F expansion results were also retained in their existing discussion.
 No physical parameters were fitted, no full mesh-independence claim was made,
 and no Git push was performed.
+
+## 2026-10-19: extend resolved thermal coupling to the conditional gas comparison
+
+Implement conservative component energy transport through the resolved film,
+shaft and housing, with native coupled load equilibrium and accepted-state
+rollback. Reuse the accepted phase fluxes, preserve binding energy through
+component internal energies, and reject capped or domain-invalid solutions.
+Document the matched gas-off/gas-on LGE scenario and its conditional 30 mass%,
+absolute-chart basis, pure-oil density proxy, full viscosity/saturation chart
+support, R410A caloric analogue, common relaxation 0.3, and strict numerical
+and thermodynamic failure gates. Matched 48×16 relaxation-0.3 checks passed
+strict raw-field acceptance, and all 65 native tests passed on Windows and
+remote Linux. The isolated full-grid campaign is running; no final gas-effect
+results are claimed yet. The density/property review found no verified exact-grade FW68D
+mixture density or heat-of-solution data; the selected properties remain
+explicit proxies (Zeng et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2021.12.009)*, 2022; Fukuta et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2009.09.015)*, 2010).
+
+This entry documents the active 02f follow-on only. It does not revise or
+replace the completed 02e fixed-viscosity scenario results above.
+
+Cache repeated layer-divergence arithmetic without changing summation order.
+Three paired 24×8 replays reduced median wall time from 33.944 to 24.849 s;
+all 36 saved output-file comparisons were byte-identical. Full native suites
+passed again after the change. Production COUPLED solves now use local LU
+within PETSc ASM after default local ILU(0) reached its linear iteration cap.
+Local comparisons and the bounded full-grid check retained the same strict
+nonlinear pressure gate. Preserve both interrupted attempts and their probes.
+Correct inherited FBNS descriptions in future matched input preparation;
+an immutable erratum accompanies the already frozen campaign inputs.

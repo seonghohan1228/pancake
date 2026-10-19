@@ -101,11 +101,85 @@ diffusive heat flux. Wall heat removal is
 \(Q_w=H_j(T-T_j)+H_b(T-T_b)\). The wall coefficients and wall temperatures
 must be specified or measured; zero coefficients mean adiabatic walls.
 
-This is a common, depth-averaged phase temperature. It does not resolve
-cross-film temperature gradients or solve heat conduction in the solids.
-The legacy polynomial cross-film/conjugate-wall model is rejected here
-because its liquid-only closure has not been derived for this mixture.
-Strong cross-film temperature variation therefore remains a model limitation.
+This is a common, depth-averaged phase temperature. The steady COUPLED
+comparison also supports the separate finite-volume `resolved_cross_film`
+energy path described below. It is an outer steady thermal iteration around
+the conservative coupled pressure/species solve, not an additional unknown in
+the transient Newton system.
+
+## Steady resolved cross-film extension (2026-10-19)
+
+For steady COUPLED calculations with `cross_film_thermal_model = FINITE_VOLUME`,
+the solver alternates the coupled pressure/species equilibrium solve with a
+finite-volume energy solve across the film layers. Layer temperatures feed
+the local full `nu(c,T)` viscosity and phase properties on the next coupled
+solve. The energy balance uses the same component mass fluxes, phase internal
+energies and pressure-work terms as COUPLED conservation. It includes viscous
+and pressure-flow dissipation, axial enthalpy transport, wall fluxes, and
+groove/feed enthalpy. Film layers exchange heat with resolved journal and
+bearing surfaces; the optional radial/axial solid network adds conduction
+through the housing and its outer boundary. Layer and solid temperatures are
+iterated with the fluid/geometry solution until the profile and global energy
+residual gates pass.
+
+This extension is steady only. It does not make the transient five-unknown
+thermal Newton formulation cross-film resolved. The conditional LGE scenario
+uses the same `cross_film_layers`, solid network, wall/feed temperatures,
+cooling closures and common coupling relaxation (0.3) in both gas-off and
+gas-on branches. Oil heat capacity (2010 J kg⁻¹ K⁻¹), liquid conductivity
+(0.13 W m⁻¹ K⁻¹), steel conductivity (15 W m⁻¹ K⁻¹), and the conditional
+R410A caloric values are proxies, not measured FW68D/R410A solution data.
+In particular, the pure-R410A liquid internal-energy difference is an
+analogue; no FW68D heat of solution or excess mixing energy has been measured.
+
+The 02f driver rejects nonzero solver exit codes, nonconverged pressure or
+coupling, exhausted iteration caps and restored-best states. It checks native
+pressure residual below 1e-10; volume, pressure/species/thermal and profile
+residuals against the requested coupling tolerance; oil/species balance at
+the tighter of that tolerance and 1e-8; global energy residual against the
+requested tolerance; independent load balance; finite positive admissible
+fields; strict viscosity/chart support; and stable R410A EOS support at every
+free-gas layer and wall. These are numerical/model-domain gates, not
+experimental validation criteria.
+
+For phase/component \(a\in\{o,d,g\}\) and film layer \(k\), the steady
+discrete balance has the form
+
+\[
+\sum_{f,a}\dot m_{a,k,f}u_a(T_{\mathrm{donor},k,f},p_{\mathrm{donor},f})
++\sum_{\eta,a}\dot m_{a,k,\eta}u_a(T_{\mathrm{donor},\eta},p)
++W_k+Q_{\mathrm{cond},k}=D_k+E_{\mathrm{feed},k}.
+\]
+
+Face fluxes retain the accepted hydraulic pressure-driven, Couette and
+diffusive contributions with their own donor states. Their layer weights
+sum to the accepted depth-integrated phase flux. The internal transverse
+fluxes enforce each layer's component balance and cancel when summed across
+the gap. Phase reaction is distributed uniformly through the layers. Its
+energy enters through the conserved component fluxes and internal energies,
+so no separate latent-heat source is added.
+
+With the common reference \((T_*,p_*)\),
+
+\[
+u_o=c_{p,o}(T-T_*),\qquad
+u_d=c_{p,d}(T-T_*)-\Delta u,\qquad
+u_g=u_{\mathrm{EOS}}(T,p)-u_{\mathrm{EOS}}(T_*,p_*).
+\]
+
+The liquid \(c_p\)-based internal-energy approximation follows the existing
+incompressible caloric model. The gas energy is evaluated at actual local
+pressure. The pressure-work contribution, summed over the layers, is
+\(p\,\mathrm{div}\,Q+\mathrm{div}\,F_{\mathrm{diff},pV}-W_{\mathrm{feed}}\).
+The accepted hydraulic dissipation is distributed with the resolved shear
+profile while preserving its cell sum. Conduction links between film,
+shaft and housing are symmetric, so interface exchanges cancel in the
+combined energy ledger. A common relaxation factor is applied to film,
+shaft and housing temperatures before the next hydraulic iteration.
+
+Composition and phase fractions remain depth uniform, and phase equilibrium
+uses film-mean temperature. This is a modeling limitation when cross-film
+thermal gradients materially change local equilibrium composition.
 
 ## Vapor and refrigerant phase limits
 

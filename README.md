@@ -56,12 +56,14 @@ explains the defects and their consequences. The
 contains before/after curves, thermal results and the failed gas-cavity
 experimental comparison.
 
-The current implementation passes all 51 CTest checks on native Windows,
-local WSL Linux and the remote Linux workstation, including MPI checks. These establish conservation,
+The current implementation passes all 65 CTest checks on native Windows
+and the remote Linux workstation, including MPI checks. These establish conservation,
 analytic limits and thermodynamic implementation. They do not establish
 experimental accuracy for FW68D. Oil vapor uses the negligible-mass JFO
-limit; separate condensed refrigerant, blend fractionation, cross-film
-temperature and conjugate solid conduction are not resolved by COUPLED.
+limit; separate condensed refrigerant and blend fractionation are not
+resolved. The steady finite-volume thermal path resolves film layers and
+conjugate solids; the transient thermal Newton state retains one mean
+temperature per film cell.
 
 `COMPOSITION_TABLE` viscosity uses actual dissolved mass fraction and
 temperature, with strict table bounds. A traceable
@@ -69,6 +71,16 @@ temperature, with strict table bounds. A traceable
 path; **FVC68B is not FW68D**, and its 23–65°C data do not cover 20–80°C.
 No CoolProp runtime dependency is added to the C++ solver. Python validation
 scripts use NumPy and Matplotlib and record the run machine and MPI count.
+
+The 2026-10-19 conditional LGE follow-on in
+[02f_lge_mixture_gas](cases/02f_lge_mixture_gas/README.md) compares matched
+steady COUPLED runs with refrigerant release disabled/enabled, using the full
+`nu(c,T)` chart, strict bubble-pressure support, and resolved cross-film/solid
+thermal conduction. Its 30 mass% and absolute-chart-basis interpretation,
+pure-oil density law and R410A caloric analogue are conditional assumptions;
+all 34 configurations passed input checks. Matched 48×16 relaxation-0.3 pilots
+passed strict raw-field acceptance. The isolated remote build passed 65 tests
+and the full campaign is running; campaign-level gas effects remain pending.
 
 ## Earlier audit and repaired segregated model
 

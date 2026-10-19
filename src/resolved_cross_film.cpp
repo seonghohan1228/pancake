@@ -9,6 +9,7 @@
 #include <petscksp.h>
 
 #include "communicator.hpp"
+#include "coupled_cavitation.hpp"
 #include "fbns.hpp"
 #include "fluid_properties.hpp"
 #include "full_film.hpp"
@@ -31,12 +32,19 @@ const InletConfig* inlet_at(const Mesh& mesh, const SimulationConfig& cfg, int i
     return inlet && inlet->feeds_fresh_oil ? inlet : nullptr;
 }
 double liquid(const Fields& f, const SimulationConfig& cfg, int i, int j) {
+    if (cfg.cavitation_model==CavitationModel::COUPLED) return 1;
     return cfg.cavitated_film_model == CavitatedFilmModel::STRIATED
         && FullFilm::gate(f,cfg,i,j) <= 0.0 ? std::clamp(f["theta"](i,j),0.0,1.0) : 1.0;
 }
+double conductivity(const Fields& f,const SimulationConfig& cfg,int i,int j) {
+    if (cfg.cavitation_model!=CavitationModel::COUPLED)
+        return value(f,"k_liquid_solution",cfg.thermal_conductivity,i,j)*liquid(f,cfg,i,j);
+    const double fill=f["theta"](i,j);
+    return fill*cfg.thermal_conductivity+(1-fill)*cfg.gas_thermal_conductivity;
+}
+
 double film_conductance(const Fields& f,const SimulationConfig& cfg,int i,int j) {
-    return 2.0*cfg.cross_film_layers*value(f,"k_liquid_solution",cfg.thermal_conductivity,i,j)
-        *liquid(f,cfg,i,j)/f["h"](i,j);
+    return 2.0*cfg.cross_film_layers*conductivity(f,cfg,i,j)/f["h"](i,j);
 }
 double outer_temperature(const SimulationConfig& cfg) {
     return cfg.bush_outer_temperature > 0 ? cfg.bush_outer_temperature : cfg.thermal_ambient_temperature;
@@ -56,14 +64,14 @@ double bush_conductance(const SimulationConfig& cfg) {
 
 // Churchill & Chu (1975), vertical-plate analogue with height 2*R_outer.
 // The annular geometry is an approximation; properties are at the film temperature.
-double end_heat_transfer(double node_temperature,double dz,const SimulationConfig& cfg) {
+double end_heat_transfer(double node_temperature,double dz,const SimulationConfig& cfg,bool south) {
     if (!cfg.bush_end_natural_convection) return cfg.bush_end_heat_transfer;
     const double ambient=outer_temperature(cfg),length=2*cfg.bush_outer_radius;
     double surface=node_temperature,h=0;
     for(int iteration=0;iteration<20;++iteration) {
         const double film=0.5*(surface+ambient),p=cfg.property_reference_pressure;
         const double rho=FluidProperties::liquid_solution_density(0,p,film,cfg);
-        const double mu=FluidProperties::liquid_solution_viscosity(0,p,film,cfg);
+        const double mu=FluidProperties::liquid_solution_viscosity(cfg.axial_inflow_dissolved_gas(south),p,film,cfg);
         const double nu=mu/rho,alpha=cfg.thermal_conductivity/(rho*cfg.liquid_specific_heat);
         const double pr=nu/alpha,beta=-cfg.density_temperature_slope/rho;
         const double ra=9.80665*std::max(beta,0.0)*std::abs(surface-ambient)*length*length*length/(nu*alpha);
@@ -99,6 +107,7 @@ struct Fluxes {
     Fluxes(const Fields& f,const Mesh& mesh,const SimulationConfig& cfg)
         :nt(mesh.n_theta_local),nz(mesh.n_z_local),n(cfg.cross_film_layers),
          east(static_cast<size_t>(nt+1)*nz*n),north(static_cast<size_t>(nt)*(nz+1)*n) {
+        if (cfg.cavitation_model==CavitationModel::COUPLED) return;
         std::vector<Shape> shapes;
         shapes.reserve(static_cast<size_t>(nt+2)*nz);
         for(int i=-1;i<=nt;++i) for(int j=0;j<nz;++j) shapes.push_back(velocity_shape(f,cfg,i,j));
@@ -124,6 +133,52 @@ struct Fluxes {
         return e(i,j,k)-e(i-1,j,k)+(j+1<nz||!feed?z(i,j,k):0)-(j>0||!feed?z(i,j-1,k):0);
     }
 };
+
+// The three conservative flux components can counterflow, so each retains its
+// own upwind caloric state. Their layer sums equal the accepted hydraulic flux.
+struct CoupledFluxes {
+    const Fields& f; const Mesh& mesh; const SimulationConfig& cfg;
+    int n,nz,nt;
+    std::vector<Shape> shapes;
+    CoupledFluxes(const Fields& fields,const Mesh& m,const SimulationConfig& c):f(fields),mesh(m),cfg(c),n(c.cross_film_layers),nz(m.n_z_local),nt(m.n_theta_local) {
+        if(c.cavitation_model==CavitationModel::COUPLED)
+            for(int i=-1;i<=nt;++i)for(int j=0;j<nz;++j)shapes.push_back(velocity_shape(f,cfg,i,j));
+    }
+    const Shape& shape(int i,int j) const {return shapes[(i+1)*nz+j];}
+    double face(bool theta,int i,int j,int k,int phase,int part) const {
+        const char* component=part==0?"pressure":part==1?"moving":"diffusion";
+        const char* axis=theta?"theta":"z";
+        const double mass=f["coupled_"+std::string(component)+"_"+std::to_string(phase)+"_"+axis](i,j);
+        if(part==2)return mass/n;
+        const auto& a=shape(theta?i-1:i,theta?j:std::max(j-1,0));
+        const auto& b=shape(i,theta?j:std::min(j,nz-1));
+        return mass*.5*(part==0?a.pressure[k]+b.pressure[k]:a.couette[k]+b.couette[k]);
+    }
+    double divergence(int i,int j,int k,int phase) const {
+        double net=0;
+        for(int part=0;part<3;++part) net+=face(true,i+1,j,k,phase,part)-face(true,i,j,k,phase,part)+
+            face(false,i,j+1,k,phase,part)-face(false,i,j,k,phase,part);
+        return net;
+    }
+    double work(int i,int j) const {
+        return f["pressure"](i,j)*(f["mixture_volume_flux_theta"](i+1,j)-f["mixture_volume_flux_theta"](i,j)+
+            f["mixture_volume_flux_z"](i,j+1)-f["mixture_volume_flux_z"](i,j))+
+            f["coupled_diffusion_work_theta"](i+1,j)-f["coupled_diffusion_work_theta"](i,j)+
+            f["coupled_diffusion_work_z"](i,j+1)-f["coupled_diffusion_work_z"](i,j)-f["coupled_source_work"](i,j);
+    }
+};
+struct Caloric { double slope,offset; };
+Caloric caloric(int phase,double t,double p,const SimulationConfig& cfg) {
+    const double u=CoupledCavitation::partial_internal_energy(phase,t,p,cfg);
+    double slope=0;
+    if(phase==0||cfg.fluid_property_model==FluidPropertyModel::CONSTANT)
+        slope=phase<2?(cfg.liquid_specific_heat>0?cfg.liquid_specific_heat:cfg.rho_cp/cfg.rho):0;
+    else if(phase==1)slope=cfg.dissolved_heat_capacity;
+    else if(cfg.dissolved_gas_species!=DissolvedGasSpecies::R410A)slope=cfg.gas_heat_capacity_cv;
+    else slope=(CoupledCavitation::partial_internal_energy(phase,t+.01,p,cfg)-
+        CoupledCavitation::partial_internal_energy(phase,t-.01,p,cfg))/.02;
+    return {slope,u-slope*(t-cfg.temperature_reference)};
+}
 
 // Owning PETSc objects ensures exceptions do not leak a production-size matrix.
 struct System {
@@ -166,7 +221,11 @@ CrossFilm::WallState update(Fields& f,const Mesh& mesh,const SimulationConfig& c
         for(int k=0;k<n;++k) {
             const double t=f[layer_name(k)](i,j),lo=double(k)/n,hi=double(k+1)/n;
             double inv=0;
-            try {inv=ref/(mu*FluidProperties::liquid_solution_viscosity(dissolved,p,t,cfg));} catch(...) {invalid=true;}
+            try {
+                const double mul=FluidProperties::liquid_solution_viscosity(dissolved,p,t,cfg);
+                inv=cfg.cavitation_model==CavitationModel::COUPLED ?
+                    1/(f["theta"](i,j)*mul+(1-f["theta"](i,j))*cfg.mu_gas) : ref/(mu*mul);
+            } catch(...) {invalid=true;}
             invalid|=!(std::isfinite(t)&&t>0&&std::isfinite(inv)&&inv>0&&std::isfinite(h)&&h>0);
             f[viscosity_name(k)](i,j)=inv;
             f0+=h*(hi-lo)*inv;f1+=h*h*(hi*hi-lo*lo)*inv/2;
@@ -219,6 +278,8 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     const double dr=solid?(ro-mesh.R)/nr:0;
     const double solid_dz=mesh.L/ns;
     Fluxes flux(f,mesh,cfg);
+    CoupledFluxes phase_flux(f,mesh,cfg);
+    const bool coupled=cfg.cavitation_model==CavitationModel::COUPLED;
     System system;
     std::vector<PetscInt> diagonal(local,9),off_diagonal(local,3);
     if(solid)for(int i=0;i<nt;++i)for(int slab=0;slab<ns;++slab)
@@ -240,16 +301,37 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     auto add=[&](PetscInt row,PetscInt col,double x){MatSetValue(system.a,row,col,x,ADD_VALUES);};
     double shaft_diag=0;
     std::vector<double> previous(static_cast<size_t>(nt)*nz*n);
+    std::vector<double> phase_divergence(3*n),phase_before(3*n),phase_total(3);
     for(int i=0;i<nt;++i) for(int j=0;j<nz;++j) {
         const bool feed=inlet_at(mesh,cfg,i,j)!=nullptr;
         double net=0;for(int k=0;k<n;++k)net+=flux.divergence(i,j,k,feed);
         double transverse=0,heat_total=0;
-        const double h=f["h"](i,j),dy=h/n,kth=value(f,"k_liquid_solution",cfg.thermal_conductivity,i,j);
+        const double h=f["h"](i,j),dy=h/n,kth=conductivity(f,cfg,i,j);
         const double fill=liquid(f,cfg,i,j),gfilm=film_conductance(f,cfg,i,j)*area;
-        const double ghalf=kth*fill/dy*area;
+        const double ghalf=kth/dy*area;
         const double gp=(f["pressure"](i+1,j)-f["pressure"](i-1,j))/(2*ds);
         const double gz=nz>1?(f["pressure"](i,std::min(j+1,nz-1))-f["pressure"](i,std::max(j-1,0)))/((std::min(j+1,nz-1)-std::max(j-1,0))*dz):0;
         const double f0=f["cross_film_f0"](i,j),ybar=f["cross_film_f1"](i,j)/f0;
+        double raw_heat=0;
+        if(coupled)for(int k=0;k<n;++k) {
+            const double y=(k+.5)*dy,tau=-u/f0+gp*(y-ybar),tauz=gz*(y-ybar);
+            raw_heat+=f[viscosity_name(k)](i,j)*dy*(tau*tau+tauz*tauz+(gp*gp+gz*gz)*dy*dy/12);
+        }
+        const double accepted_heat=f["heat_generation"](i,j);
+        if(coupled)for(int phase=0;phase<3;++phase) {
+            double phase_net=0;
+            for(int k=0;k<n;++k) {
+                const double divergence=phase_flux.divergence(i,j,k,phase);
+                phase_divergence[phase*n+k]=divergence;
+                phase_net+=divergence;
+            }
+            phase_total[phase]=phase_net;
+            double before=0;
+            for(int k=0;k<n;++k) {
+                phase_before[phase*n+k]=before;
+                before+=phase_net/n-phase_divergence[phase*n+k];
+            }
+        }
         for(int k=0;k<n;++k) {
             const PetscInt row=index(i,j,k);
             const double old=f[layer_name(k)](i,j);
@@ -261,6 +343,44 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
                 else if(neighbour>=0)add(row,neighbour,rate);
                 else source-=rate*(inflow-ref);
             };
+            if(coupled) {
+                auto phase_advect=[&](int phase,double mass,PetscInt neighbour,int ii,int jj,double boundary_t=0,double boundary_p=0,int donor_layer=-1) {
+                    if(mass==0)return;
+                    const bool own=mass>=0;
+                    const double t=own?old:boundary_t>0?boundary_t:f[layer_name(donor_layer>=0?donor_layer:k)](ii,jj);
+                    const double p=own?f["pressure"](i,j):boundary_t>0?boundary_p:f["pressure"](ii,jj);
+                    const auto u=caloric(phase,t,p,cfg);
+                    if(own)diag+=mass*u.slope;
+                    else if(neighbour>=0)add(row,neighbour,mass*u.slope);
+                    else source-=mass*u.slope*(t-ref);
+                    source-=mass*u.offset;
+                };
+                for(int phase=0;phase<3;++phase) {
+                    const double phase_net=phase_total[phase];
+                    for(int part=0;part<3;++part) {
+                        phase_advect(phase,phase_flux.face(true,i+1,j,k,phase,part),index(i+1,j,k),i+1,j);
+                        phase_advect(phase,-phase_flux.face(true,i,j,k,phase,part),index(i-1,j,k),i-1,j);
+                        phase_advect(phase,phase_flux.face(false,i,j+1,k,phase,part),j+1<nz?index(i,j+1,k):cfg.bc_z_north_thermal==ThermalInflowMode::CONSTANT?-1:row,
+                            i,std::min(j+1,nz-1),j+1==nz&&cfg.bc_z_north_thermal==ThermalInflowMode::CONSTANT?cfg.axial_inflow_temperature(false):0,cfg.bc_z_north_val);
+                        phase_advect(phase,-phase_flux.face(false,i,j,k,phase,part),j>0?index(i,j-1,k):cfg.bc_z_south_thermal==ThermalInflowMode::CONSTANT?-1:row,
+                            i,std::max(j-1,0),j==0&&cfg.bc_z_south_thermal==ThermalInflowMode::CONSTANT?cfg.axial_inflow_temperature(true):0,cfg.bc_z_south_val);
+                    }
+                    const double before=phase_before[phase*n+k];
+                    const double after=before+phase_net/n-phase_divergence[phase*n+k];
+                    if(k>0)phase_advect(phase,-before,index(i,j,k-1),i,j,0,0,k-1);
+                    if(k+1<n)phase_advect(phase,after,index(i,j,k+1),i,j,0,0,k+1);
+                    const double mass=f["coupled_source_"+std::to_string(phase)](i,j)/n;
+                    const auto* inlet=mesh.inlet_at(cfg,i,j);
+                    if(mass>0) {
+                        const double t=inlet&&inlet->feeds_fresh_oil?inlet->t_supply:old;
+                        source+=mass*CoupledCavitation::partial_internal_energy(phase,t,f["pressure"](i,j),cfg);
+                    } else if(mass<0) {
+                        const auto u=caloric(phase,old,f["pressure"](i,j),cfg);
+                        diag-=mass*u.slope;source+=mass*u.offset;
+                    }
+                }
+                source-=phase_flux.work(i,j)/n;
+            } else {
             advect(flux.e(i,j,k),index(i+1,j,k),0);
             advect(-flux.e(i-1,j,k),index(i-1,j,k),0);
             if(j+1<nz)advect(flux.z(i,j,k),index(i,j+1,k),0);
@@ -275,6 +395,7 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
                 if(net>=0)source+=cp*net/n*(inlet->t_supply-ref);
                 else diag-=cp*net/n;
             } else diag-=cp*net/n;
+            }
             auto conduct=[&](PetscInt neighbour,double g) {diag+=g;add(row,neighbour,-g);};
             if(k>0)conduct(index(i,j,k-1),ghalf);
             if(k+1<n)conduct(index(i,j,k+1),ghalf);
@@ -292,9 +413,9 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
                 }
             }
             // Thin-film surface conduction, one conservative link per face.
-            const double own=kth*fill*h/n;
+            const double own=kth*h/n;
             auto inplane=[&](int ii,int jj,double length,double distance) {
-                const double other=value(f,"k_liquid_solution",cfg.thermal_conductivity,ii,jj)*liquid(f,cfg,ii,jj)*f["h"](ii,jj)/n;
+                const double other=conductivity(f,cfg,ii,jj)*f["h"](ii,jj)/n;
                 conduct(index(ii,jj,k),0.5*(own+other)*length/distance);
             };
             inplane(i+1,j,dz,ds);inplane(i-1,j,dz,ds);
@@ -304,7 +425,8 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
             // term cancels on summation, giving precisely U^2/F0 + F2|grad p|^2.
             const double y=(k+0.5)*dy;
             const double tau=-u*std::sqrt(fill)/f0+gp*(y-ybar),tauz=gz*(y-ybar);
-            const double heat=f[viscosity_name(k)](i,j)*dy*(tau*tau+tauz*tauz+(gp*gp+gz*gz)*dy*dy/12);
+            const double raw=f[viscosity_name(k)](i,j)*dy*(tau*tau+tauz*tauz+(gp*gp+gz*gz)*dy*dy/12);
+            const double heat=coupled?(raw_heat>0?accepted_heat*raw/raw_heat:accepted_heat/n):raw;
             heat_total+=heat;source+=heat*area;
             add(row,row,diag);VecSetValue(system.rhs,row,source,INSERT_VALUES);
         }
@@ -333,7 +455,7 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
             double source=0;
             if(cfg.bush_thermal_model==BushThermalModel::CONDUCTION_3D && (slab==0||slab==ns-1)) {
                 const double old=f["cross_film_solid_"+std::to_string(k)](i,slab*nz/ns);
-                const double he=end_heat_transfer(old,solid_dz,cfg);
+                const double he=end_heat_transfer(old,solid_dz,cfg,slab==0);
                 if(he>0) {
                     const double g=end_area/(solid_dz/(2*kb)+1/he)*(ns==1?2:1);
                     add(row,row,g);source+=g*(outer_temperature(cfg)-ref);
@@ -419,7 +541,49 @@ void solve(Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
     for(int k=0;k<n;++k)comm.update_ghosts(f[layer_name(k)]);
 }
 
+Energy::Balance coupled_balance(const Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
+    CoupledFluxes flux(f,mesh,cfg);
+    const int n=cfg.cross_film_layers,nz=mesh.n_z_local;
+    const double area=mesh.cell_volume();
+    double sums[7]={}; // heat, wall, transport, feed, work, feed mass, local residual
+    auto energy_face=[&](bool theta,int i,int j,int k,int phase,int part) {
+        const double mass=flux.face(theta,i,j,k,phase,part);
+        if(mass==0)return 0.0;
+        int ii=theta?(mass>=0?i-1:i):i,jj=theta?j:(mass>=0?j-1:j);
+        double t=0,p=0;
+        if(jj<0||jj>=nz) {
+            const bool south=jj<0;
+            const auto mode=south?cfg.bc_z_south_thermal:cfg.bc_z_north_thermal;
+            t=mode==ThermalInflowMode::CONSTANT?cfg.axial_inflow_temperature(south):f[layer_name(k)](ii,std::clamp(jj,0,nz-1));
+            p=mode==ThermalInflowMode::CONSTANT?(south?cfg.bc_z_south_val:cfg.bc_z_north_val):f["pressure"](ii,std::clamp(jj,0,nz-1));
+        } else {t=f[layer_name(k)](ii,jj);p=f["pressure"](ii,jj);}
+        return mass*CoupledCavitation::partial_internal_energy(phase,t,p,cfg);
+    };
+    for(int i=0;i<mesh.n_theta_local;++i)for(int j=0;j<nz;++j) {
+        double transport=0,feed=0;
+        for(int k=0;k<n;++k)for(int phase=0;phase<3;++phase) {
+            for(int part=0;part<3;++part)transport+=energy_face(true,i+1,j,k,phase,part)-energy_face(true,i,j,k,phase,part)+
+                energy_face(false,i,j+1,k,phase,part)-energy_face(false,i,j,k,phase,part);
+            const double mass=f["coupled_source_"+std::to_string(phase)](i,j)/n;
+            const auto* inlet=mesh.inlet_at(cfg,i,j);
+            const double t=mass>0&&inlet&&inlet->feeds_fresh_oil?inlet->t_supply:f[layer_name(k)](i,j);
+            if(mass!=0)feed+=mass*CoupledCavitation::partial_internal_energy(phase,t,f["pressure"](i,j),cfg);
+        }
+        const double heat=f["heat_generation"](i,j)*area,wall=f["cross_film_wall_flux"](i,j)*area,work=flux.work(i,j);
+        sums[0]+=heat;sums[1]+=wall;sums[2]+=transport;sums[3]+=feed;sums[4]+=work;
+        for(int phase=0;phase<3;++phase)sums[5]+=f["coupled_source_"+std::to_string(phase)](i,j);
+        sums[6]+=transport+wall-heat-feed+work;
+    }
+    MPI_Allreduce(MPI_IN_PLACE,sums,7,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+    Energy::Balance result;
+    result.viscous_heat_W=sums[0];result.wall_heat_W=sums[1];result.axial_enthalpy_out_W=sums[2];
+    result.groove_enthalpy_in_W=sums[3];result.pressure_work_W=sums[4];result.feed_mass_kg_s=sums[5];
+    result.residual_W=sums[6];result.scale_W=std::abs(sums[0])+std::abs(sums[1])+std::abs(sums[2])+std::abs(sums[3])+std::abs(sums[4]);
+    return result;
+}
+
 Energy::Balance balance(const Fields& f,const Mesh& mesh,const SimulationConfig& cfg) {
+    if(cfg.cavitation_model==CavitationModel::COUPLED)return coupled_balance(f,mesh,cfg);
     Fluxes flux(f,mesh,cfg);
     const int n=cfg.cross_film_layers,nz=mesh.n_z_local;
     const double cp=cfg.liquid_specific_heat,ref=cfg.temperature_reference,area=mesh.cell_volume();

@@ -3396,4 +3396,69 @@ remain preserved in `lge-mixture-20261018`. The retry uses the isolated
 the earlier short pressure-refined attempt is also retained. Final cooling
 verification uses the recorded seed of that call. Physical inputs, equations
 and acceptance gates are unchanged.
-Campaign completion remains pending.
+That campaign subsequently completed all 17 cases and three focused checks;
+the original source, inputs and results remain preserved separately.
+
+# 2026-10-19 conditional LGE gas comparison and steady thermal extension
+
+The separate 02f follow-on is prepared; its full campaign has not launched. It compares paired
+steady COUPLED calculations with gas release disabled/enabled for the same
+17 experimental operating windows. Both branches use the full chart
+`nu(c,T)`, density law, resolved cross-film and housing energy model, geometry,
+cooling, boundaries and load balance. `coupling_relaxation = 0.3` is common.
+The control uses `SINGLE_PHASE` and no phase equilibrium; the gas-on case uses
+`TWO_PHASE` with instantaneous local equilibrium. The only branch switches
+are fluid-property model and the equilibrium flag, so their difference
+isolates release within this conditional numerical model. The earlier 02e
+completed campaign remains the distinct fixed-viscosity surrogate and is not
+used as a matched gas-off control.
+
+The source chart's pressure and concentration axes are unspecified. The
+explicitly authorized scenario treats pressure as absolute and the
+concentration coordinate as refrigerant mass fraction. Initial dissolved
+composition is uniformly 0.30 across the initial field and both axial feeds;
+incoming free-gas mass fraction is zero. Composition and phase fractions are
+uniform through the gap, and equilibrium uses the film-mean temperature.
+Layer temperatures remain separate energy unknowns. The solver computes equilibrium bubble pressure by inverting
+the chart's first crossing and requires strict support;
+unsupported chart or temperature queries fail without clamp or extrapolation.
+Free gas must also remain within the stable real-R410A EOS domain at all film
+layers and the journal/bearing walls. No fitted release or absorption rate is
+used: gas-off suppresses phase transfer and gas-on assumes instantaneous
+equilibrium.
+
+Both branches retain the pure-oil proxy
+\(\rho(T_C)=954.9-0.7284T_C\;\mathrm{kg\,m^{-3}}\), which came from a
+different PVE/R32 lubricant context and is not an FW68D/R410A mixture-density
+measurement (Zeng et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2021.12.009)*, 2022). Direct PVE/R410A literature distinguishes
+actual concentration from saturation solubility; its oil grade and reported
+scope do not establish FW68D coefficients (Fukuta et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2009.09.015)*, 2010). No verified
+exact-grade density or heat-of-solution table was identified in the review.
+
+The steady thermal extension alternates the coupled pressure/species
+equilibrium solve with finite-volume energy solves across the film layers and
+through the resolved housing network. It iterates local temperatures into
+full `nu(c,T)` and phase properties, and accounts for component face enthalpy,
+pressure work, dissipation, wall heat flux, feed enthalpy and solid conduction.
+It is not a cross-film transient Newton solve. Caloric inputs are explicit
+conditional analogues: oil \(c_p=2010\) J kg⁻¹ K⁻¹, liquid conductivity
+0.13 W m⁻¹ K⁻¹, steel conductivity 15 W m⁻¹ K⁻¹, and dissolved-refrigerant
+heat capacity (1656.9291 J kg⁻¹ K⁻¹), desorption internal energy
+(192486.2475 J kg⁻¹), gas conductivity (0.0129583 W m⁻¹ K⁻¹), and gas
+viscosity (1.26525×10⁻⁵ Pa s) from the [conditional caloric inputs](results/lge_mixture_density_gas_20261019/property_review/conditional_caloric_inputs.json).
+These values are referenced at 293.15 K and 100 kPa. The dissolved-phase
+analogue is pure saturated-liquid R410A at 20 °C with constant heat capacity
+and zero excess mixing energy; it is not measured FW68D heat of solution.
+Inputs are not fitted to torque or temperature.
+
+The driver rejects nonzero return codes, unconverged pressure/coupling,
+iteration-cap exhaustion, restored-best iterates, pressure residual at or
+above \(10^{-10}\), mass residual above the tighter of the requested tolerance
+and \(10^{-8}\), or volume, thermal, species, profile, global energy and
+independent load residuals outside configured limits. It also rejects
+nonfinite/nonphysical fields and any unsupported viscosity/chart or free-gas
+EOS state. These gates establish accepted numerical solutions under the
+scenario assumptions; they do not establish experimental accuracy. The
+gas-on 24×8 pilot passed strict raw-field acceptance; matched 48×16
+relaxation-0.3 pilots are still running. The full campaign is not complete and
+no campaign-level gas-on/off results are available.

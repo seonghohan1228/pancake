@@ -2712,3 +2712,26 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Complete tighter-tolerance M02/M16 checks; torque changes are +0.03329%/+0.00970%, with maximum probe-temperature change 0.000124 K.
 - [x] Complete the tight 32-layer M02 check; its observed torque difference from tight 16 layers is 0.0000031%, and probe differences are at most 0.000012 K. This does not establish full mesh independence.
 - [x] Retrieve and verify raw evidence, report torque/temperature errors, inspect overlay and update research records. Verified the complete archive and 4,463 evidence-file hashes; both prior attempts remain preserved.
+
+## 2026-10-19 conditional LGE gas comparison
+
+- [x] Implement and prepare the matched steady COUPLED gas-off/gas-on
+  configurations, full `nu(c,T)` chart, strict bubble-pressure support,
+  finite-volume resolved cross-film/solid energy path, and shared acceptance
+  gates. Both branches use the same conditional 30 mass% initial/feed
+  composition, `rho(T_C)=954.9-0.7284 T_C kg/m3` pure-oil proxy, thermal
+  analogues and coupling relaxation 0.3. No release/absorption rate is fitted;
+  equilibrium is instantaneous in gas-on.
+- [x] Complete the matched 48×16 relaxation-0.3 smoke checks with strict
+  raw-field acceptance. All 65 native tests passed on Windows and remote
+  Linux. Remote inputs and Python driver checks passed. Concurrent campaigns
+  use disjoint physical cores, with at most 24 allocated in total.
+- [x] Start the 40-job matched gas-off/gas-on pipeline after local pilot checks
+  and the required remote synchronization/rebuild workflow. Full-grid pilots
+  must pass before the remaining cases start; retain all failed attempts.
+- [ ] Compare only accepted matched runs, audit raw fields and provenance, and
+  report gas-on minus gas-off under the stated conditional chart/caloric
+  assumptions. Full-grid results remain pending.
+- [ ] Obtain exact-grade FW68D/R410A mixture density and caloric/heat-of-solution
+  measurements before treating this conditional scenario as a calibrated
+  physical prediction.

@@ -19,8 +19,10 @@ import run_steady as driver
 from thermal_expansion import parse_config, solid_observables
 
 
-def prepare(preflight, destination):
+def prepare(preflight, destination, density_model="CONSTANT"):
     """Freeze user-confirmed reservoirs and explicitly conditional surrogate inputs."""
+    if density_model not in ("CONSTANT", "LINEAR_TEMPERATURE"):
+        raise ValueError("Unsupported mixture density scenario")
     destination.mkdir(parents=True, exist_ok=False)
     rows = list(csv.DictReader((preflight / "case_matrix.csv").open(encoding="utf-8")))
     assert [r["selected_id"] for r in rows] == [f"M{i:02d}" for i in range(1, 18)]
@@ -44,6 +46,17 @@ def prepare(preflight, destination):
         "geometry": "Nominal only; no thermal expansion.",
         "approval": "User instructed full remote execution without stopping for approval after pilots; technical clarification supplied during preflight.",
         "limitations": "No solubility/release, composition evolution, thermal expansion, pressure-viscosity law or calibrated pressurized parasitic drag; condition stability does not prove steady friction or composition."}
+    if density_model == "LINEAR_TEMPERATURE":
+        decisions["density"] = {"model": density_model, "intercept_kg_m3": 954.9,
+            "slope_kg_m3_K": -.7284, "temperature_unit": "degC",
+            "basis": "User-selected pure-oil law applied to fixed-chart30 surrogate; not measured mixture density."}
+        decisions["thermal_analogs"]["beta_1_K"] = "0.7284/rho(T_C)"
+        decisions["thermal_analog_basis"] = (
+            "Reuse BVC32-PVE cp/k and304 stainless analogs with pure-oil rho(T_C)=954.9-0.7284*T_C; "
+            "cooling uses local rho and beta=0.7284/rho. None is a measured mixture thermal property.")
+        decisions["sommerfeld_reference"] = (
+            "Original S and measured rows retain rho=950 at TC2; S_density_reference_TC2 uses "
+            "rho(TC2)*nu(TC2) with identical measured load, RPM and nominal geometry for CFD and experiment.")
     starts = {}
     for row in rows:
         key, rpm, load = row["selected_id"], float(row["rpm"]), float(row["force_n_mean"])
@@ -57,6 +70,9 @@ def prepare(preflight, destination):
                     rho_kg_m3=950., nu_mm2_s=nu*1e6, mu_pa_s=950*nu,
                     sommerfeld_number=float(row["S"]), apparent_bearing_torque_nm=float(row["bearing_residual_nm"]),
                     friction_coefficient=float(row["f"]), measured=row)
+        if density_model == "LINEAR_TEMPERATURE":
+            case.update(rho_kg_m3=driver.density(temperature), mu_pa_s=driver.density(temperature)*nu,
+                        S_density_reference_TC2=float(row["S"])*driver.density(float(row["tc2_c_mean"]))/950.)
         experiment["cases"].append(case)
         # Seeds affect convergence only; no measured torque is used to choose them.
         eps = float(np.interp(math.log(float(row["S"])), np.log([.004, .03, .1, 1.]), [.94, .85, .60, .15]))
@@ -77,6 +93,9 @@ def prepare(preflight, destination):
             oil_conductivity_W_m_K=.13, oil_thermal_expansion_1_K=.7284/950.,
             bush_conductivity_W_m_K=15., cavitation_pressure_Pa=0.,
             reservoir_pressure_Pa=float(case["measured"]["pressure_bar_abs_mean"])*100000)
+        if density_model == "LINEAR_TEMPERATURE":
+            setup["material_settings"].pop("oil_density_kg_m3")
+            setup["material_settings"].pop("oil_thermal_expansion_1_K")
         setup["material_settings"]["pressure_reference"] = decisions["pressure"] + " " + decisions["cavity"]
         setup["material_settings"]["oil_thermal_analogue"] = decisions["thermal_analog_basis"]
         setup["scenario_decisions"] = decisions
@@ -144,7 +163,7 @@ def run_case(args):
         raise
 
 
-def check_inputs(inputs, output):
+def check_inputs(inputs, output, density_model="CONSTANT"):
     """Check all rendered physical controls and independent S/property identities."""
     verified = {}
     for key in (f"M{i:02d}" for i in range(1, 18)):
@@ -153,13 +172,21 @@ def check_inputs(inputs, output):
         campaign = driver.Campaign(args)
         case = campaign.cases[key]
         original = case["measured"]
+        assert campaign.setup["scenario_decisions"].get("density", {}).get("model", "CONSTANT") == density_model
+        linear = density_model == "LINEAR_TEMPERATURE"
+        materials = campaign.materials
+        if linear:
+            assert "oil_density_kg_m3" not in materials and "oil_thermal_expansion_1_K" not in materials
+        rho = driver.density(float(original["tc0_c_mean"]), materials)
         seed = campaign.setup["force_balance"]["initial_positions"][key]
         config = campaign.config_for(case, *seed, 60., 100., output.parent / "unused")
         values = parse_config(config)
         pressure = float(original["pressure_bar_abs_mean"])*1e5
         assert float(values["bc_z_south_val"]) == float(values["bc_z_north_val"]) == pressure
         assert float(values["inlet_groove"].split()[2]) == pressure
-        assert values["density_model"] == "CONSTANT" and float(values["rho"]) == 950.
+        assert values["density_model"] == density_model and float(values["rho"]) == rho
+        assert float(values["density_temperature_intercept"]) == (954.9 if linear else 950.)
+        assert float(values["rho_cp"]) == rho*2010.
         assert values["solution_table_clamp"] == "false"
         assert float(values["dissolved_gas_initial"]) == float(values["dissolved_gas_henry_coeff"]) == 0.
         assert values["fluid_property_model"] == "SINGLE_PHASE" and float(values["p_cav"]) == 0.
@@ -171,10 +198,17 @@ def check_inputs(inputs, output):
         s_value = 950*nu*float(original["rpm"])/60*.04*.043/float(original["force_n_mean"])*(.0215/42.5e-6)**2
         assert math.isclose(s_value, float(original["S"]), rel_tol=1e-13)
         assert math.isclose(float(values["mu"]), case["mu_pa_s"], rel_tol=1e-14)
+        assert math.isclose(float(values["mu"]), rho*driver.viscosity(float(original["tc0_c_mean"]), campaign.points), rel_tol=1e-14)
         verified[key] = {"pressure_Pa_abs": pressure, "S_saved": float(original["S"]),
                          "feed_mu_Pa_s": float(values["mu"]), "reference_mu_Pa_s": 950*nu,
                          "omega_rad_s": float(values["omega"]),
                          "seed": seed, "inputs": campaign.input_hashes}
+        if linear:
+            reference_rho = driver.density(float(original["tc2_c_mean"]))
+            reference_s = s_value*reference_rho/950.
+            assert math.isclose(reference_s, case["S_density_reference_TC2"], rel_tol=1e-13)
+            verified[key].update(density_model=density_model, feed_rho_kg_m3=rho,
+                S_density_reference_TC2=reference_s, reference_mu_Pa_s=reference_rho*nu)
     with output.open("x", encoding="utf-8") as stream:
         json.dump({"status": "17_native_configurations_verified_unrun", "cases": verified}, stream, indent=2)
     print(json.dumps({"verified": len(verified), "output": str(output)}))
@@ -191,11 +225,13 @@ def main():
     parser.add_argument("--tight", action="store_true")
     parser.add_argument("--layers", type=int, choices=(16, 32), default=16)
     parser.add_argument("--check-inputs", type=Path, help="write an exclusive validation report")
+    parser.add_argument("--density-model", choices=("CONSTANT", "LINEAR_TEMPERATURE"), default="CONSTANT",
+                        help="explicit preparation/check density scenario; default retains rho=950")
     args = parser.parse_args()
     if args.prepare:
-        prepare(args.prepare, args.inputs)
+        prepare(args.prepare, args.inputs, args.density_model)
     elif args.check_inputs:
-        check_inputs(args.inputs, args.check_inputs)
+        check_inputs(args.inputs, args.check_inputs, args.density_model)
     elif args.case and args.work and args.solver and args.rankfile:
         run_case(args)
     else:

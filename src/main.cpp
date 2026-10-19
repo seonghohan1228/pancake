@@ -114,6 +114,33 @@ void relax_field(Field& field, const Field& prev, double omega, const Mesh& mesh
             field(i, j) = omega * field(i, j) + (1.0 - omega) * prev(i, j);
 }
 
+struct CoupledBalanceScales {
+    double oil = 0.0, species = 0.0, liquid = 0.0;
+};
+
+// Absolute external throughput, so opposing reservoir fluxes cannot cancel the scale.
+CoupledBalanceScales coupled_balance_scales(const Fields& fields, const Mesh& mesh) {
+    double local[3]{};
+    auto add = [&](double oil, double dissolved, double free) {
+        local[0] += std::abs(oil);
+        local[1] += std::abs(dissolved + free);
+        local[2] += std::abs(oil + dissolved);
+    };
+    for (int i=0; i<mesh.n_theta_local; ++i) {
+        for (int j : {0, mesh.n_z_local}) {
+            double phase[3]{};
+            for (int k=0; k<3; ++k) for (const char* component : {"pressure", "moving", "diffusion"})
+                phase[k] += fields["coupled_" + std::string(component) + "_" + std::to_string(k) + "_z"](i,j);
+            add(phase[0],phase[1],phase[2]);
+        }
+        for (int j=0; j<mesh.n_z_local; ++j)
+            add(fields["coupled_source_0"](i,j), fields["coupled_source_1"](i,j), fields["coupled_source_2"](i,j));
+    }
+    double global[3]{};
+    MPI_Allreduce(local,global,3,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+    return {global[0],global[1],global[2]};
+}
+
 void update_film_geometry(Fields& fields, const Mesh& mesh,
                           const SimulationConfig& cfg,
                           const JournalMotion::BearingState& bearing_state) {
@@ -270,8 +297,12 @@ int main(int argc, char** argv) {
 
         std::unique_ptr<CoupledCavitation::Solver> coupled_solver;
         if (coupled) {
-            coupled_solver = std::make_unique<CoupledCavitation::Solver>(mesh,comm,cfg.temperature_model==TemperatureModel::ENERGY_EQUATION);
+            coupled_solver = std::make_unique<CoupledCavitation::Solver>(mesh,comm,
+                cfg.temperature_model==TemperatureModel::ENERGY_EQUATION &&
+                cfg.cross_film_thermal_model==CrossFilmModel::NONE);
+            if (cfg.log_outer_iters) Utils::log("Coupled hydraulic system constructed.");
             coupled_solver->initialize(fields,cfg);
+            if (cfg.log_outer_iters) Utils::log("Coupled inventories initialized.");
         }
 
         LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
@@ -294,6 +325,7 @@ int main(int argc, char** argv) {
         int step = 0;
         const bool steady_state = cfg.solution_mode == SolutionMode::STEADY_STATE;
         const bool equilibrium = cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM;
+        const bool coupled_outer = coupled && steady_state && (equilibrium || CrossFilm::active(cfg));
         if (equilibrium) bearing_state.vx = bearing_state.vy = bearing_state.vz = 0.0;
         Reynolds::ForceComponents previous_forces;
         if (!steady_state) {
@@ -356,7 +388,7 @@ int main(int argc, char** argv) {
             // whatever the limit cycle happened to land on.
             SimulationConfig coupling_cfg = cfg;
             // A mechanical iterate must never roll back by thermal residual alone.
-            if (equilibrium) coupling_cfg.coupling_keep_best_iterate = false;
+            if (equilibrium || coupled_outer) coupling_cfg.coupling_keep_best_iterate = false;
             Coupling::Controller coupling_control(coupling_cfg);
             SteadyEquilibrium::Stats equilibrium_stats;
             std::ofstream equilibrium_history;
@@ -378,10 +410,21 @@ int main(int argc, char** argv) {
             Reynolds::ForceComponents best_forces;
             CrossFilm::WallState best_cross_film_state;
             const bool track_best =
-                steady_state && !equilibrium && cfg.coupling_keep_best_iterate && max_coupling > 1;
+                steady_state && !equilibrium && !coupled && cfg.coupling_keep_best_iterate && max_coupling > 1;
 
             for (int outer = 0; outer < max_coupling; ++outer) {
-                if (coupled) {
+                std::vector<std::pair<std::string, std::vector<double>>> thermal_previous;
+                if (coupled_outer && CrossFilm::active(cfg)) {
+                    for (const auto& [name, field] : fields) {
+                        const bool layer = name.starts_with("cross_film_layer_") &&
+                            name.size() > 17 && name[17] >= '0' && name[17] <= '9';
+                        if (layer || name.starts_with("cross_film_solid_") || name == "temperature" ||
+                            name == "cross_film_t_shaft" || name == "cross_film_t_bush" ||
+                            name == "temperature_housing_outer" || name == "temperature_journal" || name == "temperature_bearing")
+                            thermal_previous.emplace_back(name, field->data);
+                    }
+                }
+                if (coupled && !coupled_outer) {
                     try {
                         coupled_stats = coupled_solver->solve(fields,step_cfg,step_cfg.dt,cfg.coupled_phase_equilibrium);
                     } catch (const std::exception& ex) {
@@ -408,7 +451,7 @@ int main(int argc, char** argv) {
                     copy_physical(fields["alpha_gas"], alpha_outer_prev, mesh);
                 }
 
-                FluidProperties::update_solution_fields(fields, mesh, cfg);
+                if (!coupled) FluidProperties::update_solution_fields(fields, mesh, cfg);
                 comm.update_ghosts(fields);
 
                 // Cross-film profile, conjugate walls and the Dowson F-integrals.
@@ -433,15 +476,37 @@ int main(int argc, char** argv) {
 
                 if (equilibrium) {
                     try {
-                        equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state);
+                        equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state,
+                            coupled_solver.get());
                     } catch (const std::exception& ex) {
                         nonlinear_failed = true;
                         Utils::log(ex.what(), Utils::Color::RED, 1);
                         break;
                     }
-                    elrod_stats.outer_iters = equilibrium_stats.pressure.newton_iters;
-                    elrod_stats.max_theta_change = equilibrium_stats.pressure.max_theta_change;
-                    elrod_stats.converged = equilibrium_stats.pressure.converged;
+                    if (coupled) {
+                        coupled_stats = equilibrium_stats.coupled;
+                        elrod_stats.outer_iters = coupled_stats.iterations;
+                        elrod_stats.converged = coupled_stats.converged;
+                    } else {
+                        elrod_stats.outer_iters = equilibrium_stats.pressure.newton_iters;
+                        elrod_stats.max_theta_change = equilibrium_stats.pressure.max_theta_change;
+                        elrod_stats.converged = equilibrium_stats.pressure.converged;
+                    }
+                } else if (coupled) {
+                    try {
+                        coupled_stats = coupled_solver->solve(fields, step_cfg, step_cfg.dt, cfg.coupled_phase_equilibrium);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(), Utils::Color::RED, 1);
+                        break;
+                    }
+                    elrod_stats.outer_iters = coupled_stats.iterations;
+                    elrod_stats.converged = coupled_stats.converged;
+                    if (!coupled_stats.converged) {
+                        nonlinear_failed = true;
+                        Utils::log("Coupled steady conservation/volume solve did not converge", Utils::Color::RED, 1);
+                        break;
+                    }
                 } else if (FBNS::active(cfg)) {
                     // The FBNS Newton stats are reported through the same
                     // diagnostics columns: outer_iters is the Newton count and
@@ -467,6 +532,7 @@ int main(int argc, char** argv) {
                 if (!steady_state && cfg.mass_conserving_cavitation() && !elrod_stats.converged)
                     nonlinear_failed = true;
 
+                if (!coupled) {
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
 
                 // Sync the flow + property fields the gas transport and velocity solve read.
@@ -507,16 +573,19 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["rho_cp_liquid_solution"]);
                     comm.update_ghosts(fields["k_liquid_solution"]);
                 }
+                }
 
                 // Calculate velocities and macroscopic properties
-                Reynolds::calculate_velocities(fields, mesh, step_cfg);
+                if (!coupled) Reynolds::calculate_velocities(fields, mesh, step_cfg);
                 forces = Reynolds::calculate_macroscopic_properties(fields, mesh, step_cfg);
                 JournalMotion::write_state_fields(fields, bearing_state, cfg);
 
                 comm.update_ghosts(fields["h"]);
                 comm.update_ghosts(fields["temperature"]);
                 try {
-                    Energy::solve(fields, sys, mesh, step_cfg);
+                    if (coupled && cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+                        ResolvedCrossFilm::solve(fields, mesh, step_cfg);
+                    else if (!coupled) Energy::solve(fields, sys, mesh, step_cfg);
                     if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
                         cross_film_state = ResolvedCrossFilm::diagnostics(fields, mesh, step_cfg);
                 } catch (const std::exception& ex) {
@@ -549,6 +618,20 @@ int main(int argc, char** argv) {
                                 coupling_R_E < cfg.coupling_tolerance;
                         } else {
                             energy_balanced = false;
+                        }
+                    }
+                    if (coupled) {
+                        const auto scales = coupled_balance_scales(fields, mesh);
+                        energy_balanced = energy_balanced && coupled_stats.converged &&
+                            std::abs(coupled_stats.oil_balance) / std::max(scales.oil, 1e-30) < std::min(cfg.coupling_tolerance, 1e-8) &&
+                            std::abs(coupled_stats.species_balance) / std::max(scales.species, 1e-30) < std::min(cfg.coupling_tolerance, 1e-8) &&
+                            std::isfinite(coupled_stats.volume_error) &&
+                            coupled_stats.volume_error < cfg.coupling_tolerance;
+                        if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                            const auto ledger = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                            coupling_R_E = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
+                            energy_balanced = energy_balanced && std::isfinite(coupling_R_E) &&
+                                coupling_R_E < cfg.coupling_tolerance;
                         }
                     }
                     if (equilibrium) {
@@ -640,11 +723,26 @@ int main(int argc, char** argv) {
                         break;
                     }
                     if (tolerance_met) break;
-                    relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
-                    relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
+                    if (!coupled) {
+                        relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
+                        relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
+                    } else if (!thermal_previous.empty() && outer + 1 < max_coupling && coupling_control.relaxation() < 1.0) {
+                        const double omega = coupling_control.relaxation();
+                        for (const auto& [name, previous] : thermal_previous) {
+                            auto& current = fields[name].data;
+                            for (std::size_t k=0; k<current.size(); ++k)
+                                current[k] = omega*current[k] + (1-omega)*previous[k];
+                        }
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            double mean = 0;
+                            for (int k=0; k<cfg.cross_film_layers; ++k)
+                                mean += fields["cross_film_layer_" + std::to_string(k)](i,j) / cfg.cross_film_layers;
+                            fields["temperature"](i,j) = mean;
+                        }
+                    }
                 }
             }
-            if (steady_state && !coupled) {
+            if (steady_state && (!coupled || coupled_outer)) {
                 coupling_control.finish(coupling_iters);
                 if (coupling_control.status().restored_best && coupling_best.valid()) {
                     // Ghost layers are part of the snapshot, so the restored state
@@ -667,12 +765,39 @@ int main(int argc, char** argv) {
             // The non-convergence verdict is not optional output: a run that ends
             // on the cap without meeting coupling_tolerance must say so whether or
             // not log_outer_iters is on.
-            if (steady_state && !coupled && !coupling_control.status().converged) {
+            if (steady_state && (!coupled || coupled_outer) && !coupling_control.status().converged) {
                 nonlinear_failed = true;
                 Utils::log(coupling_control.summary_line(), Utils::Color::RED, 1);
                 Utils::log(coupling_control.rollback_line(), Utils::Color::RED, 1);
             }
             if (cfg.mass_conserving_cavitation() && !elrod_stats.converged) nonlinear_failed = true;
+            if (coupled && steady_state) {
+                const auto scales = coupled_balance_scales(fields, mesh);
+                Energy::Balance ledger;
+                if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+                    ledger = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                else ledger.residual_W = coupled_stats.energy_balance;
+                const auto& status = coupling_control.status();
+                int summary_failed = 0;
+                if (mesh.rank == 0) {
+                    std::ofstream summary(fs::path(cfg.output_dir) / "coupled_summary.csv");
+                    summary << "converged,cap_exhausted,restored_best,outer_iters,pressure_converged,pressure_residual,volume_error,oil_balance_kg_s,species_balance_kg_s,liquid_balance_kg_s,energy_residual_W,energy_scale_W,force_residual,R_p,R_T,R_g,profile_residual,x_m,y_m,oil_balance_scale_kg_s,species_balance_scale_kg_s,oil_balance_rel,species_balance_rel\n"
+                        << std::setprecision(17) << (!nonlinear_failed && (!coupled_outer || status.converged))
+                        << ',' << status.cap_exhausted << ',' << status.restored_best << ',' << coupling_iters
+                        << ',' << coupled_stats.converged << ',' << coupled_stats.residual << ',' << coupled_stats.volume_error
+                        << ',' << coupled_stats.oil_balance << ',' << coupled_stats.species_balance << ',' << coupled_stats.liquid_balance
+                        << ',' << ledger.residual_W << ',' << ledger.scale_W << ',' << equilibrium_stats.force_residual
+                        << ',' << status.R_p << ',' << status.R_T << ',' << status.R_g << ',' << cross_film_state.profile_residual
+                        << ',' << bearing_state.x << ',' << bearing_state.y
+                        << ',' << scales.oil << ',' << scales.species
+                        << ',' << std::abs(coupled_stats.oil_balance) / std::max(scales.oil, 1e-30)
+                        << ',' << std::abs(coupled_stats.species_balance) / std::max(scales.species, 1e-30) << '\n';
+                    summary.close();
+                    summary_failed = !summary;
+                }
+                MPI_Bcast(&summary_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                if (summary_failed) throw std::runtime_error("Cannot write coupled_summary.csv");
+            }
             // A rejected coupled solve leaves inventories at the last accepted
             // time. Do not label that retained state with the failed target time.
             if (coupled && nonlinear_failed) break;
@@ -710,9 +835,17 @@ int main(int argc, char** argv) {
                     balance.liquid_residual = coupled_stats.liquid_balance*step_cfg.dt/std::max(coupled_stats.liquid_mass,1e-30);
                     balance.gas_residual = coupled_stats.species_balance*step_cfg.dt/std::max(coupled_stats.gas_mass,1e-30);
                     balance.gas_volume_excess = coupled_stats.volume_error;
-                    if (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION) {
+                    const auto scales = coupled_balance_scales(fields, mesh);
+                    balance.liquid_residual_kg_s = coupled_stats.liquid_balance;
+                    balance.liquid_balance_scale_kg_s = scales.liquid;
+                    balance.liquid_residual_rel = std::abs(coupled_stats.liquid_balance) / std::max(scales.liquid, 1e-30);
+                    if (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION && !coupled_outer) {
                         balance.energy_residual_w=coupled_stats.energy_balance;
                         balance.internal_energy_j=coupled_stats.internal_energy;
+                    }
+                    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                        balance.energy = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                        balance.energy_residual_w = balance.energy->residual_W;
                     }
                     double local_cavity = 0, total_cavity = 0;
                     for (int i=0;i<mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j)
@@ -733,7 +866,7 @@ int main(int argc, char** argv) {
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
                     t, step, balance, elrod_stats,
-                    steady_state && !coupled ? &coupling_control.status() : nullptr);
+                    steady_state && (!coupled || coupled_outer) ? &coupling_control.status() : nullptr);
             }
 
             // Output: write VTK at the configured save cadence ...
