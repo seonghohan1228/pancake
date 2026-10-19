@@ -4403,3 +4403,17 @@ precision. Using the verified density-only shaft position as a common numerical
 guess also passes both branches; torque changes are about 0.01%, within the
 normal force tolerance. This changes initialization only. Production-grid
 acceptance and the complete matched campaign remain required.
+
+Remove the inherited two-hour wall-clock deadline from the 02f gas worker's
+default options. The fifth remote attempt stopped M02 gas-off at outer33
+while residuals were still falling; all three gas-on pilots also reached the
+clock limit. Preserve that attempt, including the two gas-off cases that
+continue running. Add explicit `--timeout SECONDS` for bounded checks and
+record the selected limit in each native metric record. All 14 gas-driver
+tests pass, including a regression that prevents the shared 7200-second
+default from leaking into the gas campaign. Solver equations, native binaries,
+iteration caps and acceptance tolerances are unchanged.
+The native Windows build remains unchanged. A fresh M02 gas-on 48x16
+fixed-cooling solve using the unbounded wait passes native and independent
+checks with 0.0579858105781 N m torque, matching the preceding bounded
+verification to floating-point precision. Full-grid results remain pending.

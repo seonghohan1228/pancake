@@ -2751,6 +2751,12 @@ all downward-load cases solve the wrong confirmed physical configuration.
   original/density-seeded M02 coarse pairs with unchanged acceptance. A bounded
   full-grid update from the density-only position reaches 0.01166% force error;
   its intentional one-outer cap is not an accepted CFD case. All 66 native tests pass.
+- [x] Remove the inherited two-hour gas-worker wall-clock limit after it stopped
+  progressing full-grid pilots; retain explicit bounded diagnostics and all
+  convergence/physical gates. All 14 driver checks pass. Preserve the failed
+  runs and allow the remaining original pilots to finish without interruption.
+- [ ] Complete the isolated retry with an explicit runtime policy, disjoint
+  cores while the prior pilots drain, and verified evidence from all 40 jobs.
 - [ ] Obtain exact-grade FW68D/R410A mixture density and caloric/heat-of-solution
   measurements before treating this conditional scenario as a calibrated
   physical prediction.

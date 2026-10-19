@@ -3542,3 +3542,10 @@ This load balance contains fluid pressure only. No surface-roughness or
 asperity-contact load/friction law is included, so a small predicted gap does
 not itself introduce contact friction. Reported journal torque remains the
 integrated fluid shear.
+
+The 02f campaign's wall-clock deadline is an operational control, not a
+convergence criterion. Its default is disabled after the inherited two-hour
+limit stopped progressing full-grid solves. A requested `--timeout SECONDS`
+still produces a rejected, preserved result if reached. Iteration caps and
+all residual, constitutive, conservation and admissibility gates remain in
+force; removing the clock limit does not make an unconverged state acceptable.

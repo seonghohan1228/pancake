@@ -9,6 +9,16 @@ and the full 720×192 campaign is running. These local pilot checks do not
 provide campaign-level gas-effect results; remote cases must pass the gates
 below before they enter the comparison.
 
+The fifth remote attempt exposed an inherited two-hour wall-clock limit per
+native solve. M02 gas-off was still reducing its coupled residual when the
+driver stopped it; the three gas-on pilots also reached that limit. Their
+failed outputs are retained. The gas worker now defaults to no wall-clock
+deadline. `--timeout SECONDS` remains available for explicitly bounded checks;
+`--timeout 0` selects the default. Each native record stores the selected
+deadline. Iteration caps and every physical, load and conservation gate remain
+unchanged. The two progressing gas-off pilots from that attempt continue in
+their original snapshot while the retry uses disjoint free cores.
+
 ## Matched branches
 
 Both branches use the same geometry, measured operating conditions, absolute

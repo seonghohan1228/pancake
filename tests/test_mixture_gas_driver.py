@@ -7,6 +7,8 @@ from pathlib import Path
 import runpy
 from tempfile import TemporaryDirectory
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 worker = runpy.run_path(str(ROOT / "cases/02f_lge_mixture_gas/run_gas.py"))
@@ -30,6 +32,24 @@ class MatchedGasInputsTest(unittest.TestCase):
             gas_thermal_conductivity=.013, gas_viscosity=1.3e-5,
             property_reference_temperature=293.15, property_reference_pressure=1e5,
             basis="explicit synthetic test values", sources=["test fixture"])
+
+    def test_native_runtime_deadline_is_opt_in(self):
+        with TemporaryDirectory(dir=ROOT / "tmp") as directory:
+            root = Path(directory)
+            inputs = root / "inputs"
+            inputs.mkdir()
+            (inputs / "M02_gas_off_setup.json").write_text(json.dumps({"material_settings": {}}))
+            for seconds in (0, 123):
+                options = SimpleNamespace(timeout=7200)
+                args = SimpleNamespace(inputs=inputs, work=root / str(seconds), case="M02",
+                    branch="gas_off", layers=16, tight=False, solver=None, rankfile=None,
+                    ranks=4, timeout=seconds)
+                namespace = worker["run_case"].__globals__
+                with patch.object(worker["baseline"], "options", return_value=options), \
+                     patch.dict(namespace, Campaign=unittest.mock.Mock(side_effect=RuntimeError("captured options"))):
+                    with self.assertRaisesRegex(RuntimeError, "captured options"):
+                        worker["run_case"](args)
+                self.assertEqual(options.timeout, seconds or None)
 
     def test_strict_interpolation_and_exact_node(self):
         interpolate = worker["curve_value"]

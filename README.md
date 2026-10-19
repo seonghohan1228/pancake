@@ -898,3 +898,7 @@ fill/viscosity feedback, then checks it against the unrelaxed constitutive law.
 Saved inverse-viscosity layers support an independent campaign acceptance check.
 The load search rejects unresolved trial positions directly so it can try a
 smaller move; the main pressure state retains conservative pseudo-time recovery.
+The 02f gas worker has no wall-clock deadline by default; `--timeout SECONDS`
+opts into a bounded native solve. The former inherited two-hour limit stopped
+progressing full-grid pilots. Their evidence is retained, and the retry keeps
+all iteration, load, physical and conservation acceptance gates unchanged.

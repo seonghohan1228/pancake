@@ -516,7 +516,7 @@ class Campaign(driver.Campaign):
             config_sha256=driver.sha256(path), executable_sha256=self.executable_hash,
             initial_state_file=None, initial_state_sha256=None,
             restart_note="Fresh species inventories: legacy checkpoint omits conservative species state.",
-            status="started", **self.input_hashes)
+            status="started", runtime_timeout_seconds=self.args.timeout, **self.input_hashes)
         driver.save_json(run_dir / "metrics.json", record)
         started = time.monotonic()
         try:
@@ -595,6 +595,7 @@ def run_case(args):
     options = baseline.options(args.inputs, destination, args.solver, args.rankfile)
     options.table = str(args.inputs / "fw68d.csv")
     options.ranks = args.ranks
+    options.timeout = args.timeout or None
     campaign = Campaign(options)
     campaign.mpi_version = subprocess.check_output([campaign.command()[0], "--version"], text=True).splitlines()[:2]
     case = campaign.cases[args.case]
@@ -638,7 +639,11 @@ def main():
     parser.add_argument("--ranks", type=int, choices=(1, 2, 4), default=4)
     parser.add_argument("--layers", type=int, choices=(16, 32), default=16)
     parser.add_argument("--tight", action="store_true")
+    parser.add_argument("--timeout", type=int, default=0,
+                        help="seconds per native solve; 0 (default) disables the wall-clock deadline")
     args = parser.parse_args()
+    if args.timeout < 0:
+        parser.error("--timeout must be nonnegative")
     if args.prepare and args.caloric:
         prepare(args.prepare, args.inputs, json.loads(args.caloric.read_text()))
     elif args.check_inputs:
