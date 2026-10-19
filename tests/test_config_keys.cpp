@@ -204,6 +204,22 @@ void test_reservoir_states() {
           "a charge bubble point must not silently raise either reservoir pressure");
 }
 
+void test_coupled_nonlinear_tolerance() {
+    SimulationConfig cfg;
+    check(cfg.coupled_nonlinear_tolerance == 1e-10, "Preserve the native default tolerance");
+    cfg.load_from_text("coupled_nonlinear_tolerance = 1e-8\n");
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.coupled_nonlinear_tolerance == 1e-8, "Inner tolerance must survive serialization");
+    cfg.cavitation_model = CavitationModel::COUPLED;
+    for (double invalid : {0., -1., 1., std::numeric_limits<double>::infinity()}) {
+        cfg.coupled_nonlinear_tolerance = invalid;
+        std::vector<std::string> errors, warnings;
+        cfg.validate(errors, warnings);
+        check(mentions(errors, "coupled_nonlinear_tolerance"), "Reject invalid inner tolerance");
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -218,6 +234,7 @@ int main(int argc, char** argv) {
     test_written_config_round_trips();
     test_shipped_configs_parse();
     test_reservoir_states();
+    test_coupled_nonlinear_tolerance();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();

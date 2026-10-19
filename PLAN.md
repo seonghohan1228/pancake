@@ -2760,3 +2760,24 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [ ] Obtain exact-grade FW68D/R410A mixture density and caloric/heat-of-solution
   measurements before treating this conditional scenario as a calibrated
   physical prediction.
+
+## 2026-10-19: User-selected ten cases and 1e-8 inner criterion
+
+This scope supersedes the unfinished 40-job gas comparison above; completed
+historical runs and all failures remain preserved.
+
+- [x] Freeze all ten original selected measurement rows, including the new
+  200/500/1100 rpm windows, and verify twenty matched configurations.
+- [x] Apply the requested 1e-8 inner pressure/species criterion consistently
+  in native stopping, native acceptance and independent verification.
+- [x] Verify exact ten-case dispatch, paired branches, six selected-case checks,
+  failure gating, disjoint slots and refusal to overwrite earlier campaigns.
+- [x] Complete all 66 native Windows tests, then all 17 coupled/config tests
+  after aligning gas-inventory roundoff; fifteen gas-driver checks and the
+  exact-selection launcher check pass. P01 off/on and P07/P10 gas-on 48x16
+  probes pass native and independent acceptance at fixed exterior cooling.
+- [ ] Complete the rebuilt remote Linux suite and selected campaign.
+- [ ] Complete twenty selected production jobs and six numerical checks remotely.
+- [ ] Retrieve/hash-verify all selected results and preserve superseded attempts.
+- [ ] Deliver torque/TC errors, minimum gaps and selected figures; document and
+  merge only after verified results, without a Git push.

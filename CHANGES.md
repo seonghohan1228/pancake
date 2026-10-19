@@ -4417,3 +4417,34 @@ The native Windows build remains unchanged. A fresh M02 gas-on 48x16
 fixed-cooling solve using the unbounded wait passes native and independent
 checks with 0.0579858105781 N m torque, matching the preceding bounded
 verification to floating-point precision. Full-grid results remain pending.
+
+## 2026-10-19: Follow the exact ten-case selection and requested inner tolerance
+
+Prepare the ten original measurement rows without replacing the newly selected
+200, 500 or 1100 rpm windows with neighboring old cases. Input preparation,
+launching and summary counts now follow the frozen selection rather than a
+hard-coded seventeen-case matrix. The ten-case plan contains twenty matched
+production jobs and six checks on P01/P10.
+
+Add a serialized and validated `coupled_nonlinear_tolerance` with a backward-
+compatible native default of 1e-10. Set it to the user-requested 1e-8 in the
+mixture worker, use it in native residual acceptance and the independent
+verifier, and remove the separate forced 1e-13 nonlinear stopping option.
+Conservation, load, outer thermal and admissibility checks are retained.
+The 17-case dispatch was held and four superseded operating-point solves were
+canceled for the scope change, with all evidence retained. The revised full
+remote campaign remains pending local/native verification at this entry.
+
+The selected 1100 rpm coarse check exposed a negative scaled gas inventory of
+2.2e-9 after satisfying the requested 1e-8 inner criterion. Permit gas-inventory
+roundoff up to that criterion, capped at 1e-8, while preserving the old default
+guard and all independent phase-fraction checks. Do not clip or relabel the
+retained failed probe.
+
+Validation: all 66 native Windows tests passed, with the 17 coupled/config
+tests repeated successfully after the gas-inventory adjustment. All fifteen
+gas-driver checks and the ten-case launcher check pass. Fresh 48x16 P01 off/on
+and P07/P10 gas-on probes pass native and independent acceptance with fixed
+exterior cooling. They establish local numerical execution, not full-grid
+campaign acceptance or cooling closure. The remaining old M11 jobs were
+stopped with retained evidence to apply the user's new criterion consistently.

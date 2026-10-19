@@ -218,6 +218,22 @@ class MatchedGasInputsTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "viscosity_residual|nonfinite"):
                         campaign.check_solution(run, {})
 
+    def test_pressure_acceptance_uses_frozen_tolerance(self):
+        with TemporaryDirectory(dir=ROOT / "tmp") as directory:
+            run = Path(directory)
+            (run / "results").mkdir()
+            (run / "config.txt").write_text("coupling_tolerance = 1e-6\ncoupled_nonlinear_tolerance = 1e-8\n")
+            summary = dict(converged=1, pressure_converged=1, cap_exhausted=0, restored_best=0,
+                           pressure_residual=5e-9, volume_error=0, R_p=0, R_T=0, R_g=0, profile_residual=0)
+            campaign = worker["Campaign"].__new__(worker["Campaign"])
+            rows(run / "results/coupled_summary.csv", [summary])
+            with self.assertRaisesRegex(ValueError, "viscosity_residual"):
+                campaign.check_solution(run, {})
+            summary["pressure_residual"] = 1e-8
+            rows(run / "results/coupled_summary.csv", [summary])
+            with self.assertRaisesRegex(ValueError, "pressure residual"):
+                campaign.check_solution(run, {})
+
     def test_bubble_inverse_requires_strict_supported_state(self):
         inverse = worker["bubble_pressure"]
         curves = {1e5: [(10., .1), (30., .2)], 2e5: [(10., .3), (30., .4)]}
@@ -312,7 +328,8 @@ class MatchedGasInputsTest(unittest.TestCase):
             self.assertEqual(worker["parse_config"]((run / "config.txt").read_text())["coupled_fbns_initialization"], "true")
             config = worker["parse_config"]((run / "config.txt").read_text())
             self.assertEqual(float(config["steady_position_fd_step"]), .0001)
-            self.assertEqual(campaign.command()[campaign.command().index("-coupled_snes_atol")+1], "1e-13")
+            self.assertNotIn("-coupled_snes_atol", campaign.command())
+            self.assertEqual(float(config["coupled_nonlinear_tolerance"]), 1e-8)
             (run / "run.log").write_text("synthetic shared-cache fixture")
             record = dict(returncode=0, source_sha256=campaign.source_hash, executable_sha256=None,
                 mpi_ranks=4, driver_sha256=campaign.driver_hash, rankfile_sha256=None, native_equilibrium=True,
@@ -327,6 +344,20 @@ class MatchedGasInputsTest(unittest.TestCase):
             self.assertEqual(campaign.balance(case, eps, psi)["run_dir"], str(run))
             self.assertIsNone(campaign.recover_checkpoint(case))
             self.assertFalse((run / "results/steady_state.dat").exists())
+
+            ten = [dict(row, selected_id=f"P{index:02d}") for index, row in enumerate(measured[:10], 1)]
+            rows(preflight / "case_matrix.csv", ten)
+            ten_inputs = root / "ten_inputs"
+            worker["prepare"](preflight, ten_inputs, self.caloric())
+            worker["check_inputs"](ten_inputs, root / "ten_check.json")
+            self.assertEqual(json.loads((root / "ten_check.json").read_text())["status"],
+                             "20_matched_native_configs_verified_unrun")
+            self.assertEqual([case["measured"] for case in json.loads((ten_inputs / "experiment.json").read_text())["cases"]],
+                             [{key: str(value) for key, value in row.items()} for row in ten])
+            for bad_ids in (["P01", "P01"], ["../P01"]):
+                rows(preflight / "case_matrix.csv", [dict(measured[0], selected_id=key) for key in bad_ids])
+                with self.assertRaisesRegex(ValueError, "safe identifiers"):
+                    worker["prepare"](preflight, root / ("bad"+str(len(bad_ids))), self.caloric())
 
 
 if __name__ == "__main__":

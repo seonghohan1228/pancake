@@ -3549,3 +3549,32 @@ limit stopped progressing full-grid solves. A requested `--timeout SECONDS`
 still produces a rejected, preserved result if reached. Iteration caps and
 all residual, constitutive, conservation and admissibility gates remain in
 force; removing the clock limit does not make an unconverged state acceptable.
+
+### 19 October selected-case inner tolerance
+
+The user reduced the mixture comparison to the exact ten selected windows,
+P01--P10, and chose an inner pressure/species tolerance of 1e-8. The new
+`coupled_nonlinear_tolerance` sets the default PETSc absolute stopping threshold
+and the independent infinity-norm acceptance of the scaled conservative
+residual vector. Its native default remains 1e-10 for other configurations.
+The 02f driver writes 1e-8 and no longer forces a separate 1e-13 PETSc override.
+The raw-field verifier reads the same frozen configuration value.
+
+This is an inner algebraic residual tolerance, not a relative torque error or
+the outer thermal criterion. Normal outer coupling remains 1e-6, force balance
+remains 0.002, and oil/species conservation remains below
+min(coupling_tolerance, 1e-8). Pressure positivity, phase bounds, bubble-point
+equilibrium, property-table/EOS domains, positive gaps and energy checks remain
+required. No result is promoted solely because its nonlinear norm is small.
+The previous 800 rpm gas-on attempt repeatedly reached norms below 1e-10 but
+never reached its imposed 1e-13 threshold before the first thermal update.
+Local probes and subsequent remote checks must establish the effect of this
+change; no full-grid accuracy improvement is asserted before those results.
+
+The free-gas inventory roundoff guard permits a scaled negative inventory no
+larger than max(1e-9, min(coupled_nonlinear_tolerance, 1e-8)); the default guard
+is unchanged. This avoids rejecting a 1e-8-converged state merely for a few
+1e-9 of negative scaled inventory. It does not clip fields or bypass the
+independent [-1e-8, 1+1e-8] phase-fraction and conservation checks. The first
+selected 1100 rpm coarse probe exposed this mismatch and is retained as a
+failed check, not counted as accepted evidence.

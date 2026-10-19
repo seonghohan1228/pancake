@@ -25,7 +25,6 @@ sys.path.insert(0, str(ROOT / "cases/02e_lge_mixture"))
 import run_mixture as baseline
 driver = baseline.driver
 parse_config = baseline.parse_config
-IDS = [f"M{i:02d}" for i in range(1, 18)]
 BRANCHES = ("gas_off", "gas_on")
 CALORIC_KEYS = ("dissolved_heat_capacity", "desorption_internal_energy",
                 "gas_thermal_conductivity", "property_reference_temperature",
@@ -200,7 +199,7 @@ def check_layer_viscosity(config, fields, curves):
 
 
 def prepare(preflight, destination, caloric):
-    """Freeze all 34 matched inputs and independent measured-coordinate evidence."""
+    """Freeze the selected matched inputs and independent measured-coordinate evidence."""
     caloric = validate_caloric(caloric)
     baseline.prepare(preflight, destination, "LINEAR_TEMPERATURE")
     table = ROOT / "data/R410A_FW68D/fw68d.csv"
@@ -267,10 +266,10 @@ def prepare(preflight, destination, caloric):
                 "equilibrium position as its seed. A fresh FBNS pressure/film-content initial guess "
                 "is converted to conservative COUPLED inventories; legacy checkpoints are incompatible.")
             setup["acceptance"].update(
-                pressure_and_temperature_coupling="Native COUPLED pressure residual below 1e-10; volume, R_p, R_T, R_g, profile and unrelaxed viscosity residuals below configured coupling_tolerance; no exhausted cap or restored-best iterate.",
+                pressure_and_temperature_coupling="Native COUPLED pressure/species residual below configured coupled_nonlinear_tolerance; volume, R_p, R_T, R_g, profile and unrelaxed viscosity residuals below configured coupling_tolerance; no exhausted cap or restored-best iterate.",
                 fields="Finite resolved fields, positive gap and viscosity, nonnegative absolute pressure, admissible phase fractions, supported viscosity/bubble-pressure chart and stable free-gas EOS domain at all layers and walls.",
                 external_convection="Both exterior coefficients close to relative 1e-3 and wall-temperature change 0.01 K normally, tightened to 1e-5 and 1e-4 K for focused checks. Each call starts fresh species inventories at the preceding native equilibrium position.",
-                native_pressure="Common COUPLED SNES absolute tolerance 1e-13 for normal and focused runs, to resolve the unchanged 1e-6 Pa pressure bound at MPa pressure scales; independent acceptance pressure residual below 1e-10. Focused checks tighten load, thermal and exterior-cooling closure.",
+                native_pressure="User-selected common COUPLED pressure/species tolerance 1e-8, applied to both the nonlinear solve and independent acceptance. Focused checks tighten load, thermal and exterior-cooling closure.",
                 oil_and_species_balance_relative_residual_max="min(coupling_tolerance, 1e-8), using time-step-independent boundary/feed mass-flux scales",
                 global_energy_relative_residual_max="configured coupling_tolerance",
                 cross_film_raw_collocation_residual_max="configured coupling_tolerance",
@@ -296,7 +295,7 @@ def prepare(preflight, destination, caloric):
         "gas_EOS": "200--500 K; <=50 MPa; pressure <= dew below344.494 K; applies to free phase only",
         "table": "Unclamped nu(c,T) and strict chart-supported bubble-pressure inversion of c_sat(p,T), including all125 digitized points. A gas-free local pressure may exceed chart pressure support while its bubble point remains strictly supported; free phase must lie at that bubble pressure. Contributing curve temperature limits apply.",
         "viscosity_C03_temperature_range_C": [min(t for t, _ in curves[.3]), max(t for t, _ in curves[.3])],
-        "matched_native_configurations": 34, "preserved_coordinates": {"pure_oil": 103, "CFD": 6}})
+        "matched_native_configurations": 2*len(experiment["cases"]), "preserved_coordinates": {"pure_oil": 103, "CFD": 6}})
     driver.save_json(destination / "manifest.json", {p.name: driver.sha256(p)
         for p in sorted(destination.iterdir()) if p.name != "manifest.json"})
 
@@ -353,8 +352,7 @@ class Campaign(driver.Campaign):
 
     def command(self):
         command = super().command()
-        return command + ["-coupled_snes_atol", "1e-13",
-                          "-coupled_sub_pc_type", "lu", "-coupled_snes_monitor",
+        return command + ["-coupled_sub_pc_type", "lu", "-coupled_snes_monitor",
                           "-coupled_ksp_converged_reason"]
 
     def config_for(self, case, eps, psi, h_bush, h_shaft, output_dir, initial_state_file=None):
@@ -364,6 +362,7 @@ class Campaign(driver.Campaign):
         values.update(cavitation_model="COUPLED", cavitated_film_model="HOMOGENEOUS",
             steady_pressure_inner_only="false",
             coupled_fbns_initialization="true",
+            coupled_nonlinear_tolerance=1e-8,
             coupling_relaxation=.3,
             steady_position_fd_step=.0001,
             groove_mixing_model="PINNED",
@@ -397,8 +396,9 @@ class Campaign(driver.Campaign):
                (("converged", 1), ("pressure_converged", 1), ("cap_exhausted", 0), ("restored_best", 0))):
             raise ValueError("native COUPLED failed convergence, cap or restored-iterate gate")
         tolerance = float(config["coupling_tolerance"])
-        if not 0 <= summary["pressure_residual"] < 1e-10:
-            raise ValueError("native COUPLED pressure residual exceeds 1e-10")
+        pressure_tolerance = float(config.get("coupled_nonlinear_tolerance", "1e-10"))
+        if not 0 < pressure_tolerance < 1 or not 0 <= summary["pressure_residual"] < pressure_tolerance:
+            raise ValueError("native COUPLED pressure residual exceeds configured tolerance")
         for key in ("volume_error", "R_p", "R_T", "R_g", "profile_residual", "viscosity_residual"):
             if key not in summary or not 0 <= summary[key] < tolerance:
                 raise ValueError(f"native COUPLED {key} fails requested tolerance")
@@ -541,7 +541,8 @@ class Campaign(driver.Campaign):
 def check_inputs(inputs, output):
     """Verify matching controls and preserved coordinates without solving the bearing."""
     verified = []
-    for key in IDS:
+    experiment = json.loads((inputs / "experiment.json").read_text())
+    for key in (case["case_id"] for case in experiment["cases"]):
         values = {}
         for branch in BRANCHES:
             options = baseline.options(inputs, output.parent / "unused", None, None)
@@ -557,6 +558,7 @@ def check_inputs(inputs, output):
             assert config["cavitated_film_model"] == "HOMOGENEOUS"
             assert config["steady_pressure_inner_only"] == "false"
             assert config["coupled_fbns_initialization"] == "true"
+            assert float(config["coupled_nonlinear_tolerance"]) == 1e-8
             assert float(config["coupling_relaxation"]) == .3
             assert float(config["steady_position_fd_step"]) == .0001
             assert config["density_model"] == "LINEAR_TEMPERATURE"
@@ -578,7 +580,7 @@ def check_inputs(inputs, output):
         different = [name for name in values["gas_off"] if values["gas_off"][name] != values["gas_on"][name]]
         assert set(different) == {"fluid_property_model", "coupled_phase_equilibrium"}, different
         verified.append({"case_id": key, "differing_controls": different})
-    driver.save_json(output, {"status": "34_matched_native_configs_verified_unrun", "cases": verified})
+    driver.save_json(output, {"status": f"{2*len(verified)}_matched_native_configs_verified_unrun", "cases": verified})
 
 
 def run_case(args):
@@ -631,7 +633,7 @@ def main():
     parser.add_argument("--inputs", required=True, type=Path)
     parser.add_argument("--caloric", type=Path)
     parser.add_argument("--check-inputs", type=Path)
-    parser.add_argument("--case", choices=IDS)
+    parser.add_argument("--case")
     parser.add_argument("--branch", choices=BRANCHES)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--solver", type=Path)
@@ -651,6 +653,9 @@ def main():
             raise FileExistsError(args.check_inputs)
         check_inputs(args.inputs, args.check_inputs)
     elif args.case and args.branch and args.work and args.solver:
+        cases = json.loads((args.inputs / "experiment.json").read_text())["cases"]
+        if args.case not in [case["case_id"] for case in cases]:
+            parser.error("--case must belong to the frozen experiment selection")
         run_case(args)
     else:
         parser.error("use --prepare PREFLIGHT --caloric JSON, or --check-inputs REPORT")

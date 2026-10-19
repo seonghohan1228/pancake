@@ -256,6 +256,10 @@ const std::vector<DoubleSpec>& double_specs() {
          "Reference temperature for the property models.", &SC::property_reference_temperature,
          ParamGroup::FluidProperties, true, 0.0, kInf, true, kTemperature},
 
+        {"coupled_nonlinear_tolerance", "Coupled nonlinear tolerance", "",
+         "Scaled inner pressure/species residual limit. Separate from outer thermal convergence.",
+         &SC::coupled_nonlinear_tolerance, ParamGroup::Numerics, true, 0.0, 1.0, true},
+
         // Bearing motion
         {"external_load_x", "External load x", "N", "Applied load on the bearing, x component.",
          &SC::external_load_x, ParamGroup::Motion, false, -kInf, kInf, false},

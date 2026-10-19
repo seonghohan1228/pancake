@@ -1,6 +1,20 @@
 # Conditional LGE gas release comparison (2026-10-19)
 
-This follow-on prepares matched steady COUPLED calculations for the 17
+The active request now selects P01--P10, one exact measurement window at each
+speed from 200 to 1100 rpm. The 200, 500 and 1100 rpm selections differ from
+the original seventeen-case matrix. The new campaign freezes their measured
+load, chamber pressure, TC0 and comparison data directly, with no interpolation
+of results from nearby earlier windows. Its twenty gas-off/on jobs are followed
+by four tighter outer/load checks at P01/P10 and two 32-layer checks at P01.
+
+The user requested `coupled_nonlinear_tolerance = 1e-8`. This now controls the
+inner nonlinear stop and native/raw verification consistently. The separate
+1e-13 override described in the historical notes below is superseded for this
+campaign. Native defaults outside this campaign remain 1e-10. Outer thermal,
+load, mass, energy and physical admissibility gates remain enabled. Earlier
+attempts are retained; local coarse probes are not production results.
+
+The original follow-on prepared matched steady COUPLED calculations for the 17
 selected M01–M17 operating windows. It is a conditional model comparison,
 not an experimental validation. Input preparation and all 34 configuration
 checks are complete. Matched 48×16 pilots using relaxation 0.3 passed strict

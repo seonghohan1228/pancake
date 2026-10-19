@@ -143,8 +143,9 @@ def summarize(root, output, old_report=None, density_report=None):
         rows.append(row)
     worker.write_rows(output / "matched_comparison.csv", rows)
     focused = []
-    for phase, keys, reference in (("refinement", ("M02", "M16"), "production"),
-                                    ("refinement_layers32", ("M02",), "refinement")):
+    check_cases = experiment.get("numerical_check_cases", {"refinement": ["M02", "M16"], "refinement_layers32": ["M02"]})
+    for phase, keys, reference in (("refinement", check_cases["refinement"], "production"),
+                                    ("refinement_layers32", check_cases["refinement_layers32"], "refinement")):
         for key in keys:
             for branch in worker.BRANCHES:
                 item = dict(case_id=key, branch=branch, phase=phase, reference=reference,
@@ -201,9 +202,9 @@ def summarize(root, output, old_report=None, density_report=None):
     worker.driver.save_json(output / "report.json", {
         "status": ("partial_unaccepted_pairs_preserved" if errors else "complete"
             if all(item["status"] == "verified" for item in focused) else "production_complete_focused_checks_unavailable"),
-        "accepted_pairs": len(rows)-len(errors), "required_pairs": 17, "errors": errors,
+        "accepted_pairs": len(rows)-len(errors), "required_pairs": len(rows), "errors": errors,
         "focused_checks_verified": sum(item["status"] == "verified" for item in focused),
-        "focused_checks_required": 6,
+        "focused_checks_required": len(focused),
         "upstream_reports": {label: {"path": str(path), "sha256": worker.driver.sha256(path)}
             for label, path in (("old_fixed30", old_report), ("density_only", density_report)) if path},
         "upstream_basis": "Historical comparisons use explicitly supplied accepted upstream report rows and preserve their CSV hashes; they do not revalidate historical solver outputs here.",

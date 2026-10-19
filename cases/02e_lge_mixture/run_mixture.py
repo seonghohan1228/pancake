@@ -5,6 +5,7 @@ import copy
 import csv
 import json
 import math
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -25,7 +26,9 @@ def prepare(preflight, destination, density_model="CONSTANT"):
         raise ValueError("Unsupported mixture density scenario")
     destination.mkdir(parents=True, exist_ok=False)
     rows = list(csv.DictReader((preflight / "case_matrix.csv").open(encoding="utf-8")))
-    assert [r["selected_id"] for r in rows] == [f"M{i:02d}" for i in range(1, 18)]
+    ids = [row["selected_id"] for row in rows]
+    if not ids or len(set(ids)) != len(ids) or any(not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", key) for key in ids):
+        raise ValueError("Case selection must contain distinct safe identifiers")
     points = [{"temperature_c": float(r["temperature_c"]), "nu_mm2_s": float(r["nu_mm2_s"])}
               for r in csv.DictReader((preflight / "viscosity_nodes.csv").open())]
     geometry = dict(journal_radius_m=.0215, radial_clearance_m=42.5e-6,

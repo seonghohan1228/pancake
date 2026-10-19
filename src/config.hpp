@@ -913,6 +913,8 @@ struct SimulationConfig {
     double gas_mass_transfer_rate = 0.0;         // Release rate [1/s]; legacy absorption fallback.
     double gas_absorption_rate = -1.0;          // -1 inherits release rate; 0 disables absorption.
     bool coupled_phase_equilibrium = false;    // COUPLED: equilibrium instead of finite-rate exchange.
+    /// Scaled inner pressure/species residual limit, separate from outer thermal coupling.
+    double coupled_nonlinear_tolerance = 1e-10;
     /// Seed steady resolved COUPLED pressure/film content with a gas-free FBNS solve.
     bool coupled_fbns_initialization = false;
     /// Separate absorption kinetics; bubble compression alone exchanges no mass.
@@ -1258,6 +1260,7 @@ struct SimulationConfig {
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
             else if (key == "gas_absorption_rate") gas_absorption_rate = std::stod(value);
             else if (key == "coupled_phase_equilibrium") coupled_phase_equilibrium = is_true(value);
+            else if (key == "coupled_nonlinear_tolerance") coupled_nonlinear_tolerance = std::stod(value);
             else if (key == "coupled_fbns_initialization") {
                 if (is_true(value)) coupled_fbns_initialization = true;
                 else if (is_false(value)) coupled_fbns_initialization = false;
@@ -1893,6 +1896,8 @@ struct SimulationConfig {
         }
 
         if (cavitation_model == CavitationModel::COUPLED) {
+            if (!finite(coupled_nonlinear_tolerance) || coupled_nonlinear_tolerance <= 0 || coupled_nonlinear_tolerance >= 1)
+                error("coupled_nonlinear_tolerance must be finite and lie in (0, 1).");
             require_nonnegative(oil_vapor_temperature_coeff,"oil_vapor_temperature_coeff");
             if (cavitation_threshold != CavitationThreshold::SCALAR_PCAV || gas_pressure_coupling != GasPressureCoupling::NONE)
                 error("COUPLED requires SCALAR_PCAV and gas_pressure_coupling = NONE; pressure follows the gas EOS and gap volume.");
@@ -2634,6 +2639,7 @@ struct SimulationConfig {
             << "# gas_absorption_rate: -1 inherits release rate; 0 disables absorption\n"
             << "gas_absorption_rate = " << gas_absorption_rate << "\n"
             << "coupled_phase_equilibrium = " << (coupled_phase_equilibrium ? "true" : "false") << "\n"
+            << "coupled_nonlinear_tolerance = " << coupled_nonlinear_tolerance << "\n"
             << "# Optional gas-free FBNS initial guess; final equations and acceptance remain COUPLED.\n"
             << "coupled_fbns_initialization = " << (coupled_fbns_initialization ? "true" : "false") << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
@@ -2840,7 +2846,7 @@ struct SimulationConfig {
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
-            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "coupled_fbns_initialization", "inlet_species", "dissolved_gas_diffusivity",
+            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "coupled_nonlinear_tolerance", "coupled_fbns_initialization", "inlet_species", "dissolved_gas_diffusivity",
             "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
             "viscosity_temperature_coeff", "viscosity_pressure_coeff",
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",

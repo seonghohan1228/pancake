@@ -1,5 +1,13 @@
 # pancake
 
+The current LGE mixture comparison uses the ten operating windows selected on
+19 October, P01--P10, with matched gas-off/on conditions. The three newly selected
+200, 500 and 1100 rpm measurements require their own runs. The user-selected
+inner pressure/species criterion is `coupled_nonlinear_tolerance = 1e-8`;
+outer thermal, load, property-domain and conservation checks remain separate.
+Earlier 17-case results and unsuccessful attempts are retained. See
+`cases/02f_lge_mixture_gas/README.md` for the conditional physical model.
+
 `pancake` is a 2D finite-volume solver for compressible thin-film lubrication
 in a journal bearing. It solves the Reynolds equation on a cylindrical
 `(theta, z)` mesh with MPI parallelism and writes VTK/PVD results for ParaView.

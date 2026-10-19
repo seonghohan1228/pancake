@@ -1,4 +1,4 @@
-"""Run matched branch pilots, all seventeen pairs and focused checks on 24 cores."""
+"""Run the frozen selection and its focused checks on 24 disjoint cores."""
 
 import argparse
 from datetime import datetime, timezone
@@ -78,16 +78,21 @@ def main():
         return not failed
 
     save()
-    pilots = ["M02", "M11", "M16"]
-    remaining = [f"M{i:02d}" for i in range(1, 18) if f"M{i:02d}" not in pilots]
+    experiment = json.loads((root / "inputs/experiment.json").read_text())
+    selected = [case["case_id"] for case in experiment["cases"]]
+    pilots = experiment.get("pilot_case_ids", ["M02", "M11", "M16"])
+    checks = experiment.get("numerical_check_cases", {"refinement": ["M02", "M16"], "refinement_layers32": ["M02"]})
+    assert len(set(selected)) == len(selected) and set(pilots) <= set(selected)
+    assert all(set(keys) <= set(selected) for keys in checks.values())
+    remaining = [key for key in selected if key not in pilots]
     pairs = lambda cases: [(case, branch) for case in cases for branch in ("gas_off", "gas_on")]
     success = group("pilots", pairs(pilots))
     if success:
         success = group("production", pairs(remaining))
     if success:
-        success = group("refinement", pairs(["M02", "M16"]))
+        success = group("refinement", pairs(checks["refinement"]))
     if success:
-        success = group("refinement_layers32", pairs(["M02"]))
+        success = group("refinement_layers32", pairs(checks["refinement_layers32"]))
     record.update(status="complete" if success else "failed_needs_diagnosis",
                   finished_utc=datetime.now(timezone.utc).isoformat())
     save()
