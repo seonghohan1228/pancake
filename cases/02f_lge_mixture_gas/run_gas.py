@@ -105,6 +105,18 @@ def dew_pressure(temperature_k):
         (-7.4411*x+1.9883*x**1.6-2.4925*x**2.4-3.2633*x**5))
 
 
+def pressure_roundoff(config):
+    """Match native CoupledCavitation::pressure_admissible: slack [Pa] below p_v.
+
+    The coupled residual is scaled by p_scale, so a state accepted at
+    coupled_nonlinear_tolerance may undershoot p_v by that tolerance times p_scale.
+    """
+    tolerance = float(config.get("coupled_nonlinear_tolerance", "1e-10"))
+    p_scale = max(1e5, float(config.get("bc_z_south_val", "0")), float(config.get("bc_z_north_val", "0")),
+                  float(config["mu"])*abs(float(config["omega"]))*float(config["R"])**2/float(config["c"])**2)
+    return max(1e-9, min(tolerance, 1e-8))*p_scale
+
+
 def check_layer_eos(config, fields):
     """Require every resolved film layer and wall to support any local free gas."""
     pressure = fields["p"]
@@ -420,8 +432,8 @@ class Campaign(driver.Campaign):
                 raise ValueError(f"missing or nonfinite {key} field")
         if np.min(fields["h"]) <= 0 or np.min(fields["mu"]) <= 0:
             raise ValueError("nonpositive gap or viscosity")
-        if np.min(fields["p"]) < -1e-6:
-            raise ValueError("negative absolute pressure")
+        if np.min(fields["p"]) < -pressure_roundoff(config):
+            raise ValueError("negative absolute pressure beyond converged round-off")
         for key in ("film_content", "alpha_gas", "dissolved_gas"):
             if np.min(fields[key]) < -1e-8 or np.max(fields[key]) > 1+1e-8:
                 raise ValueError(f"{key} outside [0,1]")

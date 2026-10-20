@@ -4448,3 +4448,36 @@ and P07/P10 gas-on probes pass native and independent acceptance with fixed
 exterior cooling. They establish local numerical execution, not full-grid
 campaign acceptance or cooling closure. The remaining old M11 jobs were
 stopped with retained evidence to apply the user's new criterion consistently.
+
+## 2026-10-20: Scale the coupled p >= p_v admissibility bound with the inner tolerance
+
+The selected-campaign gas-off pilots P01 (third thermal update) and P07
+(first thermal update) were rejected with solver exit code 4 although their
+outer coupling residuals were still decreasing monotonically. The rejection
+came from the post-solve admissibility check: the minimum `p - p_v` was
+-7.02e-3 Pa (P01) and -4.02e-3 Pa (P07) against a fixed -1e-6 Pa bound.
+Phase fractions, inventories and EOS domains were otherwise admissible.
+
+Cause: the coupled Newton system measures pressure in units of `p_scale`
+(1.27e6 Pa for these cases). With the user-requested 1e-8 inner tolerance a
+converged cavitated cell can sit up to about 1e-8 * p_scale = 1.3e-2 Pa below
+p_v. The 2026-10-19 change scaled the free-gas inventory guard with the
+tolerance but left the pressure bound absolute. Gas-on cases are likely less
+exposed because released gas holds their cavities above p_v.
+
+- Add `CoupledCavitation::admissibility_roundoff` (the existing clamp
+  max(1e-9, min(coupled_nonlinear_tolerance, 1e-8))) and
+  `CoupledCavitation::pressure_admissible`, which accepts
+  p - p_v >= -admissibility_roundoff * p_scale. The gas-inventory guard now
+  uses the same helper; its value is unchanged.
+- Apply the same scaled bound in the 02f independent raw-field verifier
+  (`pressure_roundoff`), which previously required p >= -1e-6 Pa.
+- Behavior change at the native default tolerance 1e-10: the pressure slack
+  becomes 1e-9 * p_scale (about 1e-3 Pa at 12.7 bar) instead of 1e-6 Pa.
+  No field is clipped; all other gates are unchanged.
+
+Validation: all 66 native Windows tests pass, including new unit checks with
+the P01/P07 values; 16 gas-driver checks, the ten-case launcher check and the
+mixture driver check pass. The failed P01/P07 attempts remain preserved as
+failed evidence. Remote reruns of gas-off P01 and P07 with this build are
+recorded separately.

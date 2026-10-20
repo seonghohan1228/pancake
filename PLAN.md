@@ -2776,6 +2776,10 @@ historical runs and all failures remain preserved.
   after aligning gas-inventory roundoff; fifteen gas-driver checks and the
   exact-selection launcher check pass. P01 off/on and P07/P10 gas-on 48x16
   probes pass native and independent acceptance at fixed exterior cooling.
+- [x] Diagnose gas-off P01/P07 pilot rejections (absolute 1e-6 Pa p >= p_v
+  bound vs 1e-8 scaled inner tolerance) and scale the bound natively and in
+  the independent verifier (2026-10-20).
+- [ ] Rerun gas-off P01 and P07 pilots on afml-r6 with the corrected build.
 - [ ] Complete the rebuilt remote Linux suite and selected campaign.
 - [ ] Complete twenty selected production jobs and six numerical checks remotely.
 - [ ] Retrieve/hash-verify all selected results and preserve superseded attempts.

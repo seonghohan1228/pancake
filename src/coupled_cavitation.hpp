@@ -15,6 +15,14 @@ namespace CoupledCavitation {
 /// The dissolved offset is an explicit binding-energy analogue, not latent heat data.
 double partial_internal_energy(int phase, double temperature, double pressure, const SimulationConfig&);
 std::array<double,3> internal_energies(double temperature, double pressure, const SimulationConfig&);
+/// Scaled round-off slack for admissibility checks on a state that the coupled
+/// Newton solve accepted at coupled_nonlinear_tolerance, clamped to [1e-9, 1e-8].
+double admissibility_roundoff(double coupled_nonlinear_tolerance);
+/// True when p-p_v >= -admissibility_roundoff*pressure_scale [Pa]. The coupled
+/// residual measures pressure in units of pressure_scale, so a converged
+/// cavitated cell may sit that far below p_v without being physically invalid.
+bool pressure_admissible(double pressure, double vapor_pressure, double pressure_scale,
+                         double coupled_nonlinear_tolerance);
 struct Stats {
     bool converged = false;
     int iterations = 0;

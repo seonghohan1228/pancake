@@ -218,6 +218,18 @@ class MatchedGasInputsTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "viscosity_residual|nonfinite"):
                         campaign.check_solution(run, {})
 
+    def test_pressure_roundoff_matches_native_scaled_bound(self):
+        # Gas-off P01 (2026-10-19): native rejection at p=-7.02e-3 Pa with 1e-8.
+        config = dict(coupled_nonlinear_tolerance="1e-08", bc_z_south_val="1271696.4872299968",
+                      bc_z_north_val="1271696.4872299968", mu="0.008255499288701139",
+                      omega="20.943951023931955", R="0.0215", c="4.25e-05")
+        self.assertAlmostEqual(worker["pressure_roundoff"](config), 1e-8*1271696.4872299968)
+        self.assertLess(7.02144e-3, worker["pressure_roundoff"](config))
+        self.assertGreater(7.02144e-3, worker["pressure_roundoff"]({**config, "coupled_nonlinear_tolerance": "1e-10"}))
+        hydrodynamic = {**config, "bc_z_south_val": "0", "bc_z_north_val": "0", "omega": "1000"}
+        self.assertAlmostEqual(worker["pressure_roundoff"](hydrodynamic),
+                               1e-8*.008255499288701139*1000*.0215**2/4.25e-5**2)
+
     def test_pressure_acceptance_uses_frozen_tolerance(self):
         with TemporaryDirectory(dir=ROOT / "tmp") as directory:
             run = Path(directory)

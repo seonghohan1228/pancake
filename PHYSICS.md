@@ -3578,3 +3578,19 @@ is unchanged. This avoids rejecting a 1e-8-converged state merely for a few
 independent [-1e-8, 1+1e-8] phase-fraction and conservation checks. The first
 selected 1100 rpm coarse probe exposed this mismatch and is retained as a
 failed check, not counted as accepted evidence.
+
+The pressure bound p >= p_v(T) follows the same rule (20 October). The coupled
+unknown and its residual are scaled by
+
+$$p_\mathrm{scale}=\max\left(10^5,\ p_\mathrm{south},\ p_\mathrm{north},\ \frac{\mu|\omega|R^2}{c^2}\right),$$
+
+so an accepted Newton state may satisfy the cavitation complementarity only to
+within the inner tolerance in scaled units. A cell is admissible when
+
+$$p-p_v(T)\ \ge\ -\max\left(10^{-9},\ \min(\epsilon_\mathrm{NL},10^{-8})\right)p_\mathrm{scale},$$
+
+where $\epsilon_\mathrm{NL}$ is `coupled_nonlinear_tolerance`. At 12.7 bar and
+1e-8 this is about 1.3e-2 Pa, nine orders below the supply pressure and
+physically negligible. The previous fixed 1e-6 Pa bound rejected the gas-off
+P01/P07 pilots at -7.0e-3 and -4.0e-3 Pa while they were still converging.
+The independent verifier applies the identical bound. Fields are not clipped.

@@ -13,6 +13,25 @@ int main(int argc, char** argv) {
     PetscInitialize(&argc,&argv,nullptr,nullptr);
     int failed=0;
     try {
+        {
+            // LGE gas-off pilots P01/P07 (2026-10-19) were rejected at
+            // p-p_v=-7.0e-3 and -4.0e-3 Pa with p_scale=1.2717e6 Pa and a 1e-8
+            // tolerance; that undershoot is within the accepted Newton residual.
+            const double p_scale=1271696.4872299968, pv=0, tight=1e-10, loose=1e-8;
+            require(CoupledCavitation::admissibility_roundoff(loose)==1e-8 &&
+                    CoupledCavitation::admissibility_roundoff(tight)==1e-9 &&
+                    CoupledCavitation::admissibility_roundoff(1e-6)==1e-8,
+                    "Admissibility round-off follows the clamped coupled tolerance");
+            for (const double undershoot : {7.02144e-3, 4.02334e-3})
+                require(CoupledCavitation::pressure_admissible(pv-undershoot,pv,p_scale,loose),
+                        "Converged cavitated undershoot within tolerance*p_scale is admissible");
+            require(!CoupledCavitation::pressure_admissible(pv-7.02144e-3,pv,p_scale,tight),
+                    "Tight tolerance keeps a tight pressure bound");
+            require(!CoupledCavitation::pressure_admissible(pv-0.1,pv,p_scale,loose),
+                    "Undershoot beyond tolerance*p_scale is rejected");
+            require(CoupledCavitation::pressure_admissible(pv,pv,p_scale,tight),
+                    "p=p_v is admissible");
+        }
         SimulationConfig cfg;
         cfg.n_theta_global=16; cfg.n_z_global=4; cfg.e=0; cfg.omega=0;
         cfg.rho=850; cfg.mu=.03; cfg.mu_gas=1.8e-5; cfg.p_cav=100;
