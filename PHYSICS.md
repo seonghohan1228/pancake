@@ -3630,3 +3630,10 @@ $R_p<10^{-4}$ differed from its $10^{-6}$ value by at most 0.011%, below the
 0.2% force-balance tolerance. The same value sets the energy-balance and
 cross-film collocation/viscosity gates; inner Newton tolerance, conservation
 (1e-8), force balance, cooling closure and admissibility are unchanged.
+
+The independent bubble-point check uses the same outer tolerance. In free-gas
+cells it requires $|p-p_b(c,T)|\le\max(1\ \mathrm{Pa},\ \epsilon_\mathrm{c}\,p_\mathrm{scale})$,
+because the written $T$ and $c$ lag the last hydraulic solve by a relative
+change of order $\epsilon_\mathrm{c}$. At $10^{-4}$ the measured mismatch was
+1.8-4.2 Pa against an allowance of about 127 Pa; at $10^{-6}$ it was below
+0.02 Pa.

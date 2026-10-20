@@ -230,6 +230,17 @@ class MatchedGasInputsTest(unittest.TestCase):
         self.assertAlmostEqual(worker["pressure_roundoff"](hydrodynamic),
                                1e-8*.008255499288701139*1000*.0215**2/4.25e-5**2)
 
+    def test_bubble_tolerance_follows_outer_coupling_tolerance(self):
+        # Gas-on P02/P05/P08 at 1e-4 (2026-10-20) differed from bubble pressure by
+        # 1.8-4.2 Pa; accepted 1e-6 pilots by at most 0.018 Pa.
+        config = dict(coupling_tolerance="0.0001", bc_z_south_val="1271696.4872299968",
+                      bc_z_north_val="1271696.4872299968", mu="0.008255499288701139",
+                      omega="20.943951023931955", R="0.0215", c="4.25e-05")
+        self.assertAlmostEqual(worker["bubble_tolerance"](config), 1e-4*1271696.4872299968)
+        self.assertGreater(worker["bubble_tolerance"](config), 4.18)
+        self.assertAlmostEqual(worker["bubble_tolerance"]({**config, "coupling_tolerance": "1e-06"}), 1.2716964872299968)
+        self.assertEqual(worker["bubble_tolerance"]({**config, "coupling_tolerance": "1e-08"}), 1.)
+
     def test_film_fraction_roundoff_matches_native_closure(self):
         import numpy as np
         config = dict(coupled_nonlinear_tolerance="1e-08", bc_z_south_val="1271696.4872299968",

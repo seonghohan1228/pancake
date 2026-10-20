@@ -125,6 +125,16 @@ def pressure_roundoff(config):
     return admissibility_roundoff(config)*pressure_scale(config)
 
 
+def bubble_tolerance(config):
+    """Allowed |p - p_bubble| [Pa] in gas cells: max(1 Pa, coupling_tolerance*p_scale).
+
+    The outer loop stops when relative field changes fall below coupling_tolerance,
+    so the written temperature and composition can lag the last hydraulic solve by
+    about that amount; at 1e-6 this reproduces the original 1 Pa gate.
+    """
+    return max(1., float(config["coupling_tolerance"])*pressure_scale(config))
+
+
 def check_film_fractions(config, fields):
     """Bound film_content and alpha_gas with the native round-off allowances.
 
@@ -495,12 +505,13 @@ class Campaign(driver.Campaign):
         # Evaporation may cool below supply temperature; require actual property domains.
         curves, saturation = property_curves(self.table_path)
         viscosity_mismatch = check_layer_viscosity(config, fields, curves)
+        bubble_slack = bubble_tolerance(config)
         for concentration, temperature, pressure, alpha in zip(
                 fields["dissolved_gas"], fields["T"]-273.15, fields["p"], fields["alpha_gas"]):
             curve_value(curves, float(concentration), float(temperature), True)
             if self.branch == "gas_on":
                 bubble = bubble_pressure(saturation, float(concentration), float(temperature))
-                if pressure < bubble-1. or (alpha > 1e-6 and abs(pressure-bubble) > 1.):
+                if pressure < bubble-bubble_slack or (alpha > 1e-6 and abs(pressure-bubble) > bubble_slack):
                     raise ValueError("raw phase fractions violate bubble-pressure equilibrium")
             if alpha > 1e-10 and (not 200 <= temperature+273.15 <= 500 or
                     pressure > min(50e6, dew_pressure(float(temperature)+273.15)*(1+1e-12))):

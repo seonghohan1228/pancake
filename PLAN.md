@@ -2786,6 +2786,9 @@ historical runs and all failures remain preserved.
 - [x] Tie the coupled theta <= 1 bound to admitted free-gas round-off in the
   solver and 02f verifier after the gas-on P01 rejection (2026-10-20).
 - [ ] Rerun gas-on P01 at coupling_tolerance 1e-4 with the corrected build.
+- [x] Scale the 02f bubble-pressure gate with the outer coupling tolerance
+  after six gas-on 1e-4 first passes were rejected at 1.8-4.2 Pa (2026-10-20).
+- [ ] Rerun all eight gas-on jobs at 1e-4 with priority over remaining gas-off.
 - [ ] Run the remaining 14 selected jobs (P02-P06, P08, P09, both branches) at
   coupling_tolerance 1e-4 on afml-r6, gas-on first.
 - [ ] Complete the rebuilt remote Linux suite and selected campaign.

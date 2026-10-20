@@ -4544,3 +4544,23 @@ Validation: all 66 native Windows tests pass serially (one MPI-4 test failed
 once under ctest -j4 and passed on four isolated repeats and in the serial
 run); 17 gas-driver checks, the ten-case launcher and mixture driver checks
 pass.
+
+## 2026-10-20: Scale the 02f bubble-pressure gate with the outer coupling tolerance
+
+At coupling_tolerance 1e-4, gas-on P01-P05 and P08 converged natively (outer
+R_p 1.3e-5 to 4.4e-5 after 32-33 iterations) but the independent verifier
+rejected them: in free-gas cells |p - p_bubble(c, T)| reached 1.8-4.2 Pa
+against a fixed 1 Pa gate. The accepted 1e-6 pilots (gas-on P07/P10) differ by
+at most 0.018 Pa. The written temperature and composition lag the last
+hydraulic solve by about the outer tolerance, so the gate must scale with it.
+This should have been caught when the relaxed tolerance was introduced.
+
+- `bubble_tolerance(config) = max(1 Pa, coupling_tolerance * p_scale)`:
+  about 127 Pa at 1e-4 and 1.27 Pa at 1e-6 for the selected cases.
+- With only this gate widened, all six failed first passes pass every other
+  verifier gate (phase fractions, EOS domain, layer viscosity, force identity
+  and load balance). Their outputs are preserved as failed evidence.
+- Other fixed verifier thresholds were audited: they are physical domain
+  bounds with large margins or exact identity checks, not outer-lag sensitive.
+
+Validation: 18 gas-driver checks, ten-case launcher and mixture driver checks.
