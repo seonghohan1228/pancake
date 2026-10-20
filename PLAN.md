@@ -2780,6 +2780,11 @@ historical runs and all failures remain preserved.
   bound vs 1e-8 scaled inner tolerance) and scale the bound natively and in
   the independent verifier (2026-10-20).
 - [ ] Rerun gas-off P01 and P07 pilots on afml-r6 with the corrected build.
+- [x] Add an explicit, recorded relaxed outer coupling tolerance (1e-4,
+  user decision 2026-10-20) to the 02f driver without loosening the shared
+  baseline guard.
+- [ ] Run the remaining 14 selected jobs (P02-P06, P08, P09, both branches) at
+  coupling_tolerance 1e-4 on afml-r6, gas-on first.
 - [ ] Complete the rebuilt remote Linux suite and selected campaign.
 - [ ] Complete twenty selected production jobs and six numerical checks remotely.
 - [ ] Retrieve/hash-verify all selected results and preserve superseded attempts.

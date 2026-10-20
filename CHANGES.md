@@ -4481,3 +4481,34 @@ the P01/P07 values; 16 gas-driver checks, the ten-case launcher check and the
 mixture driver check pass. The failed P01/P07 attempts remain preserved as
 failed evidence. Remote reruns of gas-off P01 and P07 with this build are
 recorded separately.
+
+## 2026-10-20: Optional relaxed outer coupling tolerance for the selected gas campaign
+
+The user relaxed the outer `coupling_tolerance` from 1e-6 to 1e-4 for the
+remaining selected gas-off/gas-on jobs to shorten the campaign.
+
+Evidence from the accepted pilots (gas-off P10, gas-on P07/P10, and completed
+thermal passes of P01): once R_p fell below 1e-4, the integrated fluid force
+was within 0.011% of its final 1e-6 value, about 20x below the 0.2% force
+balance tolerance. Reaching R_p < 1e-4 took 16-29 outer iterations versus
+36-54 for 1e-6. Fluid force is a proxy; torque and TC2 histories are not
+logged per outer iteration, and the viscosity residual can lag R_p.
+
+- Add `run_gas.py --coupling-tolerance`, accepted only in (1e-6, 1e-4] and
+  not with `--tight`. It is recorded as `relaxed_coupling_tolerance` in each
+  case `setup.json`; the shared 02d baseline guard that only permits
+  tightening is unchanged.
+- The 02f Campaign applies the value per case, so the generated config, the
+  native outer stop and every 02f gate keyed on `coupling_tolerance` (outer
+  residuals, volume error, profile and viscosity residuals, energy balance)
+  use it. Oil/species balances stay at min(coupling_tolerance, 1e-8) = 1e-8.
+  Force balance (0.002), inner tolerance (1e-8), cooling closure and all
+  admissibility checks are unchanged.
+- The summarizer accepts the recorded key when re-validating setups.
+- Already accepted pilots (1e-6) and the running gas-on P01 and gas-off
+  P01/P07 reruns keep 1e-6; results remain comparable to well within the
+  quoted force differences.
+
+Validation: 16 gas-driver checks (including rejection of 1e-3, 1e-6 and
+non-numeric values and propagation of 1e-4 into the generated config) and
+the ten-case launcher check pass.

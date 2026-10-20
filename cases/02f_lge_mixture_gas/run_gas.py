@@ -334,6 +334,16 @@ def integrate_pressure(config, fields):
                      np.sum(-pressure*radius*hz)])*dt*dz
 
 
+RELAXED_COUPLING_LIMIT = 1e-4
+
+
+def validate_relaxed_coupling(value):
+    """Return an explicit user-requested outer coupling tolerance in (1e-6, 1e-4]."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 1e-6 < value <= RELAXED_COUPLING_LIMIT:
+        raise ValueError("relaxed_coupling_tolerance must lie in (1e-6, 1e-4]")
+    return float(value)
+
+
 def run_artifacts(run_dir):
     """Hash retained outputs, checkpoints and logs, including failed attempts."""
     return {p.relative_to(run_dir).as_posix(): driver.sha256(p)
@@ -345,6 +355,15 @@ class Campaign(driver.Campaign):
 
     def __init__(self, args):
         super().__init__(args)
+        # The shared baseline only permits tightening. A looser outer criterion
+        # must be an explicit, recorded setup key; it also sets the
+        # coupling_tolerance-based energy and cross-film gates in check_solution.
+        if "relaxed_coupling_tolerance" in self.setup:
+            relaxed = validate_relaxed_coupling(self.setup["relaxed_coupling_tolerance"])
+            if self.setup.get("solver_tolerances", {}).get("coupling_tolerance", 1e-6) < 1e-6:
+                raise ValueError("relaxed_coupling_tolerance conflicts with tightened solver tolerances")
+            for case in self.cases.values():
+                case["solver_tolerances"] = {**case["solver_tolerances"], "coupling_tolerance": relaxed}
         self.branch = self.setup["gas_branch"]
         if self.branch not in BRANCHES:
             raise ValueError("unknown matched gas branch")
@@ -605,6 +624,10 @@ def run_case(args):
         setup["solver_tolerances"] = dict(steady_force_tolerance=2e-5, coupling_tolerance=1e-8, fbns_tol=1e-12)
         setup["cooling_relative_tolerance"] = 1e-5
         setup["cooling_temperature_tolerance_K"] = 1e-4
+    if getattr(args, "coupling_tolerance", None) is not None:
+        if args.tight:
+            raise ValueError("--coupling-tolerance cannot be combined with --tight")
+        setup["relaxed_coupling_tolerance"] = validate_relaxed_coupling(args.coupling_tolerance)
     driver.save_json(destination / "setup.json", setup)
     options = baseline.options(args.inputs, destination, args.solver, args.rankfile)
     options.table = str(args.inputs / "fw68d.csv")
@@ -653,6 +676,8 @@ def main():
     parser.add_argument("--ranks", type=int, choices=(1, 2, 4), default=4)
     parser.add_argument("--layers", type=int, choices=(16, 32), default=16)
     parser.add_argument("--tight", action="store_true")
+    parser.add_argument("--coupling-tolerance", type=float,
+                        help="explicitly relax the outer coupling tolerance to a value in (1e-6, 1e-4]; recorded in setup.json")
     parser.add_argument("--timeout", type=int, default=0,
                         help="seconds per native solve; 0 (default) disables the wall-clock deadline")
     args = parser.parse_args()

@@ -342,6 +342,22 @@ class MatchedGasInputsTest(unittest.TestCase):
             self.assertEqual(float(config["steady_position_fd_step"]), .0001)
             self.assertNotIn("-coupled_snes_atol", campaign.command())
             self.assertEqual(float(config["coupled_nonlinear_tolerance"]), 1e-8)
+            self.assertEqual(float(config["coupling_tolerance"]), 1e-6)
+            # A looser outer criterion requires the explicit, recorded setup key.
+            relaxed_setup = json.loads((inputs / "M16_gas_off_setup.json").read_text())
+            relaxed_path = root / "relaxed_setup.json"
+            for bad in (1e-3, 1e-6, True):
+                relaxed_path.write_text(json.dumps({**relaxed_setup, "relaxed_coupling_tolerance": bad}))
+                options.materials = str(relaxed_path)
+                with self.assertRaisesRegex(ValueError, "relaxed_coupling_tolerance"):
+                    worker["Campaign"](options)
+            relaxed_path.write_text(json.dumps({**relaxed_setup, "relaxed_coupling_tolerance": 1e-4}))
+            relaxed = worker["Campaign"](options)
+            relaxed_config = worker["parse_config"](
+                relaxed.config_for(relaxed.cases["M16"], eps, psi, hb, hs, run / "relaxed"))
+            self.assertEqual(float(relaxed_config["coupling_tolerance"]), 1e-4)
+            self.assertEqual(float(relaxed_config["fbns_tol"]), float(config["fbns_tol"]))
+            options.materials = str(inputs / "M16_gas_off_setup.json")
             (run / "run.log").write_text("synthetic shared-cache fixture")
             record = dict(returncode=0, source_sha256=campaign.source_hash, executable_sha256=None,
                 mpi_ranks=4, driver_sha256=campaign.driver_hash, rankfile_sha256=None, native_equilibrium=True,

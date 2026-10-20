@@ -28,7 +28,11 @@ def accepted(root, key, branch, phase="production"):
         expected_setup["solver_tolerances"] = dict(steady_force_tolerance=2e-5, coupling_tolerance=1e-8, fbns_tol=1e-12)
         expected_setup["cooling_relative_tolerance"] = 1e-5
         expected_setup["cooling_temperature_tolerance_K"] = 1e-4
-    if expected_setup != json.loads((destination / "setup.json").read_text()):
+    saved_setup = json.loads((destination / "setup.json").read_text())
+    if not tight and "relaxed_coupling_tolerance" in saved_setup:
+        expected_setup["relaxed_coupling_tolerance"] = worker.validate_relaxed_coupling(
+            saved_setup["relaxed_coupling_tolerance"])
+    if expected_setup != saved_setup:
         raise ValueError("case setup differs from frozen matched inputs")
     options = worker.baseline.options(root / "inputs", destination, None, None)
     command = saved["result"]["command"]

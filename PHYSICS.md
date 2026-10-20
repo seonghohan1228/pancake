@@ -3594,3 +3594,18 @@ where $\epsilon_\mathrm{NL}$ is `coupled_nonlinear_tolerance`. At 12.7 bar and
 physically negligible. The previous fixed 1e-6 Pa bound rejected the gas-off
 P01/P07 pilots at -7.0e-3 and -4.0e-3 Pa while they were still converging.
 The independent verifier applies the identical bound. Fields are not clipped.
+
+### 20 October relaxed outer coupling tolerance
+
+The remaining selected jobs use an outer coupling tolerance of
+$\epsilon_\mathrm{c}=10^{-4}$ instead of $10^{-6}$, by explicit user choice.
+The outer loop is an under-relaxed fixed point ($\omega=0.3$) between pressure,
+temperature, gas inventory, viscosity and the cross-film profile; each listed
+residual is a relative change per outer iteration and must fall below
+$\epsilon_\mathrm{c}$. With $\omega=0.3$ the residual contracts by roughly 0.7
+per iteration, so stopping at $10^{-4}$ removes about $\ln(100)/\ln(1/0.7)\approx13$
+iterations per thermal pass. In the accepted pilots the fluid force at
+$R_p<10^{-4}$ differed from its $10^{-6}$ value by at most 0.011%, below the
+0.2% force-balance tolerance. The same value sets the energy-balance and
+cross-film collocation/viscosity gates; inner Newton tolerance, conservation
+(1e-8), force balance, cooling closure and admissibility are unchanged.
