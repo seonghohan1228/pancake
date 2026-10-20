@@ -4512,3 +4512,35 @@ logged per outer iteration, and the viscosity residual can lag R_p.
 Validation: 16 gas-driver checks (including rejection of 1e-3, 1e-6 and
 non-numeric values and propagation of 1e-4 into the generated config) and
 the ten-case launcher check pass.
+
+## 2026-10-20: Tie the coupled theta <= 1 bound to admitted free-gas round-off
+
+The selected gas-on P01 pilot (old build, 1e-6 outer tolerance) was rejected in
+its second thermal pass after 17 h with outer R_p = 9.6e-4 still decreasing.
+Minima: p - p_v = 8.95e5 Pa, scaled free gas -2.44e-9 (admitted by the
+1e-8 gas round-off guard), and 1 - theta = -3.83e-8, against a fixed
+theta <= 1 + 1e-8 bound.
+
+Cause: in full film the smoothed volume complementarity
+2(ab - g)/(a + b + sqrt(a^2 + b^2 + 2g)) with b = 1 - theta, a = scaled gas
+density and g = scaled free-gas mass reduces to b = g/a + residual, and
+g/a is exactly the written gas fraction alpha_gas = m_g/(rho_g h). An admitted
+negative free-gas inventory therefore appears as an equal theta overshoot,
+amplified by c/h near the minimum film.
+
+- Add `CoupledCavitation::film_fraction_admissible`: accept
+  theta <= 1 + admissibility_roundoff + max(0, -alpha_gas). Replace the fixed
+  1 + 1e-8 bound. No field is clipped.
+- 02f verifier: `check_film_fractions` applies the same theta bound from the
+  film_content and alpha_gas fields, and bounds alpha_gas below by
+  -min(r (c/h)/a_ideal, sqrt(r c/(2h))): the native free-gas guard expressed
+  as a gas fraction with an ideal-gas a (conservative for Z <= 1), and the
+  closure radical constraint. dissolved_gas keeps [-1e-8, 1 + 1e-8].
+- Accepted pilots gas-off P10 and gas-on P07/P10 still pass the new verifier
+  (their theta - 1 and alpha minima are at machine precision). The rejected
+  gas-on P01 state was not written, so it cannot be replayed directly.
+
+Validation: all 66 native Windows tests pass serially (one MPI-4 test failed
+once under ctest -j4 and passed on four isolated repeats and in the serial
+run); 17 gas-driver checks, the ten-case launcher and mixture driver checks
+pass.

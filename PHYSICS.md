@@ -3595,6 +3595,27 @@ physically negligible. The previous fixed 1e-6 Pa bound rejected the gas-off
 P01/P07 pilots at -7.0e-3 and -4.0e-3 Pa while they were still converging.
 The independent verifier applies the identical bound. Fields are not clipped.
 
+### 20 October film-fraction admissibility
+
+In a full-film cell the volume complementarity residual
+
+$$\mathcal{R}_V=\frac{2(ab-g)}{a+b+\sqrt{a^2+b^2+2g}},\quad a=\frac{\rho_g c}{g_\mathrm{scale}},\ b=1-\theta,\ g=\frac{m_g c}{g_\mathrm{scale}h},$$
+
+reduces for small $b$ and $g$ to $\mathcal{R}_V\approx b-g/a=b-\alpha_g$, where
+$\alpha_g=m_g/(\rho_g h)$ is the written gas fraction. A Newton state accepted
+with $|\mathcal{R}_V|\le r$ and an admitted negative free-gas round-off
+($m_g\ge-r\,g_\mathrm{scale}$) can therefore have $\theta-1\le r-\alpha_g$. The
+solver and verifier accept
+
+$$\theta\le1+r+\max(0,-\alpha_g),\qquad r=\max\left(10^{-9},\min(\epsilon_\mathrm{NL},10^{-8})\right),$$
+
+instead of a fixed $1+10^{-8}$. The verifier also requires
+$\alpha_g\ge-\min\left(r(c/h)/a_\mathrm{ideal},\sqrt{rc/(2h)}\right)$, the first
+term being the free-gas guard with an ideal-gas $a$ (conservative for $Z\le1$)
+and the second following from $a^2+b^2+2g\ge0$. Gas-on P01 was rejected at
+$\theta-1=3.8\times10^{-8}$ with scaled free gas $-2.4\times10^{-9}$ while its
+outer iteration was still converging.
+
 ### 20 October relaxed outer coupling tolerance
 
 The remaining selected jobs use an outer coupling tolerance of

@@ -230,6 +230,27 @@ class MatchedGasInputsTest(unittest.TestCase):
         self.assertAlmostEqual(worker["pressure_roundoff"](hydrodynamic),
                                1e-8*.008255499288701139*1000*.0215**2/4.25e-5**2)
 
+    def test_film_fraction_roundoff_matches_native_closure(self):
+        import numpy as np
+        config = dict(coupled_nonlinear_tolerance="1e-08", bc_z_south_val="1271696.4872299968",
+                      bc_z_north_val="1271696.4872299968", mu="0.008255499288701139",
+                      omega="20.943951023931955", R="0.0215", c="4.25e-05", p_cav="0.0",
+                      temperature_reference="299.88")
+        def fields(theta, alpha, p=9e5, h=4e-6):
+            return {"film_content": np.array([theta, .5]), "alpha_gas": np.array([alpha, .5]),
+                    "h": np.array([h, 4e-5]), "T": np.array([300., 300.]), "p": np.array([p, 0.])}
+        check = worker["check_film_fractions"]
+        check(config, fields(1+3.83e-8, -3e-8))
+        check(config, fields(1+5e-9, 0.))
+        with self.assertRaisesRegex(ValueError, "film_content"):
+            check(config, fields(1+3.83e-8, 0.))
+        with self.assertRaisesRegex(ValueError, "alpha_gas"):
+            check(config, fields(1., -1e-3))
+        with self.assertRaisesRegex(ValueError, "alpha_gas"):
+            check(config, fields(1., -1e-3, p=0.))
+        with self.assertRaisesRegex(ValueError, "film_content"):
+            check(config, fields(-1e-6, 0.))
+
     def test_pressure_acceptance_uses_frozen_tolerance(self):
         with TemporaryDirectory(dir=ROOT / "tmp") as directory:
             run = Path(directory)

@@ -31,6 +31,17 @@ int main(int argc, char** argv) {
                     "Undershoot beyond tolerance*p_scale is rejected");
             require(CoupledCavitation::pressure_admissible(pv,pv,p_scale,tight),
                     "p=p_v is admissible");
+            // Gas-on P01 (2026-10-20) was rejected at theta=1+3.83e-8 after admitting
+            // scaled free gas down to -2.44e-9; closure gives theta-1 ~ -alpha_gas + residual.
+            require(CoupledCavitation::film_fraction_admissible(1+3.83e-8,-3.0e-8,loose),
+                    "Theta overshoot from admitted negative free gas is admissible");
+            require(!CoupledCavitation::film_fraction_admissible(1+3.83e-8,0,loose),
+                    "Theta overshoot without negative free gas is rejected");
+            require(CoupledCavitation::film_fraction_admissible(1+5e-9,0,loose) &&
+                    !CoupledCavitation::film_fraction_admissible(1+5e-9,0,1e-12),
+                    "Theta round-off follows the clamped tolerance");
+            require(CoupledCavitation::film_fraction_admissible(.4,.6,tight),
+                    "Cavitated theta is admissible");
         }
         SimulationConfig cfg;
         cfg.n_theta_global=16; cfg.n_z_global=4; cfg.e=0; cfg.omega=0;

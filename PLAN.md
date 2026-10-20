@@ -2783,6 +2783,9 @@ historical runs and all failures remain preserved.
 - [x] Add an explicit, recorded relaxed outer coupling tolerance (1e-4,
   user decision 2026-10-20) to the 02f driver without loosening the shared
   baseline guard.
+- [x] Tie the coupled theta <= 1 bound to admitted free-gas round-off in the
+  solver and 02f verifier after the gas-on P01 rejection (2026-10-20).
+- [ ] Rerun gas-on P01 at coupling_tolerance 1e-4 with the corrected build.
 - [ ] Run the remaining 14 selected jobs (P02-P06, P08, P09, both branches) at
   coupling_tolerance 1e-4 on afml-r6, gas-on first.
 - [ ] Complete the rebuilt remote Linux suite and selected campaign.

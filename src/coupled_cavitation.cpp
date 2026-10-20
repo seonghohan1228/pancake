@@ -413,6 +413,9 @@ double admissibility_roundoff(double tolerance) {
 bool pressure_admissible(double p,double pv,double p_scale,double tolerance) {
     return p-pv>=-admissibility_roundoff(tolerance)*p_scale;
 }
+bool film_fraction_admissible(double theta,double alpha_gas,double tolerance) {
+    return theta<=1+admissibility_roundoff(tolerance)+std::max(0.0,-alpha_gas);
+}
 Solver::Solver(const Mesh& mesh, Communicator& comm, bool thermal) : impl(std::make_unique<Impl>(mesh,comm,thermal)) {}
 Solver::~Solver() = default;
 void Solver::initialize(Fields& fields, const SimulationConfig& cfg) {
@@ -574,7 +577,8 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
         local_bounds[2]=std::min(local_bounds[2],cell.mass[1]/(s.m_scale*s.c_scale));
         local_bounds[3]=std::min(local_bounds[3],cell.mass[2]/s.g_scale);
         local_bounds[4]=std::min(local_bounds[4],1-cell.theta);
-        if (!pressure_admissible(cell.p,pv,s.p_scale,cfg.coupled_nonlinear_tolerance) || cell.mass[0]<0 || cell.mass[1]<-1e-12*s.m_scale || cell.mass[2]<-gas_roundoff*s.g_scale || cell.theta>1+1e-8) invalid=1;
+        if (!pressure_admissible(cell.p,pv,s.p_scale,cfg.coupled_nonlinear_tolerance) || cell.mass[0]<0 || cell.mass[1]<-1e-12*s.m_scale || cell.mass[2]<-gas_roundoff*s.g_scale ||
+            !film_fraction_admissible(cell.theta,cell.rho_g>0 ? cell.mass[2]/(cell.rho_g*cell.h) : 0,cfg.coupled_nonlinear_tolerance)) invalid=1;
         if (cfg.dissolved_gas_species==DissolvedGasSpecies::R410A && cell.mass[2]>1e-10*s.g_scale) {
             try { R410A::gas_density(cell.p-pv,cell.t); } catch (const std::domain_error&) { invalid=1; }
         }

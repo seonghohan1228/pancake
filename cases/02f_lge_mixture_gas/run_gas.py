@@ -105,16 +105,49 @@ def dew_pressure(temperature_k):
         (-7.4411*x+1.9883*x**1.6-2.4925*x**2.4-3.2633*x**5))
 
 
+def admissibility_roundoff(config):
+    """Native CoupledCavitation::admissibility_roundoff for the frozen inner tolerance."""
+    return max(1e-9, min(float(config.get("coupled_nonlinear_tolerance", "1e-10")), 1e-8))
+
+
+def pressure_scale(config):
+    """Native coupled pressure scale p_scale [Pa]."""
+    return max(1e5, float(config.get("bc_z_south_val", "0")), float(config.get("bc_z_north_val", "0")),
+               float(config["mu"])*abs(float(config["omega"]))*float(config["R"])**2/float(config["c"])**2)
+
+
 def pressure_roundoff(config):
     """Match native CoupledCavitation::pressure_admissible: slack [Pa] below p_v.
 
     The coupled residual is scaled by p_scale, so a state accepted at
     coupled_nonlinear_tolerance may undershoot p_v by that tolerance times p_scale.
     """
-    tolerance = float(config.get("coupled_nonlinear_tolerance", "1e-10"))
-    p_scale = max(1e5, float(config.get("bc_z_south_val", "0")), float(config.get("bc_z_north_val", "0")),
-                  float(config["mu"])*abs(float(config["omega"]))*float(config["R"])**2/float(config["c"])**2)
-    return max(1e-9, min(tolerance, 1e-8))*p_scale
+    return admissibility_roundoff(config)*pressure_scale(config)
+
+
+def check_film_fractions(config, fields):
+    """Bound film_content and alpha_gas with the native round-off allowances.
+
+    Native admits scaled free-gas inventory down to -r. Its gas fraction is then
+    alpha >= -r (c/h)/a with a = rho_g R T_ref/p_scale; the ideal-gas a used here
+    is conservative for Z <= 1. The accepted volume-closure radical
+    a^2 + b^2 + 2g >= 0 also gives |alpha| <= sqrt(r c/(2 h)). Film content may
+    exceed 1 by r plus the admitted negative gas fraction, as in
+    CoupledCavitation::film_fraction_admissible.
+    """
+    r = admissibility_roundoff(config)
+    theta, alpha = np.asarray(fields["film_content"], float), np.asarray(fields["alpha_gas"], float)
+    gap, clearance = np.asarray(fields["h"], float), float(config["c"])
+    temperature, pressure = np.asarray(fields["T"], float), np.asarray(fields["p"], float)
+    vapor = float(config.get("p_cav", "0"))*np.exp(float(config.get("oil_vapor_temperature_coeff", "0"))*(
+        1/float(config.get("property_reference_temperature", "293.15"))-1/temperature))
+    ideal_a = np.maximum(pressure-vapor, 0)*float(config["temperature_reference"])/(temperature*pressure_scale(config))
+    with np.errstate(divide="ignore"):
+        alpha_floor = -np.minimum(r*clearance/gap/ideal_a, np.sqrt(r*clearance/(2*gap)))
+    if np.any(alpha < alpha_floor) or np.max(alpha) > 1+1e-8:
+        raise ValueError("alpha_gas outside [0,1] beyond admitted free-gas round-off")
+    if np.min(theta) < -1e-8 or np.any(theta > 1+r+np.maximum(0, -alpha)):
+        raise ValueError("film_content outside [0,1] beyond admitted round-off")
 
 
 def check_layer_eos(config, fields):
@@ -453,9 +486,9 @@ class Campaign(driver.Campaign):
             raise ValueError("nonpositive gap or viscosity")
         if np.min(fields["p"]) < -pressure_roundoff(config):
             raise ValueError("negative absolute pressure beyond converged round-off")
-        for key in ("film_content", "alpha_gas", "dissolved_gas"):
-            if np.min(fields[key]) < -1e-8 or np.max(fields[key]) > 1+1e-8:
-                raise ValueError(f"{key} outside [0,1]")
+        if np.min(fields["dissolved_gas"]) < -1e-8 or np.max(fields["dissolved_gas"]) > 1+1e-8:
+            raise ValueError("dissolved_gas outside [0,1]")
+        check_film_fractions(config, fields)
         if self.branch == "gas_off" and np.max(fields["alpha_gas"]) > 1e-10:
             raise ValueError("matched gas-off contains released free gas")
         check_layer_eos(config, fields)

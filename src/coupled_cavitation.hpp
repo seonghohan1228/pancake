@@ -23,6 +23,11 @@ double admissibility_roundoff(double coupled_nonlinear_tolerance);
 /// cavitated cell may sit that far below p_v without being physically invalid.
 bool pressure_admissible(double pressure, double vapor_pressure, double pressure_scale,
                          double coupled_nonlinear_tolerance);
+/// True when theta <= 1 + admissibility_roundoff + max(0, -alpha_gas). In full film
+/// the volume closure gives 1-theta ~ alpha_gas - residual, so the admitted
+/// negative free-gas round-off appears as an equal small theta overshoot.
+/// alpha_gas = free-gas mass/(rho_g h), as written to the alpha_gas field.
+bool film_fraction_admissible(double theta, double alpha_gas, double coupled_nonlinear_tolerance);
 struct Stats {
     bool converged = false;
     int iterations = 0;
