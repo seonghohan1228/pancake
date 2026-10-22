@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-10-22 - Add Greenwood-Tripp asperity contact
+
+- Add `contact_model = NONE | GREENWOOD_TRIPP` with `contact_roughness_sigma`,
+  `contact_gt_k`, `contact_modulus` (Hertz E*) and `contact_boundary_friction`.
+  Asperity pressure uses the exact F_5/2 integral; normal and boundary-shear
+  contact forces enter the film force used by the load balance, and boundary
+  friction enters the shaft torque. Contact load and torque are reported
+  separately and printed in the DETAILED step line.
+- Default NONE leaves all earlier results unchanged. Flow factors, contact
+  heat and asperity deformation beyond Greenwood-Tripp are not included.
+- New `test_contact` checks F_5/2 against the analytic value at zero and the
+  quadrature elsewhere, closed-form load and torque on a concentric gap,
+  force direction on an eccentric gap, and that NONE adds nothing. All 60
+  CTests pass on Linux (GCC 13, OpenMPI, PETSc 3.19). Native Windows not built.
+
 ## 2026-09-29 - Remove the pressure-work sensitivity option
 
 Remove the optional liquid pressure-work source, configuration switch,

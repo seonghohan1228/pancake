@@ -1,4 +1,5 @@
 #include "reynolds.hpp"
+#include "contact.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -616,6 +617,13 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
     double local_viscous_y = 0.0;
     double local_viscous_z = 0.0;
     double local_torque = 0.0;
+    double local_contact_x = 0.0;
+    double local_contact_y = 0.0;
+    double local_contact_z = 0.0;
+    double local_contact_load = 0.0;
+    double local_contact_torque = 0.0;
+    const bool contact_on = Contact::active(cfg);
+    const double rotation_sign = (omega > 0.0) - (omega < 0.0);
 
     for (int i = 0; i < n_theta; ++i) {
         const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
@@ -699,16 +707,30 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             const double tau_torque = couette_shear * shear_w
                 + g_f * (shaft_pressure_arm / R) * dp_dtheta;
             local_torque += tau_torque * R * dA_shaft;
+
+            if (contact_on) {
+                // Asperity normal pressure acts on the same bearing area vector as
+                // the film pressure; boundary shear mu_b p_c drags the bearing in
+                // the rotation direction and resists the shaft.
+                const double p_c = Contact::pressure(h_val, cfg);
+                const double tau_c = rotation_sign * cfg.contact_boundary_friction * p_c;
+                local_contact_x += p_c * area_x + tau_c * (-sin_t) * dA_bearing;
+                local_contact_y += p_c * area_y + tau_c * ( cos_t) * dA_bearing;
+                local_contact_z += p_c * area_z;
+                local_contact_load += p_c * dA_shaft;
+                local_contact_torque += tau_c * R * dA_shaft;
+            }
         }
     }
 
     // Reduce over all MPI ranks
-    double local_vals[7] = {
+    double local_vals[12] = {
         local_pressure_x, local_pressure_y, local_pressure_z,
         local_viscous_x, local_viscous_y, local_viscous_z,
-        local_torque};
-    double global_vals[7] = {};
-    MPI_Allreduce(local_vals, global_vals, 7, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        local_torque, local_contact_x, local_contact_y, local_contact_z,
+        local_contact_load, local_contact_torque};
+    double global_vals[12] = {};
+    MPI_Allreduce(local_vals, global_vals, 12, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     ForceComponents result;
     result.pressure_x = global_vals[0];
@@ -717,10 +739,15 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
     result.viscous_x = global_vals[3];
     result.viscous_y = global_vals[4];
     result.viscous_z = global_vals[5];
-    result.fluid_x = result.pressure_x + result.viscous_x;
-    result.fluid_y = result.pressure_y + result.viscous_y;
-    result.fluid_z = result.pressure_z + result.viscous_z;
-    result.friction_torque = global_vals[6];
+    result.contact_x = global_vals[7];
+    result.contact_y = global_vals[8];
+    result.contact_z = global_vals[9];
+    result.contact_load = global_vals[10];
+    result.contact_torque = global_vals[11];
+    result.fluid_x = result.pressure_x + result.viscous_x + result.contact_x;
+    result.fluid_y = result.pressure_y + result.viscous_y + result.contact_y;
+    result.fluid_z = result.pressure_z + result.viscous_z + result.contact_z;
+    result.friction_torque = global_vals[6] + result.contact_torque;
 
     // Fill the scalar fields
     if (fields.has("pressure_force_x")) fields["pressure_force_x"].fill(result.pressure_x);

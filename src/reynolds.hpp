@@ -29,7 +29,15 @@ namespace Reynolds {
         double fluid_x = 0.0;
         double fluid_y = 0.0;
         double fluid_z = 0.0;
-        double friction_torque = 0.0;
+        double friction_torque = 0.0;   // shaft torque: film shear plus asperity boundary shear
+        // Asperity contact (zero unless contact_model = GREENWOOD_TRIPP). The
+        // contact force on the bearing (normal p_c plus boundary shear) is
+        // included in fluid_x/y/z so the load balance sees film plus asperities.
+        double contact_x = 0.0;
+        double contact_y = 0.0;
+        double contact_z = 0.0;
+        double contact_load = 0.0;      // integral of p_c over the shaft area [N]
+        double contact_torque = 0.0;    // boundary-friction share of friction_torque [N m]
     };
 
     /// Convergence summary of the Elrod-Adams outer (flag-update) iteration.

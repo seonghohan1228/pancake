@@ -3397,3 +3397,54 @@ the earlier short pressure-refined attempt is also retained. Final cooling
 verification uses the recorded seed of that call. Physical inputs, equations
 and acceptance gates are unchanged.
 Campaign completion remains pending.
+
+## Asperity contact: Greenwood–Tripp mixed lubrication (2026-10-22)
+
+**Purpose.** Represent asperity load and boundary friction where the local film
+is only a few roughness heights thick. Default `contact_model = NONE` leaves
+every earlier result bit-identical.
+
+**Model.** With local nominal film thickness $h$ [m] and composite RMS roughness
+$\sigma=\sqrt{\sigma_1^2+\sigma_2^2}$ [m], the nominal asperity pressure is
+
+$$p_c = K\,E^*\,F_{5/2}\!\left(\frac{h}{\sigma}\right),\qquad
+K=\frac{16\sqrt2\,\pi}{15}(\eta\beta\sigma)^2\sqrt{\frac{\sigma}{\beta}},\qquad
+\frac{1}{E^*}=\frac{1-\nu_1^2}{E_1}+\frac{1-\nu_2^2}{E_2},$$
+
+$$F_{5/2}(\lambda)=\frac{1}{\sqrt{2\pi}}\int_\lambda^\infty(s-\lambda)^{5/2}e^{-s^2/2}\,ds .$$
+
+$\eta$ is the summit density [m⁻²] and $\beta$ the mean summit radius [m]. The
+prefactor $16\sqrt2\pi/15$ pairs only with the Hertz modulus $E^*$; the
+$8\sqrt2\pi/15$ form pairs with $E'=2E^*$. Mixing them doubles $p_c$.
+$F_{5/2}$ is evaluated from the exact integral (Simpson quadrature, tabulated on
+$\lambda\in[0,8]$ with log-linear interpolation, zero beyond 8). The common fit
+$4.4086\times10^{-5}(4-\lambda)^{6.804}$ is 11 % low at $\lambda=0$ and is not used.
+
+**Coupling.** $p_c$ acts on the same bearing area vector as the film pressure.
+The boundary shear $\tau_c=\mu_b p_c$ acts in the rotation direction on the
+bearing and resists the shaft. The contact force is added to `fluid_x/y/z`, so
+`STEADY_EQUILIBRIUM` balances film plus asperity load; its finite-difference
+Jacobian sees the contact stiffness automatically. Shaft torque becomes
+
+$$M = M_{\mathrm{film}} + \mu_b R\int p_c\,dA,$$
+
+and `contact_load` $=\int p_c\,dA$ and `contact_torque` are reported separately.
+
+**Not included (first iteration).** Patir–Cheng flow and shear-stress factors
+(smooth-surface Reynolds coefficients are kept); summit-plane offset
+$\delta_s$ ($h$ is used instead of $h-\delta_s$); contact frictional heat in the
+energy equation; elastic or plastic deformation of the bulk; running-in.
+
+**Validity.** Gaussian, isotropic, elastically deforming asperities that
+interact only through the nominal gap. Meaningful for $h/\sigma\lesssim4$; the
+pressure is negligible above about 4. For $h/\sigma<1$, plastic asperity
+deformation and running-in make the result an upper estimate.
+
+**Parameters for the LGE stainless-steel pair (sources checked 2026-10-22).**
+
+| Key | Value | Source |
+|---|---|---|
+| `contact_gt_k` | 1.0e-3 (range 1–2e-3) | Measured by white-light interferometry on a journal bearing shell/shaft pair, new and worn: Sander et al., *Tribol. Int.*, 2016, Table 5 (preprint engrXiv 874) |
+| `contact_modulus` | 1.099e11 Pa | SUS304 on SUS304, $E=200$ GPa, $\nu=0.30$ (Rolled Alloys 304/304L datasheet); ASM 193 GPa, 0.29 gives 1.05e11 |
+| `contact_boundary_friction` | 0.07 (range 0.05–0.07) | Block-on-ring, PVE ISO 68 class oils with R410A/R32: Matsumoto, Kaneko, Kawaguchi, Purdue IRACC 2016, paper 1764, Fig. 7(a) |
+| `contact_roughness_sigma` | 0.4e-6 m (0.3–0.5e-6) | Project estimate from drawing $R_z$ 1.6 µm and journal cylindricity; not measured |

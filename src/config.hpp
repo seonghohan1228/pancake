@@ -152,6 +152,9 @@ enum class GasPressureCoupling { NONE, VOID_COUPLED };
 //   STRIATED  - in cavitated cells only the liquid fraction theta carries Couette
 //               shear, thermal capacity, and enthalpy; full-film cells unchanged.
 enum class CavitatedFilmModel { FULL_FILM, STRIATED };
+// Asperity contact (mixed lubrication): NONE keeps smooth surfaces;
+// GREENWOOD_TRIPP adds p_c = K E* F_5/2(h/sigma) and boundary shear mu_b p_c (contact.hpp).
+enum class ContactModel { NONE, GREENWOOD_TRIPP };
 // Cross-film (through-thickness) temperature treatment:
 //   NONE       - the film is isothermal across the gap: viscosity is taken at the
 //                depth-averaged temperature and wall heat loss is Newton cooling
@@ -821,6 +824,13 @@ struct SimulationConfig {
     double tilt_slope_x = 0.0; // Slope in x-direction (m/m)
     double tilt_slope_y = 0.0; // Slope in y-direction (m/m)
 
+    // Asperity contact (Greenwood-Tripp); see contact.hpp and PHYSICS.md
+    ContactModel contact_model = ContactModel::NONE;
+    double contact_roughness_sigma = 0.4e-6;  // composite RMS roughness sigma [m]
+    double contact_gt_k = 1.0e-3;             // K = (16 sqrt2 pi/15)(eta beta sigma)^2 sqrt(sigma/beta) [-]
+    double contact_modulus = 1.099e11;        // Hertz composite modulus E* [Pa]
+    double contact_boundary_friction = 0.07;  // boundary friction coefficient mu_b [-]
+
     // Energy equation / thermal model
     TemperatureModel temperature_model = TemperatureModel::ISOTHERMAL;
     double temperature_initial = 300.0;
@@ -1195,6 +1205,14 @@ struct SimulationConfig {
             else if (key == "bulk_modulus") bulk_modulus = std::stod(value);
             else if (key == "tilt_slope_x") tilt_slope_x = std::stod(value);
             else if (key == "tilt_slope_y") tilt_slope_y = std::stod(value);
+            else if (key == "contact_model") {
+                if (value == "NONE") contact_model = ContactModel::NONE;
+                else if (value == "GREENWOOD_TRIPP") contact_model = ContactModel::GREENWOOD_TRIPP;
+            }
+            else if (key == "contact_roughness_sigma") contact_roughness_sigma = std::stod(value);
+            else if (key == "contact_gt_k") contact_gt_k = std::stod(value);
+            else if (key == "contact_modulus") contact_modulus = std::stod(value);
+            else if (key == "contact_boundary_friction") contact_boundary_friction = std::stod(value);
             else if (key == "temperature_model") temperature_model = temperature_model_from_config(value);
             else if (key == "temperature_initial") temperature_initial = std::stod(value);
             else if (key == "temperature_reference") temperature_reference = std::stod(value);
@@ -1554,6 +1572,12 @@ struct SimulationConfig {
         require_positive(bulk_modulus, "bulk_modulus");
         require_positive(theta_min, "theta_min");
         require_positive(min_film_thickness, "min_film_thickness");
+        if (contact_model == ContactModel::GREENWOOD_TRIPP) {
+            require_positive(contact_roughness_sigma, "contact_roughness_sigma");
+            require_positive(contact_gt_k, "contact_gt_k");
+            require_positive(contact_modulus, "contact_modulus");
+            require_nonnegative(contact_boundary_friction, "contact_boundary_friction");
+        }
         const bool zero_pressure_pure_oil = cavitation_model == CavitationModel::FBNS &&
             cavitation_threshold == CavitationThreshold::SCALAR_PCAV &&
             fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
@@ -2490,7 +2514,12 @@ struct SimulationConfig {
             << "attitude_angle_deg = " << attitude_angle_deg << "\n"
             << "load_angle_deg = " << load_angle_deg << "\n"
             << "tilt_slope_x = " << tilt_slope_x << "\n"
-            << "tilt_slope_y = " << tilt_slope_y << "\n\n";
+            << "tilt_slope_y = " << tilt_slope_y << "\n"
+            << "contact_model = " << (contact_model == ContactModel::GREENWOOD_TRIPP ? "GREENWOOD_TRIPP" : "NONE") << "\n"
+            << "contact_roughness_sigma = " << contact_roughness_sigma << "\n"
+            << "contact_gt_k = " << contact_gt_k << "\n"
+            << "contact_modulus = " << contact_modulus << "\n"
+            << "contact_boundary_friction = " << contact_boundary_friction << "\n\n";
 
         out << "# Grid\n"
             << "n_theta_global = " << n_theta_global << "\n"
@@ -2789,6 +2818,8 @@ struct SimulationConfig {
             "linear_ksp_type", "linear_pc_type", "linear_pc_overlap",
             "linear_solver_fallbacks", "omega", "omega_ramp_time", "mu", "rho",
             "p_cav", "oil_vapor_temperature_coeff", "bulk_modulus", "tilt_slope_x", "tilt_slope_y",
+            "contact_model", "contact_roughness_sigma", "contact_gt_k", "contact_modulus",
+            "contact_boundary_friction",
             "temperature_model", "temperature_initial", "temperature_reference",
             "journal_wall_temperature", "bearing_wall_temperature", "rho_cp", "liquid_specific_heat",
             "thermal_conductivity", "gas_heat_capacity_cv", "dissolved_heat_capacity", "desorption_internal_energy", "gas_thermal_conductivity", "journal_heat_transfer",

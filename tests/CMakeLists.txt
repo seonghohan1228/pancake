@@ -26,6 +26,7 @@ add_pancake_test(test_velocity)
 add_pancake_test(test_bc)
 add_pancake_test(test_journal_motion)
 add_pancake_test(test_forces)
+add_pancake_test(test_contact)
 add_pancake_test(test_energy)
 # The steady energy equation is the operator the rank-dependent divergence hit
 # first; exercise it on the odd split too.

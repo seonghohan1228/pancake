@@ -760,6 +760,10 @@ int main(int argc, char** argv) {
                          << " | F=(" << forces.fluid_x << ", " << forces.fluid_y << ", "
                          << forces.fluid_z << ") N"
                          << " | M=" << forces.friction_torque << " Nm";
+                    if (cfg.contact_model != ContactModel::NONE) {
+                        line << " | contact W_c=" << forces.contact_load << " N"
+                             << " M_c=" << forces.contact_torque << " Nm";
+                    }
                     if (cfg.cavitation_model == CavitationModel::JFO) {
                         line << " | outer=" << elrod_stats.outer_iters
                              << " flips=" << elrod_stats.flag_flips;

@@ -875,3 +875,12 @@ including failed/interrupted attempts, has been retrieved and hash-verified in
 overlay and methods are in its `analysis` directory; retained research records
 are updated. Physical inputs and acceptance criteria are unchanged.
 See the campaign methods for validity limits, remote execution and acceptance.
+
+### Asperity contact (2026-10-22)
+
+Set `contact_model = GREENWOOD_TRIPP` to add asperity load and boundary
+friction where $h/\sigma$ is small. Keys: `contact_roughness_sigma` [m],
+`contact_gt_k` [-], `contact_modulus` (Hertz E*) [Pa],
+`contact_boundary_friction` [-]. Model, limits and parameter sources are in
+PHYSICS.md, "Asperity contact".
+

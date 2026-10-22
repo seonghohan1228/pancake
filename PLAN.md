@@ -249,6 +249,13 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### Asperity contact (`codex/gt-contact`) — 2026-10-22
+- [x] Greenwood-Tripp contact pressure, boundary friction, load balance and torque.
+- [x] Unit test `test_contact`.
+- [ ] LGE A–F campaign: contact off/on, aligned/tilted (0.416 mrad).
+- [ ] Next iterations: Patir-Cheng flow factors, contact heat in energy equation,
+      measured roughness (sigma, K) of the actual parts, native Windows build.
+
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
 
 Complete 2026-08-05. Evidence and the deliberate exclusions are in
