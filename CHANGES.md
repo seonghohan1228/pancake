@@ -1,5 +1,16 @@
 # Change Log
 
+## 2026-10-23 - A-F rerun with recalibrated loads; mixed lubrication on A/B
+
+- Record `cases/02d_fw68d_steady_six/RECALIBRATION_RESULTS_2026-10-23.md` and
+  `results/fw68d_recalibrated_20261023/` (generated, not in git): all six cases closed with the
+  recalibrated loads (CFD torque -10 % to -0.3 %); errors vs the Oct 21 up
+  reference -67 % to -24 %. Greenwood-Tripp + Patir-Cheng with sourced K, mu_b
+  and 0.416 mrad tilt gives zero asperity load in A and B. Documentation and
+  generated summaries only; no solver change.
+- Note the F_5/2 fit attribution (Hu et al. 1994, not Arcoumanis et al. 1997)
+  for a later source correction in `mixed_lubrication.hpp`.
+
 ## 2026-10-23 - Recalibrated load and parasitic torque for the A-F cases
 
 - Add `cases/02d_fw68d_steady_six/RECALIBRATION_2026-10.md` and
