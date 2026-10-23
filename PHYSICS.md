@@ -3722,3 +3722,43 @@ al. (1997) for the $F_{5/2}$ fit; Gelinck and Schipper, Tribol. Int. 33 (2000)
 175-181; Lu, Khonsari and Gelinck, J. Tribol. 128 (2006) 789-794; Song, Wu and
 Yuan, AIP Advances 12 (2022) 015213 (journal bearing, Patir-Cheng with
 Greenwood-Tripp, $f_b=0.1$).
+
+### Sensitivity on the LGE density-off cases (23 October 2026)
+
+Twenty-five steady FBNS runs (commit 75299d8, afml-r6) on five accepted
+density-off cases: M01 200 rpm, M03 300, M05 500, M11 800, M16 1100. Each run
+reuses the accepted final-pass config (720x192, 16 film layers, same restart
+state and fixed exterior cooling) and adds only the mixed-lubrication keys.
+Variants: smooth control; Greenwood-Tripp + Patir-Cheng with composite
+sigma = 0.4, 0.8, 1.2 um (split equally between shaft and bush, so phi_s and
+Phi_fs vanish), eta beta sigma = 0.04, sigma/beta = 1e-3, f_b = 0.1,
+E' = 107 GPa (steel shaft, 304-stainless bush analogue); plus sigma = 0.8 um
+with sigma/beta = 1e-2. All runs converged (native equilibrium within 0.2%).
+The smooth controls reproduce the accepted torques (M01 0.0492 N m).
+
+| Case | rpm | Measured (N m) | Smooth | 0.4 um | 0.8 um | 1.2 um | 0.8 um, s/b 0.01 | h_min smooth (um) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| M01 | 200 | 0.326 | 0.049 | 0.050 | 0.059 | 0.178 | 0.072 | 1.88 |
+| M03 | 300 | 0.323 | 0.061 | 0.061 | 0.063 | 0.088 | 0.063 | 2.54 |
+| M05 | 500 | 0.238 | 0.071 | 0.071 | 0.072 | 0.073 | 0.072 | 4.13 |
+| M11 | 800 | 0.186 | 0.078 | 0.078 | 0.078 | 0.079 | 0.078 | 6.97 |
+| M16 | 1100 | 0.123 | 0.050 | 0.050 | 0.050 | 0.050 | 0.050 | 24.27 |
+
+- Contact acts only below H_min of about 3.5 (200-300 rpm). At M01 with
+  sigma = 1.2 um, asperities carry 4.9% of the load and 0.120 N m (67%) of the
+  torque, and h_min rises from 1.88 to 2.11 um.
+- Within the literature roughness range the model closes at most 47% of the
+  200 rpm gap and about 10% at 300 rpm, and nothing at 500 rpm and above.
+  The Greenwood-Tripp (4 - H)^6.8 dependence gives a sharp step, whereas the
+  measured excess is nearly equal at 200 and 300 rpm and still 0.07-0.12 N m at
+  thick films. Rigid aligned asperity contact therefore does not explain the
+  whole discrepancy; the constant offset points to the drag-reference
+  subtraction, and the low-speed rise to larger effective roughness or a
+  smaller real gap (misalignment, distortion) than the rigid model computes.
+- Limits: contact friction heat is not added to the energy equation, and the
+  exterior cooling was held at the smooth solution; at M01, sigma = 1.2 um the
+  contact power (about 2.5 W) is a large share of the heat input, so the
+  rough-case temperatures are lower bounds.
+
+Results, launcher and summary scripts: `results/lge_mixed_lubrication_20261023`
+(generated, not source).

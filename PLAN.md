@@ -2801,8 +2801,12 @@ historical runs and all failures remain preserved.
 
 - [x] Add Greenwood-Tripp asperity contact and Patir-Cheng flow/shear factors
   (off by default) with analytic tests.
-- [ ] Run smooth vs rough sensitivity on representative density-off cases over a
+- [x] Run smooth vs rough sensitivity on representative density-off cases over a
   literature roughness range and compare torque with the drag-corrected data.
+  Result: contact only below H_min ~3.5 (200-300 rpm); closes at most 47% of the
+  200 rpm gap at sigma = 1.2 um and none at >= 500 rpm.
+- [ ] Add contact friction heat to the energy equation before using rough
+  temperatures quantitatively.
 - [ ] Obtain measured shaft/bush roughness (Rq, ideally sigma/beta from a 3D
   profile) to replace the literature range.
 - [ ] Extend flow factors to the COUPLED gas model if mixed lubrication matters.
