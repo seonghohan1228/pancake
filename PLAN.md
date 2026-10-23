@@ -251,7 +251,9 @@ Priority queue (user gates in brackets):
 
 ### Recalibrated A-F inputs (`codex/lge-recalibrated-inputs`) — 2026-10-23
 - [x] Document load recalibration and parasitic re-measurement; build recalibrated experiment JSON.
-- [ ] Rerun A-F with recalibrated loads (driver, full thermal closure); summarize errors.
+- [x] Rerun A-F with recalibrated loads (driver, full thermal closure); summarize errors. Done 2026-10-23.
+- [x] Mixed lubrication on A/B at recalibrated loads: zero asperity load. Done 2026-10-23.
+- [ ] Correct the F_5/2 fit citation in `mixed_lubrication.hpp` (Hu et al. 1994).
 - [ ] Wet/loaded parasitic reference and known-mass load check (experimental, outside this repo).
 
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
