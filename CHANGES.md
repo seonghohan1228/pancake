@@ -4635,3 +4635,29 @@ The smooth controls reproduce the accepted torques (M01 0.0492 N m).
 
 Results, launcher and summary scripts: `results/lge_mixed_lubrication_20261023`
 (generated, not source).
+
+## 2026-10-23: Recalibrated load and parasitic torque for the 02e mixture baseline
+
+The 2026-10-20 load-cell recalibration (piston loading/unloading envelopes,
+K_mid = 2068 N/V, bounds 1845-2292 N/V) replaces the provisional 2026-09-02
+overlay F = 2752.246 (V - 0.0130312). The 2026-10-21 bearing-removed parasitic
+sweep (up branch) replaces the 2026-09-11 drag reference. Load is a CFD input,
+so the density-off baseline M01-M17 must be rerun; torque only changes the
+comparison.
+
+- `cases/02e_lge_mixture/recalibrate_preflight.py` writes a recalibrated copy
+  of a verified preflight. Loads map affinely, F_new = K (F_old/K_old + V0_old),
+  so means, sample standard deviations, sums and sums of squares transform
+  exactly; force_n_mean_lo/hi carry the K bounds. bearing_residual_nm becomes
+  M_motor - M_p,up from the Oct 21 table (motor torque cross-checked); S and f
+  are rescaled. Old values are kept as *_sep02_overlay / *_sep11 columns and
+  `recalibration.json` records source hashes and per-case load ratios.
+- Mixture loads fall to 0.762-0.863 of the old values (M01 1136 -> 881 N,
+  M16 242 -> 209 N). Bearing-torque targets rise to 0.43-0.70 N m.
+- The recalibrated preflight passes the 02e prepare step and the independent
+  input check for all 17 cases. New `tests/test_recalibrate_preflight.py`.
+
+Caveat carried from the source records: the recalibration remains
+provisional (rod-side pressure assumed 1 bar abs, piston seal friction bounds
+the up/down branches), and the dry, unloaded parasitic sweep misses an extra
+0.17-0.37 N m of rig loss in pure oil and about 0.5 N m in the mixture.

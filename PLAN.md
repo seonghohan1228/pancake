@@ -2810,3 +2810,10 @@ historical runs and all failures remain preserved.
 - [ ] Obtain measured shaft/bush roughness (Rq, ideally sigma/beta from a 3D
   profile) to replace the literature range.
 - [ ] Extend flow factors to the COUPLED gas model if mixed lubrication matters.
+
+## 2026-10-23: Recalibrated measurements
+
+- [x] Recalibrated 02e preflight (Oct 20 load, Oct 21 parasitic up branch) with
+  exact sample statistics and a regression test.
+- [ ] Rerun density-off M01-M17 with recalibrated loads and compare.
+- [ ] Rerun the selected gas-off/gas-on P01-P10 with recalibrated loads if needed.

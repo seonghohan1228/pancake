@@ -225,3 +225,10 @@ pilots passed; all 65 native tests passed on Windows and remote Linux.
 Its full-grid remote pilots are running. Only that matched pair of
 branches can isolate the conditional gas-release effect; final gas results
 remain pending.
+
+## Recalibrated measurements (2026-10-23)
+
+`recalibrate_preflight.py --preflight VERIFIED --calibration LGE-2026-10-20-recal-calibration.json
+--parasitic LGE-2026-10-21-mixture17_cfd_new_parasitic.csv --out NEW` writes a preflight with
+the 2026-10-20 load calibration (K_mid; bounds as force_n_mean_lo/hi) and the 2026-10-21
+up-branch parasitic torque. Prepare and check it with `run_mixture.py` as usual.
