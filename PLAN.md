@@ -249,6 +249,11 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### Recalibrated A-F inputs (`codex/lge-recalibrated-inputs`) — 2026-10-23
+- [x] Document load recalibration and parasitic re-measurement; build recalibrated experiment JSON.
+- [ ] Rerun A-F with recalibrated loads (driver, full thermal closure); summarize errors.
+- [ ] Wet/loaded parasitic reference and known-mass load check (experimental, outside this repo).
+
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
 
 Complete 2026-08-05. Evidence and the deliberate exclusions are in
