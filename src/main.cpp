@@ -26,6 +26,7 @@
 #include "journal_motion.hpp"
 #include "steady_equilibrium.hpp"
 #include "linear_system.hpp"
+#include "mixed_lubrication.hpp"
 #include "mesh.hpp"
 #include "property_table_io.hpp"
 #include "reynolds.hpp"
@@ -270,6 +271,13 @@ int main(int argc, char** argv) {
         fields.add("bearing_z", mesh).fill(0.0);
         fields.add("bearing_attitude_angle", mesh).fill(cfg.attitude_angle_deg);
         fields.add("friction_torque", mesh).fill(0.0);
+        if (MixedLubrication::contact_active(cfg)) {
+            fields.add("contact_pressure", mesh).fill(0.0);
+            fields.add("contact_force_x", mesh).fill(0.0);
+            fields.add("contact_force_y", mesh).fill(0.0);
+            fields.add("contact_force_z", mesh).fill(0.0);
+            fields.add("contact_friction_torque", mesh).fill(0.0);
+        }
         fields.add("cavitation_clamp_mass", mesh).fill(0.0);
         fields.add("gas_clamp_mass", mesh).fill(0.0);
         // Per-cell continuity residual [kg/s]. Registered only when selected, so

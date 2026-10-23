@@ -616,6 +616,13 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
     double local_viscous_y = 0.0;
     double local_viscous_z = 0.0;
     double local_torque = 0.0;
+    double local_contact_x = 0.0;
+    double local_contact_y = 0.0;
+    double local_contact_z = 0.0;
+    double local_contact_torque = 0.0;
+    const bool contact = MixedLubrication::contact_active(cfg);
+    const bool rough_shear = MixedLubrication::flow_factors_active(cfg);
+    Field* contact_pressure_field = (contact && fields.has("contact_pressure")) ? &fields["contact_pressure"] : nullptr;
 
     for (int i = 0; i < n_theta; ++i) {
         const double theta_c = (mesh.offset_theta + i + 0.5) * d_theta;
@@ -650,6 +657,15 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             local_pressure_y += p_gauge * area_y;
             local_pressure_z += p_gauge * area_z;
 
+            // Asperity contact pressure acts on the same surface normal as the fluid.
+            const double p_contact = contact ? MixedLubrication::contact_pressure(h_val, cfg) : 0.0;
+            if (contact_pressure_field) (*contact_pressure_field)(i, j) = p_contact;
+            if (contact) {
+                local_contact_x += p_contact * area_x;
+                local_contact_y += p_contact * area_y;
+                local_contact_z += p_contact * area_z;
+            }
+
             const double dA_bearing = r_surface * d_theta * d_z;
 
             // Shear force on the bearing surface. The Couette contribution drags
@@ -672,8 +688,14 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
                 couette_shear = omega * R / f0;
                 shaft_pressure_arm = f1 / f0;
             }
+            // Patir-Cheng shear-stress factors for rough surfaces.
+            double pressure_shear = 1.0;
+            if (rough_shear) {
+                couette_shear *= MixedLubrication::couette_shear_factor(h_val, cfg);
+                pressure_shear = MixedLubrication::pressure_shear_factor(h_val, cfg);
+            }
             const double tau_theta_bearing = couette_shear * shear_w
-                - g_f * ((h_val - shaft_pressure_arm) / R) * dp_dtheta;
+                - pressure_shear * g_f * ((h_val - shaft_pressure_arm) / R) * dp_dtheta;
 
             double dp_dz = 0.0;
             if (j == 0) {
@@ -689,7 +711,7 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
             } else {
                 dp_dz = (p(i, j + 1) - p(i, j - 1)) / (2.0 * d_z);
             }
-            const double tau_z_bearing = -g_f * (h_val - shaft_pressure_arm) * dp_dz;
+            const double tau_z_bearing = -pressure_shear * g_f * (h_val - shaft_pressure_arm) * dp_dz;
 
             local_viscous_x += tau_theta_bearing * (-sin_t) * dA_bearing;
             local_viscous_y += tau_theta_bearing * ( cos_t) * dA_bearing;
@@ -697,18 +719,28 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
 
             const double dA_shaft = R * d_theta * d_z;
             const double tau_torque = couette_shear * shear_w
-                + g_f * (shaft_pressure_arm / R) * dp_dtheta;
+                + pressure_shear * g_f * (shaft_pressure_arm / R) * dp_dtheta;
             local_torque += tau_torque * R * dA_shaft;
+
+            if (contact && omega != 0.0) {
+                // Boundary friction drags the bearing along +e_theta for omega > 0
+                // and resists the shaft rotation.
+                const double tau_contact = std::copysign(cfg.boundary_friction_coefficient * p_contact, omega);
+                local_contact_x += tau_contact * (-sin_t) * dA_bearing;
+                local_contact_y += tau_contact * ( cos_t) * dA_bearing;
+                local_contact_torque += tau_contact * R * dA_shaft;
+            }
         }
     }
 
     // Reduce over all MPI ranks
-    double local_vals[7] = {
+    double local_vals[11] = {
         local_pressure_x, local_pressure_y, local_pressure_z,
         local_viscous_x, local_viscous_y, local_viscous_z,
-        local_torque};
-    double global_vals[7] = {};
-    MPI_Allreduce(local_vals, global_vals, 7, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        local_torque, local_contact_x, local_contact_y, local_contact_z,
+        local_contact_torque};
+    double global_vals[11] = {};
+    MPI_Allreduce(local_vals, global_vals, 11, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     ForceComponents result;
     result.pressure_x = global_vals[0];
@@ -721,6 +753,16 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
     result.fluid_y = result.pressure_y + result.viscous_y;
     result.fluid_z = result.pressure_z + result.viscous_z;
     result.friction_torque = global_vals[6];
+    if (contact) {
+        result.contact_x = global_vals[7];
+        result.contact_y = global_vals[8];
+        result.contact_z = global_vals[9];
+        result.contact_torque = global_vals[10];
+        result.fluid_x += result.contact_x;
+        result.fluid_y += result.contact_y;
+        result.fluid_z += result.contact_z;
+        result.friction_torque += result.contact_torque;
+    }
 
     // Fill the scalar fields
     if (fields.has("pressure_force_x")) fields["pressure_force_x"].fill(result.pressure_x);
@@ -733,6 +775,10 @@ ForceComponents calculate_macroscopic_properties(Fields& fields, const Mesh& mes
     if (fields.has("fluid_force_y")) fields["fluid_force_y"].fill(result.fluid_y);
     if (fields.has("fluid_force_z")) fields["fluid_force_z"].fill(result.fluid_z);
     if (fields.has("friction_torque")) fields["friction_torque"].fill(result.friction_torque);
+    if (fields.has("contact_force_x")) fields["contact_force_x"].fill(result.contact_x);
+    if (fields.has("contact_force_y")) fields["contact_force_y"].fill(result.contact_y);
+    if (fields.has("contact_force_z")) fields["contact_force_z"].fill(result.contact_z);
+    if (fields.has("contact_friction_torque")) fields["contact_friction_torque"].fill(result.contact_torque);
 
     return result;
 }

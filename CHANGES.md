@@ -4564,3 +4564,34 @@ This should have been caught when the relaxed tolerance was introduced.
   bounds with large margins or exact identity checks, not outer-lag sensitive.
 
 Validation: 18 gas-driver checks, ten-case launcher and mixture driver checks.
+
+## 2026-10-23: Mixed lubrication (Greenwood-Tripp contact, Patir-Cheng flow factors)
+
+The selected FW68D-R410A comparison under-predicts drag-corrected bearing torque
+by 47-85%, with the excess over the CFD rising as the computed minimum film
+falls below about 5-6 um. The solver had no asperity contact or roughness
+model. Add both, off by default, following the load-sharing approach of the
+journal-bearing mixed-lubrication literature (see PHYSICS.md).
+
+- `src/mixed_lubrication.hpp`: Greenwood-Tripp asperity pressure with the
+  Arcoumanis F5/2 fit; isotropic Patir-Cheng pressure/shear flow factors and
+  shear-stress factors.
+- Config: `asperity_contact_model` (NONE|GREENWOOD_TRIPP), `flow_factor_model`
+  (NONE|PATIR_CHENG), `roughness_rq_shaft`, `roughness_rq_bush`,
+  `asperity_eta_beta_sigma` (0.04), `asperity_sigma_over_beta` (1e-3),
+  `contact_modulus`, `boundary_friction_coefficient` (0.1). Validation requires
+  roughness and modulus and restricts flow factors to JFO/FBNS; unknown enum
+  values are parse errors.
+- Forces: contact pressure acts on the bearing normal and enters `fluid_force_*`
+  (the reaction balanced against the load); boundary friction enters
+  `friction_torque`. Separate `contact_force_*`, `contact_friction_torque` and
+  per-cell `contact_pressure` outputs are registered only when contact is on.
+- Fluxes: Poiseuille mobility times phi_x; Couette flux gains (U/2) sigma phi_s.
+  Wall shear uses phi_f, Phi_fs and phi_fp.
+- With both models NONE every code path is unchanged.
+
+Validation: new `test_mixed_lubrication` (1 and 4 MPI ranks): fit continuity
+and limits, hand-computed contact pressure, uniform-gap torque
+f_b p_c 2 pi R^2 L, eccentric contact force against independent quadrature,
+flux-factor scaling and validation errors. `test_config_keys` gives the two
+enumerations a valid value. All 69 native Windows tests pass.

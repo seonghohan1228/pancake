@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "config.hpp"
+#include "mixed_lubrication.hpp"
 #include "cross_film.hpp"
 #include "field.hpp"
 #include "mesh.hpp"
@@ -88,11 +89,17 @@ inline double dynamic_viscosity(const Fields& fields, const SimulationConfig& cf
 /// floating-point association and stays bit-identical when the model is off.
 inline double poiseuille(const Fields& fields, const SimulationConfig& cfg,
                          double prefactor, int i, int j) {
+    double coefficient;
     if (CrossFilm::active(cfg) && fields.has("cross_film_f2")) {
-        return prefactor * positive_field_value(fields, "cross_film_f2", 0.0, i, j);
+        coefficient = prefactor * positive_field_value(fields, "cross_film_f2", 0.0, i, j);
+    } else {
+        const double h_val = fields["h"](i, j);
+        coefficient = prefactor * h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
     }
-    const double h_val = fields["h"](i, j);
-    return prefactor * h_val * h_val * h_val / (12.0 * dynamic_viscosity(fields, cfg, i, j));
+    // Patir-Cheng pressure flow factor; skipped entirely when off (bit-identical).
+    if (MixedLubrication::flow_factors_active(cfg))
+        coefficient *= MixedLubrication::pressure_flow_factor(fields["h"](i, j), cfg);
+    return coefficient;
 }
 
 /// The same coefficient with no density weighting, for velocity reconstruction.
@@ -177,6 +184,12 @@ inline double couette_face_flux(const Fields& fields, const Mesh& mesh,
                               couette_thickness(fields, cfg, i + 1, j));
     const double rho_e = 0.5 * (base_density(fields, cfg, i, j) +
                                 base_density(fields, cfg, i + 1, j));
+    if (MixedLubrication::flow_factors_active(cfg)) {
+        // Patir-Cheng shear flow: (U/2) sigma phi_s added to the transported thickness.
+        const double h_face = 0.5 * (fields["h"](i, j) + fields["h"](i + 1, j));
+        return rho_e * cfg.omega * mesh.R *
+               (h_e + MixedLubrication::shear_flow_thickness(h_face, cfg)) * 0.5 * mesh.get_d_z();
+    }
     return rho_e * cfg.omega * mesh.R * h_e * 0.5 * mesh.get_d_z();
 }
 

@@ -3637,3 +3637,88 @@ because the written $T$ and $c$ lag the last hydraulic solve by a relative
 change of order $\epsilon_\mathrm{c}$. At $10^{-4}$ the measured mismatch was
 1.8-4.2 Pa against an allowance of about 127 Pa; at $10^{-6}$ it was below
 0.02 Pa.
+
+## Mixed lubrication: asperity contact and average flow factors (23 October 2026)
+
+Smooth rigid-surface Reynolds models cannot carry load or torque through
+asperity contact. When the minimum film approaches a few times the composite
+roughness, part of the load is supported by asperities and the shaft torque gains
+a boundary-friction contribution. The implementation follows the standard
+load-sharing approach used for mixed-lubricated journal bearings: a Patir-Cheng
+average Reynolds equation for the fluid and a Greenwood-Tripp statistical
+contact model for the asperities. Both are independent switches and default off.
+
+### Film ratio
+
+With shaft and bush RMS roughness $R_{q,s}$, $R_{q,b}$,
+
+$$\sigma=\sqrt{R_{q,s}^2+R_{q,b}^2},\qquad H=\frac{h}{\sigma}.$$
+
+Conventional regimes: $H>3$-4 full film, $1<H<3$ mixed, $H<1$ boundary.
+
+### Greenwood-Tripp asperity contact (`asperity_contact_model = GREENWOOD_TRIPP`)
+
+$$p_c=K E' F_{5/2}(H),\qquad K=\frac{16\sqrt2\,\pi}{15}(\eta\beta\sigma)^2\sqrt{\frac{\sigma}{\beta}},\qquad
+\frac1{E'}=\frac{1-\nu_1^2}{E_1}+\frac{1-\nu_2^2}{E_2},$$
+
+$$F_{5/2}(H)=4.4086\times10^{-5}(4-H)^{6.804}\ (H<4),\qquad 0\ (H\ge4).$$
+
+$\eta$ is the summit density, $\beta$ the summit radius and $\sigma$ the RMS
+roughness. $\eta\beta\sigma$ is nearly constant for engineering surfaces,
+0.03-0.05 (Whitehouse and Archard); $\sigma/\beta$ is typically
+$10^{-4}$-$10^{-2}$ and should come from a surface measurement. The contact
+pressure acts on the bearing-surface normal like the fluid pressure, so the
+steady equilibrium balances fluid plus contact reaction against the external
+load. The asperity shear is $\tau_c=f_b p_c$ with boundary friction coefficient
+$f_b$ (0.1 is the common choice for lubricated steel contacts). It drags the
+bearing along the rotation and adds $f_b p_c R$ per unit shaft area to the shaft
+torque. The Reynolds solve itself is unchanged by contact.
+
+### Patir-Cheng average flow model (`flow_factor_model = PATIR_CHENG`)
+
+For isotropic Gaussian roughness ($\gamma=1$) the averaged mass flux per unit width is
+
+$$\dot m=-\rho\,\phi_x\frac{h^3}{12\mu}\nabla p+\rho\frac{U}{2}\theta\left(h+\sigma\phi_s\right),$$
+
+$$\phi_x=1-0.90e^{-0.56H}\ (H\ge0.5),\qquad
+\Phi_s=\begin{cases}1.899H^{0.98}e^{-0.92H+0.05H^2}&H\le5\\1.126e^{-0.25H}&H>5\end{cases},\qquad
+\phi_s=\frac{R_{q,s}^2-R_{q,b}^2}{\sigma^2}\Phi_s,$$
+
+with the shaft as the moving surface 1. The shear flow factor vanishes for
+equally rough surfaces. The wall shear on the shaft is
+
+$$\tau=\frac{\mu U}{h}\left(\phi_f+\frac{R_{q,s}^2-R_{q,b}^2}{\sigma^2}\Phi_{fs}\right)+\phi_{fp}\frac{h}{2}\frac{\partial p}{\partial x},$$
+
+$$\phi_f=\tfrac{35}{32}z\left[(1-z^2)^3\ln\frac{z+1}{z-1}+\tfrac{z}{15}\left(66+z^2(30z^2-80)\right)\right]\ (H>3),$$
+
+$$\phi_f=\tfrac{35}{32}z\left[(1-z^2)^3\ln\frac{z+1}{\varepsilon^*}+\tfrac1{60}\left(-55+z(132+z(345+z(-160+z(-405+z(60+147z))))))\right]\ (H\le3),$$
+
+$z=H/3$, $\varepsilon^*=1/300$, $\Phi_{fs}=11.1H^{2.31}e^{-2.38H+0.11H^2}$ for
+$H\le7$ (0 above), $\phi_{fp}=1-1.40e^{-0.66H}$. Fits below $H=0.5$ are held at
+their $H=0.5$ value. The coefficients were checked by continuity: both $\Phi_s$
+branches give 0.3226 at $H=5$, both $\phi_f$ branches give $7/6$ at $H=3$, and
+$\phi_f\to1$ as $H\to\infty$ (the $z^5$, $z^3$ and $z$ terms cancel and the
+$1/z$ term gives exactly 1).
+
+Assumptions and limits:
+
+- The expected local gap $E[h_T]$ is replaced by $h$ (within 0.5% for $H\ge2$),
+  so the contact factor of Wu and Zheng is omitted; results for $H<2$ are
+  indicative only.
+- Flow factors apply to the JFO and FBNS fluxes (Poiseuille mobility and the
+  mass-conserving Couette flux, which carries the shear-flow term with the film
+  content). COUPLED and Gumbel do not apply them; validation rejects the
+  combination. Asperity contact works with every cavitation model.
+- The $\phi_s$ and $\Phi_{fs}$ sign convention (shaft as surface 1) follows
+  Patir and Cheng (1979) but has not been verified here against an independent
+  unequal-roughness solution; equal roughness makes both terms vanish.
+- Rigid, aligned surfaces: no elastic deformation of the film, misalignment,
+  edge loading, wear or running-in. These usually lower the real local minimum
+  gap, so mixed lubrication in practice starts at larger computed $h_{min}$.
+
+References: Greenwood and Tripp, Proc. IMechE 185 (1970-71) 625-633; Patir and
+Cheng, J. Lubr. Technol. 100 (1978) 12-17 and 101 (1979) 220-229; Arcoumanis et
+al. (1997) for the $F_{5/2}$ fit; Gelinck and Schipper, Tribol. Int. 33 (2000)
+175-181; Lu, Khonsari and Gelinck, J. Tribol. 128 (2006) 789-794; Song, Wu and
+Yuan, AIP Advances 12 (2022) 015213 (journal bearing, Patir-Cheng with
+Greenwood-Tripp, $f_b=0.1$).

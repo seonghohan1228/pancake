@@ -686,6 +686,27 @@ reference is easier to inspect. Positive `load_angle_deg` follows increasing
 solver `theta`, so the preview's zero column corresponds to
 `theta = 90 deg + load_angle_deg`.
 
+## Mixed lubrication (optional)
+
+Rough-surface effects are off by default. Enable asperity contact and/or average
+flow factors in the config:
+
+```text
+asperity_contact_model = GREENWOOD_TRIPP   # NONE | GREENWOOD_TRIPP
+flow_factor_model = PATIR_CHENG            # NONE | PATIR_CHENG (JFO or FBNS only)
+roughness_rq_shaft = 0.4e-6                # m, RMS
+roughness_rq_bush = 0.8e-6                 # m, RMS
+asperity_eta_beta_sigma = 0.04             # typical 0.03-0.05
+asperity_sigma_over_beta = 1e-3            # typical 1e-4 to 1e-2
+contact_modulus = 107e9                    # Pa, 1/E' = sum (1-nu^2)/E
+boundary_friction_coefficient = 0.1
+```
+
+Contact load is part of `fluid_force_*` (balanced against the load) and contact
+friction is part of `friction_torque`; the separate `contact_force_*`,
+`contact_friction_torque` and `contact_pressure` outputs show the contact share.
+See PHYSICS.md, "Mixed lubrication".
+
 ## Output
 
 Results are written under the configured `output_dir`, normally:

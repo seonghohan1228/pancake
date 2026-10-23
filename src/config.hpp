@@ -152,6 +152,13 @@ enum class GasPressureCoupling { NONE, VOID_COUPLED };
 //   STRIATED  - in cavitated cells only the liquid fraction theta carries Couette
 //               shear, thermal capacity, and enthalpy; full-film cells unchanged.
 enum class CavitatedFilmModel { FULL_FILM, STRIATED };
+// Mixed lubrication (see mixed_lubrication.hpp and PHYSICS.md):
+//   asperity_contact_model NONE / GREENWOOD_TRIPP - asperity load and boundary
+//     friction from the local film ratio h/sigma (load-sharing model).
+//   flow_factor_model NONE / PATIR_CHENG - isotropic average-Reynolds flow and
+//     shear-stress factors (JFO or FBNS only).
+enum class AsperityContactModel { NONE, GREENWOOD_TRIPP };
+enum class FlowFactorModel { NONE, PATIR_CHENG };
 // Cross-film (through-thickness) temperature treatment:
 //   NONE       - the film is isothermal across the gap: viscosity is taken at the
 //                depth-averaged temperature and wall heat loss is Newton cooling
@@ -1041,6 +1048,16 @@ struct SimulationConfig {
     CavitationModel cavitation_model = CavitationModel::JFO;
     CavitationThreshold cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
     CavitatedFilmModel cavitated_film_model = CavitatedFilmModel::FULL_FILM;
+
+    // Mixed lubrication (off by default: smooth rigid surfaces)
+    AsperityContactModel asperity_contact_model = AsperityContactModel::NONE;
+    FlowFactorModel flow_factor_model = FlowFactorModel::NONE;
+    double roughness_rq_shaft = 0.0;               // RMS roughness of the shaft [m]
+    double roughness_rq_bush = 0.0;                // RMS roughness of the bush bore [m]
+    double asperity_eta_beta_sigma = 0.04;         // Greenwood-Williamson eta*beta*sigma [-]
+    double asperity_sigma_over_beta = 1.0e-3;      // RMS roughness / asperity tip radius [-]
+    double contact_modulus = 0.0;                  // E' with 1/E' = sum (1-nu^2)/E [Pa]
+    double boundary_friction_coefficient = 0.1;    // asperity shear / asperity pressure [-]
     // WP-11: at an axial boundary, a cavitated cell re-floods at the physical
     // Poiseuille reformation rate rather than the barotropic Gamma_base link
     // (which overstates re-flooding by ~beta/(p_bc-p_cav) since p = p_cav + beta
@@ -1364,6 +1381,22 @@ struct SimulationConfig {
                 else if (value == "SCALAR_PCAV" || value == "PCAV" || value == "SCALAR")
                     cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
             }
+            else if (key == "asperity_contact_model") {
+                if (value == "NONE") asperity_contact_model = AsperityContactModel::NONE;
+                else if (value == "GREENWOOD_TRIPP") asperity_contact_model = AsperityContactModel::GREENWOOD_TRIPP;
+                else parse_errors.push_back("asperity_contact_model must be NONE or GREENWOOD_TRIPP");
+            }
+            else if (key == "flow_factor_model") {
+                if (value == "NONE") flow_factor_model = FlowFactorModel::NONE;
+                else if (value == "PATIR_CHENG") flow_factor_model = FlowFactorModel::PATIR_CHENG;
+                else parse_errors.push_back("flow_factor_model must be NONE or PATIR_CHENG");
+            }
+            else if (key == "roughness_rq_shaft") roughness_rq_shaft = std::stod(value);
+            else if (key == "roughness_rq_bush") roughness_rq_bush = std::stod(value);
+            else if (key == "asperity_eta_beta_sigma") asperity_eta_beta_sigma = std::stod(value);
+            else if (key == "asperity_sigma_over_beta") asperity_sigma_over_beta = std::stod(value);
+            else if (key == "contact_modulus") contact_modulus = std::stod(value);
+            else if (key == "boundary_friction_coefficient") boundary_friction_coefficient = std::stod(value);
             else if (key == "cavitated_film_model") {
                 if (value == "STRIATED") cavitated_film_model = CavitatedFilmModel::STRIATED;
                 else if (value == "FULL_FILM") cavitated_film_model = CavitatedFilmModel::FULL_FILM;
@@ -2163,6 +2196,29 @@ struct SimulationConfig {
         warn_table_use(density_table_2d, density_model == DensityModel::TABLE,
                        density_table, "density_table_file");
 
+        if (asperity_contact_model != AsperityContactModel::NONE ||
+            flow_factor_model != FlowFactorModel::NONE) {
+            if (!finite(roughness_rq_shaft) || !finite(roughness_rq_bush) ||
+                roughness_rq_shaft < 0 || roughness_rq_bush < 0 ||
+                roughness_rq_shaft + roughness_rq_bush <= 0)
+                error("Mixed lubrication requires nonnegative roughness_rq_shaft/roughness_rq_bush with a positive sum [m].");
+        }
+        if (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP) {
+            if (!finite(asperity_eta_beta_sigma) || asperity_eta_beta_sigma <= 0 || asperity_eta_beta_sigma >= 1)
+                error("asperity_eta_beta_sigma must lie in (0, 1); typical 0.03-0.05.");
+            if (!finite(asperity_sigma_over_beta) || asperity_sigma_over_beta <= 0 || asperity_sigma_over_beta >= 1)
+                error("asperity_sigma_over_beta must lie in (0, 1); typical 1e-4 to 1e-2.");
+            if (!finite(contact_modulus) || contact_modulus <= 0)
+                error("asperity_contact_model = GREENWOOD_TRIPP requires contact_modulus > 0 [Pa].");
+            if (!finite(boundary_friction_coefficient) || boundary_friction_coefficient < 0 || boundary_friction_coefficient > 1)
+                error("boundary_friction_coefficient must lie in [0, 1].");
+        }
+        if (flow_factor_model == FlowFactorModel::PATIR_CHENG &&
+            cavitation_model != CavitationModel::JFO && cavitation_model != CavitationModel::FBNS) {
+            error("flow_factor_model = PATIR_CHENG requires cavitation_model = JFO or FBNS "
+                  "(the COUPLED and Gumbel fluxes do not apply flow factors).");
+        }
+
         if (cavitated_film_model == CavitatedFilmModel::STRIATED &&
             cavitation_model != CavitationModel::JFO &&
             cavitation_model != CavitationModel::FBNS) {
@@ -2510,7 +2566,12 @@ struct SimulationConfig {
             "bearing_y",
             "bearing_z",
             "bearing_attitude_angle",
-            "friction_torque"};
+            "friction_torque",
+            "contact_pressure",
+            "contact_force_x",
+            "contact_force_y",
+            "contact_force_z",
+            "contact_friction_torque"};
     }
 
     std::string to_config_text() const {
@@ -2568,6 +2629,16 @@ struct SimulationConfig {
             << "p_cav = " << p_cav << "\n"
             << "oil_vapor_temperature_coeff = " << oil_vapor_temperature_coeff << "\n"
             << "bulk_modulus = " << bulk_modulus << "\n\n";
+
+        out << "# Mixed lubrication: asperity_contact_model NONE|GREENWOOD_TRIPP, flow_factor_model NONE|PATIR_CHENG\n"
+            << "asperity_contact_model = " << (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP ? "GREENWOOD_TRIPP" : "NONE") << "\n"
+            << "flow_factor_model = " << (flow_factor_model == FlowFactorModel::PATIR_CHENG ? "PATIR_CHENG" : "NONE") << "\n"
+            << "roughness_rq_shaft = " << roughness_rq_shaft << "\n"
+            << "roughness_rq_bush = " << roughness_rq_bush << "\n"
+            << "asperity_eta_beta_sigma = " << asperity_eta_beta_sigma << "\n"
+            << "asperity_sigma_over_beta = " << asperity_sigma_over_beta << "\n"
+            << "contact_modulus = " << contact_modulus << "\n"
+            << "boundary_friction_coefficient = " << boundary_friction_coefficient << "\n\n";
 
         out << "# Energy Equation\n"
             << "# temperature_model options: ISOTHERMAL, ENERGY_EQUATION\n"
@@ -2870,6 +2941,9 @@ struct SimulationConfig {
             "bc_z_south_dissolved_gas", "bc_z_north_dissolved_gas",
             "bc_z_south_free_gas_mass_fraction", "bc_z_north_free_gas_mass_fraction",
             "cavitated_film_model", "consistent_boundary_flux",
+            "asperity_contact_model", "flow_factor_model", "roughness_rq_shaft", "roughness_rq_bush",
+            "asperity_eta_beta_sigma", "asperity_sigma_over_beta", "contact_modulus",
+            "boundary_friction_coefficient",
             "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
             "steady_gas_model",
             "allow_frozen_gas_steady", "max_outer_iters", "outer_tol",

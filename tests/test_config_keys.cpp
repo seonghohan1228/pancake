@@ -98,6 +98,8 @@ void test_manifest_matches_parser() {
         SimulationConfig cfg;
         if (key == "inlet_species")
             cfg.load_from_text("inlet_groove = 90 10 2e5\ninlet_species = 0 .001 0\n");
+        else if (key == "asperity_contact_model" || key == "flow_factor_model")
+            cfg.load_from_text(key + " = NONE\n");  // enumerations reject unknown values
         else cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");

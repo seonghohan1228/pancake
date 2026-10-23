@@ -2796,3 +2796,13 @@ historical runs and all failures remain preserved.
 - [ ] Retrieve/hash-verify all selected results and preserve superseded attempts.
 - [ ] Deliver torque/TC errors, minimum gaps and selected figures; document and
   merge only after verified results, without a Git push.
+
+## 2026-10-23: Mixed lubrication
+
+- [x] Add Greenwood-Tripp asperity contact and Patir-Cheng flow/shear factors
+  (off by default) with analytic tests.
+- [ ] Run smooth vs rough sensitivity on representative density-off cases over a
+  literature roughness range and compare torque with the drag-corrected data.
+- [ ] Obtain measured shaft/bush roughness (Rq, ideally sigma/beta from a 3D
+  profile) to replace the literature range.
+- [ ] Extend flow factors to the COUPLED gas model if mixed lubrication matters.
