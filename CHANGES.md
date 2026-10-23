@@ -4661,3 +4661,30 @@ Caveat carried from the source records: the recalibration remains
 provisional (rod-side pressure assumed 1 bar abs, piston seal friction bounds
 the up/down branches), and the dry, unloaded parasitic sweep misses an extra
 0.17-0.37 N m of rig loss in pure oil and about 0.5 N m in the mixture.
+
+## 2026-10-23: Density-off mixture baseline rerun with recalibrated loads
+
+All 17 M cases rerun through the unchanged 02e campaign (commit c7a52ff, same
+solver binary as 75299d8, afml-r6, `lge-mixture-density-recal-20261023`) with
+loads from the 2026-10-20 recalibration (K_mid). All production cases passed
+native and independent acceptance. The focused check refinement_M02 (force
+tolerance 2e-5, coupling 1e-8) failed in thermal pass 2 because the resolved
+cross-film energy linear solve did not converge; refinement_M16 passed and the
+32-layer check was not reached. The same M02 check passed with the old load.
+
+| Case | rpm | Load (N) old -> new | CFD torque (N m) old -> new | h_min (um) old -> new | Measured torque Sep 11 -> Oct 21 up | Error (%) old -> new |
+|---|---:|---|---|---|---|---|
+| M01 | 200 | 1136 -> 881 | 0.0492 -> 0.0448 | 1.88 -> 2.29 | 0.326 -> 0.531 | -85 -> -92 |
+| M02 | 200 | 2630 -> 2003 | 0.0668 -> 0.0609 | 0.99 -> 1.21 | 0.492 -> 0.697 | -86 -> -91 |
+| M03 | 300 | 1230 -> 952 | 0.0608 -> 0.0547 | 2.54 -> 3.15 | 0.323 -> 0.546 | -81 -> -90 |
+| M05 | 500 | 1144 -> 886 | 0.0709 -> 0.0626 | 4.13 -> 5.24 | 0.238 -> 0.502 | -70 -> -88 |
+| M11 | 800 | 984 -> 767 | 0.0777 -> 0.0678 | 6.97 -> 8.81 | 0.186 -> 0.488 | -58 -> -86 |
+| M16 | 1100 | 242 -> 209 | 0.0500 -> 0.0486 | 24.27 -> 26.02 | 0.123 -> 0.453 | -59 -> -89 |
+
+Across all 17 cases: CFD torque -2.9 to -12.7%, h_min +7 to +27%, CFD TC2
+within 0.08 K of the old run. The torque error moves from -47...-86% to
+-86...-92%, set almost entirely by the new parasitic reference, which the
+Oct 21 record shows misses about 0.5 N m of pressurized seal loss. The thicker
+films also move every case further from mixed lubrication; only M02 (1.21 um)
+stays near the contact range. Results and scripts:
+`results/lge_mixture_density_recal_20261023` (generated, not source).

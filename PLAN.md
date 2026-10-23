@@ -2815,5 +2815,8 @@ historical runs and all failures remain preserved.
 
 - [x] Recalibrated 02e preflight (Oct 20 load, Oct 21 parasitic up branch) with
   exact sample statistics and a regression test.
-- [ ] Rerun density-off M01-M17 with recalibrated loads and compare.
+- [x] Rerun density-off M01-M17 with recalibrated loads and compare.
+  Result: torque -3 to -13%, h_min +7 to +27%, error -86 to -92% (new parasitic).
+- [ ] Diagnose refinement_M02 cross-film energy linear-solve failure at the
+  recalibrated 2003 N load.
 - [ ] Rerun the selected gas-off/gas-on P01-P10 with recalibrated loads if needed.
