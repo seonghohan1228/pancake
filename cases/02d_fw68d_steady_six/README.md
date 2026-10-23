@@ -362,3 +362,11 @@ range from -38.4% to +103.2% and E is 4.1-4.8 K hotter than experiment.
 F has no cavity: its minimum absolute pressure is 24.60 kPa, above p_cav=0.
 The nominal material/cooling and ideal groove assumptions remain model
 limitations; no coefficient or torque offset was tuned to the measurements.
+
+## Recalibrated inputs (2026-10-23)
+
+The Oct 20 load-cell recalibration and the Oct 21 parasitic-torque sweep are
+documented in [RECALIBRATION_2026-10.md](RECALIBRATION_2026-10.md). Use
+`--experiment experiment_recalibrated_20261023.json` to run the cases with the
+recalibrated loads; `experiment.json` keeps the original inputs.
+
