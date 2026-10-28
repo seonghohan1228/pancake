@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "config.hpp"
@@ -13,8 +14,11 @@
 ///   asperity_contact_model = GREENWOOD_TRIPP
 ///     Asperity contact pressure (Greenwood & Tripp 1970-71)
 ///       p_c = K E' F_5/2(H),  K = (16 sqrt(2) pi / 15) (eta beta sigma)^2 sqrt(sigma/beta),
-///     with 1/E' = (1-nu1^2)/E1 + (1-nu2^2)/E2 and the Arcoumanis et al. (1997) fit
-///     F_5/2(H) = 4.4086e-5 (4 - H)^6.804 for H < 4, else 0. Asperity shear on the
+///     with 1/E' = (1-nu1^2)/E1 + (1-nu2^2)/E2 and the exact Gaussian integral
+///     F_5/2(H) = (2 pi)^-1/2 int_H^inf (s - H)^5/2 exp(-s^2/2) ds, tabulated on
+///     0 <= H <= 8 (zero above; F_5/2(8) ~ 1e-17). K may be given directly
+///     (asperity_gt_k > 0, as measured surface data report it); otherwise it is
+///     built from asperity_eta_beta_sigma and asperity_sigma_over_beta. Asperity shear on the
 ///     shaft is boundary_friction_coefficient * p_c. Contact load adds to the
 ///     hydrodynamic load in the force balance; the Reynolds solve is unchanged.
 ///
@@ -52,20 +56,58 @@ inline double film_ratio(double h, const SimulationConfig& cfg) {
     return h / composite_roughness(cfg);
 }
 
-/// Greenwood-Tripp integral F_5/2(H) for Gaussian summit heights.
+/// Exact Greenwood-Tripp integral F_5/2(H) by composite Simpson quadrature
+/// (used to build the table; ported from codex/gt-contact 86a45a1).
+inline double greenwood_tripp_f52_exact(double H) {
+    constexpr double pi = 3.14159265358979323846;
+    const double lower = H;
+    const double upper = std::max(H, 0.0) + 12.0;
+    const int n = 4000;  // even
+    const double ds = (upper - lower) / n;
+    auto integrand = [H](double s) {
+        const double x = s - H;
+        return x <= 0.0 ? 0.0 : std::pow(x, 2.5) * std::exp(-0.5 * s * s);
+    };
+    double sum = integrand(lower) + integrand(upper);
+    for (int k = 1; k < n; ++k) sum += (k % 2 ? 4.0 : 2.0) * integrand(lower + k * ds);
+    return sum * ds / 3.0 / std::sqrt(2.0 * pi);
+}
+
+/// Greenwood-Tripp integral F_5/2(H) for Gaussian summit heights: exact values
+/// tabulated on [0, 8] with log-linear interpolation, zero for H >= 8, and H < 0
+/// clamped to 0. The common fit 4.4086e-5 (4 - H)^6.804 (Hu et al. 1994) is 11 %
+/// low at H = 0, 4x low at H = 3 and zero for H >= 4, i.e. wrong at contact onset.
 inline double greenwood_tripp_f52(double H) {
-    return H < 4.0 ? 4.4086e-5 * std::pow(4.0 - H, 6.804) : 0.0;
+    constexpr int n_table = 1601;
+    constexpr double h_max = 8.0;
+    static const std::array<double, n_table> log_table = [] {
+        std::array<double, n_table> table{};
+        for (int k = 0; k < n_table; ++k)
+            table[k] = std::log(greenwood_tripp_f52_exact(h_max * k / (n_table - 1)));
+        return table;
+    }();
+    if (!(H < h_max)) return 0.0;
+    const double x = std::max(H, 0.0) / h_max * (n_table - 1);
+    const int k = std::min(static_cast<int>(x), n_table - 2);
+    const double w = x - k;
+    return std::exp((1.0 - w) * log_table[k] + w * log_table[k + 1]);
+}
+
+/// Greenwood-Tripp roughness parameter K [-]: asperity_gt_k when set (> 0),
+/// otherwise (16 sqrt(2) pi / 15) (eta beta sigma)^2 sqrt(sigma / beta).
+inline double greenwood_tripp_k(const SimulationConfig& cfg) {
+    if (cfg.asperity_gt_k > 0.0) return cfg.asperity_gt_k;
+    constexpr double pi = 3.14159265358979323846;
+    return 16.0 * std::sqrt(2.0) * pi / 15.0 *
+           cfg.asperity_eta_beta_sigma * cfg.asperity_eta_beta_sigma *
+           std::sqrt(cfg.asperity_sigma_over_beta);
 }
 
 /// Asperity contact pressure p_c [Pa] at local gap h [m].
 inline double contact_pressure(double h, const SimulationConfig& cfg) {
     if (!contact_active(cfg)) return 0.0;
     const double sigma = composite_roughness(cfg);
-    constexpr double pi = 3.14159265358979323846;
-    const double k = 16.0 * std::sqrt(2.0) * pi / 15.0 *
-        cfg.asperity_eta_beta_sigma * cfg.asperity_eta_beta_sigma *
-        std::sqrt(cfg.asperity_sigma_over_beta);
-    return k * cfg.contact_modulus * greenwood_tripp_f52(std::max(h, 0.0) / sigma);
+    return greenwood_tripp_k(cfg) * cfg.contact_modulus * greenwood_tripp_f52(std::max(h, 0.0) / sigma);
 }
 
 /// Isotropic pressure flow factor phi_x = phi_z; held at its H = 0.5 value below the fit range.

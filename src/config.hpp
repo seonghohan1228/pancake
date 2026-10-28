@@ -1056,6 +1056,7 @@ struct SimulationConfig {
     double roughness_rq_bush = 0.0;                // RMS roughness of the bush bore [m]
     double asperity_eta_beta_sigma = 0.04;         // Greenwood-Williamson eta*beta*sigma [-]
     double asperity_sigma_over_beta = 1.0e-3;      // RMS roughness / asperity tip radius [-]
+    double asperity_gt_k = 0.0;                    // Greenwood-Tripp K [-]; > 0 overrides eta*beta*sigma and sigma/beta
     double contact_modulus = 0.0;                  // E' with 1/E' = sum (1-nu^2)/E [Pa]
     double boundary_friction_coefficient = 0.1;    // asperity shear / asperity pressure [-]
     // WP-11: at an axial boundary, a cavitated cell re-floods at the physical
@@ -1395,6 +1396,28 @@ struct SimulationConfig {
             else if (key == "roughness_rq_bush") roughness_rq_bush = std::stod(value);
             else if (key == "asperity_eta_beta_sigma") asperity_eta_beta_sigma = std::stod(value);
             else if (key == "asperity_sigma_over_beta") asperity_sigma_over_beta = std::stod(value);
+            else if (key == "asperity_gt_k" || key == "contact_gt_k") {
+                asperity_gt_k = std::stod(value);
+                if (key == "contact_gt_k")
+                    parse_warnings.push_back("contact_gt_k is deprecated (codex/gt-contact); use asperity_gt_k.");
+            }
+            else if (key == "contact_model") {
+                // Legacy key from codex/gt-contact (86a45a1), retired in the October 2026 merge.
+                if (value == "NONE") asperity_contact_model = AsperityContactModel::NONE;
+                else if (value == "GREENWOOD_TRIPP") asperity_contact_model = AsperityContactModel::GREENWOOD_TRIPP;
+                else parse_errors.push_back("contact_model must be NONE or GREENWOOD_TRIPP");
+                parse_warnings.push_back("contact_model is deprecated (codex/gt-contact); use asperity_contact_model.");
+            }
+            else if (key == "contact_boundary_friction") {
+                boundary_friction_coefficient = std::stod(value);
+                parse_warnings.push_back("contact_boundary_friction is deprecated (codex/gt-contact); use boundary_friction_coefficient.");
+            }
+            else if (key == "contact_roughness_sigma") {
+                // Composite sigma split equally: Rq_shaft = Rq_bush = sigma / sqrt(2), so phi_s = Phi_fs = 0.
+                roughness_rq_shaft = roughness_rq_bush = std::stod(value) / std::sqrt(2.0);
+                parse_warnings.push_back("contact_roughness_sigma is deprecated (codex/gt-contact); "
+                                         "use roughness_rq_shaft and roughness_rq_bush (set to sigma/sqrt(2) each).");
+            }
             else if (key == "contact_modulus") contact_modulus = std::stod(value);
             else if (key == "boundary_friction_coefficient") boundary_friction_coefficient = std::stod(value);
             else if (key == "cavitated_film_model") {
@@ -2204,10 +2227,16 @@ struct SimulationConfig {
                 error("Mixed lubrication requires nonnegative roughness_rq_shaft/roughness_rq_bush with a positive sum [m].");
         }
         if (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP) {
+            if (!finite(asperity_gt_k) || asperity_gt_k < 0)
+                error("asperity_gt_k must be >= 0 (0 derives K from asperity_eta_beta_sigma and asperity_sigma_over_beta).");
+        }
+        if (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP && !(asperity_gt_k > 0)) {
             if (!finite(asperity_eta_beta_sigma) || asperity_eta_beta_sigma <= 0 || asperity_eta_beta_sigma >= 1)
                 error("asperity_eta_beta_sigma must lie in (0, 1); typical 0.03-0.05.");
             if (!finite(asperity_sigma_over_beta) || asperity_sigma_over_beta <= 0 || asperity_sigma_over_beta >= 1)
                 error("asperity_sigma_over_beta must lie in (0, 1); typical 1e-4 to 1e-2.");
+        }
+        if (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP) {
             if (!finite(contact_modulus) || contact_modulus <= 0)
                 error("asperity_contact_model = GREENWOOD_TRIPP requires contact_modulus > 0 [Pa].");
             if (!finite(boundary_friction_coefficient) || boundary_friction_coefficient < 0 || boundary_friction_coefficient > 1)
@@ -2637,6 +2666,7 @@ struct SimulationConfig {
             << "roughness_rq_bush = " << roughness_rq_bush << "\n"
             << "asperity_eta_beta_sigma = " << asperity_eta_beta_sigma << "\n"
             << "asperity_sigma_over_beta = " << asperity_sigma_over_beta << "\n"
+            << "asperity_gt_k = " << asperity_gt_k << "\n"
             << "contact_modulus = " << contact_modulus << "\n"
             << "boundary_friction_coefficient = " << boundary_friction_coefficient << "\n\n";
 
@@ -2942,7 +2972,7 @@ struct SimulationConfig {
             "bc_z_south_free_gas_mass_fraction", "bc_z_north_free_gas_mass_fraction",
             "cavitated_film_model", "consistent_boundary_flux",
             "asperity_contact_model", "flow_factor_model", "roughness_rq_shaft", "roughness_rq_bush",
-            "asperity_eta_beta_sigma", "asperity_sigma_over_beta", "contact_modulus",
+            "asperity_eta_beta_sigma", "asperity_sigma_over_beta", "asperity_gt_k", "contact_modulus",
             "boundary_friction_coefficient",
             "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
             "steady_gas_model",

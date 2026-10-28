@@ -698,6 +698,7 @@ roughness_rq_shaft = 0.4e-6                # m, RMS
 roughness_rq_bush = 0.8e-6                 # m, RMS
 asperity_eta_beta_sigma = 0.04             # typical 0.03-0.05
 asperity_sigma_over_beta = 1e-3            # typical 1e-4 to 1e-2
+asperity_gt_k = 0                          # > 0: give K directly (overrides the two above)
 contact_modulus = 107e9                    # Pa, 1/E' = sum (1-nu^2)/E
 boundary_friction_coefficient = 0.1
 ```
@@ -705,7 +706,10 @@ boundary_friction_coefficient = 0.1
 Contact load is part of `fluid_force_*` (balanced against the load) and contact
 friction is part of `friction_torque`; the separate `contact_force_*`,
 `contact_friction_torque` and `contact_pressure` outputs show the contact share.
-See PHYSICS.md, "Mixed lubrication".
+See PHYSICS.md, "Mixed lubrication". The sourced LGE parameter set is
+`cases/contact_parameters_sourced_20261022.json`. The old `codex/gt-contact`
+keys (`contact_model`, `contact_gt_k`, `contact_roughness_sigma`,
+`contact_boundary_friction`) still parse with a deprecation warning.
 
 ## Output
 

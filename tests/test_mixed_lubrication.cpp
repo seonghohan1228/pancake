@@ -1,7 +1,7 @@
 // Mixed lubrication closures: Greenwood-Tripp asperity contact and
 // Patir-Cheng flow / shear-stress factors.
 //
-// Test 1 - Closed-form checks: branch continuity of the published fits,
+// Test 1 - Closed-form checks: exact F5/2 against SciPy values, branch continuity of the published fits,
 //   smooth-surface limits, and a hand-computed contact pressure.
 // Test 2 - Models off: every factor is exactly 1 and contact exactly 0.
 // Test 3 - Uniform gap: contact force cancels by symmetry and the contact
@@ -90,8 +90,25 @@ int main(int argc, char** argv) {
     using namespace MixedLubrication;
 
     // Test 1
-    check(greenwood_tripp_f52(4.0) == 0.0 && greenwood_tripp_f52(5.0) == 0.0, "F5/2 vanishes for H >= 4");
-    check(close(greenwood_tripp_f52(2.0), 4.4086e-5 * std::pow(2.0, 6.804), 1e-14), "F5/2 fit value");
+    // Exact F5/2 reference values: SciPy quad, relative tolerance 1e-13.
+    {
+        const double h_ref[] = {0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0};
+        const double f_ref[] = {0.616634218996844, 0.24040157067407217, 0.08056233557081148,
+                                0.005423705197484413, 0.00017087299621442443,
+                                2.3533810525876063e-06, 3.142968531919884e-11};
+        for (int k = 0; k < 7; ++k) {
+            check(close(greenwood_tripp_f52_exact(h_ref[k]), f_ref[k], 1e-6), "exact F5/2 quadrature");
+            check(close(greenwood_tripp_f52(h_ref[k]), f_ref[k], 1e-4), "tabulated F5/2");
+        }
+        check(greenwood_tripp_f52(-1.0) == greenwood_tripp_f52(0.0), "F5/2 clamps H < 0 to 0");
+        check(greenwood_tripp_f52(8.0) == 0.0 && greenwood_tripp_f52(9.0) == 0.0, "F5/2 is zero for H >= 8");
+        double previous = greenwood_tripp_f52(0.0);
+        for (double h = 0.01; h < 8.0; h += 0.01) {
+            const double value = greenwood_tripp_f52(h);
+            check(value < previous && value > 0.0, "F5/2 decreases monotonically on [0, 8)");
+            previous = value;
+        }
+    }
     check(close(1.899 * std::pow(5.0, 0.98) * std::exp(-0.92 * 5 + 0.05 * 25), 1.126 * std::exp(-1.25), 1e-3),
           "Patir-Cheng shear flow factor branches meet at H = 5");
     check(close(shear_stress_factor_f(3.0 - 1e-9), shear_stress_factor_f(3.0 + 1e-9), 1e-6) &&
@@ -107,7 +124,29 @@ int main(int argc, char** argv) {
         const double k = 16.0 * std::sqrt(2.0) * pi / 15.0 * 0.04 * 0.04 * std::sqrt(1e-3);
         check(close(contact_pressure(2.0e-6, cfg), k * 107e9 * greenwood_tripp_f52(2.0), 1e-12),
               "Greenwood-Tripp contact pressure at H = 2");
-        check(contact_pressure(4.0e-6, cfg) == 0.0, "no contact at H >= 4");
+        check(contact_pressure(8.0e-6, cfg) == 0.0, "no contact at H >= 8");
+        check(contact_pressure(4.0e-6, cfg) > 0.0, "contact onset tail at H = 4 is kept");
+        SimulationConfig direct = cfg;
+        direct.asperity_gt_k = 1e-3;
+        check(close(contact_pressure(2.0e-6, direct), 1e-3 * 107e9 * greenwood_tripp_f52(2.0), 1e-12),
+              "asperity_gt_k overrides the eta beta sigma form");
+    }
+
+    // Test 1b - legacy codex/gt-contact keys map onto this model with warnings.
+    {
+        SimulationConfig cfg;
+        cfg.load_from_text("contact_model = GREENWOOD_TRIPP\ncontact_roughness_sigma = 0.4e-6\n"
+                           "contact_gt_k = 0.001\ncontact_modulus = 1.099e11\n"
+                           "contact_boundary_friction = 0.07\n");
+        check(cfg.parse_errors.empty(), "legacy contact keys parse");
+        check(cfg.parse_warnings.size() == 4, "each legacy contact key warns once");
+        check(cfg.asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP &&
+              cfg.asperity_gt_k == 0.001 && cfg.boundary_friction_coefficient == 0.07,
+              "legacy contact keys set the merged fields");
+        check(close(composite_roughness(cfg), 0.4e-6, 1e-12) &&
+              roughness_variance_difference(cfg) == 0.0, "legacy sigma splits equally");
+        check(close(contact_pressure(1.6e-6, cfg), 1e-3 * 1.099e11 * greenwood_tripp_f52(4.0), 1e-12),
+              "legacy inputs give the codex/gt-contact pressure law");
     }
 
     // Test 2

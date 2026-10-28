@@ -3661,7 +3661,32 @@ Conventional regimes: $H>3$-4 full film, $1<H<3$ mixed, $H<1$ boundary.
 $$p_c=K E' F_{5/2}(H),\qquad K=\frac{16\sqrt2\,\pi}{15}(\eta\beta\sigma)^2\sqrt{\frac{\sigma}{\beta}},\qquad
 \frac1{E'}=\frac{1-\nu_1^2}{E_1}+\frac{1-\nu_2^2}{E_2},$$
 
-$$F_{5/2}(H)=4.4086\times10^{-5}(4-H)^{6.804}\ (H<4),\qquad 0\ (H\ge4).$$
+$$F_{5/2}(H)=\frac{1}{\sqrt{2\pi}}\int_H^\infty (s-H)^{5/2}e^{-s^2/2}\,ds .$$
+
+**Update 2026-10-28 (merge of `codex/gt-contact` 86a45a1).** The integral is now
+evaluated exactly (composite Simpson, 4000 intervals) and tabulated on
+$0\le H\le8$ with log-linear interpolation (1601 points); it is zero for
+$H\ge8$ ($F_{5/2}(8)\approx10^{-17}$) and $H<0$ is clamped to 0. Before this date
+the code used the fit $4.4086\times10^{-5}(4-H)^{6.804}$ for $H<4$, zero above.
+That fit is from Hu *et al.* (1994), not Arcoumanis *et al.* (1997) as first
+written. Against the exact integral (SciPy quadrature) the fit is 0.89 at
+$H=0$, 0.96 at $H=1$, 0.91 at $H=2$, 0.26 at $H=3$, 0.02 at $H=3.5$ and 0 for
+$H\ge4$: it suppresses contact exactly at onset. The table matches the
+reference values to $10^{-4}$ (tests/test_mixed_lubrication.cpp).
+
+$K$ may also be entered directly with `asperity_gt_k` (> 0 overrides
+`asperity_eta_beta_sigma` and `asperity_sigma_over_beta`), because measured
+journal-bearing data report $K$ itself (Sander *et al.*, Tribol. Int. 2016,
+Table 5). The sourced LGE set is `cases/contact_parameters_sourced_20261022.json`.
+
+Legacy keys of `codex/gt-contact` are accepted with a deprecation warning:
+`contact_model` → `asperity_contact_model`, `contact_gt_k` → `asperity_gt_k`,
+`contact_boundary_friction` → `boundary_friction_coefficient`,
+`contact_roughness_sigma` → `roughness_rq_shaft = roughness_rq_bush =`
+$\sigma/\sqrt2$. `contact_modulus` has the same meaning ($E^*$ with the
+$16\sqrt2\pi/15$ prefactor) in both. With these aliases the 2026-10-22 inputs
+give the same contact pressure law; flow factors stay off unless
+`flow_factor_model` is set.
 
 $\eta$ is the summit density, $\beta$ the summit radius and $\sigma$ the RMS
 roughness. $\eta\beta\sigma$ is nearly constant for engineering surfaces,
@@ -3717,8 +3742,8 @@ Assumptions and limits:
   gap, so mixed lubrication in practice starts at larger computed $h_{min}$.
 
 References: Greenwood and Tripp, Proc. IMechE 185 (1970-71) 625-633; Patir and
-Cheng, J. Lubr. Technol. 100 (1978) 12-17 and 101 (1979) 220-229; Arcoumanis et
-al. (1997) for the $F_{5/2}$ fit; Gelinck and Schipper, Tribol. Int. 33 (2000)
+Cheng, J. Lubr. Technol. 100 (1978) 12-17 and 101 (1979) 220-229; Hu et al.
+(1994) for the former $F_{5/2}$ fit (replaced 2026-10-28 by the exact integral); Gelinck and Schipper, Tribol. Int. 33 (2000)
 175-181; Lu, Khonsari and Gelinck, J. Tribol. 128 (2006) 789-794; Song, Wu and
 Yuan, AIP Advances 12 (2022) 015213 (journal bearing, Patir-Cheng with
 Greenwood-Tripp, $f_b=0.1$).
@@ -3762,3 +3787,9 @@ The smooth controls reproduce the accepted torques (M01 0.0492 N m).
 
 Results, launcher and summary scripts: `results/lge_mixed_lubrication_20261023`
 (generated, not source).
+
+These runs used the former fit and generic parameters
+($\eta\beta\sigma=0.04$, $\sigma/\beta=10^{-3}$, so $K\approx2.4\times10^{-4}$;
+$f_b=0.1$; $E'=107$ GPa), not the sourced set. Treat them as a sensitivity
+study. The rerun with the exact integral and the sourced set is prepared in
+`cases/02g_contact_merge_check/` (not run as of 2026-10-28).

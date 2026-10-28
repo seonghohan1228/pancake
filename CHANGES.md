@@ -1,5 +1,30 @@
 # Change Log
 
+## 2026-10-28 - Merge the two contact-model branches
+
+- One contact model. Keep Greenwood-Tripp + Patir-Cheng from `75299d8`
+  (`mixed_lubrication.hpp`) and port from `codex/gt-contact` (`86a45a1`, never
+  merged): the exact $F_{5/2}$ integral (tabulated on [0, 8]) replaces the
+  Hu et al. (1994) fit, which is 4x low at H = 3 and zero for H >= 4; new
+  optional `asperity_gt_k` gives K directly; the four gt-contact keys parse as
+  deprecated aliases. Citation corrected (Hu 1994, not Arcoumanis 1997).
+- Tests: exact F5/2 against SciPy reference values, monotonicity, H >= 8 cut-off,
+  direct K, legacy-key mapping. 69/69 CTest pass on Linux (GCC 13, OpenMPI,
+  PETSc 3.19, oversubscribed 2 cores). Native Windows not built.
+- Effect on reported results: contact-off runs are unchanged (no code path
+  touched). Contact-on results change only where H < 8; in all reported A-F
+  runs the contact load was 0-9 N, so no conclusion changes. The 2026-10-23
+  mixture sensitivity (fit, generic K) is superseded once 02g is run.
+- Add `cases/contact_parameters_sourced_20261022.json` (Seongho's sourced set)
+  and `cases/02g_contact_merge_check/` (prepared A-F/A-B/mixture checks with
+  commit-recording manifests; not run).
+- Integration branch `codex/integrate-2026-10` from `codex/lge-mixture-density-gas`
+  (`57b0b32`) with the A-F recalibration commits of
+  `codex/lge-af-recalibrated-contact` cherry-picked. `codex/lge-recalibrated-inputs`
+  (`d61787e`) is the same patch and is retired. The Oct 11-12 sensitivity
+  campaign, found uncommitted on `codex/lge-thermal-sensitivity`, is preserved on
+  `wip/thermal-sensitivity-20261012` and not merged here.
+
 ## 2026-10-23 - A-F rerun with recalibrated loads; mixed lubrication on A/B
 
 - Record `cases/02d_fw68d_steady_six/RECALIBRATION_RESULTS_2026-10-23.md` and
