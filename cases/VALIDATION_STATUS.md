@@ -9,6 +9,23 @@ snapshots and do not override this file.
 Snapshot: 2026-08-07, solver commit `df0802b` on
 `codex/ferron-cht-grid-check`.
 
+## Run ledger (from 2026-10)
+
+One row per campaign. New runs record commit, branch and dirty flag in their
+manifest (see `cases/02g_contact_merge_check/check.py`); older rows were
+reconstructed on 2026-10-28 from records that hold only a source-tarball hash.
+
+| Date | Run | Machine / agent | Code | Contact parameters | Status | Results |
+|---|---|---|---|---|---|---|
+| 10-11/12 | 8-case thermal sensitivity | workstation | uncommitted tree on `57d7283`, now `wip/thermal-sensitivity-20261012` | none | complete | `results/lge_sensitivity_20261011` |
+| 10-17 | A-F thermal expansion | - | `3f75685` | none | complete | `results/lge_thermal_expansion_20261017` |
+| 10-18/19 | mixture M01-M17, density-only | workstation | `acc20fd`, `a250902`+ | none | complete; gas-on/off pending | `results/lge_mixture_*` |
+| 10-22 | A-F tilt + contact | Claude Project, cloud | `86a45a1` (`codex/gt-contact`) | sourced | complete | vault `attachments/LGE-2026-10-22-gt-contact-*` |
+| 10-23 | mixed sensitivity, 5 mixture cases | Claude Code, workstation | `75299d8` | generic, fit F5/2 | complete; superseded by 02g | `results/lge_mixed_lubrication_20261023` |
+| 10-23 | mixture density-off at recalibrated load | workstation | `c7a52ff`/`57b0b32` | none | 17/17; `refinement_M02` failed | `results/lge_mixture_density_recal_20261023` |
+| 10-23 | A-F smooth recalibrated + A/B mixed | Claude Project, cloud | `5221f99` line | sourced via sigma/beta 0.01, fit F5/2 | complete | `results/fw68d_recalibrated_20261023` |
+| 10-28 | merge checks 02g | - | `codex/integrate-2026-10` | sourced, exact F5/2 | prepared, not run | `cases/02g_contact_merge_check` |
+
 ## 2026-09-07 coupled thermal implementation
 
 The new [conservation model](../docs/COUPLED_CAVITATION.md),

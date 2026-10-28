@@ -1,0 +1,31 @@
+{
+  "name": "sourced_20261022",
+  "decision": "Seongho, 2026-10-22 and 2026-10-28: SUS304 on both surfaces; only published measured parameters; this set is the default for all contact runs.",
+  "nominal": {
+    "asperity_contact_model": "GREENWOOD_TRIPP",
+    "flow_factor_model": "PATIR_CHENG",
+    "roughness_rq_shaft": 2.8284271247461903e-07,
+    "roughness_rq_bush": 2.8284271247461903e-07,
+    "asperity_gt_k": 0.001,
+    "contact_modulus": 1.099e11,
+    "boundary_friction_coefficient": 0.07
+  },
+  "upper": {
+    "asperity_contact_model": "GREENWOOD_TRIPP",
+    "flow_factor_model": "PATIR_CHENG",
+    "roughness_rq_shaft": 3.5355339059327378e-07,
+    "roughness_rq_bush": 3.5355339059327378e-07,
+    "asperity_gt_k": 0.002,
+    "contact_modulus": 1.099e11,
+    "boundary_friction_coefficient": 0.07
+  },
+  "tilt_slope_y": 0.000416,
+  "sources": {
+    "asperity_gt_k": "0.001 (range 0.001-0.002): Sander et al., Tribol. Int. 2016, doi:10.1016/j.triboint.2015.12.024, Table 5 (measured on a journal-bearing shell and shaft, new and worn).",
+    "boundary_friction_coefficient": "0.07 (range 0.05-0.07): Matsumoto, Kaneko, Kawaguchi, Purdue IRACC 2016 paper 1764, Fig. 7(a), Idemitsu PVE oils with R410A/R32.",
+    "contact_modulus": "E* = 110 GPa: SUS304 on SUS304, E = 200 GPa, nu = 0.30 (Rolled Alloys 304/304L datasheet); 1/E* = sum (1 - nu^2)/E.",
+    "roughness": "Composite sigma 0.4 um (upper 0.5 um), split equally (Rq = sigma/sqrt 2 each, so phi_s = Phi_fs = 0). Project estimate from drawing Rz 1.6 um and cylindricity; NOT measured.",
+    "tilt_slope_y": "0.416 mrad in the load plane from the tolerance stack (Seongho); NOT measured.",
+    "flow_factor_model": "Patir-Cheng as in the 2026-10-23 A/B check; with equal roughness only phi_x, phi_f and phi_fp act."
+  }
+}

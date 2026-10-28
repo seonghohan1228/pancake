@@ -1,0 +1,325 @@
+{
+ "status": "native_steady_equilibrium_under_validation",
+ "case_ids": [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F"
+ ],
+ "experiment": "experiment.json",
+ "common_solver_settings": {
+  "solution_mode": "STEADY_STATE",
+  "motion_model": "STEADY_EQUILIBRIUM",
+  "load_angle_deg": 90,
+  "R": 0.0215,
+  "L": 0.04,
+  "c": 4.25e-05,
+  "n_theta_global": 720,
+  "n_z_global": 192,
+  "dt": 2e-05,
+  "dt_note": "Retained metadata only; steady Reynolds and energy equations omit physical storage, and bearing motion is not integrated.",
+  "omega_ramp_time": 0,
+  "cavitation_model": "FBNS",
+  "cavitation_threshold": "SCALAR_PCAV",
+  "cavitated_film_model": "STRIATED",
+  "temperature_model": "ENERGY_EQUATION",
+  "cross_film_thermal_model": "FINITE_VOLUME",
+  "cross_film_profile_order": 4,
+  "cross_film_quadrature_points": 6,
+  "bush_thermal_model": "CONDUCTION_3D",
+  "bush_radial_cells": 16,
+  "fluid_property_model": "SINGLE_PHASE",
+  "dissolved_gas_species": "AIR",
+  "dissolved_gas_initial": 0,
+  "dissolved_gas_henry_coeff": 0,
+  "solubility_model": "HENRY",
+  "density_model": "LINEAR_TEMPERATURE",
+  "density_temperature_intercept": 954.9,
+  "density_temperature_slope": -0.7284,
+  "liquid_viscosity_model": "KINEMATIC_TABLE",
+  "solution_table_file": "fw68d_experiment.csv",
+  "kinematic_viscosity_log_interpolation": true,
+  "solution_table_clamp": false,
+  "coupling_tolerance": 1e-06,
+  "coupling_max_iters": 2000,
+  "coupling_relaxation_mode": "FIXED",
+  "coupling_relaxation": 1.0,
+  "coupling_relaxation_min": 0.1,
+  "coupling_relaxation_backoff": 0.5,
+  "coupling_relaxation_growth": 1.05,
+  "coupling_keep_best_iterate": true,
+  "bush_outer_radius": 0.0425,
+  "bush_outer_boundary": "CONVECTION",
+  "p_cav": 0.0,
+  "gas_pressure_coupling": "NONE",
+  "bush_thermal_conductivity": 15.0,
+  "thermal_conductivity": 0.13,
+  "shaft_ambient_area_ratio": 0.5375,
+  "bc_z_south_type": "DIRICHLET",
+  "bc_z_south_val": 101325.0,
+  "bc_z_north_type": "DIRICHLET",
+  "bc_z_north_val": 101325.0,
+  "bc_z_south_thermal": "CONSTANT",
+  "bc_z_north_thermal": "CONSTANT",
+  "fbns_tol": 1e-06,
+  "groove_mixing_model": "FLUX_BALANCED",
+  "cross_film_relaxation": 0.3,
+  "liquid_specific_heat": 2010.0,
+  "convergence_note": "FBNS pressure/complementarity residuals below 1e-6; normalized temperature change and global energy residual below 1e-6; pressure field change remains reported without an additional threshold. Force residual below 0.002 and full profile temperatures >= TC0-0.001 K remain mandatory.",
+  "steady_force_tolerance": 0.002,
+  "steady_position_step_limit": 0.05,
+  "steady_position_fd_step": 0.001,
+  "cross_film_layers": 16,
+  "steady_pressure_inner_only": true,
+  "steady_output_interval": 50,
+  "bush_axial_cells": 16,
+  "bush_end_natural_convection": true
+ },
+ "per_case_mapping": {
+  "omega": "angular_speed_magnitude_rad_s",
+  "temperature_initial": "tc0_boundary_temperature_k + 1 K; numerical initial guess only",
+  "temperature_reference": "tc0_boundary_temperature_k",
+  "thermal_ambient_temperature": "tc0_boundary_temperature_k",
+  "inflow_temperature": "tc0_boundary_temperature_k for each confirmed feed reservoir",
+  "target_load_magnitude_N": "load_mean_n",
+  "external_load_y": "+load_mean_n; confirmed actuator below pushes bearing upward",
+  "target_fluid_force_y": "-load_mean_n",
+  "reference_sommerfeld_number": "sommerfeld_number; uses nominal RPM and mu(TC0)",
+  "comparison_torque_Nm": "apparent_bearing_torque_nm",
+  "comparison_friction": "friction_coefficient",
+  "temperature_comparison": "tc2_measured_mean_c after sensor position is known",
+  "bc_z_south_temperature": "tc0_boundary_temperature_k",
+  "bc_z_north_temperature": "tc0_boundary_temperature_k",
+  "shaft_ambient_temperature": "tc0_boundary_temperature_k",
+  "rho_cp": "rho(TC0)*2010 reference only; liquid_specific_heat selects local rho(T)*cp in the film energy equation",
+  "bush_outer_temperature": "tc0_boundary_temperature_k; explicit convection reservoir temperature, not prescribed housing wall",
+  "liquid_specific_heat": "2010 J/(kg K); mass-specific cp held constant"
+ },
+ "force_balance": {
+  "unknowns": [
+   "eccentricity_ratio",
+   "attitude_angle_deg"
+  ],
+  "target": "total fluid-on-bearing force equals minus the specified applied load vector",
+  "load_direction_deg": 90,
+  "load_frame": "User confirmed actuator below pushes bearing upward (+y, 90 degrees). Groove remains at the top (+y, 90 degrees). Fluid-on-bearing equilibrium target is downward (-y). Positive theta follows journal rotation.",
+  "relative_vector_error_limit": 0.002,
+  "note": "Do not treat input eccentricity as measured or infer it from matched S. load_angle_deg alone does not control force direction in the current solver.",
+  "applied_load_unit_vector": [
+   0,
+   1
+  ],
+  "target_fluid_force_unit_vector": [
+   0,
+   -1
+  ],
+  "initial_positions": {
+   "A": [
+    0.85,
+    300.0
+   ],
+   "B": [
+    0.6,
+    320.0
+   ],
+   "C": [
+    0.6,
+    320.0
+   ],
+   "D": [
+    0.35,
+    335.0
+   ],
+   "E": [
+    0.15,
+    345.0
+   ],
+   "F": [
+    0.15,
+    345.0
+   ],
+   "E_low": [
+    0.15,
+    345.0
+   ],
+   "E_high": [
+    0.15,
+    345.0
+   ]
+  },
+  "initial_position_note": "Seeds put the bearing centre above the stationary journal centre: B=-e(cos psi,sin psi). The old seeds were rotated 180 degrees only as initial guesses; the unchanged top groove prevents treating old solutions as a symmetry-equivalent campaign.",
+  "restart_policy": "Saved configurations must contain the confirmed +y applied load and matching input hashes; old downward-load results and checkpoints are excluded.",
+  "algorithm": "Native position updates within the steady pressure/cavitation/energy loop; no physical motion integration or external position probes."
+ },
+ "physical_inputs_required": {
+  "logged_pressure_sensor_location_for_comparison_only": null,
+  "TC2_sensor_position_for_comparison_only": {
+   "radius_m": 0.026,
+   "z_m": 0.02,
+   "theta_deg": 270
+  }
+ },
+ "additional_cases": [
+  {
+   "case_id": "E_low",
+   "base_case": "E",
+   "tc0_boundary_temperature_C": 51.23781185626001,
+   "tc0_boundary_temperature_K": 324.38781185626,
+   "hold_load_and_rpm": true
+  },
+  {
+   "case_id": "E_high",
+   "base_case": "E",
+   "tc0_boundary_temperature_C": 51.92767223620965,
+   "tc0_boundary_temperature_K": 325.0776722362096,
+   "hold_load_and_rpm": true
+  }
+ ],
+ "acceptance": {
+  "pressure_and_temperature_coupling": "Converged inner FBNS pressure/complementarity residuals below 1e-6 and normalized temperature change below 1e-6. Pressure field change is reported only. Restored best or iteration cap is a failure; force, profile, global mass/energy and exterior convection gates remain mandatory.",
+  "force_balance": "Native final CONVERGED marker plus independently checked total-fluid-force vector residual below0.002; final position from VTK xB.",
+  "fields": "Finite pressure, temperature, torque and exact cross-film extrema; positive gap/viscosity/density; admissible filling; common-ambient lower temperature bound and viscosity-table domain. Global mass and energy diagnostics are mandatory.",
+  "friction_prerequisite": "F0/F1 wall shear correction implemented and independently regression-tested; quantitative comparison still requires converged load/thermal solution.",
+  "external_convection": "Each native integrated load/thermal solve closes both h coefficients externally to relative1e-3 and wall-temperature change0.01K; next coefficient evaluation seeds from final native position and validated checkpoint.",
+  "fbns": "User-selected inner pressure/FBNS tolerance is 1e-6. Reaching this threshold does not terminate the campaign before native force, thermal and exterior cooling closure.",
+  "global_energy_relative_residual_max": 1e-06,
+  "liquid_mass_rate_relative_residual_max": 1e-08,
+  "cross_film_raw_collocation_residual_max": 1e-06,
+  "temperature_floor_K": "case TC0 minus 0.001 K numerical allowance, tested on mean/walls/exact profile extrema",
+  "property_domain": "exact cross-film extrema must stay within supplied viscosity temperature table"
+ },
+ "specified_boundaries": {
+  "provenance": "User confirmed actuator below pushes bearing upward (+y); top groove remains at90 degrees. This supersedes the earlier opposite-load interpretation. Groove width5mm and reservoirs equal bearing ends; p_cav=0, stainless OD85mm and L40mm; surrounding still oil atTC0 with estimated convection.",
+  "groove": {
+   "type": "GROOVE",
+   "width_m": 0.005,
+   "width_interpretation": "Circumferential arc at the nominal bore, treated as a full-length axial groove.",
+   "width_deg": 13.298312524795712,
+   "theta_deg": 90,
+   "axial_length_m": 0.04,
+   "native_inlet_size_deg": 13.298312524795712,
+   "pressure": "101325 Pa absolute, equal to both axial-end reservoirs",
+   "temperature": "Each case TC0, same as the axial-end reservoir.",
+   "thermal_closure": "FLUX_BALANCED reservoir at TC0 supplies incoming oil and drains at the solved local groove temperature; groove film temperature is not pinned.",
+   "resolved_theta_columns": 26,
+   "resolved_arc_width_m": 0.00488783820344142
+  },
+  "pressure": {
+   "requested_cavitation_pressure_Pa": 0,
+   "requested_pressure_reference": "interpreted absolute alongside user-specified 1 atm reservoirs",
+   "solver_absolute_cavitation_pressure_Pa": 0.0,
+   "note": "Zero absolute cavity pressure supported for the restricted gas-free FBNS path; reservoir pressure101325Pa absolute. This preserves the requested distinct plateau and reservoir values."
+  },
+  "housing": {
+   "material": "stainless steel",
+   "grade": "304 analogue; actual stainless grade unmeasured",
+   "outer_diameter_m": 0.085,
+   "outer_radius_m": 0.0425,
+   "length_m": 0.04,
+   "physical_bore_radius_m": 0.0215425,
+   "physical_radial_wall_thickness_m": 0.020957500000000004,
+   "native_cht_inner_radius_m": 0.0215,
+   "native_cht_geometry_note": "Resolved r-theta-z housing; radial inner surface at journal R is the existing thin-film approximation (42.5 micrometres inside the nominal bore).",
+   "outside_boundary": "Natural convection to still FW68D at case TC0",
+   "outside_surface_temperature": "Solved, not set to TC0",
+   "annular_end_area_over_lateral_area": 0.7895121727941177,
+   "thermal_conductivity_W_m_K": 15.0,
+   "annular_end_boundary": "Both annular faces exposed to still FW68D at TC0; local natural convection with a vertical-plate analogue, characteristic height 85 mm."
+  },
+  "natural_convection": {
+   "status": "implemented in run_steady.py; validating before production",
+   "correlation": "Churchill-Chu horizontal-cylinder mean Nu_D",
+   "doi": "10.1016/0017-9310(75)90222-7",
+   "orientation_assumption": "Horizontal cylinder",
+   "characteristic_diameter_m": 0.085,
+   "length_over_diameter": 0.47058823529411764,
+   "property_temperature": "Mean of outer housing surface temperature and TC0",
+   "kinematic_viscosity": "Supplied FW68D log-linear table",
+   "density": "954.9 - 0.7284*T_C",
+   "volumetric_expansion_per_K": "0.7284/rho",
+   "thermal_diffusivity": "k_oil/(rho*cp_oil)",
+   "Pr": "nu/alpha",
+   "Ra_D": "9.80665*beta*abs(T_surface-TC0)*D^3/(nu*alpha)",
+   "Nu_D": "(0.60 + 0.387*Ra_D^(1/6)/(1+(0.559/Pr)^(9/16))^(8/27))^2",
+   "heat_transfer_W_m2_K": "Nu_D*k_oil/D",
+   "coupling_plan": "Update uniform mean h after each integrated native load/thermal solve; repeat only coefficient closure, seeding from solved bearing position and fields.",
+   "limitations": "Finite horizontal cylinder and vertical annular faces approximated by standard cylinder and vertical-plate correlations. Confinement and mounting contacts remain unresolved.",
+   "end_correlation_doi": "10.1016/0017-9310(75)90243-4"
+  },
+  "shaft": {
+   "exposed_surfaces": "Two circular shaft ends",
+   "end_radius_m": 0.0215,
+   "combined_area_m2": 0.0029044024082437634,
+   "ambient": "case TC0 in still surrounding oil",
+   "surface_temperature": "Existing global shaft heat balance solves shaft temperature",
+   "cooling_model": "Nu_R=0.62*Re_R^0.5*Pr^(1/3); h=Nu_R*k_oil/R; Re_R=abs(omega)*R^2/nu",
+   "coefficient_updated": "At the mean of solved shaft temperature and TC0",
+   "limitations": "Unconfined-end estimate; one shaft temperature, no resolved axial conduction or nearby housing obstruction."
+  }
+ },
+ "material_settings": {
+  "reservoir_pressure_Pa": 101325.0,
+  "cavitation_pressure_Pa": 0.0,
+  "pressure_reference": "absolute; zero cavity retained separately from atmospheric reservoirs",
+  "oil_cp_J_kg_K": 2010.0,
+  "oil_conductivity_W_m_K": 0.13,
+  "oil_thermal_analogue": "BITZER BVC32 PVE: published 40C cp/k, treated constant; FW68D viscosity/density remain experiment-supplied",
+  "oil_source": "https://www.bitzer.de/shared_media/html/est-500/en-GB/271261579271263371.html",
+  "bush_conductivity_W_m_K": 15.0,
+  "bush_material_analogue": "304 stainless, published conductivity at20C treatedconstant",
+  "bush_source": "https://www.outokumpu.com/en/products/product-ranges/-/media/files/products/core/outokumpu-core-range-datasheet.pdf",
+  "shaft_end_area_ratio": 0.5375,
+  "shaft_exposed_end_count": 2,
+  "shaft_exposed_end_radius_m": 0.0215,
+  "shaft_exposed_end_area_m2": 0.0029044024082437634,
+  "shaft_temperature_model": "Existing globally isothermal shaft, finite convective heat sink at two end faces; no resolved axial conduction",
+  "shaft_end_cooling_model": "rotating_disk",
+  "shaft_end_nusselt_coefficient": 0.62,
+  "shaft_end_re_exponent": 0.5,
+  "shaft_end_pr_exponent": 0.3333333333333333,
+  "authority": "User allowed normal or most similar thermophysical properties and specified both circular shaft ends exposed to TC0.",
+  "shaft_end_correlation": "Nu_R=0.62*Re_R^0.5*Pr^(1/3); h=Nu_R*k_oil/R; Re_R=abs(omega)*R^2/nu",
+  "shaft_end_correlation_source": "https://doi.org/10.1016/0017-9310(72)90181-0",
+  "shaft_end_correlation_assumptions": "Laminar unconfined rotating disks, high Pr, properties at mean shaft/oil temperature. Rotation-dominated cooling; housing coefficient is separate."
+ },
+ "model_assumptions": [
+  "Zero cavity pressure is interpreted absolute, distinct from1atm reservoirs.",
+  "BVC32 PVE cp and k are constant analogues; FW68D nu(T) and suppliedrho(T) unchanged.",
+  "Horizontal housing; full-length axial groove.",
+  "Shaft is represented by one equilibrated temperature; two circularendfaces43mm diameter convect toTC0.",
+  "Housing r-theta-z conduction includes outer-cylinder and both annular-end natural convection to TC0.",
+  "FLUX_BALANCED ideal pressure-fed groove: signed mass exchange follows the solved FBNS face divergence, supplies oil at TC0 and drains at the solved groove temperature; deep-groove recirculation remains unresolved."
+ ],
+ "material_sensitivity_plan": {
+  "oil_cp_k_fraction": 0.2,
+  "cooling_coefficient_multipliers": [
+   0.5,
+   2.0
+  ],
+  "meaning": "Chosen sensitivity scenarios, not measured uncertainty bounds; evaluate if nominal comparison requires them."
+ },
+ "comparison_sensor_locations": {
+  "TC1": {
+   "radius_m": 0.026,
+   "z_m": 0.02,
+   "theta_deg": 240
+  },
+  "TC2": {
+   "radius_m": 0.026,
+   "z_m": 0.02,
+   "theta_deg": 270
+  },
+  "TC3": {
+   "radius_m": 0.026,
+   "z_m": 0.02,
+   "theta_deg": 300
+  },
+  "authority": "User-confirmed 2026-09-28; comparison only, not thermal boundary conditions"
+ },
+ "solver_tolerances": {
+  "fbns_tol": 1e-08
+ },
+ "solver_tolerance_note_20261023": "fbns_tol tightened 1e-6 -> 1e-8 only to meet the 1e-8 liquid-balance acceptance; first D attempt failed at -1.46e-8 (round-off)."
+}

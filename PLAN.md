@@ -2827,3 +2827,14 @@ historical runs and all failures remain preserved.
 - [ ] Diagnose refinement_M02 cross-film energy linear-solve failure at the
   recalibrated 2003 N load.
 - [ ] Rerun the selected gas-off/gas-on P01-P10 with recalibrated loads if needed.
+
+## 2026-10-28: Contact-model merge
+
+- [x] Inventory branches, bundles and runs (two parallel contact models).
+- [x] Port exact F5/2, direct K and legacy keys onto the 75299d8 model; tests.
+- [x] Sourced parameter file and prepared merge checks (`cases/02g_contact_merge_check`).
+- [ ] Native Windows build and CTest of `codex/integrate-2026-10`.
+- [ ] Run 02g (af-smooth, af-contact A/B, mixture) when Seongho approves; then
+  fast-forward `main`, tag `lge-2026-10`, delete retired branches.
+- [ ] Reconcile `wip/thermal-sensitivity-20261012` with current `run_steady.py`
+  (edited on a base older than `3f75685`) and merge it as its own branch.
