@@ -4218,3 +4218,66 @@ B was already rejected by its thermal-profile physical check. Keep stopped
 results distinct from accepted coupled solutions. Preserve all saved outputs
 and synchronize them locally. No new simulation was launched. The executable
 of the preserved runs remains revision 23fcbe7 with its original input hashes.
+
+## 2026-10-11 LGE thermal sensitivity preparation
+
+- Separate the five physical reservoir temperatures in the FW68D driver through validated `thermal_boundaries_by_case` setup values; retain all default/native numerical references.
+- Evaluate exterior correlations against the actual cooling baths and use the coldest physical reservoir for temperature acceptance. Preserve force/thermal/mass/energy gates and changed-physics cache/restart isolation.
+- Add a preparation generator and revalidating output/figure reporter. Preserve the corrected torque CSV separately. Reuse the archived matched baseline and prepare eight additional equilibria, with no production launch.
+- Record source matching, generated configuration differences, optional groups, exact commands and measured-history cost in [the campaign plan](cases/02d_fw68d_steady_six/SENSITIVITY_CAMPAIGN.md).
+
+Verification completed October 12: 59 native Windows tests and the corresponding 59 remote tests pass, including a rerun after restoring an omitted CSV fixture. Separate supply/cooling one-iteration workstation checks reject the intended cap and verify diagnostic fields. The rebuilt native executable matches the archived baseline hash. Production remains unlaunched.
+
+
+## 2026-10-12 - Execute thermal sensitivity cases concurrently
+
+Launch the eight prepared equilibria on seven disjoint four-core workstation
+allocations after user authorization. Verify physical-core affinity, preserve
+per-case commands and rankfile hashes, and queue the eighth case for the first
+free allocation. Extend the result verifier to use each case's recorded
+rankfile, retaining all existing physics and provenance checks. Missing, failed,
+duplicate and modified execution records are covered by the driver regression.
+The running solver snapshot and physical inputs are unchanged. Detached
+postprocessing will validate and package the results after completion.
+
+
+## 2026-10-12 - Complete and retrieve thermal sensitivity campaign
+
+All eight equilibria and independent reporting checks passed in 25 min 56.6 s
+using 26 native solves and 9.877 allocated core-hours. Retrieved and SHA-256
+verified the 864,594,919-byte raw archive and final configurations/checkpoints.
+The tested thermal boundaries do not resolve torque disagreement in the current
+model; all sensor errors worsen. Preserve the full data and inspected figures.
+Explicitly document that the current model rotates the shaft while keeping its
+centre fixed; the bearing centre is solved for equilibrium. The user confirmed
+this motion convention on October 12, resolving the earlier ambiguity without
+a model change or rerun.
+
+
+## 2026-10-12 - Widen contour comparisons and show experimental errors
+
+Widen the eight temperature/viscosity contour comparisons, share their spatial
+axes and before/after colourbars, and reduce panel gaps while preserving the
+existing inferno, viridis and red-blue colourmaps. Add signed before/after
+torque and TC1-TC3 error plots for all eight comparisons, recomputed against
+corrected experimental torque and measured sensors. Mark TC2-input residuals
+as non-independent. Preserve the earlier plot layout and raw simulation data.
+
+
+### Follow the supplied error-comparison reference
+
+Replace the experimental-error scatter layout with paired horizontal torque
+error bars and an annotated sensor-error heatmap, aligned across all eight
+comparisons. Retain light/dark blue before/after bars, an orange temperature
+scale, case RPM/load labels and explicit TC2-input flags. Preserve the earlier
+layout. Verify that all error values, source hashes and contour figures remain
+unchanged; inspect the final 300 dpi PNG.
+
+
+### Simplify the comparison to A-F and group sensor pairs
+
+Use only the TC2-supply comparison for each case, retaining the last of the
+three E rows as requested. Remove repeated scenario text from row labels and
+group each TC into a separate Before/After heatmap block with one sensor label.
+Preserve all eight numerical records and archive the prior eight-row figure.
+Verify the six selected rows and inspect the final rendered PNG.

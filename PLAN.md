@@ -2689,3 +2689,16 @@ all downward-load cases solve the wrong confirmed physical configuration.
 - [x] Launch one B sensitivity on eight workstation ranks, preserving original inputs, results and hashes.
 - [x] Close force balance, film/housing temperatures and exterior convection; compare absolute temperatures over the full circumference with the original B and TC1-3. Fourteen iterations in two cooling passes took 154.5 s; load error 0.09476%, profile residual 9.62e-7. TC3 changed by only -0.01336 K; the measured TC2-to-TC3 drop remains unexplained by this term.
 - [x] Remove the pressure-work option after the user judged its small effect insufficient to justify the complexity. Restore the validated thermal implementation and preserve the complete trial as a negative result.
+
+## LGE discrepancy campaign, 2026-10-11
+
+- [x] Separate supply/groove temperatures from cooling baths without changing default predictions.
+- [x] Verify archived source and baseline inputs; prepare eight isolated scenarios and full-cost estimate.
+- [x] Preserve the corrected experimental subtraction and require complete native acceptance before reporting.
+- [x] Obtain authorization and launch all eight prepared equilibria remotely on October 12; run seven four-core cases concurrently and queue the eighth.
+- [x] Complete all eight equilibria, retrieve and hash-check raw results, inspect plots and report thermal sensitivities.
+- [x] Confirm the motion convention with the user on October 12: shaft centre fixed, shaft rotates, bearing centre moves to equilibrium. The completed simulations match; no rerun is needed.
+- [x] Widen contour panels with shared axes/colourbars and add independently recomputed before/after experimental errors for all eight comparisons.
+- Optional follow-up groups remain separate in [the campaign plan](cases/02d_fw68d_steady_six/SENSITIVITY_CAMPAIGN.md).
+
+- [x] Complete isolated afml-r6 build/tests and two capped full-mesh thermal-boundary checks; retain launch/fixture failures and fixes.

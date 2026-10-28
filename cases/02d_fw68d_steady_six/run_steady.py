@@ -193,6 +193,28 @@ def outer_temperature(bore_mean_k, ambient_k, h_bush, radius, outer_radius, k_bu
     return ambient_k + (bore_mean_k - ambient_k) / resistance
 
 
+THERMAL_BOUNDARY_KEYS = (
+    "bc_z_south_temperature", "bc_z_north_temperature", "groove_supply_temperature",
+    "bush_outer_temperature", "shaft_ambient_temperature",
+)
+
+
+def boundary_temperatures(case):
+    """Resolve physical reservoir temperatures in kelvin, leaving TC0 references alone."""
+    values = dict.fromkeys(THERMAL_BOUNDARY_KEYS, float(case["tc0_boundary_temperature_k"]))
+    overrides = case.get("thermal_boundaries_K", {})
+    unknown = set(overrides) - set(values)
+    if unknown:
+        raise ValueError(f"unknown thermal boundary keys: {sorted(unknown)}")
+    for key, value in overrides.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{key} must be a numeric temperature in kelvin")
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{key} must be finite and positive in kelvin")
+        values[key] = float(value)
+    return values
+
+
 def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_shaft,
                   output_dir, table, coupling_max_iters=2000, coupling_relaxation=1.0,
                   initial_state_file=None, native_equilibrium=True):
@@ -200,6 +222,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
     radius = float(geometry["journal_radius_m"])
     clearance = float(geometry["radial_clearance_m"])
     temperature = float(case["tc0_boundary_temperature_k"])
+    temperatures = boundary_temperatures(case)
     load = float(case["load_mean_n"])
     load_vector = applied_load(load)
     omega = float(case["angular_speed_magnitude_rad_s"])
@@ -226,7 +249,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "bc_z_south_type": "DIRICHLET", "bc_z_south_val": materials["reservoir_pressure_Pa"],
         "bc_z_north_type": "DIRICHLET", "bc_z_north_val": materials["reservoir_pressure_Pa"],
         "bc_z_south_thermal": "CONSTANT", "bc_z_north_thermal": "CONSTANT",
-        "bc_z_south_temperature": temperature, "bc_z_north_temperature": temperature,
+        "bc_z_south_temperature": temperatures["bc_z_south_temperature"],
+        "bc_z_north_temperature": temperatures["bc_z_north_temperature"],
         "temperature_model": "ENERGY_EQUATION", "temperature_initial": temperature + 1,
         "temperature_reference": temperature, "property_reference_temperature": temperature,
         "rho_cp": rho * float(materials["oil_cp_J_kg_K"]),
@@ -242,8 +266,9 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "bush_radial_cells": 16, "bush_outer_boundary": "CONVECTION",
         "bush_outer_heat_transfer": h_bush, "shaft_ambient_heat_transfer": h_shaft,
         "shaft_ambient_area_ratio": materials["shaft_end_area_ratio"],
-        "thermal_ambient_temperature": temperature, "shaft_ambient_temperature": temperature,
-        "bush_outer_temperature": temperature,
+        "thermal_ambient_temperature": temperature,
+        "shaft_ambient_temperature": temperatures["shaft_ambient_temperature"],
+        "bush_outer_temperature": temperatures["bush_outer_temperature"],
         "fluid_property_model": "SINGLE_PHASE", "dissolved_gas_species": "AIR",
         "dissolved_gas_initial": 0, "solubility_model": "HENRY",
         "dissolved_gas_henry_coeff": 0, "density_model": "LINEAR_TEMPERATURE",
@@ -252,7 +277,7 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "solution_table_file": str(table.resolve()), "solution_table_clamp": "false",
         "kinematic_viscosity_log_interpolation": "true", "viscosity_pressure_coeff": 0,
         "mu": rho * nu, "groove_mixing_model": "FLUX_BALANCED",
-        "inlet_groove": f"90 {boundaries['groove']['width_deg']} {materials['reservoir_pressure_Pa']} {temperature}",
+        "inlet_groove": f"90 {boundaries['groove']['width_deg']} {materials['reservoir_pressure_Pa']} {temperatures['groove_supply_temperature']}",
         "coupling_max_iters": coupling_max_iters, "coupling_tolerance": 1e-6,
         "coupling_relaxation_mode": "FIXED", "coupling_relaxation": coupling_relaxation,
         "coupling_relaxation_min": 0.1, "coupling_relaxation_backoff": 0.5,
@@ -263,6 +288,8 @@ def render_config(case, experiment, boundaries, materials, eps, psi, h_bush, h_s
         "output_verbosity": "DETAILED",
         "output_fields": "pressure,film_content,h,temperature,mu,temperature_journal,temperature_bearing,heat_flux_journal,heat_flux_bearing,fluid_force_x,fluid_force_y,fluid_force_z,pressure_force_x,pressure_force_y,friction_torque,bearing_x,bearing_y,bearing_z,temperature_housing_outer," + ",".join(f"cross_film_solid_{k}" for k in range(16)),
     }
+    if case.get("sensitivity_diagnostics", False):
+        values["output_fields"] += ",rho_liquid_solution,cross_film_f0,cross_film_f1,cross_film_f2,cross_film_couette_h"
     if initial_state_file is not None:
         values["steady_initial_state_file"] = str(Path(initial_state_file).resolve())
     return "# Generated by run_steady.py; steady CFD and optional native position equilibrium.\n" + "\n".join(
@@ -324,7 +351,7 @@ def check_native_equilibrium(log, force_error):
     return native_error
 
 
-def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, viscosity_points,
+def check_solution(run_dir, log, returncode, load, cavity_pressure, minimum_boundary_k, viscosity_points,
                    native_equilibrium=False, clearance=None):
     if returncode:
         raise ValueError(f"solver exit code {returncode}")
@@ -363,8 +390,8 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
     profile_min = float(diagnostic["cross_film_profile_t_min_K"])
     profile_max = float(diagnostic["cross_film_profile_t_max_K"])
     profile_residual = float(diagnostic["cross_film_profile_residual"])
-    if profile_min < ambient_k - TEMPERATURE_FLOOR_TOL_K or profile_max < profile_min:
-        raise ValueError("cross-film temperature profile below TC0 or inverted")
+    if profile_min < minimum_boundary_k - TEMPERATURE_FLOOR_TOL_K or profile_max < profile_min:
+        raise ValueError("cross-film temperature profile below coldest physical reservoir or inverted")
     if not 0 <= profile_residual < 1e-6:
         raise ValueError("cross-film profile residual above 1e-6")
     table_min = float(viscosity_points[0]["temperature_c"]) + 273.15
@@ -401,8 +428,8 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
     if not np.isfinite(rho).all() or float(np.min(rho)) <= 0:
         raise ValueError("nonpositive or nonfinite density")
     for key in ("T", "T_bearing", "T_journal"):
-        if float(np.min(fields[key])) < ambient_k - TEMPERATURE_FLOOR_TOL_K:
-            raise ValueError(f"{key} below common TC0 by more than {TEMPERATURE_FLOOR_TOL_K:g} K")
+        if float(np.min(fields[key])) < minimum_boundary_k - TEMPERATURE_FLOOR_TOL_K:
+            raise ValueError(f"{key} below coldest physical reservoir by more than {TEMPERATURE_FLOOR_TOL_K:g} K")
     if float(np.min(fields["p"])) < cavity_pressure - 1:
         raise ValueError("pressure below cavitation floor")
     if float(np.min(fields["film_content"])) < -1e-6 or float(np.max(fields["film_content"])) > 1 + 1e-6:
@@ -429,6 +456,7 @@ def check_solution(run_dir, log, returncode, load, cavity_pressure, ambient_k, v
         "h_min_m": float(np.min(fields["h"])),
         "mu_min_Pa_s": float(np.min(fields["mu"])),
         "rho_min_kg_m3": float(np.min(rho)),
+        "minimum_boundary_temperature_K": minimum_boundary_k,
         "temperature_floor_tolerance_K": TEMPERATURE_FLOOR_TOL_K,
         "mass_balance_tolerance": MASS_BALANCE_TOL,
         "energy_balance_tolerance": ENERGY_BALANCE_TOL,
@@ -480,6 +508,17 @@ class Campaign:
             case["sommerfeld_number"] = (case["mu_pa_s"] * case["rpm_nominal"] / 60 / pressure
                                          * (case["journal_diameter_m"] / (2 * case["radial_clearance_m"]))**2)
             self.cases[case["case_id"]] = case
+        overrides = self.setup.get("thermal_boundaries_by_case", {})
+        if not isinstance(overrides, dict) or set(overrides) - set(self.cases):
+            raise ValueError("thermal_boundaries_by_case must map known case IDs to kelvin values")
+        for key, values in overrides.items():
+            if not isinstance(values, dict):
+                raise ValueError(f"case {key} thermal boundaries must be an object")
+            self.cases[key]["thermal_boundaries_K"] = values
+        for case in self.cases.values():
+            case["sensitivity_diagnostics"] = bool(self.setup.get("sensitivity_scenario"))
+            for temperature in boundary_temperatures(case).values():
+                viscosity(temperature - 273.15, self.experiment["viscosity"]["points"])
         self.points = self.experiment["viscosity"]["points"]
         self.solver = Path(args.solver).resolve() if args.solver else None
         self.work = Path(args.work).resolve() if args.work else None
@@ -532,7 +571,7 @@ class Campaign:
             checked = check_solution(run_dir, (run_dir / "run.log").read_text(errors="replace"),
                                      0, float(case["load_mean_n"]),
                                      float(self.materials["cavitation_pressure_Pa"]),
-                                     float(case["tc0_boundary_temperature_k"]), self.points,
+                                     min(boundary_temperatures(case).values()), self.points,
                                      self.native_equilibrium,
                                      float(self.experiment["geometry"]["radial_clearance_m"]))
             result = {**record, **checked, "run_dir": str(run_dir)}
@@ -583,12 +622,12 @@ class Campaign:
                 if not (float(result["h_relative_mismatch"]) < 1e-3 and
                         float(result["T_change_K"]) < .01):
                     continue
-                ambient = float(case["tc0_boundary_temperature_k"])
+                temperatures = boundary_temperatures(case)
                 h_b = float(result["h_bush_W_m2_K"])
                 h_s = float(result["h_shaft_W_m2_K"])
                 outer = result["T_outer_mean_K"]
-                target_b, _ = housing_coefficient(outer, ambient, self.points, self.materials)
-                target_s, _ = shaft_coefficient(result["T_shaft_mean_K"], ambient,
+                target_b, _ = housing_coefficient(outer, temperatures["bush_outer_temperature"], self.points, self.materials)
+                target_s, _ = shaft_coefficient(result["T_shaft_mean_K"], temperatures["shaft_ambient_temperature"],
                                                 case["angular_speed_magnitude_rad_s"],
                                                 self.points, self.materials)
                 if max(abs(target_b / h_b - 1), abs(target_s / h_s - 1)) >= 1e-3:
@@ -671,6 +710,7 @@ class Campaign:
         record = {
             "case_id": case["case_id"], "eps": eps, "psi_deg": psi,
             "seed_eps": eps, "seed_psi_deg": psi, "native_equilibrium": self.native_equilibrium,
+            "thermal_boundaries_K": boundary_temperatures(case),
             "h_bush_W_m2_K": h_bush, "h_shaft_W_m2_K": h_shaft,
             "run_dir": str(run_dir), "command": command,
             "mpi_ranks": self.args.ranks, "python_version": sys.version.split()[0],
@@ -700,7 +740,7 @@ class Campaign:
             log = (run_dir / "run.log").read_text(errors="replace")
             record.update(check_solution(run_dir, log, returncode,
                                          float(case["load_mean_n"]), float(self.materials["cavitation_pressure_Pa"]),
-                                         float(case["tc0_boundary_temperature_k"]), self.points,
+                                         min(boundary_temperatures(case).values()), self.points,
                                          self.native_equilibrium,
                                          float(self.experiment["geometry"]["radial_clearance_m"])))
             record["status"] = "valid_inner_solve"
@@ -729,7 +769,9 @@ class Campaign:
             if cached is not None:
                 print(f"reusing thermally closed position {cached['run_dir']}", flush=True)
                 return cached
-        ambient = float(case["tc0_boundary_temperature_k"])
+        temperatures = boundary_temperatures(case)
+        bush_bath = temperatures["bush_outer_temperature"]
+        shaft_bath = temperatures["shaft_ambient_temperature"]
         omega = float(case["angular_speed_magnitude_rad_s"])
         if getattr(self.args, "initial_state_root", None):
             self.recover_checkpoint(case)
@@ -737,8 +779,8 @@ class Campaign:
         if case["case_id"] in self.h_warm:
             h_bush, h_shaft = self.h_warm[case["case_id"]]
         else:
-            h_bush, _ = housing_coefficient(ambient + 5, ambient, self.points, self.materials)
-            h_shaft, _ = shaft_coefficient(ambient + 5, ambient, omega, self.points, self.materials)
+            h_bush, _ = housing_coefficient(bush_bath + 5, bush_bath, self.points, self.materials)
+            h_shaft, _ = shaft_coefficient(shaft_bath + 5, shaft_bath, omega, self.points, self.materials)
         previous_outer = None
         previous_shaft = None
         previous_mismatch = None
@@ -747,8 +789,8 @@ class Campaign:
             result = self.single(case, eps, psi, h_bush, h_shaft, f"{label}_thermal{iteration + 1}")
             outer = result["T_outer_mean_K"]
             shaft = result["T_shaft_mean_K"]
-            target_bush, housing_meta = housing_coefficient(outer, ambient, self.points, self.materials)
-            target_shaft, shaft_meta = shaft_coefficient(shaft, ambient, omega, self.points, self.materials)
+            target_bush, housing_meta = housing_coefficient(outer, temperatures["bush_outer_temperature"], self.points, self.materials)
+            target_shaft, shaft_meta = shaft_coefficient(shaft, shaft_bath, omega, self.points, self.materials)
             rel = max(abs(target_bush / h_bush - 1), abs(target_shaft / h_shaft - 1))
             delta_temperature = (math.inf if previous_outer is None else
                                  max(abs(outer - previous_outer), abs(shaft - previous_shaft)))
@@ -807,6 +849,7 @@ def self_check(campaign):
             if not math.isclose(sommerfeld, case["sommerfeld_number"], rel_tol=2e-12):
                 raise ValueError(f"case {case['case_id']} Sommerfeld mismatch")
         amb = case["tc0_boundary_temperature_k"]
+        temperatures = boundary_temperatures(case)
         config = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials, .3, 140,
                                60, 100, Path("/tmp/steady-check"), TABLE)
         warmed = render_config(case, campaign.experiment, campaign.boundaries, campaign.materials, .3, 140,
@@ -846,12 +889,14 @@ def self_check(campaign):
                 float(values["liquid_specific_heat"]) != float(campaign.materials["oil_cp_J_kg_K"])):
             raise ValueError("initial guess, boundary, or fixed-point defaults mismatch")
         for key in ("bc_z_south_temperature", "bc_z_north_temperature",
-                    "thermal_ambient_temperature", "shaft_ambient_temperature",
-                    "bush_outer_temperature"):
+                    "shaft_ambient_temperature", "bush_outer_temperature"):
+            if float(values[key]) != temperatures[key]:
+                raise ValueError(f"{key} differs from the requested physical reservoir")
+        for key in ("thermal_ambient_temperature", "temperature_reference", "property_reference_temperature"):
             if float(values[key]) != amb:
-                raise ValueError(f"{key} differs from case TC0")
+                raise ValueError(f"{key} numerical reference changed from TC0")
         groove = list(map(float, values["inlet_groove"].split()))
-        if (len(groove) != 4 or groove[3] != amb or
+        if (len(groove) != 4 or groove[3] != temperatures["groove_supply_temperature"] or
                 float(values["bc_z_south_val"]) != 101325 or
                 float(values["bc_z_north_val"]) != 101325 or
                 groove[2] != 101325 or float(values["p_cav"]) != 0):
@@ -941,7 +986,7 @@ def main():
     parser.add_argument("--ranks", type=int, default=1)
     parser.add_argument("--work", help="new or existing campaign output root")
     parser.add_argument("--cases", default="A,B,C,D,E,F", help="comma-separated A-F or E_low,E_high")
-    parser.add_argument("--materials", default=str(SETUP), help="JSON with material_settings object")
+    parser.add_argument("--materials", default=str(SETUP), help="complete setup JSON; optional thermal_boundaries_by_case contains physical kelvin temperatures")
     parser.add_argument("--rankfile", help="existing OpenMPI rankfile; Linux only")
     parser.add_argument("--initial-state-root", help="prior campaign work root; compatible fields seed fresh solves only")
     parser.add_argument("--timeout", type=int, default=7200, help="seconds per native solve")
@@ -967,6 +1012,9 @@ def main():
         parser.error("physical runs require --solver, --work, and positive --ranks")
     if not campaign.solver.is_file():
         parser.error("solver executable does not exist")
+    requested = [args.trial[0]] if args.trial else [key.strip() for key in args.cases.split(",")]
+    if campaign.setup.get("sensitivity_scenario") and not set(requested) <= set(campaign.setup["case_ids"]):
+        parser.error("requested cases are outside this sensitivity scenario's case_ids")
     campaign.command()
     try:
         campaign.mpi_version = subprocess.run([campaign.command()[0], "--version"],

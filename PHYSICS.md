@@ -3243,3 +3243,9 @@ removed and the validated viscous-heating/CHT implementation restored.
 The source snapshot, converged results and full-circle comparison remain
 in `results/fw68d_pressure_work_20260929`. Reproducing that trial requires
 its archived source; it is not part of the current solver model.
+
+## Independent FW68D thermal reservoirs
+
+The [LGE sensitivity driver](cases/02d_fw68d_steady_six/SENSITIVITY_CAMPAIGN.md) now permits separate kelvin values for south/north inflow, groove supply, housing bath and shaft bath. The native equations are unchanged. Axial supply temperature applies only to incoming mass, while outgoing enthalpy uses solved fluid temperature. FLUX_BALANCED groove exchange uses prescribed supply enthalpy for injection and solved groove temperature for drainage. Neither the groove film nor bearing wall is pinned.
+
+Exterior cooling uses `q=h(T_wall-T_bath)`, with oil properties evaluated at `(T_wall+T_bath)/2` separately for the housing and shaft. The housing bath also enters local annular-end convection. External h values are recomputed around each native force/energy equilibrium until relative mismatch <1e-3 and surface-temperature change <0.01 K. The temperature lower bound is `min(T_south,T_north,T_groove_supply,T_housing_bath,T_shaft_bath)-0.001 K`. Numerical reference temperatures and the supplied viscosity law retain their baseline definitions.

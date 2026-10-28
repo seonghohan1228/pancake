@@ -68,6 +68,96 @@ def main():
                                trial=None, rankfile=None, max_thermal_iterations=30)
         campaign = Campaign(args)
         case = campaign.cases["E"]
+        # Separate physical supply and cooling, including cache/restart identities.
+        def parsed(text):
+            return dict(line.split(" = ", 1) for line in text.splitlines() if " = " in line)
+        baseline = parsed(campaign.config_for(case, .15, 345., 60., 100., work))
+        amb = case["tc0_boundary_temperature_k"]
+        for keys in (("bc_z_south_temperature", "bc_z_north_temperature", "groove_supply_temperature"),
+                     ("bush_outer_temperature", "shaft_ambient_temperature"),
+                     ("bc_z_south_temperature",), ("bc_z_north_temperature",),
+                     ("groove_supply_temperature",), ("bush_outer_temperature",),
+                     ("shaft_ambient_temperature",)):
+            changed_case = {**case, "thermal_boundaries_K": dict.fromkeys(keys, amb + 1)}
+            config_text = campaign.config_for(changed_case, .15, 345., 60., 100., work)
+            changed = parsed(config_text)
+            expected = {"inlet_groove" if key == "groove_supply_temperature" else key for key in keys}
+            assert {key for key in baseline if baseline[key] != changed[key]} == expected
+            assert driver["config_identity"](config_text) != driver["config_identity"](
+                campaign.config_for(case, .15, 345., 60., 100., work))
+            assert driver["warm_start_identity"](config_text) != driver["warm_start_identity"](
+                campaign.config_for(case, .15, 345., 60., 100., work))
+        for invalid in ({"unknown": amb}, {"bush_outer_temperature": float("nan")},
+                        {"bush_outer_temperature": -1}, {"bush_outer_temperature": True}):
+            try:
+                driver["boundary_temperatures"]({**case, "thermal_boundaries_K": invalid})
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("invalid thermal boundary accepted")
+        # Distinct baths exercise the actual coefficient closure, not just rendering.
+        bath_case = {**case, "thermal_boundaries_K": {
+            "bush_outer_temperature": amb + 1, "shaft_ambient_temperature": amb + 2}}
+        bush_target = driver["housing_coefficient"](amb + 6, amb + 1, campaign.points, campaign.materials)[0]
+        shaft_target = driver["shaft_coefficient"](amb + 7, amb + 2,
+            case["angular_speed_magnitude_rad_s"], campaign.points, campaign.materials)[0]
+        probe = Campaign.__new__(Campaign)
+        probe.args = SimpleNamespace(max_thermal_iterations=2)
+        probe.native_equilibrium = True
+        probe.h_warm = {}
+        probe.points, probe.materials = campaign.points, campaign.materials
+        probe.find_completed = lambda *a, **kw: None
+        def fake_single(c, eps, psi, hb, hs, label):
+            assert math.isclose(hb, bush_target) and math.isclose(hs, shaft_target)
+            folder = work / label
+            folder.mkdir()
+            return {"run_dir": str(folder), "eps": .3, "psi_deg": 270.,
+                    "T_outer_mean_K": amb + 6, "T_shaft_mean_K": amb + 7}
+        probe.single = fake_single
+        closed = probe.evaluate(bath_case, .15, 345., "bath_check")
+        assert closed["status"] == "load_and_thermal_closed" and closed["h_relative_mismatch"] == 0
+        # The reporting split reproduces analytic uniform-film torque and axial flux.
+        sys.path.insert(0, str(ROOT / "cases/02d_fw68d_steady_six"))
+        from summarize_sensitivity import field_metrics, execution_rankfile
+        rankfile = work / "parallel.rankfile"
+        rankfile.write_text("rank 0=afml-r6 slot=0:4\n")
+        job = {"scenario":"cooling_plus_1K", "case":"E", "status":"completed", "returncode":0,
+               "rankfile":str(rankfile), "rankfile_sha256":driver["sha256"](rankfile)}
+        assert execution_rankfile({"jobs":[job]}, "cooling_plus_1K", "E") == rankfile
+        for jobs in ([], [job,job], [{**job,"status":"running"}], [{**job,"returncode":1}],
+                     [{**job,"rankfile_sha256":"wrong"}]):
+            try:
+                execution_rankfile({"jobs":jobs}, "cooling_plus_1K", "E")
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("missing, failed, ambiguous or changed parallel execution accepted")
+        nt, nz, nr = 8, 2, 2
+        h, mu, rho = 40e-6, .1, 930.
+        radius, length, omega = .0215, .04, 20.
+        shape = (nz, nt)
+        uniform = lambda value: np.full(shape, value).ravel()
+        analytical = 2 * np.pi * mu * omega * radius**3 * length / h
+        raw = {"theta_rad": np.tile((np.arange(nt)+.5)*2*np.pi/nt, nz),
+               "z_m": np.repeat((np.arange(nz)+.5)*length/nz, nt),
+               "p": uniform(101335.), "film_content": uniform(1.),
+               "rho_liquid_solution": uniform(rho), "cross_film_f0": uniform(h/mu),
+               "cross_film_f1": uniform(h*h/(2*mu)), "cross_film_f2": uniform(h**3/(12*mu)),
+               "cross_film_couette_h": uniform(h), "friction_torque": uniform(analytical),
+               "T": uniform(amb+5), "mu": uniform(mu), "q_bearing": uniform(0.),
+               "q_journal": uniform(0.), "T_journal": uniform(amb+5),
+               "temperature_housing_outer": uniform(amb+5),
+               **{f"cross_film_solid_{k}": uniform(amb+5) for k in range(nr)}}
+        cfg = {**baseline, "n_theta_global": str(nt), "n_z_global": str(nz),
+               "bush_radial_cells": str(nr), "bush_axial_cells": str(nz),
+               "omega": str(omega), "inlet_groove": f"90 0 101325 {amb}"}
+        split = field_metrics(cfg, raw, campaign.points, campaign.materials)
+        expected_out = 2*radius*2*np.pi/(length/nz)*rho*h**3/(12*mu)*10
+        assert math.isclose(split["couette_Nm"], analytical, rel_tol=1e-12)
+        assert abs(split["pressure_shear_Nm"]) < 1e-14
+        assert math.isclose(split["south_out_kg_s"], expected_out, rel_tol=1e-12)
+        assert math.isclose(split["north_out_kg_s"], expected_out, rel_tol=1e-12)
+        assert split["north_in_kg_s"] == split["groove_in_kg_s"] == 0
         load = float(case["load_mean_n"])
         clearance = float(campaign.experiment["geometry"]["radial_clearance_m"])
         assert np.array_equal(driver["applied_load"](load), [0., load])
@@ -76,6 +166,18 @@ def main():
         def check(log):
             return driver["check_solution"](run, log, 0, load, 0.,
                 float(case["tc0_boundary_temperature_k"]), campaign.points, True, clearance)
+        cold_case = {**case, "tc0_boundary_temperature_k": amb - 3}
+        cold_log = write_solution(run, cold_case, clearance)
+        cold_result = driver["check_solution"](run, cold_log, 0, load, 0., amb - 3,
+                                                campaign.points, True, clearance)
+        assert cold_result["T_min_K"] < amb
+        try:
+            check(cold_log)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("sub-reservoir temperature accepted")
+        log = write_solution(run, case, clearance)
         result = check(log)
         assert math.isclose(result["eps"], .45)
         assert math.isclose(result["psi_deg"], 320.)

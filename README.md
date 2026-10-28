@@ -839,3 +839,7 @@ energy checks remain independent. See [PHYSICS.md](PHYSICS.md) for equations,
 natural-convection assumptions and sensor extraction. Intermediate fields
 are exported every 50 iterations; a file named STOP in the output directory
 requests a recoverable nonconverged stop after the current iteration.
+
+## LGE thermal sensitivity preparation
+
+The [prepared campaign](cases/02d_fw68d_steady_six/SENSITIVITY_CAMPAIGN.md) separates incoming oil, groove supply and housing/shaft bath temperatures. Eight optional production equilibria have full-precision input differences and workstation commands. Baseline defaults and existing results are preserved.

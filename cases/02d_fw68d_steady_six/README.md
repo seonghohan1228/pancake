@@ -362,3 +362,7 @@ range from -38.4% to +103.2% and E is 4.1-4.8 K hotter than experiment.
 F has no cavity: its minimum absolute pressure is 24.60 kPa, above p_cav=0.
 The nominal material/cooling and ideal groove assumptions remain model
 limitations; no coefficient or torque offset was tuned to the measurements.
+
+## Independent thermal boundary scenarios
+
+See [the sensitivity campaign](SENSITIVITY_CAMPAIGN.md) for the explicit five-temperature setup interface, eight-run proposal, archived baseline match, commands and acceptance. With no scenario selected, historical baseline behavior is preserved. Older torque-error prose above uses superseded experimental subtraction; the campaign uses `new_exp_torque_nm`.
