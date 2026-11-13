@@ -42,8 +42,9 @@ the branch**.
 
 - Keep `main` clean and releasable. Do not leave feature work or uncommitted
   experiments on `main`.
-- Start each task from current `main` on `codex/<short-scope>`. Synchronize with
-  a remote only when the user has authorized that remote operation.
+- Start each task from current `main` on a branch named `<scope>`, for
+  example `storage-layout`, with no `codex/` or other prefix. Synchronize
+  with a remote only when the user has authorized that remote operation.
 - Give a branch one coherent purpose. Do not mix product changes with local
   agent settings, generated results, build products, or unrelated cleanup.
 - Preserve unrelated user changes. If the worktree is already dirty, separate

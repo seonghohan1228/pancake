@@ -249,7 +249,7 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
-### Storage layout and run-data hygiene (`codex/storage-layout`, 2026-11-13)
+### Storage layout and run-data hygiene (`storage-layout`, 2026-11-13)
 
 - [x] A. Bound output clearing to the solver layout, refuse the archive root
   (`.pancake_archive_root`), default `output_dir = results/_default_run`.

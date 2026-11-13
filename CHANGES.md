@@ -1,5 +1,11 @@
 # Change Log
 
+## 2026-11-14 - Branch names are `<scope>`
+
+Task branches are now named `<scope>` (for example `storage-layout`) instead
+of `codex/<short-scope>`. AGENTS.md, CLAUDE.md and CONTRIBUTING.md updated.
+Existing `codex/*` branches and the docs that cite them keep their names.
+
 ## 2026-11-13 - Keep runs out of the run-archive root
 
 `results/` in the main checkout is a junction to `D:\Seongho\Sim\pancake`,
