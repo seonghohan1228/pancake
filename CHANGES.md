@@ -1,5 +1,25 @@
 # Change Log
 
+## 2026-11-14 - Remote holds code only; verified retrieval to D
+
+- `cases/sync_to_r6.sh` now ships only git-tracked case inputs (configs,
+  scripts, reference data) to `afml-r6:~/pancake/cases`. It no longer mirrors
+  `cases/` as an append-only results archive, which is how about 220 GB of
+  run data had built up on the remote (`/` reached 90 %).
+- New `cases/retrieve_from_r6.py`: refuses a run directory that any remote
+  process uses (cwd, open file or command line), hashes it remotely, streams
+  it into `<archive>/_incoming`, verifies every file by sha256, moves it into
+  place with `MANIFEST.sha256` and `provenance.json`, and with `--remove`
+  deletes the remote copy only if the listing is unchanged since the manifest.
+  Tested on afml-r6: refused a directory held by a process, then retrieved and
+  removed a 3-file test directory with all hashes matching.
+- AGENTS.md, CLAUDE.md, README.md, cases/INDEX.md, cases/VALIDATION_PLAN.md,
+  the remote_harness README and the case READMEs that said "remote-only" now
+  state the rule: code in `C:\Dev\pancake`, every run under
+  `D:\Seongho\Sim\pancake`, nothing left on the remote after retrieval.
+  Historical statements keep their text with a dated location note.
+- `.gitignore`: `worktrees/` (kept worktrees live in `C:\Dev\pancake\worktrees`).
+
 ## 2026-11-14 - Branch names are `<scope>`
 
 Task branches are now named `<scope>` (for example `storage-layout`) instead

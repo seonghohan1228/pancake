@@ -36,6 +36,9 @@ high-quality reference data. The user judges pass/fail per case; agents run batc
   mirrored to `afml-r6:~/pancake/cases` via `cases/sync_to_r6.sh` after each batch
   (manifest-based, append-only, idempotent; it also reports remote-only files,
   which is how remote run output gets noticed).
+  *2026-11-14:* superseded. `sync_to_r6.sh` now ships inputs only and
+  `retrieve_from_r6.py` moves finished runs to `D:\Seongho\Sim\pancake`; see
+  `cases/INDEX.md`.
 - Solver branches: codex/fbns-cavitation (FBNS + THD) -> codex/full-film-predicate
   -> codex/fbns-gas (gas/outgassing). Stacked, tested, unmerged pending user.
 

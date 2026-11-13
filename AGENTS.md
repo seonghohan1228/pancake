@@ -29,11 +29,31 @@ Dependencies: C++20 compiler, CMake, MPI, and the current PETSc backend. The str
 The user's required workflow is: edit code locally, compile locally, run simple
 short checks, synchronize the selected code/configuration snapshot to an
 isolated remote workstation directory, recompile there, run the cases remotely,
-and synchronize results back locally for analysis and plots. Record source,
-input and executable hashes, build/runtime versions, MPI ranks, return codes
-and convergence diagnostics. Preserve existing checkouts and prior results,
-including failed runs. Source/result transfer does not imply a Git push.
-Documentation-only changes do not require a new simulation campaign.
+and retrieve results to `D:\Seongho\Sim\pancake` for analysis and plots with
+`cases/retrieve_from_r6.py`, which removes the remote copy once verified. Record
+source, input and executable hashes, build/runtime versions, MPI ranks, return
+codes and convergence diagnostics (`provenance.json`). Preserve failed, partial
+and stale runs under their names. Keep one copy of each dataset: no tar next to
+its extracted files, no second pull. Source/result transfer does not imply a
+Git push. Documentation-only changes do not require a new simulation campaign.
+
+## Where code and runs live
+
+- Code lives in `C:\Dev\pancake`: source, configs, case definitions, READMEs,
+  summaries, small reference data and scripts. Kept worktrees go in
+  `C:\Dev\pancake\worktrees\<name>` (ignored by git).
+- Every run output lives under `D:\Seongho\Sim\pancake`, local and remote
+  runs alike. `results/` in the main checkout is a junction to it, so
+  `results/<campaign>/...` paths resolve there. Its `README.md` defines the
+  layout and the `provenance.json` record.
+- afml-r6 holds one code clone (`~/pancake`) and the runs currently executing,
+  nothing else. After retrieval it holds no results.
+- `bash cases/sync_to_r6.sh` ships tracked case inputs to the remote.
+  `python cases/retrieve_from_r6.py <remote_dir> <campaign> --remove` pulls a
+  finished run to D, verifies every file by sha256, writes provenance and only
+  then deletes it on the remote. It refuses runs that are still in use.
+- Default `output_dir` is `results/_default_run`; the solver refuses the
+  archive root itself (`.pancake_archive_root`).
 
 ## Branching and Version Control
 
@@ -57,7 +77,9 @@ the branch**.
 - After merge, delete the task branch locally and remotely. Never force-push or
   rewrite shared `main` history.
 
-Output goes to `results/` directory; open `results/results.pvd` in ParaView.
+Run output goes to the configured `output_dir` (default `results/_default_run`,
+which resolves to `D:\Seongho\Sim\pancake\_default_run`); open its `results.pvd`
+in ParaView. Campaigns write to `results/<campaign>/`.
 
 ## Architecture
 

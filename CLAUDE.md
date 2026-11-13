@@ -46,7 +46,27 @@ the branch**.
 - After merge, delete the task branch locally and remotely. Never force-push or
   rewrite shared `main` history.
 
-Output goes to `results/` directory; open `results/results.pvd` in ParaView.
+Run output goes to the configured `output_dir` (default `results/_default_run`,
+which resolves to `D:\Seongho\Sim\pancake\_default_run`); open its `results.pvd`
+in ParaView. Campaigns write to `results/<campaign>/`.
+
+## Where code and runs live
+
+- Code lives in `C:\Dev\pancake`: source, configs, case definitions, READMEs,
+  summaries, small reference data and scripts. Kept worktrees go in
+  `C:\Dev\pancake\worktrees\<name>` (ignored by git).
+- Every run output lives under `D:\Seongho\Sim\pancake`, local and remote
+  runs alike. `results/` in the main checkout is a junction to it, so
+  `results/<campaign>/...` paths resolve there. Its `README.md` defines the
+  layout and the `provenance.json` record.
+- afml-r6 holds one code clone (`~/pancake`) and the runs currently executing,
+  nothing else. After retrieval it holds no results.
+- `bash cases/sync_to_r6.sh` ships tracked case inputs to the remote.
+  `python cases/retrieve_from_r6.py <remote_dir> <campaign> --remove` pulls a
+  finished run to D, verifies every file by sha256, writes provenance and only
+  then deletes it on the remote. It refuses runs that are still in use.
+- Default `output_dir` is `results/_default_run`; the solver refuses the
+  archive root itself (`.pancake_archive_root`).
 
 ## Architecture
 

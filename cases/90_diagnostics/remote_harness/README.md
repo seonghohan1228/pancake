@@ -1,5 +1,11 @@
 # 90-REMOTE-HARNESS - the loose afml-r6 driver scripts
 
+*2026-11-14:* afml-r6 no longer keeps results or loose scripts in `~/`; the
+current workflow is `cases/sync_to_r6.sh` (inputs out) and
+`cases/retrieve_from_r6.py` (verified runs back to `D:\Seongho\Sim\pancake`,
+then removed remotely). The loose `~/` scripts and logs left at that date are in
+`D:\Seongho\Sim\pancake\_archives\r6_home_20261114\`.
+
 Reference copies of the scripts that lived directly in `afml-r6:~/` and drove the
 remote batches. They are archived because several numbers quoted in case
 summaries were produced by them and by nothing else; they are **not** runnable

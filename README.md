@@ -671,11 +671,15 @@ solver `theta`, so the preview's zero column corresponds to
 
 ## Output
 
-Results are written under the configured `output_dir`, normally:
-
-```text
-C:\Dev\pancake\build-windows-mingw\results
-```
+Results are written under the configured `output_dir`. The default is
+`results/_default_run`; from the repo root `results/` is a junction to the run
+archive `D:\Seongho\Sim\pancake`, so a default run lands in
+`D:\Seongho\Sim\pancake\_default_run`. Campaigns write to
+`results/<campaign>/`. The archive root itself is refused as `output_dir`
+(marker file `.pancake_archive_root`). Code stays in `C:\Dev\pancake`; remote
+runs on afml-r6 are retrieved to the archive with
+`python cases/retrieve_from_r6.py <remote_dir> <campaign> --remove` and are not
+kept on the remote. See `AGENTS.md` (Where code and runs live).
 
 Open `results.pvd` in ParaView for full visualization.
 If a run exits with `Output directory setup failed` on Windows, close ParaView

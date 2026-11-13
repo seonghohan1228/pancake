@@ -155,3 +155,6 @@ On afml-r6 under `~/pancake/cases/01_ferron_conjugate/`:
   both variants under the best-iterate fix (frozen protocol and fully converged);
   see `../01_ferron_wallbc_fields/PICARD_FIX_REPORT.md`.
 - `gate_fixed313/` - the cross-platform gate run.
+*Location update (2026-11-14):* these files were pulled from afml-r6 and
+removed there. They are now under `D:\Seongho\Sim\pancake\_cases\r6_home_pancake\cases\01_ferron_conjugate`; files that
+were already on D are listed in `R6_POINTERS.tsv` in that folder.
