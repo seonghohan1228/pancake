@@ -184,7 +184,7 @@ inlet_groove = 90 10 1.5e6
 #          flux [W/m^2], positive INTO the fluid). The last four require
 #          cross_film_thermal_model = POLYNOMIAL.
 #          Legacy load_x/load_y/load_z requests map to pressure_force_*.
-output_dir = results
+output_dir = results/_default_run
 filename_prefix = solution
 output_verbosity = SIMPLIFIED
 output_write_3d = true

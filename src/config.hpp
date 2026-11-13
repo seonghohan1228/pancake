@@ -1093,7 +1093,7 @@ struct SimulationConfig {
     bool   allow_frozen_gas_steady = false;  // opt in to running gas cavitation frozen in steady
 
     // Output
-    std::string output_dir = "results";
+    std::string output_dir = "results/_default_run"; // never the archive root itself
     // Converged steady pure-oil FBNS fields used only as a new solve's initial guess.
     std::string steady_initial_state_file;
     std::string filename_prefix = "solution";

@@ -249,6 +249,17 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### Storage layout and run-data hygiene (`codex/storage-layout`, 2026-11-13)
+
+- [x] A. Bound output clearing to the solver layout, refuse the archive root
+  (`.pancake_archive_root`), default `output_dir = results/_default_run`.
+- [ ] B. Run layout under `D:\Seongho\Sim\pancake` with per-run provenance.
+- [ ] C. Move run data out of `cases/` and `tmp/` to D; merge `D:\pancake-results`.
+- [ ] D. Remove clean worktrees; move kept ones to `worktrees/<name>`.
+- [ ] E/F. Inventory afml-r6, pull to D with checksums, clean the remote.
+- [ ] G. Replace `cases/sync_to_r6.sh`; one retrieval script; update docs.
+- [ ] H. Vault: Storage layout.md, Status.md, dated location notes.
+
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
 
 Complete 2026-08-05. Evidence and the deliberate exclusions are in

@@ -125,8 +125,11 @@ by that convention. Geometry still uses the previous step's fluid force.
 
 Reproduction scripts and synthetic inputs are in
 [the audit verification case](cases/90_diagnostics/physics_audit/README.md).
-Reruns now preserve unrelated files in `output_dir` and replace only files
-matching the solver's output naming conventions.
+Reruns preserve unrelated files in `output_dir` and replace only files
+matching the solver's output naming conventions, and only in the solver's own
+layout (top level, `processorN/`, `flat/`, `flat/processorN/`). Other
+subfolders are never entered. A directory holding `.pancake_archive_root` is
+refused as `output_dir`; the default is `results/_default_run`.
 
 The current Windows development workflow uses **MSYS2 MINGW64**. Visual Studio
 is not required to build or run the native solver or GUI in the current code.

@@ -1,5 +1,26 @@
 # Change Log
 
+## 2026-11-13 - Keep runs out of the run-archive root
+
+`results/` in the main checkout is a junction to `D:\Seongho\Sim\pancake`,
+the archive of every campaign. A run from the repo root with the old default
+`output_dir = results` wrote its products into that archive root.
+
+- `clear_solver_products` (src/io.cpp) no longer walks a recursive iterator.
+  It lists exactly the solver layout: files directly in output_dir,
+  `processorN/`, `flat/` and `flat/processorN/`. No other subfolder is opened.
+  The old iterator already skipped non-solver folders; the rewrite makes the
+  bound explicit and stops descent below `processorN/` and `flat/`.
+- `prepare_output_directory` refuses an output_dir that contains the marker
+  file `.pancake_archive_root` (`IO::archive_root_marker`), before clearing
+  anything. The marker is placed at the archive root on D.
+- The default `output_dir` (config.hpp and the root config.txt) is now
+  `results/_default_run`. `results/<campaign>` paths are unchanged.
+- test_io: a sibling campaign folder with solver-named files, and folders
+  nested below the layout, survive a rerun; an archive root is refused and
+  left untouched.
+Built with the windows-native-mingw preset; all 59 CTests pass.
+
 ## 2026-09-29 - Remove the pressure-work sensitivity option
 
 Remove the optional liquid pressure-work source, configuration switch,

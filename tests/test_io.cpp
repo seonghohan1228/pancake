@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include <mpi.h>
 
@@ -72,6 +73,63 @@ int main(int argc, char** argv) {
         check(!fs::exists(fs::path(cfg.output_dir) / "io_999.pvts"),
               "rerunning must remove stale solver products");
     }
+
+    // A sibling campaign folder inside output_dir with solver-named files must
+    // survive, as must deeper levels under flat/ and processorN/.
+    const fs::path root(cfg.output_dir);
+    const std::vector<fs::path> survivors = {
+        root / "campaign_a" / "results.pvd",
+        root / "campaign_a" / "diagnostics.csv",
+        root / "campaign_a" / "io_5.pvts",
+        root / "campaign_a" / "flat" / "io_5.pvts",
+        root / "campaign_a" / "processor0" / "io_5_0.vts",
+        root / "flat" / "processor0" / "nested" / "io_5_0.vts",
+        root / "processor1" / "nested" / "io_5_1.vts"};
+    const std::vector<fs::path> stale = {
+        root / "flat" / "io_5.pvts", root / "flat" / "processor0" / "io_5_0.vts",
+        root / "processor1" / "io_5_1.vts", root / "diagnostics.csv"};
+    if (mesh.rank == 0) {
+        for (const auto& path : survivors) {
+            fs::create_directories(path.parent_path());
+            std::ofstream(path) << "archived campaign";
+        }
+        for (const auto& path : stale) {
+            fs::create_directories(path.parent_path());
+            std::ofstream(path) << "old solver output";
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    IO::prepare_output_directory(cfg);
+    if (mesh.rank == 0) {
+        for (const auto& path : survivors)
+            check(fs::exists(path), "clearing must never enter sibling campaign folders");
+        for (const auto& path : stale)
+            check(!fs::exists(path), "clearing must remove stale products of the solver layout");
+        fs::remove_all(root / "campaign_a");
+        fs::remove_all(root / "processor1");
+        fs::remove_all(root / "flat" / "processor0" / "nested");
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // An archive root (marker file present) is refused before anything is cleared.
+    SimulationConfig archive_cfg = cfg;
+    archive_cfg.output_dir = "test_io_archive_root";
+    const fs::path archive_product = fs::path(archive_cfg.output_dir) / "io_7.pvts";
+    if (mesh.rank == 0) {
+        fs::create_directories(archive_cfg.output_dir);
+        std::ofstream(fs::path(archive_cfg.output_dir) / IO::archive_root_marker) << "";
+        std::ofstream(archive_product) << "archived";
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    bool archive_refused = false;
+    try { IO::prepare_output_directory(archive_cfg); }
+    catch (const std::exception&) { archive_refused = true; }
+    check(archive_refused, "output_dir holding the archive marker must be refused");
+    if (mesh.rank == 0) {
+        check(fs::exists(archive_product), "a refused archive root must be left untouched");
+        fs::remove_all(archive_cfg.output_dir);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
     IO::write_timestep(0.0, 0, mesh, fields, cfg);
     MPI_Barrier(MPI_COMM_WORLD);
 
