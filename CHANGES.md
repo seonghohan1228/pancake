@@ -21,6 +21,10 @@ lge-thermal-v2-20261029 X runs; the COUPLED 02f driver is not on `main`).
 - Neutral check: at 0.30 the builder reproduces every archived v2 input file
   and the regenerated X4 gas-off and X3 gas-on final configs match the archived
   ones in all 117 non-path keys. No solver source changed.
+- `make_mix_inputs.py --seeds` takes branch-specific seeds; `check_inputs`
+  now ignores the seed keys `e` and `attitude_angle_deg` when it verifies that
+  the gas-on and gas-off configs differ only in the two branch controls, and
+  records the differing seed keys.
 
 ## 2026-09-29 - Remove the pressure-work sensitivity option
 

@@ -10,8 +10,9 @@ Per case: rpm, load, TC0 (supply/ambient) and chamber pressure from the nearest 
 lge-thermal-v2-20261029 value). It sets the reference viscosity nu(c, TC0), the
 experiment viscosity points, and the setup key read by run_gas.Campaign for the
 initial field, both axial ends and the groove feed.
---seeds is a JSON map {case: [eps, psi_deg]} of numerical seeds; without it the
-S-interpolated seeds of the 0.30 campaign are used. Seeds affect convergence only.
+--seeds is a JSON map {branch: {case: [eps, psi_deg]}} of numerical seeds; a case
+missing there gets the S-interpolated seed of the 0.30 campaign. Seeds affect
+convergence only.
 Outputs are written with LF line endings so the manifest is platform independent.
 """
 import argparse
@@ -91,12 +92,10 @@ for row in csv.DictReader(points.open()):
                 S_density_reference_TC2=s * rho(float(row["TC2"])) / 950.,
                 note="Thermal v2 mixture case; Oct 27 mixture rerun point, conditions from nearest 30 s bin")
     cases.append(case)
-    if key in seeds:
-        seed = [float(v) for v in seeds[key]]
-    else:
-        eps = float(np.interp(math.log(s), [math.log(v) for v in (.004, .03, .1, 1.)], [.94, .85, .60, .15]))
-        seed = [eps, 300. if eps > .8 else 320.]
+    eps = float(np.interp(math.log(s), [math.log(v) for v in (.004, .03, .1, 1.)], [.94, .85, .60, .15]))
+    default_seed = [eps, 300. if eps > .8 else 320.]
     for branch, setup in setups.items():
+        seed = [float(v) for v in seeds.get(branch, {}).get(key, default_seed)]
         setup = copy.deepcopy(setup)
         setup["material_settings"]["reservoir_pressure_Pa"] = p_pa
         setup["force_balance"]["initial_positions"] = {key: seed}
@@ -107,8 +106,9 @@ for row in csv.DictReader(points.open()):
             setup["scenario_decisions"] = json.loads((out / "decisions.json").read_text())
         assert setup["gas_branch"] == branch
         write_json(out / f"{key}_{branch}_setup.json", setup)
+        print(f"  {key} {branch} seed eps={seed[0]:.6f} psi={seed[1]:.4f}")
     print(f"{key} rpm={rpm:.0f} W={load:.1f} TC0={t_c:.2f} P={p_pa / 1e5:.3f} bar c={composition:g} "
-          f"nu(TC0)={nu:.3f} mm2/s S(TC2)={s:.4f} seed={seed[0]:.4f},{seed[1]:.2f}")
+          f"nu(TC0)={nu:.3f} mm2/s S(TC2)={s:.4f}")
 experiment["cases"] = cases
 write_json(out / "experiment.json", experiment)
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()

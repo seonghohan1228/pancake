@@ -698,9 +698,12 @@ def check_inputs(inputs, output):
             assert all(float(config[f"bc_z_{side}_free_gas_mass_fraction"]) == 0 for side in ("north", "south"))
             assert math.isclose(case["S_density_reference_TC2"], float(case["measured"]["S"])*
                                 driver.density(float(case["measured"]["tc2_c_mean"]))/950., rel_tol=1e-13)
+        # Branch-specific seed positions affect convergence only, not the matched controls.
+        seed_keys = {"e", "attitude_angle_deg"}
         different = [name for name in values["gas_off"] if values["gas_off"][name] != values["gas_on"][name]]
-        assert set(different) == {"fluid_property_model", "coupled_phase_equilibrium"}, different
-        verified.append({"case_id": key, "differing_controls": different})
+        assert set(different) - seed_keys == {"fluid_property_model", "coupled_phase_equilibrium"}, different
+        verified.append({"case_id": key, "differing_controls": sorted(set(different) - seed_keys),
+                         "differing_seed_keys": sorted(set(different) & seed_keys)})
     driver.save_json(output, {"status": f"{2*len(verified)}_matched_native_configs_verified_unrun", "cases": verified})
 
 
