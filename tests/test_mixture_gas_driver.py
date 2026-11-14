@@ -62,6 +62,33 @@ class MatchedGasInputsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             worker["dew_pressure"](199.)
 
+    def test_composition_viscosity_points_reproduce_curve_interpolation(self):
+        curves = {.2: [(0., 40.), (20., 12.), (60., 4.)], .3: [(-10., 30.), (30., 7.), (50., 4.5)]}
+        self.assertEqual(worker["composition_viscosity_points"](curves, .3),
+                         [{"temperature_c": t, "nu_mm2_s": nu} for t, nu in curves[.3]])
+        points = worker["composition_viscosity_points"](curves, .274)
+        self.assertEqual([p["temperature_c"] for p in points], [0., 20., 30., 50.])
+        for temperature in (0., 7.5, 20., 26.3, 30., 41., 50.):
+            expected = worker["curve_value"](curves, .274, temperature, True)
+            for left, right in zip(points, points[1:]):
+                if left["temperature_c"] <= temperature <= right["temperature_c"]:
+                    w = (temperature-left["temperature_c"])/(right["temperature_c"]-left["temperature_c"])
+                    value = math.exp((1-w)*math.log(left["nu_mm2_s"])+w*math.log(right["nu_mm2_s"]))
+                    break
+            self.assertTrue(math.isclose(value, expected, rel_tol=1e-12), (temperature, value, expected))
+        with self.assertRaises(ValueError):
+            worker["composition_viscosity_points"](curves, .35)
+
+    def test_composition_parameter_text_and_validation(self):
+        self.assertEqual(worker["DEFAULT_REFRIGERANT_MASS_FRACTION"], .3)
+        self.assertEqual(worker["inlet_species_text"](.3), "0 0.3 0")
+        self.assertEqual(worker["inlet_species_text"](.274), "0 0.274 0")
+        self.assertEqual(worker["composition_label"](.3), "0.30")
+        self.assertEqual(worker["composition_label"](.274), "0.274")
+        for bad in (0, 1, -.1, True, "0.3"):
+            with self.assertRaises(ValueError):
+                worker["validate_composition"](bad)
+
     def test_raw_pressure_integration_and_mesh_rejection(self):
         import numpy as np
         nt, nz, radius, length = 64, 3, .0215, .04

@@ -1,5 +1,27 @@
 # Change Log
 
+## 2026-11-14 - Make the 02f refrigerant mass fraction a parameter
+
+Branch `codex/cc-lge-mix-c274`, based on 57b0b32 (the source of the accepted
+lge-thermal-v2-20261029 X runs; the COUPLED 02f driver is not on `main`).
+
+- The dissolved R410A mass fraction was hard-coded as 0.30 in `run_gas.py`
+  (initial field, both axial ends, groove `inlet_species`, prepared reference
+  viscosity, decision text and `check_inputs` assertions). It is now the setup
+  key `refrigerant_mass_fraction` (default `DEFAULT_REFRIGERANT_MASS_FRACTION
+  = 0.30`) and the `--composition` option of `--prepare`.
+- New `composition_viscosity_points` gives nu(T) at any c on the union of the
+  bracketing curve nodes, so the experiment's ln(nu) interpolation reproduces
+  the native unclamped nu(c,T) exactly. A digitized c returns its curve.
+- Commit the campaign input builder as `cases/02f_lge_mixture_gas/
+  make_mix_inputs.py` with `--composition` and `--seeds`, LF output.
+- Reason: the measured R410A fraction is 0.274 (weighing, 24 h at 14.4 bar);
+  nu(0.274) is about 29-31 % above nu(0.30) at 24-27 C, above the 10 % limit
+  for keeping the 0.30 runs.
+- Neutral check: at 0.30 the builder reproduces every archived v2 input file
+  and the regenerated X4 gas-off and X3 gas-on final configs match the archived
+  ones in all 117 non-path keys. No solver source changed.
+
 ## 2026-09-29 - Remove the pressure-work sensitivity option
 
 Remove the optional liquid pressure-work source, configuration switch,

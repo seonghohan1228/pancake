@@ -249,6 +249,14 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### LGE mixture rerun at c = 0.274 (`codex/cc-lge-mix-c274`) - started 2026-11-14
+
+- [x] Parameterize the 02f composition (default 0.30), neutral config check.
+- [x] Confirm unclamped nu(c,T) and strict bubble-pressure support at 0.274.
+- [ ] Gas off X1-X5, then X6, on afml-r6 (`lge-thermal-v3-c274-20261114`).
+- [ ] Gas on only where gas-off p_min < p_bub(0.274, T); others recorded as
+      "no release: gas on = gas off".
+
 ### Audit quick-win batch (`codex/audit-quickwins`) — priority-queue item 2
 
 Complete 2026-08-05. Evidence and the deliberate exclusions are in

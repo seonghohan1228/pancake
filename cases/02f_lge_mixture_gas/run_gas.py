@@ -29,6 +29,44 @@ BRANCHES = ("gas_off", "gas_on")
 CALORIC_KEYS = ("dissolved_heat_capacity", "desorption_internal_energy",
                 "gas_thermal_conductivity", "property_reference_temperature",
                 "property_reference_pressure", "mu_gas")
+DEFAULT_REFRIGERANT_MASS_FRACTION = .3
+
+
+def validate_composition(value):
+    """Return the dissolved refrigerant mass fraction c in (0, 1) [kg refrigerant / kg liquid solution]."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < 1:
+        raise ValueError("refrigerant_mass_fraction must be a number in (0, 1)")
+    return float(value)
+
+
+def composition_label(value):
+    """Composition text for records: two decimals for whole-percent values, else all digits."""
+    return f"{value:.2f}" if abs(100*value-round(100*value)) < 1e-9 else f"{value:g}"
+
+
+def inlet_species_text(value):
+    """Groove feed species triple: free gas, dissolved refrigerant, reserved slot."""
+    return f"0 {value:g} 0"
+
+
+def composition_viscosity_points(curves, concentration):
+    """nu(T) at fixed c on the union of contributing curve nodes.
+
+    ln(nu) is piecewise linear in T on each contributing curve and linear in c
+    between curves, so the experiment's ln(nu) interpolation on these nodes
+    reproduces curve_value exactly. A digitized c returns that curve unchanged.
+    """
+    if concentration in curves:
+        return [{"temperature_c": t, "nu_mm2_s": nu} for t, nu in sorted(curves[concentration])]
+    axes = sorted(curves)
+    right = bisect.bisect_left(axes, concentration)
+    if not 0 < right < len(axes):
+        raise ValueError("concentration outside digitized range")
+    pair = axes[right-1:right+1]
+    low = max(min(t for t, _ in curves[key]) for key in pair)
+    high = min(max(t for t, _ in curves[key]) for key in pair)
+    nodes = sorted({t for key in pair for t, _ in curves[key] if low <= t <= high})
+    return [{"temperature_c": t, "nu_mm2_s": curve_value(curves, concentration, t, True)} for t in nodes]
 
 
 def load_rows(path):
@@ -253,9 +291,10 @@ def check_layer_viscosity(config, fields, curves):
     return maximum
 
 
-def prepare(preflight, destination, caloric):
+def prepare(preflight, destination, caloric, composition=DEFAULT_REFRIGERANT_MASS_FRACTION):
     """Freeze the selected matched inputs and independent measured-coordinate evidence."""
     caloric = validate_caloric(caloric)
+    composition = validate_composition(composition)
     baseline.prepare(preflight, destination, "LINEAR_TEMPERATURE")
     table = ROOT / "data/R410A_FW68D/fw68d.csv"
     (destination / table.name).write_bytes(table.read_bytes())
@@ -263,7 +302,7 @@ def prepare(preflight, destination, caloric):
     metadata = json.loads(project.read_text())
     decisions = json.loads((destination / "decisions.json").read_text())
     decisions.update(status="conditional_native_coupled_comparison_prepared_unrun",
-        concentration="Conditional 0.30 refrigerant mass / liquid-solution mass; source basis unspecified, in-run composition unmeasured.",
+        concentration=f"Conditional {composition_label(composition)} refrigerant mass / liquid-solution mass; source basis unspecified, in-run composition unmeasured.",
         source_chart_bases={key: metadata[key] for key in ("pressureBasis", "concentrationBasis")},
         source_chart_convention="User-authorized conditional absolute pressure and refrigerant mass-fraction interpretation.",
         cavity="Matched zero-Pa oil-vapor-limit surrogate; no invented refrigerant release/absorption rates.",
@@ -280,14 +319,14 @@ def prepare(preflight, destination, caloric):
     curves, saturation = property_curves(table)
     differences, domains = [], []
     old_points = experiment["viscosity"]["points"]
-    full_points = [{"temperature_c": t, "nu_mm2_s": nu} for t, nu in sorted(curves[.3])]
+    full_points = composition_viscosity_points(curves, composition)
     experiment["viscosity"]["points"] = full_points
     for case in experiment["cases"]:
         key, measured = case["case_id"], case["measured"]
         for sensor in ("tc0", "tc1", "tc2", "tc3"):
             temperature = float(measured[f"{sensor}_c_mean"])
             old = driver.viscosity(temperature, old_points)*1e6
-            full = curve_value(curves, .3, temperature, True)
+            full = curve_value(curves, composition, temperature, True)
             differences.append(dict(case_id=key, temperature_role=sensor.upper(), temperature_c=temperature,
                 old_fixed30_nu_mm2_s=old, full_c03_nu_mm2_s=full, difference_mm2_s=full-old,
                 difference_percent=100*(full/old-1)))
@@ -304,7 +343,7 @@ def prepare(preflight, destination, caloric):
             feed_dew_pressure_Pa_abs=dew, feed_p_over_dew=pressure/dew,
             hypothetical_feed_gas_EOS_valid=pressure <= min(dew*(1+1e-12), 50e6),
             interpretation="No imposed free gas at feed. EOS validity applies only where a free phase exists; local states must be checked during execution."))
-        case["nu_mm2_s"] = curve_value(curves, .3, temperature, True)
+        case["nu_mm2_s"] = curve_value(curves, composition, temperature, True)
         case["mu_pa_s"] = driver.density(temperature)*case["nu_mm2_s"]*1e-6
         original_setup = json.loads((destination / f"{key}_setup.json").read_text())
         for branch in BRANCHES:
@@ -312,6 +351,7 @@ def prepare(preflight, destination, caloric):
             setup.update(status="conditional_native_coupled_prepared_unrun", gas_branch=branch,
                          scenario_decisions=decisions)
             setup["caloric_assumptions"] = caloric
+            setup["refrigerant_mass_fraction"] = composition
             setup["material_settings"]["pressure_reference"] = (
                 "Measured bar-absolute mean times 100000 at both ends and groove; common zero-Pa "
                 "oil-vapor-limit surrogate. " + ("Refrigerant release uses the conditional chart bubble pressure."
@@ -349,7 +389,8 @@ def prepare(preflight, destination, caloric):
         "feed_table_failures": [r["case_id"] for r in domains if r["feed_table_status"] != "within_table"],
         "gas_EOS": "200--500 K; <=50 MPa; pressure <= dew below344.494 K; applies to free phase only",
         "table": "Unclamped nu(c,T) and strict chart-supported bubble-pressure inversion of c_sat(p,T), including all125 digitized points. A gas-free local pressure may exceed chart pressure support while its bubble point remains strictly supported; free phase must lie at that bubble pressure. Contributing curve temperature limits apply.",
-        "viscosity_C03_temperature_range_C": [min(t for t, _ in curves[.3]), max(t for t, _ in curves[.3])],
+        "refrigerant_mass_fraction": composition,
+        "viscosity_composition_temperature_range_C": [full_points[0]["temperature_c"], full_points[-1]["temperature_c"]],
         "matched_native_configurations": 2*len(experiment["cases"]), "preserved_coordinates": {"pure_oil": 103, "CFD": 6}})
     driver.save_json(destination / "manifest.json", {p.name: driver.sha256(p)
         for p in sorted(destination.iterdir()) if p.name != "manifest.json"})
@@ -411,6 +452,9 @@ class Campaign(driver.Campaign):
         if self.branch not in BRANCHES:
             raise ValueError("unknown matched gas branch")
         self.caloric = validate_caloric(self.setup["caloric_assumptions"])
+        # Dissolved refrigerant at the initial field, both axial ends and the groove feed.
+        self.composition = validate_composition(
+            self.setup.get("refrigerant_mass_fraction", DEFAULT_REFRIGERANT_MASS_FRACTION))
         self.driver_hash = driver.sha256(__file__)
         manifest = self.experiment_path.parent / "manifest.json"
         for name, digest in json.loads(manifest.read_text()).items():
@@ -442,12 +486,12 @@ class Campaign(driver.Campaign):
             groove_mixing_model="PINNED",
             fluid_property_model="TWO_PHASE" if self.branch == "gas_on" else "SINGLE_PHASE",
             coupled_phase_equilibrium="true" if self.branch == "gas_on" else "false",
-            dissolved_gas_species="R410A", dissolved_gas_initial=.3, dissolved_gas_max=1.,
+            dissolved_gas_species="R410A", dissolved_gas_initial=self.composition, dissolved_gas_max=1.,
             solubility_model="CURVE_TABLE", gas_mass_transfer_rate=0., gas_absorption_rate=0.,
             dissolved_gas_diffusivity=0., mixture_viscosity_model="DUKLER", gas_alpha_max=1.,
-            bc_z_south_dissolved_gas=.3, bc_z_north_dissolved_gas=.3,
+            bc_z_south_dissolved_gas=self.composition, bc_z_north_dissolved_gas=self.composition,
             bc_z_south_free_gas_mass_fraction=0., bc_z_north_free_gas_mass_fraction=0.,
-            inlet_species="0 0.3 0", solution_table_file=str(self.table_path),
+            inlet_species=inlet_species_text(self.composition), solution_table_file=str(self.table_path),
             gas_pressure_floor=1., **{key: self.caloric[key] for key in CALORIC_KEYS})
         values["output_fields"] += ",pressure_force_z,dissolved_gas,alpha_gas,gas_mass_transfer," + ",".join(
             name for layer in range(int(values["cross_film_layers"]))
@@ -644,11 +688,13 @@ def check_inputs(inputs, output):
                        for name in (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}"))
             assert config["solution_table_clamp"] == "false"
             assert config["solubility_model"] == "CURVE_TABLE"
-            assert float(config["dissolved_gas_initial"]) == .3
+            composition = campaign.composition
+            assert float(config["dissolved_gas_initial"]) == composition
+            assert float(config["bc_z_south_dissolved_gas"]) == float(config["bc_z_north_dissolved_gas"]) == composition
             assert float(config["gas_mass_transfer_rate"]) == float(config["gas_absorption_rate"]) == 0.
             assert float(config["bc_z_south_val"]) == float(config["bc_z_north_val"]) == pressure
             assert float(config["inlet_groove"].split()[2]) == pressure
-            assert config["inlet_species"] == "0 0.3 0"
+            assert config["inlet_species"] == inlet_species_text(composition)
             assert all(float(config[f"bc_z_{side}_free_gas_mass_fraction"]) == 0 for side in ("north", "south"))
             assert math.isclose(case["S_density_reference_TC2"], float(case["measured"]["S"])*
                                 driver.density(float(case["measured"]["tc2_c_mean"]))/950., rel_tol=1e-13)
@@ -711,6 +757,8 @@ def main():
     parser.add_argument("--prepare", type=Path)
     parser.add_argument("--inputs", required=True, type=Path)
     parser.add_argument("--caloric", type=Path)
+    parser.add_argument("--composition", type=float, default=DEFAULT_REFRIGERANT_MASS_FRACTION,
+                        help="dissolved refrigerant mass fraction for --prepare (default 0.30)")
     parser.add_argument("--check-inputs", type=Path)
     parser.add_argument("--case")
     parser.add_argument("--branch", choices=BRANCHES)
@@ -728,7 +776,7 @@ def main():
     if args.timeout < 0:
         parser.error("--timeout must be nonnegative")
     if args.prepare and args.caloric:
-        prepare(args.prepare, args.inputs, json.loads(args.caloric.read_text()))
+        prepare(args.prepare, args.inputs, json.loads(args.caloric.read_text()), args.composition)
     elif args.check_inputs:
         if args.check_inputs.exists():
             raise FileExistsError(args.check_inputs)

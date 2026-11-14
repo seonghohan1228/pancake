@@ -177,6 +177,14 @@ position and trust-region globalization. The isolated cavitating-seed check
 completed three strict coupled load/thermal updates in both branches. Those
 capped diagnostics are preserved and are not accepted campaign results.
 
+
+### Composition parameter (2026-11-14)
+
+The dissolved refrigerant mass fraction is the setup key
+`refrigerant_mass_fraction` (default 0.30). It sets `dissolved_gas_initial`,
+`bc_z_{south,north}_dissolved_gas` and the groove `inlet_species`. Build
+inputs with `make_mix_inputs.py ... --composition 0.274 --seeds seeds.json`;
+it also writes the reference nu(c,T) points and the composition text records.
 ## Inputs and next campaign step
 
 Evidence provenance and numerical assumptions are collected under
