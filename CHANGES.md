@@ -1,5 +1,27 @@
 # Change Log
 
+## 2026-11-15 - Run data consolidated on D; afml-r6 emptied of results
+
+No code change; this records the data migration the scripts above were
+written for, so later readers know where old paths went.
+
+- afml-r6 pull: 56 run folders, 48,497 files streamed to
+  `D:\Seongho\Sim\pancake`, every file checked against a remote sha256 list
+  (0 mismatches, 0 missing). Files already on D were not copied again; each
+  run folder lists them in `R6_POINTERS.tsv`.
+- Before any deletion, a full sha256 index of D and a fresh re-hash of the
+  remote (148,783 files) were compared. Files without a copy on D, on C or in
+  git were copied to `D:\...\_archives\r6_home_20261114` and
+  `_archives\tar_unique_members_20261115` (with every distinct `pancake`
+  executable). The one remote-only commit, `562b313`, is pinned as
+  `refs/archive/r6/picard2-best-iterate`.
+- Removed after that check: the 142 GB `r6_backup_20261028` tars and five
+  `silicone-rig*.tar.gz` on D, and all pancake data on afml-r6 (about 224 GiB).
+  `~/pancake` on the remote is a clean `main` with `build-linux` kept.
+- Merge conflicts were kept as pairs (`.conflict-r6`,
+  `.conflict-pancake-results`); see the vault note
+  `chats/2026-11-14 pancake storage cleanup`.
+
 ## 2026-11-14 - Remote holds code only; verified retrieval to D
 
 - `cases/sync_to_r6.sh` now ships only git-tracked case inputs (configs,
