@@ -1,5 +1,34 @@
 # Change Log
 
+## 2026-11-16 - Add onset-chart options to the 02f driver
+
+Branch `codex/cc-lge-onset-chart`, based on 5e26c55 (c = 0.274 campaign).
+For the gaseous-cavitation onset chart (campaign `lge-onset-chart-20261116`).
+
+- `run_gas.Campaign` reads an optional setup key `isothermal`
+  (`{"temperature_K": T}`, T must equal the case TC0). With it the config uses
+  `temperature_model = ISOTHERMAL`, `cross_film_thermal_model = NONE`,
+  `bush_thermal_model = LOCAL`, `coupled_fbns_initialization = false` (the
+  native FBNS initialization is FINITE_VOLUME only) and omits the wall, housing
+  and cross-film outputs. `evaluate` runs one load-balanced native solve with
+  inert nominal h (no cooling loop).
+- Isothermal gates: every non-thermal gate is unchanged (native convergence,
+  pressure, volume, R_p, oil/species balance, nonnegative pressure, phase
+  fractions, no free gas in gas-off, independent VTK load balance, torque).
+  The layer viscosity and EOS checks are replaced by
+  `check_isothermal_viscosity`: T equals the set temperature everywhere and
+  mu = rho(T) nu(c, T) within coupling_tolerance. The cross-film envelope and
+  cooling closure do not exist and are not checked. Accepted status
+  `accepted_conditional_native_coupled_isothermal`; `observables` is null.
+- `make_mix_inputs.py`: optional points columns `isothermal` (1 = isothermal
+  at TC0), `note`, empty `f`; other extra columns (P_bar_measured, base_case)
+  are kept in `measured`. P_bar is the model chamber pressure.
+- Neutral check: with the options off, the rebuilt c274 inputs manifest equals
+  the accepted one and the regenerated X4 gas-off final config matches the
+  accepted pass-3 config in all 117 non-path keys. No solver source changed.
+- Reason: plan A needs an isothermal S-only boundary line and plan B needs a
+  chamber-pressure override of the measured X3/X4 conditions.
+
 ## 2026-11-14 - Make the 02f refrigerant mass fraction a parameter
 
 Branch `codex/cc-lge-mix-c274`, based on 57b0b32 (the source of the accepted

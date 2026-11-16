@@ -159,6 +159,25 @@ class MatchedGasInputsTest(unittest.TestCase):
         fields["cross_film_inv_mu_0"] *= 1+2e-9
         self.assertAlmostEqual(worker["check_layer_viscosity"](config, fields, curves), 2e-9, delta=1e-14)
 
+    def test_isothermal_viscosity_follows_table_at_fixed_temperature(self):
+        import numpy as np
+        curves, _ = worker["property_curves"](ROOT / "data/R410A_FW68D/fw68d.csv")
+        temperature = 297.55
+        rho = 954.9-.7284*(temperature-273.15)
+        nu = worker["curve_value"](curves, .274, temperature-273.15, True)*1e-6
+        config = dict(density_temperature_intercept="954.9", density_temperature_slope="-0.7284",
+                      coupling_tolerance="1e-4")
+        fields = dict(T=np.full(4, temperature), alpha_gas=np.zeros(4), dissolved_gas=np.full(4, .274),
+                      mu=np.full(4, rho*nu))
+        self.assertLess(worker["check_isothermal_viscosity"](config, fields, curves, temperature), 1e-14)
+        fields["mu"][2] *= 1.001
+        with self.assertRaisesRegex(ValueError, "viscosity mismatch"):
+            worker["check_isothermal_viscosity"](config, fields, curves, temperature)
+        fields["mu"][2] /= 1.001
+        fields["T"][0] += 1e-6
+        with self.assertRaisesRegex(ValueError, "temperature field"):
+            worker["check_isothermal_viscosity"](config, fields, curves, temperature)
+
     def test_current_state_layer_viscosity_rejects_stale_profile(self):
         config, fields, curves = self.layer_viscosity_fixture()
         config["coupling_relaxation"] = "1e-15"
@@ -416,6 +435,26 @@ class MatchedGasInputsTest(unittest.TestCase):
                 relaxed.config_for(relaxed.cases["M16"], eps, psi, hb, hs, run / "relaxed"))
             self.assertEqual(float(relaxed_config["coupling_tolerance"]), 1e-4)
             self.assertEqual(float(relaxed_config["fbns_tol"]), float(config["fbns_tol"]))
+            # Isothermal option: fixed-T film, no energy/cross-film/cooling closure; off by default.
+            self.assertEqual(config["temperature_model"], "ENERGY_EQUATION")
+            isothermal_path = root / "isothermal_setup.json"
+            isothermal_path.write_text(json.dumps({**relaxed_setup, "case_ids": ["M16"], "isothermal": {"temperature_K": ambient}}))
+            options.materials = str(isothermal_path)
+            isothermal = worker["Campaign"](options)
+            values = worker["parse_config"](isothermal.config_for(isothermal.cases["M16"], eps, psi, 60., 100., run / "iso"))
+            self.assertEqual(values["temperature_model"], "ISOTHERMAL")
+            self.assertEqual(float(values["temperature_initial"]), ambient)
+            self.assertEqual(values["cross_film_thermal_model"], "NONE")
+            self.assertEqual(values["coupled_fbns_initialization"], "false")
+            self.assertFalse(any(name.startswith("cross_film_") or name in worker["ISOTHERMAL_OMITTED_FIELDS"]
+                                 for name in values["output_fields"].split(",")))
+            self.assertEqual({k for k in values if values[k] != config.get(k)} - {
+                "temperature_model", "temperature_initial", "cross_film_thermal_model", "bush_thermal_model",
+                "coupled_fbns_initialization", "output_fields", "output_dir", "coupling_tolerance",
+                "bush_outer_heat_transfer", "shaft_ambient_heat_transfer"}, set())
+            isothermal_path.write_text(json.dumps({**relaxed_setup, "case_ids": ["M16"], "isothermal": {"temperature_K": ambient+1}}))
+            with self.assertRaisesRegex(ValueError, "isothermal temperature"):
+                worker["Campaign"](options)
             options.materials = str(inputs / "M16_gas_off_setup.json")
             (run / "run.log").write_text("synthetic shared-cache fixture")
             record = dict(returncode=0, source_sha256=campaign.source_hash, executable_sha256=None,

@@ -13,6 +13,12 @@ initial field, both axial ends and the groove feed.
 --seeds is a JSON map {branch: {case: [eps, psi_deg]}} of numerical seeds; a case
 missing there gets the S-interpolated seed of the 0.30 campaign. Seeds affect
 convergence only.
+Optional points columns (onset chart, lge-onset-chart-20261116; absent = unchanged):
+  isothermal = 1   isothermal gas-off film at TC0 (run_gas.Campaign "isothermal" setup key)
+  note             case note in experiment.json (default: thermal v2 note)
+  f                may be empty for synthetic cases (friction_coefficient = null)
+Any other extra column (for example P_bar_measured, base_case) is kept in "measured".
+P_bar is the model chamber pressure at both ends and the groove feed.
 Outputs are written with LF line endings so the manifest is platform independent.
 """
 import argparse
@@ -86,11 +92,11 @@ for row in csv.DictReader(points.open()):
                 angular_speed_magnitude_rad_s=rpm * math.pi / 30, angular_speed_rad_s=rpm * math.pi / 30,
                 tc0_boundary_temperature_c=t_c, tc0_boundary_temperature_k=t_c + 273.15,
                 rho_kg_m3=rho(t_c), nu_mm2_s=nu, mu_pa_s=rho(t_c) * nu * 1e-6, sommerfeld_number=s,
-                apparent_bearing_torque_nm=None, friction_coefficient=float(row["f"]),
+                apparent_bearing_torque_nm=None, friction_coefficient=float(row["f"]) if row.get("f") else None,
                 measured=dict(row, pressure_bar_abs_mean=row["P_bar"], tc0_c_mean=row["TC0"],
                               tc2_c_mean=row["TC2"], bearing_torque_nm=row["bt_meas"]),
                 S_density_reference_TC2=s * rho(float(row["TC2"])) / 950.,
-                note="Thermal v2 mixture case; Oct 27 mixture rerun point, conditions from nearest 30 s bin")
+                note=row.get("note") or "Thermal v2 mixture case; Oct 27 mixture rerun point, conditions from nearest 30 s bin")
     cases.append(case)
     eps = float(np.interp(math.log(s), [math.log(v) for v in (.004, .03, .1, 1.)], [.94, .85, .60, .15]))
     default_seed = [eps, 300. if eps > .8 else 320.]
@@ -101,6 +107,10 @@ for row in csv.DictReader(points.open()):
         setup["force_balance"]["initial_positions"] = {key: seed}
         setup["case_ids"] = [key]
         setup["additional_cases"] = []
+        if row.get("isothermal") == "1":
+            setup["isothermal"] = dict(temperature_K=t_c + 273.15, basis=(
+                "Isothermal film at TC0: temperature_model = ISOTHERMAL, no energy, cross-film or cooling "
+                "closure; viscosity is the table nu(c, TC0) times rho(TC0)."))
         if not default:
             setup["refrigerant_mass_fraction"] = composition
             setup["scenario_decisions"] = json.loads((out / "decisions.json").read_text())

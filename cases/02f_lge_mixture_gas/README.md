@@ -185,6 +185,13 @@ The dissolved refrigerant mass fraction is the setup key
 `bc_z_{south,north}_dissolved_gas` and the groove `inlet_species`. Build
 inputs with `make_mix_inputs.py ... --composition 0.274 --seeds seeds.json`;
 it also writes the reference nu(c,T) points and the composition text records.
+### Onset-chart options (2026-11-16)
+
+Setup key `isothermal = {"temperature_K": T}` (T = case TC0) runs an isothermal
+gas-off COUPLED film: no energy, cross-film or cooling closure, one
+load-balanced native solve. Viscosity is the table rho(T) nu(c, T) and is
+checked by `check_isothermal_viscosity`. `make_mix_inputs.py` sets it from the
+points column `isothermal = 1`; P_bar sets the model chamber pressure.
 ## Inputs and next campaign step
 
 Evidence provenance and numerical assumptions are collected under

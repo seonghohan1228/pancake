@@ -419,6 +419,27 @@ def integrate_pressure(config, fields):
 
 
 RELAXED_COUPLING_LIMIT = 1e-4
+# Wall and housing outputs that do not exist without the energy equation.
+ISOTHERMAL_OMITTED_FIELDS = ("temperature_journal", "temperature_bearing", "heat_flux_journal",
+                             "heat_flux_bearing", "temperature_housing_outer")
+
+
+def check_isothermal_viscosity(config, fields, curves, temperature_k):
+    """Isothermal analogue of check_layer_viscosity: mu = rho(T) nu(c, T) at the fixed T.
+
+    Gas-off only (film_content = 1, no free gas). Returns the maximum relative mismatch.
+    """
+    if np.any(np.abs(fields["T"]-temperature_k) > 1e-9):
+        raise ValueError("isothermal temperature field differs from the configured temperature")
+    if np.max(fields["alpha_gas"]) > 1e-10:
+        raise ValueError("isothermal viscosity check supports gas-free films only")
+    temperature_c = temperature_k-273.15
+    density = float(config["density_temperature_intercept"])+float(config["density_temperature_slope"])*temperature_c
+    expected = np.array([density*curve_value(curves, float(c), temperature_c, True)*1e-6 for c in fields["dissolved_gas"]])
+    mismatch = float(np.max(np.abs(fields["mu"]-expected)/expected))
+    if mismatch >= float(config["coupling_tolerance"]):
+        raise ValueError("isothermal viscosity mismatch exceeds requested tolerance")
+    return mismatch
 
 
 def validate_relaxed_coupling(value):
@@ -455,6 +476,15 @@ class Campaign(driver.Campaign):
         # Dissolved refrigerant at the initial field, both axial ends and the groove feed.
         self.composition = validate_composition(
             self.setup.get("refrigerant_mass_fraction", DEFAULT_REFRIGERANT_MASS_FRACTION))
+        # Optional isothermal film (onset chart): no energy, cross-film or cooling closure.
+        self.isothermal = self.setup.get("isothermal")
+        if self.isothermal is not None:
+            temperature = float(self.isothermal["temperature_K"])
+            if not 200 <= temperature <= 500:
+                raise ValueError("isothermal temperature outside R410A EOS range")
+            for key in self.setup["case_ids"]:
+                if self.cases[key]["tc0_boundary_temperature_k"] != temperature:
+                    raise ValueError("isothermal temperature must equal the case TC0 temperature")
         self.driver_hash = driver.sha256(__file__)
         manifest = self.experiment_path.parent / "manifest.json"
         for name, digest in json.loads(manifest.read_text()).items():
@@ -496,6 +526,12 @@ class Campaign(driver.Campaign):
         values["output_fields"] += ",pressure_force_z,dissolved_gas,alpha_gas,gas_mass_transfer," + ",".join(
             name for layer in range(int(values["cross_film_layers"]))
             for name in (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}"))
+        if self.isothermal is not None:
+            values.update(temperature_model="ISOTHERMAL", temperature_initial=float(self.isothermal["temperature_K"]),
+                          cross_film_thermal_model="NONE", bush_thermal_model="LOCAL",
+                          coupled_fbns_initialization="false")
+            values["output_fields"] = ",".join(name for name in values["output_fields"].split(",")
+                                               if name not in ISOTHERMAL_OMITTED_FIELDS and not name.startswith("cross_film_"))
         return "# Matched conditional native COUPLED branch: " + self.branch + "\n" + "\n".join(
             f"{key} = {value}" for key, value in values.items()) + "\n"
 
@@ -531,8 +567,9 @@ class Campaign(driver.Campaign):
         if summary["energy_scale_W"] < 0 or energy >= tolerance:
             raise ValueError("native COUPLED energy balance exceeds requested tolerance")
         fields = driver.read_fields(run_dir)
-        required = ("p", "film_content", "h", "T", "T_bearing", "T_journal", "mu", "q_bearing",
-                    "q_journal", "friction_torque", "dissolved_gas", "alpha_gas", "temperature_housing_outer")
+        thermal = self.isothermal is None
+        required = ("p", "film_content", "h", "T", "mu", "friction_torque", "dissolved_gas", "alpha_gas") + (
+            ("T_bearing", "T_journal", "q_bearing", "q_journal", "temperature_housing_outer") if thermal else ())
         for key in required:
             if key not in fields or not len(fields[key]) or not np.isfinite(fields[key]).all():
                 raise ValueError(f"missing or nonfinite {key} field")
@@ -545,10 +582,13 @@ class Campaign(driver.Campaign):
         check_film_fractions(config, fields)
         if self.branch == "gas_off" and np.max(fields["alpha_gas"]) > 1e-10:
             raise ValueError("matched gas-off contains released free gas")
-        check_layer_eos(config, fields)
         # Evaporation may cool below supply temperature; require actual property domains.
         curves, saturation = property_curves(self.table_path)
-        viscosity_mismatch = check_layer_viscosity(config, fields, curves)
+        if thermal:
+            check_layer_eos(config, fields)
+            viscosity_mismatch = check_layer_viscosity(config, fields, curves)
+        else:
+            viscosity_mismatch = check_isothermal_viscosity(config, fields, curves, float(self.isothermal["temperature_K"]))
         bubble_slack = bubble_tolerance(config)
         for concentration, temperature, pressure, alpha in zip(
                 fields["dissolved_gas"], fields["T"]-273.15, fields["p"], fields["alpha_gas"]):
@@ -579,30 +619,43 @@ class Campaign(driver.Campaign):
         if not np.allclose(fields["friction_torque"], torque, rtol=1e-9, atol=1e-12):
             raise ValueError("inconsistent integrated torque")
         diagnostic = driver.last_diagnostic(run_dir)
-        profile_min = float(diagnostic["cross_film_profile_t_min_K"])
-        profile_max = float(diagnostic["cross_film_profile_t_max_K"])
-        if not math.isfinite(profile_min) or not math.isfinite(profile_max) or profile_min > profile_max:
-            raise ValueError("invalid cross-film profile temperature envelope")
+        if thermal:
+            profile_min = float(diagnostic["cross_film_profile_t_min_K"])
+            profile_max = float(diagnostic["cross_film_profile_t_max_K"])
+            if not math.isfinite(profile_min) or not math.isfinite(profile_max) or profile_min > profile_max:
+                raise ValueError("invalid cross-film profile temperature envelope")
+            walls = {"T_bore_min_K": float(np.min(fields["T_bearing"])),
+                     "T_bore_mean_K": float(np.mean(fields["T_bearing"])),
+                     "T_bore_max_K": float(np.max(fields["T_bearing"])),
+                     "T_outer_mean_K": float(np.mean(fields["temperature_housing_outer"])),
+                     "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
+                     "cross_film_profile_t_min_K": profile_min, "cross_film_profile_t_max_K": profile_max}
+        else:
+            walls = {"isothermal_temperature_K": float(self.isothermal["temperature_K"])}
         return {**driver.final_position(fields, float(config["c"])),
             "Fx_N": fx, "Fy_N": fy, "Fz_N": fz, "torque_Nm": torque,
             "raw_pressure_force_N": pressure_force.tolist(),
             "force_error_rel": force_error, "native_force_error_rel": summary["force_residual"],
             "h_min_m": float(np.min(fields["h"])), "mu_min_Pa_s": float(np.min(fields["mu"])),
             "p_min_Pa": float(np.min(fields["p"])), "p_max_Pa": float(np.max(fields["p"])),
-            "T_min_K": float(np.min(fields["T"])), "T_max_K": float(np.max(fields["T"])),
-            "T_bore_min_K": float(np.min(fields["T_bearing"])), "T_bore_mean_K": float(np.mean(fields["T_bearing"])),
-            "T_bore_max_K": float(np.max(fields["T_bearing"])),
-            "T_outer_mean_K": float(np.mean(fields["temperature_housing_outer"])),
-            "T_shaft_mean_K": float(np.mean(fields["T_journal"])),
+            "T_min_K": float(np.min(fields["T"])), "T_max_K": float(np.max(fields["T"])), **walls,
             "energy_balance_residual_rel": energy, "cross_film_profile_residual": summary["profile_residual"],
             "cross_film_viscosity_residual": viscosity_mismatch,
-            "cross_film_profile_t_min_K": profile_min, "cross_film_profile_t_max_K": profile_max,
             "oil_balance_rel": summary["oil_balance_rel"], "species_balance_rel": summary["species_balance_rel"],
             "alpha_gas_max": float(np.max(fields["alpha_gas"])), "alpha_gas_mean": float(np.mean(fields["alpha_gas"])),
             "dissolved_gas_min": float(np.min(fields["dissolved_gas"])),
             "dissolved_gas_max": float(np.max(fields["dissolved_gas"])),
             "pressure_acceptance": "native_COUPLED_pressure_species_volume_energy_force_profile_verified",
             "coupled_summary": summary, "diagnostics": diagnostic}
+
+    def evaluate(self, case, eps, psi, label, thermal_iterations=None):
+        """Isothermal: one load-balanced native solve with inert nominal h. Thermal: cooling closure."""
+        if self.isothermal is None:
+            return super().evaluate(case, eps, psi, label, thermal_iterations)
+        result = self.single(case, eps, psi, 60., 100., f"{label}_isothermal")
+        result["closure"] = "isothermal_load_balanced_no_cooling_loop"
+        driver.save_json(Path(result["run_dir"]) / "metrics.json", result)
+        return result
 
     def recheck(self, run_dir, record, case):
         if not self.matching_provenance(record):
@@ -676,7 +729,7 @@ def check_inputs(inputs, output):
             assert config["cavitation_model"] == "COUPLED"
             assert config["cavitated_film_model"] == "HOMOGENEOUS"
             assert config["steady_pressure_inner_only"] == "false"
-            assert config["coupled_fbns_initialization"] == "true"
+            assert config["coupled_fbns_initialization"] == ("false" if campaign.isothermal is not None else "true")
             assert float(config["coupled_nonlinear_tolerance"]) == 1e-8
             assert float(config["coupling_relaxation"]) == .3
             assert float(config["steady_position_fd_step"]) == .0001
@@ -684,7 +737,13 @@ def check_inputs(inputs, output):
             assert float(config["density_temperature_intercept"]) == 954.9
             assert float(config["density_temperature_slope"]) == -.7284
             output_fields = config["output_fields"].split(",")
-            assert all(name in output_fields for layer in range(int(config["cross_film_layers"]))
+            if campaign.isothermal is not None:
+                assert config["temperature_model"] == "ISOTHERMAL" and config["cross_film_thermal_model"] == "NONE"
+                assert float(config["temperature_initial"]) == case["tc0_boundary_temperature_k"]
+                assert not any(name.startswith("cross_film_") for name in output_fields)
+            else:
+                assert config["temperature_model"] == "ENERGY_EQUATION"
+            assert campaign.isothermal is not None or all(name in output_fields for layer in range(int(config["cross_film_layers"]))
                        for name in (f"cross_film_layer_{layer}", f"cross_film_inv_mu_{layer}"))
             assert config["solution_table_clamp"] == "false"
             assert config["solubility_model"] == "CURVE_TABLE"
@@ -735,20 +794,21 @@ def run_case(args):
         result = campaign.balance(case, *seed)
         run = Path(result["run_dir"])
         checked = campaign.recheck(run, result, case)
-        closed = campaign.find_completed(case, result["seed_eps"], result["seed_psi_deg"], closed=True)
+        isothermal = campaign.isothermal is not None
+        closed = campaign.find_completed(case, result["seed_eps"], result["seed_psi_deg"], closed=not isothermal)
         if checked is None or closed is None or Path(closed["run_dir"]) != run:
             raise ValueError("failed independent native and cooling closure recheck")
         config = parse_config((run / "config.txt").read_text())
         fields = driver.read_fields(run)
         if float(config["omega"])*result["torque_Nm"] <= 0:
             raise ValueError("integrated journal torque has inconsistent rotation sign")
-        observables = baseline.solid_observables(config, fields, .026)
+        observables = None if isothermal else baseline.solid_observables(config, fields, .026)
         np.savez_compressed(destination / "fields.npz", **fields)
         driver.save_json(destination / "accepted.json", dict(case=case["measured"], result=result,
             config=config, observables=observables, elapsed_seconds=time.monotonic()-started,
             worker_sha256=driver.sha256(__file__), fields_sha256=driver.sha256(destination / "fields.npz"),
             tight=args.tight, gas_branch=args.branch, cross_film_layers=args.layers,
-            status="accepted_conditional_native_coupled"))
+            status="accepted_conditional_native_coupled_isothermal" if isothermal else "accepted_conditional_native_coupled"))
     except Exception as error:
         driver.save_json(destination / "failure.json", dict(case=args.case, gas_branch=args.branch,
             error=str(error), elapsed_seconds=time.monotonic()-started, status="failed_preserved"))
