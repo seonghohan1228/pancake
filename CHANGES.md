@@ -2,8 +2,10 @@
 
 ## 2026-11-16 - Add onset-chart options to the 02f driver
 
-Branch `codex/cc-lge-onset-chart`, based on 5e26c55 (c = 0.274 campaign).
+Branch `lge-onset-chart`, based on 5e26c55 (c = 0.274 campaign).
 For the gaseous-cavitation onset chart (campaign `lge-onset-chart-20261116`).
+(Renamed 2026-11-16 from `codex/cc-lge-onset-chart`: the repository rule since 7dda4df names
+branches `<scope>` with no prefix. Commits unchanged.)
 
 - `run_gas.Campaign` reads an optional setup key `isothermal`
   (`{"temperature_K": T}`, T must equal the case TC0). With it the config uses
@@ -31,7 +33,7 @@ For the gaseous-cavitation onset chart (campaign `lge-onset-chart-20261116`).
 
 ## 2026-11-14 - Make the 02f refrigerant mass fraction a parameter
 
-Branch `codex/cc-lge-mix-c274`, based on 57b0b32 (the source of the accepted
+Branch `lge-mix-c274`, based on 57b0b32 (the source of the accepted
 lge-thermal-v2-20261029 X runs; the COUPLED 02f driver is not on `main`).
 
 - The dissolved R410A mass fraction was hard-coded as 0.30 in `run_gas.py`

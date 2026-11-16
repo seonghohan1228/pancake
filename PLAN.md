@@ -249,14 +249,14 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
-### LGE gaseous-cavitation onset chart (`codex/cc-lge-onset-chart`) - started 2026-11-16
+### LGE gaseous-cavitation onset chart (`lge-onset-chart`) - started 2026-11-16
 
 - [x] Isothermal option and chamber-pressure override in the 02f driver/inputs; neutral check.
 - [ ] Plan B (gas on, thermal): B1-B4 = X3/X4 at 14.6/12.6/19.0/24.0 bar, on afml-r6.
 - [ ] Plan A (gas off, isothermal 24.4 C, 200 bar): G1-G9; G4/G5 and G4/G9 agree within 1 %.
 - [ ] Report Phi(S), plan B gas/no-gas against the chart (`lge-onset-chart-20261116`).
 
-### LGE mixture rerun at c = 0.274 (`codex/cc-lge-mix-c274`) - started 2026-11-14
+### LGE mixture rerun at c = 0.274 (`lge-mix-c274`) - started 2026-11-14
 
 - [x] Parameterize the 02f composition (default 0.30), neutral config check.
 - [x] Confirm unclamped nu(c,T) and strict bubble-pressure support at 0.274.
