@@ -252,8 +252,9 @@ Priority queue (user gates in brackets):
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
 
 - [x] Driver-side load balance for FBNS STATIC solves (02g).
-- [ ] P4v: viscosity for the accepted X4 h_min; torque within 5 % of accepted.
-- [ ] P4g, P5v, P5g; report torque and h_min change caused by gas.
+- [x] P4v: mu 0.011134 Pa s gives the accepted X4 h_min; torque -0.06 % vs accepted (2026-11-17).
+- [x] P4g, P5v, P5g accepted. Gas effect: X4 torque -1.09 %, h_min +1.65 %; X5 torque -8.10 %,
+      h_min +9.73 %. No free gas forms (cavity at uniform p_sat).
 
 ### LGE gaseous-cavitation onset chart (`lge-onset-chart`) - started 2026-11-16
 
