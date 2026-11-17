@@ -249,6 +249,12 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
+
+- [x] Driver-side load balance for FBNS STATIC solves (02g).
+- [ ] P4v: viscosity for the accepted X4 h_min; torque within 5 % of accepted.
+- [ ] P4g, P5v, P5g; report torque and h_min change caused by gas.
+
 ### LGE gaseous-cavitation onset chart (`lge-onset-chart`) - started 2026-11-16
 
 - [x] Isothermal option and chamber-pressure override in the 02f driver/inputs; neutral check.

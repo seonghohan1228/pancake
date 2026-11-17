@@ -1,5 +1,19 @@
 # Change Log
 
+## 2026-11-17 - Add FBNS tester gas-effect driver (02g)
+
+Branch `lge-fbns-tester`, from `lge-onset-chart` (4f3d466). Campaign `lge-fbns-tester-20261117`.
+
+- New `cases/02g_lge_fbns_tester/run_fbns.py`: FBNS pairs (VC only vs GC+VC LOCAL_PSAT) at
+  the X4/X5 500 RPM tester conditions, isothermal as on the optical rig. Driver-side load
+  balance (Newton over STATIC solves, 0.1 % / 0.1 deg); the VC run sets the pair viscosity
+  so its h_min equals the accepted COUPLED gas-off h_min.
+- Reason: the deck describes one model for both rigs; FBNS has no native load balance or
+  conduction thermal model with dissolved gas (step 1 report), so only the change caused
+  by gas is taken from FBNS. No solver change.
+- Stand-ins: PROPANE as gas species (R410A is COUPLED-only) and chart clamp on; both are
+  recorded as inert per run when no free gas forms.
+
 ## 2026-11-16 - Add onset-chart options to the 02f driver
 
 Branch `lge-onset-chart`, based on 5e26c55 (c = 0.274 campaign).
