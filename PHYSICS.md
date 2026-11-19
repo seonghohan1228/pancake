@@ -1207,6 +1207,37 @@ The only difference from an uninterrupted run is the first step's Jacobian,
 which is probed again, so the continued states agree to within the coupling
 tolerance.
 
+### 12.4 Turning inlets (`inlet_rotation_speed`, 2026-11-19)
+
+Every `inlet_circular` and `inlet_groove` can turn about the bearing axis at
+one rate $\Omega_I$ = `inlet_rotation_speed` [rad/s], separate from the shaft
+speed and the load:
+
+$$\theta_k(t) = \theta_k(0) + \Omega_I\,t.$$
+
+The default 0 keeps the inlets fixed in the mesh frame, as before. In a
+`TRANSIENT` step the inlets are placed at the target time $t_{n+1}$ before the
+film geometry is updated, and every trial solve of the implicit motion coupling
+in that step uses that position. The `inlet_indicator` field (read by the
+property and gas-transport updates) is refreshed with the geometry.
+
+**Mass.** Inlet cells are pressure reservoirs: $p = p_{supply}$, $\theta = 1$.
+Their net outflow, storage included, is the inlet mass source of the liquid
+balance (`inlet_mass_source` in `diagnostics.csv`). When a cell enters the
+inlet, its film content jumps to 1; the liquid that fills it,
+$(\rho h)(1-\theta^n)A/\Delta t$, appears in that cell's storage term and is
+supplied by the reservoir, so it is counted in the inlet flow. When a cell
+leaves the inlet, it keeps $\theta^n = 1$ as its old inventory and becomes an
+ordinary cell; its liquid then moves with the film. No liquid is created or
+lost by the motion of the inlet itself, and the global liquid balance closes
+without extra terms. The inlet edge moves $\Omega_I\Delta t$ per step; a
+circular inlet should span several cells per step at most for its boundary flow
+to be resolved.
+
+Use: the bearing of a crank pin seen from the orbiting part (pin and its feed
+hole turning, bearing at rest), with a turning load (`load_model = TABLE` or
+`ROTATING`). `COUPLED` cavitation is not supported.
+
 ---
 
 ## 13. Thermal and ETHD Model

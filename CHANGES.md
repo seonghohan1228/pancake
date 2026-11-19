@@ -26,6 +26,9 @@ Branch `lge-compressor-transient`, from `lge-fbns-tester` (0f5c193). Campaign
   time table, constant equivalence, rotating direction, implicit step = closed-form backward
   Euler, analytic step response, stiff-film stability); `test_config_keys` enum values.
 - New case `cases/02h_lge_compressor_transient` (Part A checks, Part B OS-bearing driver).
+- `inlet_rotation_speed` (Part C): all inlets turn at one rate in TRANSIENT runs; inlet cells stay
+  reservoirs, so mass is kept when cells enter or leave an inlet (PHYSICS.md 12.4). `part_c.py`
+  repeats Part B in the frame of the orbiting scroll (pin, hole and load turning) as the check.
 
 ## 2026-11-17 - Add FBNS tester gas-effect driver (02g)
 

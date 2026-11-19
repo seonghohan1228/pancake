@@ -259,7 +259,10 @@ Priority queue (user gates in brackets):
 - [x] Part B on afml-r6 (2026-11-19): B0 h_min 1.89/1.69/1.62 um; B1 drift < 1e-5; B2 repeats after
       3 revolutions, half dt -0.06 %; cycle h_min 1.64-1.76 um, torque 0.0749-0.0784 N m; the bubble
       region never reaches the hole (0.35 mm liquid ring, grid-scale).
-- [ ] Part C: moving inlet (after Part B is reported).
+- [x] Part C (2026-11-19): `inlet_rotation_speed`; Part B repeated in the OS frame: h_min +1.87 %,
+      torque (dissipation) -0.46 %, liquid residual <= 8.7e-8.
+- [ ] Feed-pressure sensitivity (+0.3 bar is the prompt's unconfirmed estimate; the bubble-to-hole
+      distance scales with it): rerun B0/B2 at the confirmed feed pressure and at shell pressure.
 
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
 

@@ -114,6 +114,26 @@ the hole edge at all crank angles, and the void in the cells around the hole is 
 film narrows the h_min swing (1.64-1.76 um) against the steady values at the same loads
 (1.62-1.89 um) and delays the thinnest film to about 100 deg after the peak load.
 
+### Part C: turning inlet, Part B repeated in the OS frame (part_c/summary.json)
+
+Frame: non-rotating, with the pin centre fixed. OS bore at rest, pin turning at +omega, hole and
+load turning with the crank (`inlet_rotation_speed` = omega, TABLE load with direction
+-90 deg + crank angle). Started from the Part B state at the start of its accepted revolution;
+2 revolutions.
+
+| Cycle quantity | Part B (crank frame) | Part C (OS frame) | Difference | Pass (< 2 %) |
+|---|---|---|---|---|
+| h_min minimum [um] | 1.6406 | 1.6713 | +1.87 % | yes |
+| Torque, dissipation / omega [N m] | 0.07738 | 0.07703 | -0.46 % | yes |
+| Raw solver torque (rotating surface) [N m] | 0.07734 (OS bore) | 0.04399 (pin) | -43 % | not comparable |
+| Mean eps | 0.94375 | 0.94264 | -0.12 % | |
+
+Liquid balance residual <= 8.7e-8 per step with the hole moving half a cell per step.
+The h_min difference is a 0.12 % difference in eps (33 nm). In Part C the whole pattern moves
+through the mesh at 0.25 deg per step, so its time-discretization error is larger than in Part B,
+where the pattern is nearly stationary; a half-dt Part C run would show which way it converges
+(not run).
+
 Limits: no case before this checked a time-varying load; the Part A checks and B1a, B2a-c are the
 only evidence. GC is instant release and re-dissolution at one uniform pressure. Isothermal, no
 asperity contact, no shaft tilt, fictitious frame forces dropped. The 0.35 mm ring is grid-scale

@@ -465,6 +465,11 @@ dt < 2 m / C_squeeze. Requires `motion_time_method = EULER_IMPLICIT`; controls
 `results/final_state.dat`, which `steady_initial_state_file` reads back to
 restart (PHYSICS.md 12.3).
 
+`inlet_rotation_speed` [rad/s] turns every inlet about the axis in a TRANSIENT
+run (default 0: fixed in the mesh frame; PHYSICS.md 12.4). Inlet cells stay
+pressure reservoirs, so cells entering or leaving an inlet keep the liquid
+balance closed.
+
 Convection face interpolation is selectable per transported variable with
 `theta_convection_scheme`, `thermal_convection_scheme`, and
 `gas_convection_scheme` (`UPWIND` default; `LINEAR` — 2nd-order central, unbounded;
