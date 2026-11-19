@@ -69,6 +69,53 @@ that turns with the crank:
 | Oil | FW68D + R410A saturated at the shell pressure, 70 C | Seongho |
 | Model | FBNS, LOCAL_PSAT, SINGLE_PHASE, isothermal, constant mu and rho | prompt |
 
-## Results
+## Results (campaign `lge-compressor-transient-20261119-02a4b6c`, D:/Seongho/Sim/pancake)
 
-Filled from the campaign `summary.json` after the runs.
+### Part A checks (plain bearing, 180 x 48, W = 1000 N, part_a/part_a_summary.json)
+
+| Check | Result | Pass |
+|---|---|---|
+| Rotating load at +omega vs static (eps) | 0.84008 vs 0.84224 (-0.26 %) | < 1 % |
+| Same, journal torque vs static bearing torque T_j - W e sin(phi) | 0.02972 vs 0.03000 N m (-0.93 %); vs static journal torque -31.7 % | < 1 % |
+| Same, attitude from load | +147.31 vs -147.63 deg (mirrored) | within 1 deg |
+| IMPLICIT vs EXPLICIT, m = 10 kg, dt = 2 us, 1000 steps | position 0.21 %, torque 0.27 % | < 0.5 % |
+| m = 0.686 kg, dt = 20 us (10 x explicit limit), 40 ms | IMPLICIT settles at the static point (eps 3e-5); EXPLICIT diverges at step 364 | yes |
+
+### Part B (GC+VC, 720 x 192, 0.25 deg per step)
+
+Steady (B0):
+
+| Load [N] | eps | h_min [um] | Torque [N m] | p_max [bar] | Cavitated area |
+|---|---|---|---|---|---|
+| 3,024 | 0.9370 | 1.891 | 0.0726 | 373 | 0.57 |
+| 3,450 | 0.9437 | 1.688 | 0.0773 | 439 | 0.57 |
+| 3,604 | 0.9458 | 1.625 | 0.0790 | 464 | 0.57 |
+
+Effective p_cav = p_sat(c_feed, 70 C) = 24.517 bar = end pressure; no margin was needed.
+
+Transient: B1 drift <= 6.1e-6 (eps), 0.0014 deg (attitude) per revolution at 1, 0.5 and 0.25 deg
+per step. B2 repeats after 3 revolutions. Half dt: cycle-minimum h_min -0.06 %, mean torque +0.03 %.
+Film force minus load: 49.6 N (1.4 %) at most, at the 180 deg load jump (OS inertia).
+
+| Last revolution | min | mean | max |
+|---|---|---|---|
+| h_min [um] | 1.641 (at 105 deg crank) | 1.688 | 1.762 |
+| Torque [N m] | 0.0749 | 0.0773 | 0.0784 |
+| Friction power [W] | 61.2 | 63.2 | 64.0 |
+| p_max [bar] | | 440 | 461 |
+| Cavitated area | 0.569 | 0.571 | 0.572 |
+| Hole mass flow [g/s] | 1.207 | 1.217 | 1.220 |
+
+Bubble region (void >= 0.5), angles in the direction the OS bore moves relative to the pin: it
+starts 20 deg after the thinnest film and ends 263 deg after it, at every crank angle. Measured
+from the hole it runs from -140 to +102-103 deg, so it wraps around the hole at other axial
+positions, but it never reaches the hole: a liquid ring of 0.35 mm (about 4 cells) remains around
+the hole edge at all crank angles, and the void in the cells around the hole is 0. The squeeze
+film narrows the h_min swing (1.64-1.76 um) against the steady values at the same loads
+(1.62-1.89 um) and delays the thinnest film to about 100 deg after the peak load.
+
+Limits: no case before this checked a time-varying load; the Part A checks and B1a, B2a-c are the
+only evidence. GC is instant release and re-dissolution at one uniform pressure. Isothermal, no
+asperity contact, no shaft tilt, fictitious frame forces dropped. The 0.35 mm ring is grid-scale
+(no grid check). Hole position and angle, feed pressure, no bush, the load direction and the
+saturated oil state (a flood-back condition) are assumptions until LGE confirms them.

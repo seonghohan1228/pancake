@@ -253,9 +253,12 @@ Priority queue (user gates in brackets):
 
 - [x] Part A: `load_model` CONSTANT / ROTATING / TABLE, `motion_coupling = IMPLICIT`, `motion.csv`,
       `final_state.dat` restart; unit tests in `test_journal_motion`.
-- [ ] Part A solver checks (`cases/02h_lge_compressor_transient/part_a_checks.py`): rotating load,
-      implicit vs explicit, stiff film.
-- [ ] Part B on afml-r6: B0 steady (3 loads), B1 constant-load transient, B2 table transient (GC+VC).
+- [x] Part A solver checks (`cases/02h_lge_compressor_transient/part_a_checks.py`): rotating load
+      eps -0.26 %, torque -0.93 % vs static bearing torque; implicit vs explicit 0.21 %; stiff film
+      stable at 10x the explicit limit (2026-11-19).
+- [x] Part B on afml-r6 (2026-11-19): B0 h_min 1.89/1.69/1.62 um; B1 drift < 1e-5; B2 repeats after
+      3 revolutions, half dt -0.06 %; cycle h_min 1.64-1.76 um, torque 0.0749-0.0784 N m; the bubble
+      region never reaches the hole (0.35 mm liquid ring, grid-scale).
 - [ ] Part C: moving inlet (after Part B is reported).
 
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17

@@ -53,15 +53,15 @@ def main():
     points = sorted((steady[k]["load_N"], steady[k]["h_min_um"]) for k in steady)
     quasi = np.interp(load, [p[0] for p in points], [p[1] for p in points])
     axes[1].lines[0].set_label("transient")
-    axes[1].plot(crank, quasi, color=SERIES_2, lw=1.6, label="steady at the same load")
-    axes[1].legend(frameon=False, loc="lower right", fontsize=8, ncol=2)
+    axes[1].plot(crank, quasi, color=SERIES_2, lw=1.6, label="steady at the same load (3 B0 points, linear)")
+    axes[1].legend(frameon=False, loc="lower left", bbox_to_anchor=(0, 0.98), fontsize=8, ncol=2)
     ax = axes[3]
     start, end = column("bubble_start_from_hole_deg"), column("bubble_end_from_hole_deg")
     ax.plot(angle, start, color=SERIES_1, lw=1.6, marker="o", ms=3, label="bubble start")
     ax.plot(angle, end, color=SERIES_2, lw=1.6, marker="o", ms=3, label="bubble end")
     ax.axhline(0, color=INK_2, lw=0.8, ls="--")
     ax.set_ylabel("Bubble edge from\nhole [deg]")
-    ax.legend(frameon=False, loc="upper right", fontsize=8, ncol=2)
+    ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, 0.98), fontsize=8, ncol=2)
     ax = axes[4]
     ax.plot(angle, column("bubble_gap_to_hole_edge_mm"), color=SERIES_1, lw=1.6, marker="o", ms=3)
     ax.axhline(0, color=INK_2, lw=0.8, ls="--")
