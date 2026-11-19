@@ -154,6 +154,10 @@ void update_film_geometry(Fields& fields, const Mesh& mesh,
     }
     if (cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM) fields["dh_dt"].fill(0.0);
     JournalMotion::write_state_fields(fields, bearing_state, cfg, time);
+    // Turning inlets move through the mesh: refresh the indicator the property and
+    // gas-transport updates read.
+    if (cfg.inlet_rotation_speed != 0.0 && fields.has("inlet_indicator"))
+        FilmThickness::compute_inlet_indicator(fields["inlet_indicator"], mesh, cfg);
 }
 
 // One row of motion.csv: the bearing state, the load and the film summary of a
@@ -409,6 +413,11 @@ int main(int argc, char** argv) {
             output_time = cfg.write_interval;
         }
 
+        // Inlet angles at t = 0; with inlet_rotation_speed the inlets are placed
+        // at the target time of each step (both cfg and step_cfg carry them).
+        std::vector<double> inlet_theta_start;
+        for (const auto& inlet : cfg.inlets) inlet_theta_start.push_back(inlet.theta);
+
         // Time loop
         while (steady_state ? (step == 0) : (t < cfg.end_t)) {
             SimulationConfig step_cfg = cfg;
@@ -418,6 +427,8 @@ int main(int argc, char** argv) {
                 step_cfg.dt = remaining <= cfg.dt + time_roundoff ? remaining : cfg.dt;
                 t = step_cfg.dt == remaining ? cfg.end_t : t + step_cfg.dt;
                 ++step;
+                cfg.place_inlets(inlet_theta_start, t);
+                step_cfg.place_inlets(inlet_theta_start, t);
                 if (implicit_motion) {
                     motion_snapshot.capture(fields);
                     bearing_state = implicit_coupling.begin_step(bearing_state, step_cfg.dt, t);

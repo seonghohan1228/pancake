@@ -1098,6 +1098,10 @@ struct SimulationConfig {
     int motion_coupling_max_iters = 30;       // film solves per step, probes included
     double motion_coupling_fd_step = 1e-5;    // Jacobian probe / clearance
     double motion_coupling_step_limit = 0.05; // largest Newton correction / clearance
+    // Inlet rotation (TRANSIENT): every inlet_circular / inlet_groove turns at this
+    // rate about the bearing axis, theta_k(t) = theta_k(0) + rate t [rad/s]. 0 keeps
+    // the inlets fixed in the mesh frame (historical behaviour).
+    double inlet_rotation_speed = 0.0;
     double min_film_thickness = 1e-9;
     bool stop_on_nonpositive_film = true;
 
@@ -1461,6 +1465,7 @@ struct SimulationConfig {
             else if (key == "motion_coupling_max_iters") motion_coupling_max_iters = std::stoi(value);
             else if (key == "motion_coupling_fd_step") motion_coupling_fd_step = std::stod(value);
             else if (key == "motion_coupling_step_limit") motion_coupling_step_limit = std::stod(value);
+            else if (key == "inlet_rotation_speed") inlet_rotation_speed = std::stod(value);
             else if (key == "min_film_thickness") min_film_thickness = std::stod(value);
             else if (key == "stop_on_nonpositive_film") {
                 if (is_true(value)) stop_on_nonpositive_film = true;
@@ -1901,6 +1906,11 @@ struct SimulationConfig {
             if (load_table_abscissa == LoadTableAbscissa::PHASE_DEG && (!finite(load_frequency) || load_frequency <= 0.0))
                 error("PHASE_DEG load table requires load_frequency > 0 [Hz].");
         }
+        if (!finite(inlet_rotation_speed)) error("inlet_rotation_speed must be finite.");
+        if (inlet_rotation_speed != 0.0 && solution_mode != SolutionMode::TRANSIENT)
+            error("inlet_rotation_speed != 0 requires TRANSIENT.");
+        if (inlet_rotation_speed != 0.0 && cavitation_model == CavitationModel::COUPLED)
+            error("inlet_rotation_speed != 0 is not implemented for COUPLED cavitation.");
         if (motion_coupling == MotionCoupling::IMPLICIT) {
             if (motion_model != MotionModel::MOVING_BEARING || solution_mode != SolutionMode::TRANSIENT)
                 error("motion_coupling = IMPLICIT requires motion_model = MOVING_BEARING and TRANSIENT.");
@@ -2595,6 +2605,15 @@ struct SimulationConfig {
         return std::max(pressure_value, effective_p_cav());
     }
 
+    /// Place every inlet at time t for inlet_rotation_speed:
+    /// theta_k(t) = theta_start_deg[k] + rate t (degrees). No-op when the rate is 0.
+    void place_inlets(const std::vector<double>& theta_start_deg, double time) {
+        if (inlet_rotation_speed == 0.0) return;
+        const double turn_deg = inlet_rotation_speed * time * 180.0 / 3.14159265358979323846;
+        for (std::size_t k = 0; k < inlets.size() && k < theta_start_deg.size(); ++k)
+            inlets[k].theta = theta_start_deg[k] + turn_deg;
+    }
+
     /// True when the FBNS state is fully described by pressure, film content and
     /// temperature: SINGLE_PHASE without gas pressure coupling, and either a
     /// scalar p_cav without dissolved gas or the uniform bubble-point floor
@@ -2951,6 +2970,8 @@ struct SimulationConfig {
             << "motion_coupling_max_iters = " << motion_coupling_max_iters << "\n"
             << "motion_coupling_fd_step = " << motion_coupling_fd_step << "\n"
             << "motion_coupling_step_limit = " << motion_coupling_step_limit << "\n"
+            << "# inlet_rotation_speed [rad/s]: all inlets turn about the axis (0 = fixed)\n"
+            << "inlet_rotation_speed = " << inlet_rotation_speed << "\n"
             << "min_film_thickness = " << min_film_thickness << "\n"
             << "stop_on_nonpositive_film = " << (stop_on_nonpositive_film ? "true" : "false") << "\n\n";
 
@@ -3118,7 +3139,7 @@ struct SimulationConfig {
             "load_phase_offset_deg", "load_table_angle_offset_deg", "load_table_scale",
             "motion_coupling", "motion_coupling_tolerance", "motion_coupling_position_tolerance",
             "motion_coupling_max_iters",
-            "motion_coupling_fd_step", "motion_coupling_step_limit",
+            "motion_coupling_fd_step", "motion_coupling_step_limit", "inlet_rotation_speed",
             "min_film_thickness", "stop_on_nonpositive_film", "bc_z_south_type",
             "bc_z_south_val", "bc_z_south_theta", "bc_z_south_thermal",
             "bc_z_north_type", "bc_z_north_val", "bc_z_north_theta",

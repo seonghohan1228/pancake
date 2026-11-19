@@ -325,6 +325,41 @@ static void test_implicit_coupling_stiff_film_is_stable() {
           "the lagged explicit coupling is expected to diverge at this dt (the reason for IMPLICIT)");
 }
 
+
+static void test_inlet_rotation() {
+    SimulationConfig cfg;
+    cfg.n_theta_global = 360;
+    cfg.n_z_global = 10;
+    cfg.R = 0.01;
+    cfg.L = 0.02;
+    InletConfig hole;
+    hole.type = InletConfig::Type::CIRCULAR;
+    hole.theta = 270.0;
+    hole.z = 0.01;
+    hole.size = 1.2e-3;
+    hole.p_supply = 2e5;
+    cfg.inlets.push_back(hole);
+    const std::vector<double> start{270.0};
+    cfg.inlet_rotation_speed = 0.0;
+    cfg.place_inlets(start, 1.0);
+    check(cfg.inlets[0].theta == 270.0, "zero inlet_rotation_speed must leave the inlet in place");
+    cfg.inlet_rotation_speed = M_PI;   // half a turn per second
+    cfg.place_inlets(start, 0.5);      // +90 deg -> 360 deg
+    check(near(std::remainder(cfg.inlets[0].theta, 360.0), 0.0, 1e-9), "inlet must turn at inlet_rotation_speed");
+    Mesh mesh(cfg);
+    // Cells at 0.5 deg and 359.5 deg straddle the wrapped centre; z centre row j = 4 or 5.
+    int found = 0;
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        const double angle = (mesh.offset_theta + i + 0.5) * 360.0 / cfg.n_theta_global;
+        if (mesh.inlet_at(cfg, i, 4)) {
+            check(angle < 8.0 || angle > 352.0, "turned inlet must cover only cells near 0 deg");
+            ++found;
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &found, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    check(found >= 2, "turned inlet must wrap across 360 deg");
+}
+
 int main(int argc, char** argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
 
@@ -337,6 +372,7 @@ int main(int argc, char** argv) {
     test_rotating_load_direction();
     test_implicit_coupling_linear_film();
     test_implicit_coupling_stiff_film_is_stable();
+    test_inlet_rotation();
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
