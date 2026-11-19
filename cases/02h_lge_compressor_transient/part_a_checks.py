@@ -8,7 +8,7 @@ OS-bearing geometry and speed on a coarse 180 x 48 grid. Stages:
              the static BEARING torque T_j - W e sin(phi) (the rotating surface swaps, see README).
   agree      constant load from an off-equilibrium start, mass 10 kg, dt = 2 us:
              EXPLICIT and IMPLICIT trajectories agree within 0.5 %
-  stiff      real mass 0.686 kg, dt = 20 us (above the explicit limit 2m/c):
+  stiff      real mass 0.686 kg, dt = 20 us (above the explicit limit 2m/c), 40 ms:
              IMPLICIT settles at the static equilibrium; EXPLICIT is run and expected to fail
 
 Usage: python part_a_checks.py --work DIR --solver EXE [--ranks 4 --mpi mpiexec] [--stages ...]
@@ -137,7 +137,7 @@ def agree_stage(args, static):
 
 
 def stiff_stage(args, static):
-    dt, end_t = 2e-5, 1e-2
+    dt, end_t = 2e-5, 4e-2
     psi0 = static["attitude_deg"] - 40.0
     rec_i, mot_i = transient(args.work / "stiff_implicit", args, "IMPLICIT", 0.686, dt, end_t, 0.3, psi0)
     rec_e, mot_e = transient(args.work / "stiff_explicit", args, "EXPLICIT", 0.686, dt, end_t, 0.3, psi0)
