@@ -249,6 +249,15 @@ Priority queue (user gates in brackets):
 
 ## In Progress
 
+### LGE compressor OS bearing, 130 Hz transient (`lge-compressor-transient`) - started 2026-11-19
+
+- [x] Part A: `load_model` CONSTANT / ROTATING / TABLE, `motion_coupling = IMPLICIT`, `motion.csv`,
+      `final_state.dat` restart; unit tests in `test_journal_motion`.
+- [ ] Part A solver checks (`cases/02h_lge_compressor_transient/part_a_checks.py`): rotating load,
+      implicit vs explicit, stiff film.
+- [ ] Part B on afml-r6: B0 steady (3 loads), B1 constant-load transient, B2 table transient (GC+VC).
+- [ ] Part C: moving inlet (after Part B is reported).
+
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
 
 - [x] Driver-side load balance for FBNS STATIC solves (02g).

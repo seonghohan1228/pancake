@@ -1063,6 +1063,150 @@ the mixed implicit/explicit trapezoidal update; the parser still accepts older
 `RK2`/`RK4` aliases for compatibility, but the GUI and default config no longer
 advertise them as pressure or thermal methods.
 
+### 12.1 Time-dependent external load (`load_model`, 2026-11-19)
+
+The external load $\mathbf{W}(t)$ on the moving bearing has three options. In
+every one, `external_load_z` is added unchanged.
+
+| `load_model` | $\mathbf{W}(t)$ in the plane |
+|---|---|
+| `CONSTANT` (default) | $(W_x, W_y)$ = `external_load_x`, `external_load_y` |
+| `ROTATING` | $W_0\,(\cos\beta(t), \sin\beta(t))$, $\beta(t) = \beta_0 + \Omega_W t$ |
+| `TABLE` | linear interpolation of tabulated rows in phase or time |
+
+`ROTATING` takes `load_magnitude` $W_0$ [N], `load_rotation_start_deg` $\beta_0$
+and `load_rotation_speed` $\Omega_W$ [rad/s]. The rotation speed is a single
+constant; a direction that changes in any other way is a table.
+
+`TABLE` reads `load_table_file` (CSV or blank-separated). Each row holds the
+abscissa and two ordinates: magnitude and direction in degrees
+(`load_table_format = POLAR`) or the $x$ and $y$ parts (`CARTESIAN`). Rows are
+multiplied by `load_table_scale` and rotated by `load_table_angle_offset_deg`,
+then stored as Cartesian parts. Interpolating the Cartesian parts keeps a
+direction that crosses $360^\circ$ continuous; interpolating the raw angle
+would swing through $180^\circ$. With `load_table_abscissa = PHASE_DEG` the
+table is periodic. The phase is
+
+$$\varphi(t) = \left(\varphi_0 + 360\,f_W\,t\right) \bmod 360,$$
+
+with $f_W$ = `load_frequency` [Hz], the frequency of the load cycle. It is
+separate from the shaft speed. $\varphi_0$ is `load_phase_offset_deg`. Rows
+must lie in $[0, 360)$. The interval after the last row joins it to the first
+row plus $360^\circ$; a row at $360^\circ$ would duplicate the next cycle's
+$0^\circ$ and is rejected. With `TIME_S` the table is not periodic, and a time
+outside its range stops the run. Rows are interpolated as given: two rows
+$1^\circ$ apart with very different values form a jump over that $1^\circ$, with
+no smoothing. A single row is a constant load.
+
+The load at the current time is written to the `external_load_*` fields and to
+`motion.csv` (below).
+
+### 12.2 Implicit motion coupling (`motion_coupling = IMPLICIT`, 2026-11-19)
+
+**Why.** With the historical `EXPLICIT` coupling, the step from $t_n$ to
+$t_{n+1}$ advances the bearing with the film force of the previous step,
+$\mathbf{F}^n$. The film is the stiffest part of the system: it acts as a
+damper $C_f$ (squeeze) and a spring $K_f$ on the bearing, with
+$C_f \propto \mu R L^3/c^3 \cdot (1-\varepsilon^2)^{-3/2}$. Lagging a damper
+by one step is stable only for
+
+$$\Delta t < \frac{2 m}{C_f}.$$
+
+For the compressor OS bearing ($m$ = 0.686 kg, $C_f \approx 0.6$–$1.2\times10^6$
+N s/m at $\varepsilon$ = 0.90–0.94) the limit is about 1–2 µs, one order below
+the 5 µs of $0.25^\circ$ crank angle at 130 Hz. A tester start-up failed the
+same way at $\Delta t$ = 20 µs. `IMPLICIT` removes the limit.
+
+**Equations.** The bearing equation is integrated by backward Euler, with the
+film force taken at the end of the step:
+
+$$\mathbf{v}^{n+1} = \frac{\mathbf{x}^{n+1}-\mathbf{x}^n}{\Delta t},\qquad
+m\,\frac{\mathbf{v}^{n+1}-\mathbf{v}^n}{\Delta t}
+ + \mathsf{C}\,\mathbf{v}^{n+1} + \mathsf{K}\,\mathbf{x}^{n+1}
+ = \mathbf{F}(\mathbf{x}^{n+1}) + \mathbf{W}(t_{n+1}),$$
+
+where $\mathsf{C}$ and $\mathsf{K}$ are the optional support damping and
+stiffness (`bearing_damping_*`, `bearing_stiffness_*`). $\mathbf{F}(\mathbf{x})$
+is the film force from a full field solve at the gap of $\mathbf{x}$. The film
+storage term is the backward difference of the liquid inventory,
+$\left[\rho h\theta\right]^{n+1} - \left[\rho h\theta\right]^n$, with
+$h^{n+1} = h(\mathbf{x}^{n+1})$ and $h^n$ the stored gap of step $n$. The
+squeeze term is therefore part of $\mathbf{F}(\mathbf{x}^{n+1})$, and the
+motion and film use one consistent backward-Euler step. The in-plane residual
+
+$$\mathbf{R}(\mathbf{x}) = m\left[\frac{\mathbf{x}-\mathbf{x}^n}{\Delta t}-\mathbf{v}^n\right]\frac{1}{\Delta t}
+ + \mathsf{C}\frac{\mathbf{x}-\mathbf{x}^n}{\Delta t} + \mathsf{K}\mathbf{x}
+ - \mathbf{F}(\mathbf{x}) - \mathbf{W}(t_{n+1})$$
+
+is driven to zero by a quasi-Newton iteration (`JournalMotion::ImplicitCoupling`):
+
+1. Predictor $\mathbf{x}_0 = \mathbf{x}^n + \Delta t\,\mathbf{v}^n$.
+2. Jacobian $\mathsf{J} = \partial\mathbf{R}/\partial\mathbf{x}$ from two
+   finite-difference probes of size `motion_coupling_fd_step`$\cdot c$ (one
+   film solve each). It approximates
+   $m/\Delta t^2 + C/\Delta t + K + C_f/\Delta t + K_f$ and is dominated by the
+   squeeze term $C_f/\Delta t$.
+3. Newton step $\mathbf{s} = -\mathsf{J}^{-1}\mathbf{R}$, limited to
+   `motion_coupling_step_limit`$\cdot c$. An accepted step (smaller $|\mathbf{R}|$)
+   updates $\mathsf{J}$ with Broyden's rank-one formula
+   $\mathsf{J} \leftarrow \mathsf{J} + (\Delta\mathbf{R} - \mathsf{J}\mathbf{s})\mathbf{s}^T/(\mathbf{s}\cdot\mathbf{s})$.
+   A rejected step is halved up to three times, then the Jacobian is probed again.
+4. The Jacobian is kept from step to step while $\Delta t$ is unchanged, so a
+   step typically costs three film solves.
+
+Every trial solve starts from the fields of the step start (all fields are
+restored from a snapshot), with the pressure and film content of the latest
+trial as the Newton initial guess. The axial axis is advanced by backward Euler
+with the latest axial film force (it carries no film stiffness in the 2D gap).
+
+**Convergence.** A step is accepted when either
+
+$$\frac{|\mathbf{R}|}{\max(|\mathbf{W}|, |\mathbf{F}|)} < \texttt{motion\_coupling\_tolerance}
+\quad\text{or}\quad
+\frac{|\mathsf{J}^{-1}\mathbf{R}|}{c} < \texttt{motion\_coupling\_position\_tolerance}.$$
+
+The second test exists because the film force carries the noise of the field
+solve tolerance. On the OS bearing, two converged FBNS solves at positions
+$10^{-13}$ m apart differ by about $5\times10^{-5}$ of the force, so a force
+test of $10^{-6}$ cannot be met. The position correction that this noise
+implies is $|\mathsf{J}^{-1}\mathbf{R}| \approx 10^{-12}$ m, i.e. $10^{-7}c$:
+far below anything that changes the film. When `motion_coupling_max_iters`
+solves are spent without either test passing, the run stops as unconverged.
+
+**Scope.** `IMPLICIT` requires `MOVING_BEARING`, `TRANSIENT`,
+`motion_time_method = EULER_IMPLICIT` and a non-`COUPLED` cavitation model.
+`EXPLICIT` stays the default and is unchanged.
+
+**Tests.** `test_journal_motion` checks that each implicit step equals the
+closed-form backward-Euler update for a linear film force
+$\mathbf{F} = -k_f\mathbf{x} - c_f\mathbf{v}$, that the response follows the
+analytic underdamped step response, and that at $\Delta t = 50\times 2m/c_f$
+the implicit coupling settles at $W/k_f$ while the lagged explicit coupling
+diverges. The solver-level checks are in
+`cases/02h_lge_compressor_transient/README.md`.
+
+### 12.3 Per-step motion record and restart (2026-11-19)
+
+Every `MOVING_BEARING` transient writes `results/motion.csv`, one row per step:
+time, load phase, load $x$ and $y$, bearing position and velocity, eccentricity
+ratio, attitude angle, minimum film thickness and its angle, journal friction
+torque, peak pressure, cavitated fraction (film content below $1-10^{-8}$),
+film force $x$ and $y$, and the coupling solves, force residual and position
+correction of the step.
+
+A transient whose state is fully described by pressure, film content and
+temperature (`SINGLE_PHASE` FBNS without gas pressure coupling, with a scalar
+$p_{cav}$ and no dissolved gas, or with the uniform bubble-point floor
+`LOCAL_PSAT`) writes `results/final_state.dat` at its end. The same states can
+now be read through `steady_initial_state_file` in `TRANSIENT` as well as
+`STEADY_STATE`, and steady `LOCAL_PSAT` runs write `steady_state.dat`. A run
+restarted from `final_state.dat` with `bearing_initial_x|y|vx|vy` from the last
+row of `motion.csv` (and `load_phase_offset_deg` advanced) continues the
+backward-Euler sequence, because a step needs only the state of the step before.
+The only difference from an uninterrupted run is the first step's Jacobian,
+which is probed again, so the continued states agree to within the coupling
+tolerance.
+
 ---
 
 ## 13. Thermal and ETHD Model

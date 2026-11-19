@@ -43,6 +43,22 @@ enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 ///                   (constant) supply temperature temperature_reference.
 enum class ThermalInflowMode { ZERO_GRADIENT, CONSTANT };
 enum class MotionModel { STATIC, MOVING_BEARING, STEADY_EQUILIBRIUM };
+// Time history of the external load on the moving bearing (MOVING_BEARING):
+//   CONSTANT - external_load_x|y|z (the historical input).
+//   ROTATING - load_magnitude at load_rotation_start_deg + load_rotation_speed * t.
+//   TABLE    - load_table_file rows interpolated in phase (periodic) or time.
+// external_load_z is added unchanged under every option.
+enum class LoadModel { CONSTANT, ROTATING, TABLE };
+// Abscissa of a load table: PHASE_DEG is periodic over 360 deg of the load
+// cycle, which advances at load_frequency [Hz]; TIME_S is not periodic.
+enum class LoadTableAbscissa { PHASE_DEG, TIME_S };
+// Load table ordinates: POLAR (magnitude [N], direction [deg]) or CARTESIAN (x, y [N]).
+enum class LoadTableFormat { POLAR, CARTESIAN };
+// Coupling of the bearing equation of motion to the film force in TRANSIENT:
+//   EXPLICIT - the force of the previous step drives the motion (historical).
+//   IMPLICIT - position and film are iterated to agreement within each step
+//              (backward Euler, quasi-Newton on the force residual).
+enum class MotionCoupling { EXPLICIT, IMPLICIT };
 // Integrator for the bearing equation of motion only (field solves are
 // backward-Euler), ordered by increasing order/accuracy. EULER_IMPLICIT (stable)
 // and RK4 (accurate) are maintained; the others are kept as references.
@@ -202,6 +218,14 @@ enum class GrooveMixingModel { PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCE
 struct PropertyTablePoint {
     double x = 0.0;
     double value = 0.0;
+};
+
+/// One row of an external-load table, stored as Cartesian parts. The abscissa
+/// is the load phase [deg] or the time [s] (LoadTableAbscissa).
+struct LoadTableRow {
+    double abscissa = 0.0;
+    double load_x = 0.0;
+    double load_y = 0.0;
 };
 
 /// 2-D property table on a rectangular (pressure, temperature) grid, used to
@@ -420,6 +444,27 @@ inline const char* to_config_value(MixtureViscosityModel model) {
     return "MCADAMS";
 }
 
+inline const char* to_config_value(LoadModel model) {
+    switch (model) {
+        case LoadModel::CONSTANT: return "CONSTANT";
+        case LoadModel::ROTATING: return "ROTATING";
+        case LoadModel::TABLE: return "TABLE";
+    }
+    return "CONSTANT";
+}
+
+inline const char* to_config_value(LoadTableAbscissa abscissa) {
+    return abscissa == LoadTableAbscissa::TIME_S ? "TIME_S" : "PHASE_DEG";
+}
+
+inline const char* to_config_value(LoadTableFormat format) {
+    return format == LoadTableFormat::CARTESIAN ? "CARTESIAN" : "POLAR";
+}
+
+inline const char* to_config_value(MotionCoupling coupling) {
+    return coupling == MotionCoupling::IMPLICIT ? "IMPLICIT" : "EXPLICIT";
+}
+
 inline const char* to_config_value(MotionModel model) {
     switch (model) {
         case MotionModel::STATIC: return "STATIC";
@@ -590,6 +635,35 @@ inline MotionModel motion_model_from_config(std::string value) {
         return MotionModel::MOVING_BEARING;
     }
     return MotionModel::STATIC;
+}
+
+inline LoadModel load_model_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "CONSTANT") return LoadModel::CONSTANT;
+    if (value == "ROTATING") return LoadModel::ROTATING;
+    if (value == "TABLE") return LoadModel::TABLE;
+    throw std::invalid_argument("Unknown load_model '" + value + "'. Options: CONSTANT, ROTATING, TABLE.");
+}
+
+inline LoadTableAbscissa load_table_abscissa_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "PHASE_DEG" || value == "PHASE") return LoadTableAbscissa::PHASE_DEG;
+    if (value == "TIME_S" || value == "TIME") return LoadTableAbscissa::TIME_S;
+    throw std::invalid_argument("Unknown load_table_abscissa '" + value + "'. Options: PHASE_DEG, TIME_S.");
+}
+
+inline LoadTableFormat load_table_format_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "POLAR") return LoadTableFormat::POLAR;
+    if (value == "CARTESIAN") return LoadTableFormat::CARTESIAN;
+    throw std::invalid_argument("Unknown load_table_format '" + value + "'. Options: POLAR, CARTESIAN.");
+}
+
+inline MotionCoupling motion_coupling_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "EXPLICIT") return MotionCoupling::EXPLICIT;
+    if (value == "IMPLICIT") return MotionCoupling::IMPLICIT;
+    throw std::invalid_argument("Unknown motion_coupling '" + value + "'. Options: EXPLICIT, IMPLICIT.");
 }
 
 inline TimeSteppingMethod time_stepping_from_config(std::string value) {
@@ -1004,6 +1078,26 @@ struct SimulationConfig {
     double external_load_x = 0.0;
     double external_load_y = 0.0;
     double external_load_z = 0.0;
+    // Time history of the in-plane external load (MOVING_BEARING, TRANSIENT).
+    LoadModel load_model = LoadModel::CONSTANT;
+    double load_magnitude = 0.0;            // ROTATING: constant size [N]
+    double load_rotation_start_deg = 0.0;            // ROTATING: direction at t = 0 [deg]
+    double load_rotation_speed = 0.0;       // ROTATING: direction rate [rad/s]
+    std::filesystem::path load_table_file;  // TABLE: CSV, abscissa then two ordinates
+    LoadTableAbscissa load_table_abscissa = LoadTableAbscissa::PHASE_DEG;
+    LoadTableFormat load_table_format = LoadTableFormat::POLAR;
+    double load_frequency = 0.0;            // TABLE + PHASE_DEG: cycles per second [Hz]
+    double load_phase_offset_deg = 0.0;     // TABLE + PHASE_DEG: phase at t = 0 [deg]
+    double load_table_angle_offset_deg = 0.0; // TABLE: added to every row direction [deg]
+    double load_table_scale = 1.0;          // TABLE: multiplies every row
+    std::vector<LoadTableRow> load_table;   // Filled from load_table_file (Cartesian rows)
+    // Bearing equation of motion coupling to the film force (TRANSIENT only).
+    MotionCoupling motion_coupling = MotionCoupling::EXPLICIT;
+    double motion_coupling_tolerance = 1e-6;  // |force residual| / load scale
+    double motion_coupling_position_tolerance = 1e-6; // |Newton correction| / clearance
+    int motion_coupling_max_iters = 30;       // film solves per step, probes included
+    double motion_coupling_fd_step = 1e-5;    // Jacobian probe / clearance
+    double motion_coupling_step_limit = 0.05; // largest Newton correction / clearance
     double min_film_thickness = 1e-9;
     bool stop_on_nonpositive_film = true;
 
@@ -1338,6 +1432,35 @@ struct SimulationConfig {
             else if (key == "external_load_x") external_load_x = std::stod(value);
             else if (key == "external_load_y") external_load_y = std::stod(value);
             else if (key == "external_load_z") external_load_z = std::stod(value);
+            else if (key == "load_model") {
+                try { load_model = load_model_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_magnitude") load_magnitude = std::stod(value);
+            else if (key == "load_rotation_start_deg") load_rotation_start_deg = std::stod(value);
+            else if (key == "load_rotation_speed") load_rotation_speed = std::stod(value);
+            else if (key == "load_table_file") load_table_file = value;
+            else if (key == "load_table_abscissa") {
+                try { load_table_abscissa = load_table_abscissa_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_table_format") {
+                try { load_table_format = load_table_format_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_frequency") load_frequency = std::stod(value);
+            else if (key == "load_phase_offset_deg") load_phase_offset_deg = std::stod(value);
+            else if (key == "load_table_angle_offset_deg") load_table_angle_offset_deg = std::stod(value);
+            else if (key == "load_table_scale") load_table_scale = std::stod(value);
+            else if (key == "motion_coupling") {
+                try { motion_coupling = motion_coupling_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "motion_coupling_tolerance") motion_coupling_tolerance = std::stod(value);
+            else if (key == "motion_coupling_position_tolerance") motion_coupling_position_tolerance = std::stod(value);
+            else if (key == "motion_coupling_max_iters") motion_coupling_max_iters = std::stoi(value);
+            else if (key == "motion_coupling_fd_step") motion_coupling_fd_step = std::stod(value);
+            else if (key == "motion_coupling_step_limit") motion_coupling_step_limit = std::stod(value);
             else if (key == "min_film_thickness") min_film_thickness = std::stod(value);
             else if (key == "stop_on_nonpositive_film") {
                 if (is_true(value)) stop_on_nonpositive_film = true;
@@ -1765,6 +1888,32 @@ struct SimulationConfig {
         if (motion_model == MotionModel::MOVING_BEARING) {
             require_positive(bearing_mass, "bearing_mass");
         }
+        if (load_model != LoadModel::CONSTANT &&
+            (motion_model != MotionModel::MOVING_BEARING || solution_mode != SolutionMode::TRANSIENT))
+            error("load_model ROTATING or TABLE requires motion_model = MOVING_BEARING and TRANSIENT.");
+        if (load_model == LoadModel::ROTATING &&
+            (!finite(load_magnitude) || load_magnitude < 0.0 || !finite(load_rotation_start_deg) || !finite(load_rotation_speed)))
+            error("ROTATING load requires finite load_magnitude >= 0, load_rotation_start_deg and load_rotation_speed.");
+        if (load_model == LoadModel::TABLE) {
+            if (load_table_file.empty()) error("TABLE load requires load_table_file.");
+            if (!finite(load_table_scale) || !finite(load_table_angle_offset_deg) || !finite(load_phase_offset_deg))
+                error("load_table_scale, load_table_angle_offset_deg and load_phase_offset_deg must be finite.");
+            if (load_table_abscissa == LoadTableAbscissa::PHASE_DEG && (!finite(load_frequency) || load_frequency <= 0.0))
+                error("PHASE_DEG load table requires load_frequency > 0 [Hz].");
+        }
+        if (motion_coupling == MotionCoupling::IMPLICIT) {
+            if (motion_model != MotionModel::MOVING_BEARING || solution_mode != SolutionMode::TRANSIENT)
+                error("motion_coupling = IMPLICIT requires motion_model = MOVING_BEARING and TRANSIENT.");
+            if (cavitation_model == CavitationModel::COUPLED)
+                error("motion_coupling = IMPLICIT is not implemented for COUPLED cavitation.");
+            if (motion_time_method != TimeSteppingMethod::EULER_IMPLICIT)
+                error("motion_coupling = IMPLICIT integrates the motion with backward Euler; set motion_time_method = EULER_IMPLICIT.");
+            require_positive(motion_coupling_tolerance, "motion_coupling_tolerance");
+            require_positive(motion_coupling_position_tolerance, "motion_coupling_position_tolerance");
+            require_positive(motion_coupling_fd_step, "motion_coupling_fd_step");
+            require_positive(motion_coupling_step_limit, "motion_coupling_step_limit");
+            if (motion_coupling_max_iters < 4) error("motion_coupling_max_iters must be at least 4.");
+        }
         if (motion_model == MotionModel::STEADY_EQUILIBRIUM) {
             const bool fbns_equilibrium = cavitation_model == CavitationModel::FBNS &&
                 fluid_property_model == FluidPropertyModel::SINGLE_PHASE && dissolved_gas_initial == 0.0 &&
@@ -1976,12 +2125,9 @@ struct SimulationConfig {
             error("Temperature-dependent oil vapor pressure currently requires COUPLED.");
 
         // Outer (Picard) coupling schedule.
-        if (!steady_initial_state_file.empty() &&
-            (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
-             fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
-             gas_pressure_coupling != GasPressureCoupling::NONE ||
-             cavitation_threshold != CavitationThreshold::SCALAR_PCAV || dissolved_gas_initial != 0.0)) {
-            error("steady_initial_state_file requires steady gas-free single-phase FBNS with scalar p_cav.");
+        if (!steady_initial_state_file.empty() && !single_phase_fbns_state()) {
+            error("steady_initial_state_file requires gas-free single-phase FBNS: scalar p_cav without "
+                  "dissolved gas, or the uniform bubble-point floor (LOCAL_PSAT).");
         }
         if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
         if (!finite(coupling_tolerance) || coupling_tolerance <= 0.0) {
@@ -2449,6 +2595,19 @@ struct SimulationConfig {
         return std::max(pressure_value, effective_p_cav());
     }
 
+    /// True when the FBNS state is fully described by pressure, film content and
+    /// temperature: SINGLE_PHASE without gas pressure coupling, and either a
+    /// scalar p_cav without dissolved gas or the uniform bubble-point floor
+    /// (LOCAL_PSAT, the dissolved fraction stays at its feed value). Only such a
+    /// state can be stored in, and restarted from, steady_state.dat.
+    bool single_phase_fbns_state() const {
+        return cavitation_model == CavitationModel::FBNS &&
+            fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+            gas_pressure_coupling == GasPressureCoupling::NONE &&
+            ((cavitation_threshold == CavitationThreshold::SCALAR_PCAV && dissolved_gas_initial == 0.0) ||
+             cavitation_threshold == CavitationThreshold::LOCAL_PSAT);
+    }
+
     double elrod_boundary_theta(double pressure_value) const {
         const double beta = std::max(bulk_modulus, 1.0e-30);
         const double pressure = elrod_boundary_pressure(pressure_value);
@@ -2771,6 +2930,27 @@ struct SimulationConfig {
             << "external_load_x = " << external_load_x << "\n"
             << "external_load_y = " << external_load_y << "\n"
             << "external_load_z = " << external_load_z << "\n"
+            << "# load_model options: CONSTANT (external_load_x|y|z), ROTATING, TABLE\n"
+            << "load_model = " << to_config_value(load_model) << "\n"
+            << "load_magnitude = " << load_magnitude << "\n"
+            << "load_rotation_start_deg = " << load_rotation_start_deg << "\n"
+            << "load_rotation_speed = " << load_rotation_speed << "\n"
+            << "load_table_file = " << load_table_file.generic_string() << "\n"
+            << "# load_table_abscissa options: PHASE_DEG (periodic), TIME_S\n"
+            << "load_table_abscissa = " << to_config_value(load_table_abscissa) << "\n"
+            << "# load_table_format options: POLAR (magnitude, angle_deg), CARTESIAN (x, y)\n"
+            << "load_table_format = " << to_config_value(load_table_format) << "\n"
+            << "load_frequency = " << load_frequency << "\n"
+            << "load_phase_offset_deg = " << load_phase_offset_deg << "\n"
+            << "load_table_angle_offset_deg = " << load_table_angle_offset_deg << "\n"
+            << "load_table_scale = " << load_table_scale << "\n"
+            << "# motion_coupling options: EXPLICIT (lagged force), IMPLICIT (iterated)\n"
+            << "motion_coupling = " << to_config_value(motion_coupling) << "\n"
+            << "motion_coupling_tolerance = " << motion_coupling_tolerance << "\n"
+            << "motion_coupling_position_tolerance = " << motion_coupling_position_tolerance << "\n"
+            << "motion_coupling_max_iters = " << motion_coupling_max_iters << "\n"
+            << "motion_coupling_fd_step = " << motion_coupling_fd_step << "\n"
+            << "motion_coupling_step_limit = " << motion_coupling_step_limit << "\n"
             << "min_film_thickness = " << min_film_thickness << "\n"
             << "stop_on_nonpositive_film = " << (stop_on_nonpositive_film ? "true" : "false") << "\n\n";
 
@@ -2933,6 +3113,12 @@ struct SimulationConfig {
             "bearing_stiffness_x", "bearing_stiffness_y", "bearing_stiffness_z",
             "bearing_damping_x", "bearing_damping_y", "bearing_damping_z",
             "external_load_x", "external_load_y", "external_load_z",
+            "load_model", "load_magnitude", "load_rotation_start_deg", "load_rotation_speed",
+            "load_table_file", "load_table_abscissa", "load_table_format", "load_frequency",
+            "load_phase_offset_deg", "load_table_angle_offset_deg", "load_table_scale",
+            "motion_coupling", "motion_coupling_tolerance", "motion_coupling_position_tolerance",
+            "motion_coupling_max_iters",
+            "motion_coupling_fd_step", "motion_coupling_step_limit",
             "min_film_thickness", "stop_on_nonpositive_film", "bc_z_south_type",
             "bc_z_south_val", "bc_z_south_theta", "bc_z_south_thermal",
             "bc_z_north_type", "bc_z_north_val", "bc_z_north_theta",

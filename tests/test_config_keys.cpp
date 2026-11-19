@@ -100,6 +100,10 @@ void test_manifest_matches_parser() {
             cfg.load_from_text("inlet_groove = 90 10 2e5\ninlet_species = 0 .001 0\n");
         else if (key == "asperity_contact_model" || key == "flow_factor_model")
             cfg.load_from_text(key + " = NONE\n");  // enumerations reject unknown values
+        else if (key == "load_model") cfg.load_from_text(key + " = TABLE\n");
+        else if (key == "motion_coupling") cfg.load_from_text(key + " = IMPLICIT\n");
+        else if (key == "load_table_abscissa") cfg.load_from_text(key + " = PHASE_DEG\n");
+        else if (key == "load_table_format") cfg.load_from_text(key + " = POLAR\n");
         else cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");
