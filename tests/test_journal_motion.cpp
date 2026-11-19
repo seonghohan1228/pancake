@@ -258,6 +258,7 @@ static void test_implicit_coupling_linear_film() {
     cfg.motion_coupling = MotionCoupling::IMPLICIT;
     cfg.c = 1.0;
     cfg.motion_coupling_tolerance = 1e-9;  // m/dt^2 x carries ~1e-10 relative rounding
+    cfg.motion_coupling_position_tolerance = 1e-13;
     cfg.motion_coupling_fd_step = 1e-6;
     cfg.motion_coupling_step_limit = 1.0;
     cfg.bearing_mass = 1.0;
@@ -302,6 +303,7 @@ static void test_implicit_coupling_stiff_film_is_stable() {
     cfg.bearing_mass = 1e-3;
     cfg.external_load_x = 1.0;
     cfg.motion_coupling_tolerance = 1e-10;
+    cfg.motion_coupling_position_tolerance = 1e-9;
     const double k = 1e6, c = 1e3, dt = 1e-4;
 
     JournalMotion::ImplicitCoupling coupling(cfg);

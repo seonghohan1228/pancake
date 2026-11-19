@@ -445,6 +445,26 @@ in time; only the bearing equation of motion has a selectable integrator
 never changed the field solves and have been removed; old configs still parse
 with a one-line "ignored" warning.
 
+Time-dependent load (2026-11-19, PHYSICS.md 12.1): `load_model = CONSTANT`
+(default, `external_load_x|y|z`), `ROTATING` (`load_magnitude`,
+`load_rotation_start_deg`, `load_rotation_speed` in rad/s) or `TABLE`
+(`load_table_file` with rows `abscissa, a, b`; `load_table_abscissa = PHASE_DEG`
+is periodic with `load_frequency` [Hz] and `load_phase_offset_deg`, `TIME_S` is
+not; `load_table_format = POLAR` (magnitude N, direction deg) or `CARTESIAN`;
+`load_table_scale`, `load_table_angle_offset_deg`). Rows are interpolated
+linearly in their x and y parts; jumps between rows are kept.
+
+`motion_coupling = IMPLICIT` (PHYSICS.md 12.2) solves the bearing motion by
+backward Euler with the film force at the end of the step, iterating position
+and film solve within the step. It removes the explicit stability limit
+dt < 2 m / C_squeeze. Requires `motion_time_method = EULER_IMPLICIT`; controls
+`motion_coupling_tolerance`, `motion_coupling_position_tolerance`,
+`motion_coupling_max_iters`, `motion_coupling_fd_step`,
+`motion_coupling_step_limit`. Every MOVING_BEARING transient writes
+`results/motion.csv` (one row per step), and single-phase FBNS transients write
+`results/final_state.dat`, which `steady_initial_state_file` reads back to
+restart (PHYSICS.md 12.3).
+
 Convection face interpolation is selectable per transported variable with
 `theta_convection_scheme`, `thermal_convection_scheme`, and
 `gas_convection_scheme` (`UPWIND` default; `LINEAR` — 2nd-order central, unbounded;

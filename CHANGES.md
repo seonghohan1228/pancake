@@ -1,5 +1,32 @@
 # Change Log
 
+## 2026-11-19 - Add time-dependent load input and implicit motion coupling (02h)
+
+Branch `lge-compressor-transient`, from `lge-fbns-tester` (0f5c193). Campaign
+`lge-compressor-transient-20261119-02a4b6c`.
+
+- `load_model = CONSTANT | ROTATING | TABLE` for MOVING_BEARING transients (PHYSICS.md 12.1).
+  CONSTANT is the old `external_load_x|y|z` and stays the default. ROTATING: constant size,
+  start angle and one rotation speed. TABLE: periodic phase table (own load frequency) or time
+  table, polar or Cartesian rows, linear interpolation of the Cartesian parts (a direction
+  crossing 360 deg stays continuous; jumps between rows are kept).
+- `motion_coupling = IMPLICIT` (PHYSICS.md 12.2): backward-Euler bearing motion iterated with the
+  film solve inside each step (quasi-Newton: FD Jacobian, Broyden updates, step limit,
+  backtracking; force or position-correction convergence test). Reason: the lagged-force
+  EXPLICIT coupling is stable only for dt < 2 m / C_squeeze, about 1-2 us for the OS bearing,
+  and a tester start-up already failed that way at 20 us. EXPLICIT stays the default.
+- `results/motion.csv` every MOVING_BEARING transient step (load, position, velocity, eps,
+  attitude, h_min and angle, torque, p_max, cavitated fraction, film force, coupling stats).
+  The `external_load_*` fields carry the load of the step.
+- Restart: single-phase FBNS transients write `results/final_state.dat`; `steady_initial_state_file`
+  accepts LOCAL_PSAT single-phase states and TRANSIENT starts; steady LOCAL_PSAT runs write
+  `steady_state.dat`. Needed to start the OS-bearing transient from its steady state and to
+  chain revolutions.
+- Tests: `test_journal_motion` (table interpolation, wrap, jump, 360 deg direction crossing,
+  time table, constant equivalence, rotating direction, implicit step = closed-form backward
+  Euler, analytic step response, stiff-film stability); `test_config_keys` enum values.
+- New case `cases/02h_lge_compressor_transient` (Part A checks, Part B OS-bearing driver).
+
 ## 2026-11-17 - Add FBNS tester gas-effect driver (02g)
 
 Branch `lge-fbns-tester`, from `lge-onset-chart` (4f3d466). Campaign `lge-fbns-tester-20261117`.

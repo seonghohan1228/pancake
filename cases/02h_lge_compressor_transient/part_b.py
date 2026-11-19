@@ -420,11 +420,13 @@ def cavity_report(fields):
     ds = np.minimum(np.abs(tt - s_hole), 2 * math.pi * R - np.abs(tt - s_hole))
     hole = np.hypot(ds, zz - HOLE_Z) <= HOLE_RADIUS
     ring = (np.hypot(ds, zz - HOLE_Z) <= HOLE_RADIUS + 2 * max(dth, dz)) & ~hole
-    out = dict(theta_hmin_deg=theta_hmin, h_min_m=float(h.min()), bubble_area_fraction=float(np.mean(void >= 0.5)),
+    bubble = void >= 0.5
+    gap = (float(np.min(np.hypot(ds, zz - HOLE_Z)[bubble])) - HOLE_RADIUS) * 1e3 if bubble.any() else None
+    out = dict(theta_hmin_deg=theta_hmin, h_min_m=float(h.min()), bubble_area_fraction=float(np.mean(bubble)),
                void_max=float(void.max()), void_hole_mean=float(void[hole].mean()),
                void_ring_mean=float(void[ring].mean()), void_ring_max=float(void[ring].max()),
                bubble_touches_hole_ring=bool((void[ring] >= 0.5).any()),
-               p_max_Pa=float(shape("p").max()))
+               bubble_gap_to_hole_edge_mm=gap, p_max_Pa=float(shape("p").max()))
     if not columns.any():
         return out
     if columns.all():
@@ -510,6 +512,8 @@ def stage_report(args):
         b2c_force_follows_load=dict(max_abs_N=float(imbalance.max()), max_rel=float(np.max(imbalance / load)),
                                     at_crank_deg=float(((m["time_s"][np.argmax(imbalance)]) / PERIOD * 360.0) % 360)),
         bubble_reaches_hole=bool(reaches), bubble_reaches_hole_at_crank_deg=reaches,
+        bubble_gap_to_hole_edge_mm=stats([r["bubble_gap_to_hole_edge_mm"] for r in per_angle
+                                          if r["bubble_gap_to_hole_edge_mm"] is not None]),
         h_min_below_1um=bool(np.min(m["h_min_m"]) < 1e-6))
     common.save_json(args.work / "summary.json", summary)
     print(json.dumps(summary["cycle"], indent=1))
