@@ -102,7 +102,7 @@ Film force minus load: 49.6 N (1.4 %) at most, at the 180 deg load jump (OS iner
 | h_min [um] | 1.641 (at 105 deg crank) | 1.688 | 1.762 |
 | Torque [N m] | 0.0749 | 0.0773 | 0.0784 |
 | Friction power [W] | 61.2 | 63.2 | 64.0 |
-| p_max [bar] | | 440 | 461 |
+| p_max [bar] | 382 | 440 | 461 |
 | Cavitated area | 0.569 | 0.571 | 0.572 |
 | Hole mass flow [g/s] | 1.207 | 1.217 | 1.220 |
 
