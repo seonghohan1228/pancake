@@ -117,14 +117,19 @@ def main():
             return
         start = part_b.end_state(run_dir)
     ref = common.read_motion(Path(b2["last_revolution_dir"]))
+    ref_dissipation = ref["friction_torque_Nm"] - (ref["fluid_force_x_N"] * ref["bearing_vx_m_s"] +
+                                                    ref["fluid_force_y_N"] * ref["bearing_vy_m_s"]) / OMEGA
     last = summary["revolutions"][-1]
     compare = dict(
         h_min_cycle_min_B_m=float(ref["h_min_m"].min()), h_min_cycle_min_C_m=last["h_min_cycle_min_m"],
         torque_mean_B_Nm=float(ref["friction_torque_Nm"].mean()),
+        torque_dissipation_mean_B_Nm=float(ref_dissipation.mean()),
         torque_dissipation_mean_C_Nm=last["torque_dissipation_mean_Nm"], torque_raw_mean_C_Nm=last["torque_raw_mean_Nm"],
         eps_mean_B=float(ref["eccentricity_ratio"].mean()), eps_mean_C=last["eps_mean"])
     compare["h_min_rel_diff"] = compare["h_min_cycle_min_C_m"] / compare["h_min_cycle_min_B_m"] - 1
-    compare["torque_rel_diff"] = compare["torque_dissipation_mean_C_Nm"] / compare["torque_mean_B_Nm"] - 1
+    compare["torque_rel_diff"] = compare["torque_dissipation_mean_C_Nm"] / compare["torque_dissipation_mean_B_Nm"] - 1
+    compare["torque_C_dissipation_vs_B_raw_rel_diff"] = (compare["torque_dissipation_mean_C_Nm"] /
+                                                         compare["torque_mean_B_Nm"] - 1)
     compare["torque_raw_rel_diff"] = compare["torque_raw_mean_C_Nm"] / compare["torque_mean_B_Nm"] - 1
     compare["pass"] = abs(compare["h_min_rel_diff"]) < 0.02 and abs(compare["torque_rel_diff"]) < 0.02
     summary["compare_with_B"] = compare
