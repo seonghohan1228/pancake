@@ -126,10 +126,13 @@ def gc_values(params, **overrides):
     return values
 
 
-def static_values(params, eps, psi):
-    return gc_values(params, e=eps * C, attitude_angle_deg=psi % 360, solution_mode="STEADY_STATE",
-                     dt=1e-5, end_t=1e-5, write_interval=1e-5, motion_model="STATIC",
-                     bearing_initial_from_attitude="true")
+def static_values(params, eps, psi, overrides=None):
+    """STATIC GC+VC solve at (eps, psi); `overrides` replaces keys (e.g. the VC-only model)."""
+    values = gc_values(params, e=eps * C, attitude_angle_deg=psi % 360, solution_mode="STEADY_STATE",
+                       dt=1e-5, end_t=1e-5, write_interval=1e-5, motion_model="STATIC",
+                       bearing_initial_from_attitude="true")
+    values.update(overrides or {})
+    return values
 
 
 def transient_values(params, start, dt, end_t, write_interval, load, phase0=0.0):
@@ -182,8 +185,10 @@ def force_errors(result, load):
     return magnitude, common.wrap180(angle)
 
 
-def balance(args, params, label, load, eps0, psi0):
-    work = args.work / "b0" / label
+def balance(args, params, label, load, eps0, psi0, overrides=None, root=None):
+    """Newton on (eps, psi) over STATIC solves until the film force balances the load.
+    Runs go to (root or work/b0)/label."""
+    work = (root or args.work / "b0") / label
     count = [0]
     history = []
 
@@ -192,7 +197,7 @@ def balance(args, params, label, load, eps0, psi0):
             raise ValueError(f"inadmissible eps {eps}")
         count[0] += 1
         run_dir = work / f"{count[0]:03d}_{tag}"
-        record = run(args, run_dir, static_values(params, eps, psi))
+        record = run(args, run_dir, static_values(params, eps, psi, overrides))
         out = dict(run_dir=str(run_dir), eps=eps, psi_deg=psi % 360, wall_s=record["wall_s"])
         try:
             out.update(check_static(run_dir, record), valid=True)
