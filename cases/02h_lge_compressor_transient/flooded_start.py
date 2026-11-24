@@ -505,7 +505,8 @@ def main():
     parser.add_argument("--stages", nargs="+", default=["repro"])
     args = parser.parse_args()
     args.work = args.work.resolve()
-    args.work.mkdir(parents=True, exist_ok=True)
+    for sub in ("", "checks", "transient", "sweep"):
+        (args.work / sub).mkdir(parents=True, exist_ok=True)
     params = load_params(args)
     for stage in args.stages:
         dict(repro=stage_repro, chain=stage_chain, checks=stage_checks, transient=stage_transient,
