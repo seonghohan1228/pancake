@@ -145,7 +145,7 @@ def balance(args, label, load, eps0, psi0, make_values, max_iters=40):
         run_dir = work / f"{count[0]:03d}_{tag}"
         out = dict(run_dir=str(run_dir), eps=eps, psi_deg=psi % 360, h_geo_m=math.exp(u))
         try:
-            record = common.run(run_dir, make_values(eps, psi), args.solver, args.ranks, args.mpi)
+            record = common.run(run_dir, make_values(eps, psi), args.solver, args.ranks, args.mpi, rankfile=args.rankfile)
             out["wall_s"] = record["wall_s"]
             out.update(part_b.check_static(run_dir, record), valid=True)
             out["mag_err"], out["ang_err_deg"] = part_b.force_errors(out, load)
@@ -431,7 +431,7 @@ def stage_transient(args, params):
         v = part_b.transient_values(fluid_params, start, part_b.deg_to_time(step_deg), part_b.deg_to_time(30.0),
                                     part_b.deg_to_time(1.0), "TABLE", phase0)
         v.update(keep, output_fields="pressure,film_content,h,fluid_force_x,fluid_force_y,friction_torque" + CONTACT_FIELDS)
-        record = common.run(run_dir, v, args.solver, args.ranks, args.mpi)
+        record = common.run(run_dir, v, args.solver, args.ranks, args.mpi, rankfile=args.rankfile)
         entry = dict(returncode=record["returncode"], wall_s=record["wall_s"])
         if (run_dir / "results/motion.csv").exists():
             m = common.read_motion(run_dir)
@@ -500,6 +500,7 @@ def main():
     parser.add_argument("--table", default=str(Path(__file__).resolve().parents[2] / "data/R410A_FW68D/fw68d.csv"))
     parser.add_argument("--ranks", type=int, default=8)
     parser.add_argument("--mpi", default="mpirun")
+    parser.add_argument("--rankfile")
     parser.add_argument("--variant", choices=list(VARIANTS))
     parser.add_argument("--stages", nargs="+", default=["repro"])
     args = parser.parse_args()
