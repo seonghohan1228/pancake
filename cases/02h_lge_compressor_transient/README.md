@@ -139,3 +139,46 @@ only evidence. GC is instant release and re-dissolution at one uniform pressure.
 asperity contact, no shaft tilt, fictitious frame forces dropped. The 0.35 mm ring is grid-scale
 (no grid check). Hole position and angle, feed pressure, no bush, the load direction and the
 saturated oil state (a flood-back condition) are assumptions until LGE confirms them.
+
+### VC-only comparison (`vc_steady.py`, campaign `lge-compressor-vc-steady-20261123-00e5d1a`)
+
+The three B0 loads with `SCALAR_PCAV`, p_cav = 500 Pa ("the refrigerant stays dissolved").
+(GC+VC - VC)/VC: h_min +6.2 to +6.7 %, torque -10.4 to -11.1 %, p_max -7.6 to -8.0 %, hole flow
++15 to +23 %. VC-only films reach 500 Pa (vapour cavity, 13 % of the area); GC+VC cavity at
+shell pressure covers 57 %. Plots: `plot_vc_vs_gcvc.py`.
+
+### Flooded start (`flooded_start.py`, campaign `lge-compressor-flooded-start-20261124-c6715cb`)
+
+Refrigerant-rich feed at a cold start, steady at fixed feed concentration (the film renews in
+~15 ms, the sump in seconds). Fluids F0 (c 0.225, 70 C, 5.085 mPa s), F1-F4 (c 0.5/0.6/0.8/0.95,
+20 C, 2.62/1.28/0.417/0.159 mPa s), 130 Hz (B0 loads) and 30 Hz ("P2, 30 Hz": 1,432/2,969/4,106 N),
+variants N (no contact), C2/C4 (Greenwood-Tripp + Patir-Cheng, composite roughness 0.2/0.4 um,
+modulus 107 GPa as the 10/23 study). p_cav = shell pressure (SCALAR_PCAV, no dissolved gas). Feed
+overpressure 0.3 bar x (f / 130 Hz)^2. Load balance on the solver's `fluid_force` (film +
+contact). Newton on (ln h_geo, attitude). Plots: `plot_flooded_start.py`.
+
+Mean load (h_min in um; Lambda = h_min / sigma; share = load carried by contact):
+
+| f | Fluid | N h_min | C2 h_min, Lambda, share | C4 h_min, Lambda, share |
+|---|---|---|---|---|
+| 130 Hz | F0 | 1.688 | 1.689, 8.4, 0 % | 1.708, 4.3, 0 % |
+| | F1 | 0.940 | 0.948, 4.7, 0 % | 0.986, 2.5, 0.02 % |
+| | F2 | 0.489 | 0.511, 2.6, 0.01 % | 0.562, 1.4, 0.7 % |
+| | F3 | 0.170 | 0.211, 1.1, 1.4 % | 0.258, 0.65, 4.9 % |
+| | F4 | 0.068 | 0.109, 0.55, 4.4 % | 0.139, 0.35, 9.3 % |
+| 30 Hz | F0 | 0.516 | 0.537, 2.7, 0 % | 0.588, 1.5, 0.7 % |
+| | F1 | 0.279 | 0.312, 1.6, 0.4 % | 0.367, 0.92, 3.1 % |
+| | F2 | 0.142 | 0.184, 0.92, 2.2 % | 0.230, 0.57, 6.7 % |
+| | F3 | 0.048 | 0.087, 0.44, 6.4 % | 0.111, 0.28, 12.4 % |
+| | F4 | 0.019 | 0.046, 0.23, 9.7 % | 0.055, 0.14, 16.2 % |
+
+Checks: B0 reproduction exact; SCALAR_PCAV = LOCAL_PSAT for F0 (difference 4e-14); shell pressure
+1.44 MPa changes nothing (4e-14); at F0 the C2/C4 changes (+0.08/+1.2 % h_min) come from the flow
+factors, contact is < 1e-4; grid 1440 x 384 at the thinnest case (30 Hz, N, F4, max load, 14 nm):
+h_min -3.2 %, torque +1.0 %. Contact enters the moving-OS equation of motion (it is part of
+`fluid_force`); a 30 deg table transient (F2, C4) runs at 0.25 and 0.125 deg per step, h_min
+differs 0.05 %.
+
+Limits: one homogeneous liquid, isothermal at the feed temperature (no boiling by friction heat),
+p_cav = shell pressure, oil density at every c, fixed load direction (the 30 Hz load swings 32 deg),
+assumed roughness, modulus and asperity parameters (load share and friction only, no wear).

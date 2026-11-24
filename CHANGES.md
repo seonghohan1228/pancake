@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-11-24 - Add flooded-start concentration sweep and VC-only comparison drivers (02h)
+
+Branch `lge-compressor-transient`; no solver source change (binary sha256 c974c765..., built at
+0bfaba3).
+
+- `vc_steady.py` (2026-11-23, campaign `lge-compressor-vc-steady-20261123-00e5d1a`): the three B0
+  loads with VC only (`SCALAR_PCAV`, p_cav 500 Pa) and a reproduction and p_cav check;
+  `plot_vc_vs_gcvc.py` film maps and centre-line pressure. GC raises h_min 6.2-6.7 %, lowers torque
+  10.4-11.1 %, raises hole flow 15-23 %.
+- `flooded_start.py` (campaign `lge-compressor-flooded-start-20261124-c6715cb`): refrigerant-rich
+  feed (c = 0.225/0.5/0.6/0.8/0.95), 130 Hz and 30 Hz, three loads, without contact and with
+  Greenwood-Tripp + Patir-Cheng at composite roughness 0.2/0.4 um; 90 steady states.
+  - Load balance uses the solver's `fluid_force`, which already contains the asperity contact force
+    (reynolds.cpp adds it); adding `contact_force_*` in the driver would count it twice.
+  - Newton runs on (ln h_geo, attitude) with a film floor of 2 nm, so it stays well scaled at
+    films of 10-100 nm (eps up to 0.9995).
+  - Cavitation pressure = shell pressure (`SCALAR_PCAV`, no dissolved gas): saturated liquid; the
+    chart has no p_sat for rich mixtures at 20 C.
+  - Feed overpressure scales with omega^2: +0.3 bar at 130 Hz, +0.016 bar at 30 Hz.
+  - Checks: B0 reproduction, SCALAR vs LOCAL_PSAT, shell pressure, flow factors vs contact, grid,
+    and a 30 deg implicit transient with contact at two time steps.
+- `plot_flooded_start.py`: h_min, contact share and friction power against c.
+
 ## 2026-11-19 - Add time-dependent load input and implicit motion coupling (02h)
 
 Branch `lge-compressor-transient`, from `lge-fbns-tester` (0f5c193). Campaign

@@ -263,6 +263,14 @@ Priority queue (user gates in brackets):
       torque (dissipation) -0.46 %, liquid residual <= 8.7e-8.
 - [ ] Feed-pressure sensitivity (+0.3 bar is the prompt's unconfirmed estimate; the bubble-to-hole
       distance scales with it): rerun B0/B2 at the confirmed feed pressure and at shell pressure.
+- [x] VC-only steady comparison (2026-11-23, `vc_steady.py`): GC h_min +6.2-6.7 %, torque -10.4-11.1 %,
+      hole flow +15-23 %; reproduction exact.
+- [x] Flooded-start sweep Sets A/B (2026-11-24, `flooded_start.py`, 90 states, all converged): Lambda = 3
+      at c ~ 0.40 (sigma 0.4 um) and ~ 0.57 (0.2 um) at 130 Hz; below 3 at every c at 30 Hz; contact
+      share stays < 10 % at 130 Hz and passes 10 % above c ~ 0.72 (sigma 0.4 um) at 30 Hz.
+- [x] Contact in the moving-OS transient: the contact force is part of `fluid_force`, so it enters the
+      equation of motion and the implicit FD Jacobian; 30 deg test runs at 0.25/0.125 deg (h_min 0.05 %).
+- [ ] Set T: 130 Hz load-table transient with contact at c ~ 0.5 and 0.6 (after the talk decision).
 
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
 
