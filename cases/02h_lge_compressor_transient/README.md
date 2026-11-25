@@ -182,3 +182,20 @@ differs 0.05 %.
 Limits: one homogeneous liquid, isothermal at the feed temperature (no boiling by friction heat),
 p_cav = shell pressure, oil density at every c, fixed load direction (the 30 Hz load swings 32 deg),
 assumed roughness, modulus and asperity parameters (load share and friction only, no wear).
+
+### Set T: flooded-start transients (`flooded_transient.py`, campaign `lge-compressor-flooded-transient-20261125-55808eb`)
+
+130 Hz load table, moving OS, contact model off, steady mean-load start, 0.25 deg per step,
+chained revolutions until h_min repeats (3 each), last revolution again at half dt. Contact
+criterion: h_min < 0.5 um (fixed value, not a roughness).
+
+| Fluid | Steady h_min, max / mean / min load (um) | Cycle h_min (um) | Cycle share < 0.5 um | Half-dt change (h_min / torque) |
+|---|---|---|---|---|
+| F1, c = 0.50 | 0.904 / 0.940 / 1.058 | 0.909-0.995 | 0 | -0.10 % / +0.04 % |
+| F2, c = 0.60 | 0.470 / 0.489 / 0.552 | 0.470-0.525 | 72 % (24.5-153, 207-337 deg) | -0.28 % / +0.06 % |
+
+The cycle minimum matches the steady max-load value (F1 +0.5 %, F2 +0.1 %), and the cycle
+maximum stays below the steady min-load value: the film follows the slow load decline and
+damps the jumps. Steady runs at the max load bracket the transient minimum, so the steady
+criterion c(0.5 um) = 0.59-0.62 at 130 Hz holds for the load cycle.
+

@@ -270,7 +270,9 @@ Priority queue (user gates in brackets):
       share stays < 10 % at 130 Hz and passes 10 % above c ~ 0.72 (sigma 0.4 um) at 30 Hz.
 - [x] Contact in the moving-OS transient: the contact force is part of `fluid_force`, so it enters the
       equation of motion and the implicit FD Jacobian; 30 deg test runs at 0.25/0.125 deg (h_min 0.05 %).
-- [ ] Set T: 130 Hz load-table transient with contact at c ~ 0.5 and 0.6 (after the talk decision).
+- [x] Set T: 130 Hz load-table transient with contact at c ~ 0.5 and 0.6 (after the talk decision).
+  Done 2026-11-25 with the contact model off and a fixed 0.5 um contact criterion (Seongho), campaign
+  `lge-compressor-flooded-transient-20261125-55808eb`: the cycle h_min stays within the steady min/max-load band.
 
 ### LGE tester FBNS gas effect (`lge-fbns-tester`) - started 2026-11-17
 

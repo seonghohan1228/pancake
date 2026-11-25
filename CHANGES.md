@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-11-25 - Add Set T transient driver for the flooded-start fluids (02h)
+
+Branch `lge-compressor-transient`; no solver source change (same binary, sha256 c974c765...).
+
+- `flooded_transient.py`: the 11/19 B2 procedure (moving OS, 130 Hz load table, crank frame,
+  0.25 deg, chained revolutions until h_min repeats within 1 %, then half dt) at a fixed feed
+  fluid from the flooded-start campaign, contact model off. Reason: check whether the two ~550 N
+  load jumps per revolution push the film below the steady values.
+- Contact criterion h_min < 0.5 um (fixed by Seongho; replaces the Lambda = 3 roughness criterion,
+  since the roughness is not known). Runs are not stopped at the criterion because F2 starts
+  below it; each revolution reports the crank-angle intervals and cycle share below 0.5 um.
+- `plot_flooded_transient.py`: h_min and load against crank angle.
+- Result (campaign `lge-compressor-flooded-transient-20261125-55808eb`): F1 (c = 0.50) cycle h_min
+  0.909-0.995 um, never below 0.5 um; F2 (c = 0.60) 0.470-0.525 um, below 0.5 um for 72 % of the
+  cycle (24.5-153 and 207-337 deg). Cycle minimum is within 0.5 % (F1) and 0.1 % (F2) of the
+  steady max-load value: the load jumps add no extra dip. 3 revolutions each; half-dt change
+  < 0.3 % in h_min, < 0.06 % in torque.
+
 ## 2026-11-24 - Add flooded-start concentration sweep and VC-only comparison drivers (02h)
 
 Branch `lge-compressor-transient`; no solver source change (binary sha256 c974c765..., built at
