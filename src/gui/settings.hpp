@@ -20,6 +20,8 @@ struct UserSettings {
     std::string solver_path;  // optional override; empty = auto-discover
     std::string last_config;  // last opened/saved config file
     int mpi_ranks = 1;
+    std::string fluid_dir;    // fluid directory override; empty = fluids/ next to the exe
+    int angle_zero = 1;       // gui::AngleZero of every angle axis (1 = maximum film)
     int window_width = 1480;
     int window_height = 900;
     bool window_maximized = false;

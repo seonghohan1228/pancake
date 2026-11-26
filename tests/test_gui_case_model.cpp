@@ -86,7 +86,7 @@ CaseModel compressor_case() {
     m.feed.supply_overpressure = 0.3e5;
     m.speed = 2.0 * 3.14159265358979323846 * 130.0;
     m.load = 3450.192492003545;
-    m.load_direction_deg = 90.0;
+    m.load_direction_deg = 270.0;  // on the shaft, downward (bearing load +y in the solver)
     m.ambient_pressure = kShellPressure;
     m.ambient_temperature = kShellTemperature;
     m.fluid_pair = "fw68d_pair";
@@ -331,7 +331,46 @@ void test_new_case_defaults_and_mapping() {
 
 }  // namespace
 
-int main() {
+// Writes the shipped example cases (synthetic pair; no LGE data):
+//   test_gui_case_model --write-examples <dir>
+int write_examples(const fs::path& dir) {
+    FluidPair pair;
+    std::string error;
+    if (!load_fluid_pair(fs::path(PANCAKE_SOURCE_DIR) / "fluids" / "example_vg68_rx", pair, error)) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+    CaseModel steady;  // generic defaults: D 40 mm, L 20 mm, c 20 um, 3000 rpm
+    steady.fluid_pair = pair.id;
+    steady.load = 2000.0;
+    steady.ambient_pressure = 15e5;
+    steady.ambient_temperature = 333.15;
+    steady.feed.type = FeedType::Hole;
+    steady.feed.hole_diameter = 3e-3;
+    steady.mesh_level = MeshLevel::Medium;
+    CaseModel transient = steady;
+    transient.analysis = AnalysisType::Transient;
+    transient.load_table.file = "load_table_example.csv";
+    transient.load_table.frequency_hz = 50.0;
+    transient.moving_mass = 0.5;
+    transient.revolutions = 2.0;
+    transient.steps_per_revolution = 720;
+    transient.mesh_level = MeshLevel::Coarse;
+    const std::pair<const char*, CaseModel> cases[] = {{"example_steady.txt", steady},
+                                                       {"example_transient.txt", transient}};
+    for (const auto& [name, model] : cases) {
+        SimulationConfig cfg = to_config(model, &pair, new_case_template());
+        cfg.solution_table_file = fs::path("../fluids/example_vg68_rx/solution.csv");
+        cfg.output_dir = fs::path(name).stem().string() + "_results";
+        std::ofstream out(dir / name, std::ios::binary);
+        out << new_config_text(cfg, case_meta(model));
+        std::cout << "wrote " << (dir / name).string() << "\n";
+    }
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--write-examples") return write_examples(argv[2]);
     std::cout << "Running test_gui_case_model...\n";
     test_fluid_pair();
     test_new_compressor_case_matches_deck();

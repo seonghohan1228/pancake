@@ -83,9 +83,9 @@ struct ConvergenceInput {
 /// Engineer-level inputs (SI units).
 struct CaseModel {
     // Geometry
-    double bearing_diameter = 0.021;   // D = 2R [m]
+    double bearing_diameter = 0.040;   // D = 2R [m] (generic new-case values, not LGE data)
     double bearing_length = 0.020;     // L [m]
-    double radial_clearance = 30e-6;   // c [m]
+    double radial_clearance = 20e-6;   // c [m]
     FeedInput feed;
     double tilt_angle = 0.0;           // gamma [rad] (slope dh/dz)
     double tilt_direction_deg = 0.0;
@@ -93,15 +93,15 @@ struct CaseModel {
     // Operating conditions
     AnalysisType analysis = AnalysisType::Steady;
     ShaftPosition position = ShaftPosition::LoadBalance;
-    double speed = 816.8140899333462;  // rad/s
+    double speed = 314.1592653589793;  // rad/s (3000 rpm)
     double load = 0.0;                 // N (steady)
-    double load_direction_deg = 90.0;  // fixed frame, as the feed angle
+    double load_direction_deg = 270.0; // direction of the load ON THE SHAFT, fixed frame (deck p18: -Y)
     LoadTableInput load_table;         // transient
     double moving_mass = 1.0;          // kg (transient)
     double fixed_eccentricity_ratio = 0.5;  // fixed shaft position mode
     double fixed_attitude_deg = 0.0;
     double ambient_pressure = 101325.0;     // Pa abs
-    double ambient_temperature = 313.15;    // K
+    double ambient_temperature = 333.15;    // K
 
     // Fluid
     std::string fluid_pair;           // id in the fluid directory

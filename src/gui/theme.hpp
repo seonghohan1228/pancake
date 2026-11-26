@@ -20,6 +20,14 @@ inline constexpr ImVec4 kWarn{0.66f, 0.45f, 0.03f, 1.0f};
 inline constexpr ImVec4 kError{0.78f, 0.16f, 0.16f, 1.0f};
 inline constexpr ImVec4 kMuted{0.44f, 0.47f, 0.52f, 1.0f};
 inline constexpr ImVec4 kInvalidBg{0.99f, 0.89f, 0.89f, 1.0f};
+// Design-risk colours: verdicts and checks only (green = safe for the design).
+inline constexpr ImVec4 kRiskLow = kOk;
+inline constexpr ImVec4 kRiskMedium = kWarn;
+inline constexpr ImVec4 kRiskHigh = kError;
+// Model colours of the deck, only for curves that compare the two models.
+inline constexpr ImVec4 kModelVc{0.89f, 0.29f, 0.29f, 1.0f};      // VC only (red)
+inline constexpr ImVec4 kModelGcVc{0.18f, 0.72f, 0.42f, 1.0f};    // GC+VC (green)
+inline constexpr ImVec4 kHighlight{0.58f, 0.36f, 0.86f, 1.0f};    // highlights (purple)
 
 /// Applies the neutral-gray theme, scaled for the given DPI factor.
 void apply_style(float dpi_scale);

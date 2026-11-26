@@ -3,6 +3,7 @@
 // plot-to-PNG capture. Application logic lives in GuiApp.
 
 #include "gui_app.hpp"
+#include <shellapi.h>
 
 #include "exports.hpp"
 #include "imgui.h"
@@ -121,10 +122,14 @@ void capture_region_to_png(Platform& platform, const GuiApp::CaptureRequest& req
         return;
     }
 
-    const int x0 = std::clamp(static_cast<int>(request.min_x) - 4, 0, static_cast<int>(desc.Width));
-    const int y0 = std::clamp(static_cast<int>(request.min_y) - 4, 0, static_cast<int>(desc.Height));
-    const int x1 = std::clamp(static_cast<int>(request.max_x) + 4, 0, static_cast<int>(desc.Width));
-    const int y1 = std::clamp(static_cast<int>(request.max_y) + 4, 0, static_cast<int>(desc.Height));
+    // max_x <= 0 requests the whole window (screenshot series).
+    const bool whole = request.max_x <= 0.0f;
+    const int x0 = whole ? 0 : std::clamp(static_cast<int>(request.min_x) - 4, 0, static_cast<int>(desc.Width));
+    const int y0 = whole ? 0 : std::clamp(static_cast<int>(request.min_y) - 4, 0, static_cast<int>(desc.Height));
+    const int x1 = whole ? static_cast<int>(desc.Width)
+                         : std::clamp(static_cast<int>(request.max_x) + 4, 0, static_cast<int>(desc.Width));
+    const int y1 = whole ? static_cast<int>(desc.Height)
+                         : std::clamp(static_cast<int>(request.max_y) + 4, 0, static_cast<int>(desc.Height));
     const int width = x1 - x0;
     const int height = y1 - y0;
     if (width <= 0 || height <= 0) {
@@ -214,6 +219,25 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
     platform.app = &app;
     app.paths = AppPaths::resolve();
     app.settings.load(app.paths.settings_file);
+
+    // Command line: pancake_gui.exe [--open <config>] [--screenshots <dir>]
+    // --screenshots renders every screen of the given case into <dir> as PNG
+    // (user-guide figures) at a fixed 1600 x 1000 window and exits.
+    {
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        for (int i = 1; argv && i + 1 < argc; ++i) {
+            const std::wstring flag = argv[i];
+            if (flag == L"--open") app.startup_case = argv[++i];
+            else if (flag == L"--screenshots") app.startup_screenshots = argv[++i];
+        }
+        if (argv) LocalFree(argv);
+        if (!app.startup_screenshots.empty()) {
+            app.settings.window_width = 1600;
+            app.settings.window_height = 1000;
+            app.settings.window_maximized = false;
+        }
+    }
 
     WNDCLASSEXW window_class{};
     window_class.cbSize = sizeof(window_class);

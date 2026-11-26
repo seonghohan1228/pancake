@@ -1,13 +1,14 @@
-﻿// Application shell: lifecycle, dock layout, menu, status bar, run control,
-// config file handling, exports. Panel bodies live in panels_setup.cpp and
-// panels_results.cpp.
+﻿// Application shell: lifecycle, dock layout, menus, status bar, case files,
+// fluid library, run queue and the screenshot series. Window bodies live in
+// workflow_tree.cpp, panel_*.cpp, view_*.cpp, dialog_fluid_library.cpp,
+// results_window.cpp, run_monitor.cpp, batch.cpp and case_report.cpp.
 
 #include "gui_app.hpp"
 
+#include "config_text_patch.hpp"
 #include "exports.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"  // DockBuilder
-#include "property_table_io.hpp"
 #include "win_util.hpp"
 
 #include <shellapi.h>
@@ -15,30 +16,29 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <map>
+#include <fstream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
 namespace {
 
-const wchar_t* kConfigFilter = L"Config files (*.txt)\0*.txt\0All files\0*.*\0";
+const wchar_t* kConfigFilter = L"Case files (*.txt)\0*.txt\0All files\0*.*\0";
+constexpr double kPi = 3.14159265358979323846;
 
-std::filesystem::path find_mpiexec() {
+fs::path find_mpiexec() {
     wchar_t buffer[MAX_PATH] = {};
     const DWORD env_len = GetEnvironmentVariableW(L"MSMPI_BIN", buffer, MAX_PATH);
     if (env_len > 0 && env_len < MAX_PATH) {
         const fs::path candidate = fs::path(buffer) / L"mpiexec.exe";
         if (fs::exists(candidate)) return candidate;
     }
-    for (const wchar_t* prefix :
-         {L"C:/Program Files/Microsoft MPI/Bin/mpiexec.exe",
-          L"C:/Program Files (x86)/Microsoft SDKs/MPI/Bin/mpiexec.exe"}) {
+    for (const wchar_t* prefix : {L"C:/Program Files/Microsoft MPI/Bin/mpiexec.exe",
+                                  L"C:/Program Files (x86)/Microsoft SDKs/MPI/Bin/mpiexec.exe"}) {
         if (fs::exists(prefix)) return prefix;
     }
     wchar_t found[MAX_PATH] = {};
-    if (SearchPathW(nullptr, L"mpiexec.exe", nullptr, MAX_PATH, found, nullptr) > 0) {
-        return found;
-    }
+    if (SearchPathW(nullptr, L"mpiexec.exe", nullptr, MAX_PATH, found, nullptr) > 0) return found;
     return {};
 }
 
@@ -50,42 +50,53 @@ std::string local_time_string() {
     return text;
 }
 
-/// Runnable defaults for a typical journal bearing. The raw SimulationConfig
-/// defaults fail the solver's validation (p_cav and the axial boundary
-/// pressures default to 0; the solver requires absolute pressures > 0).
-SimulationConfig default_case() {
-    SimulationConfig config;
-    config.p_cav = 101325.0;
-    config.bc_z_south_val = 101325.0;
-    config.bc_z_north_val = 101325.0;
-    return config;
+std::string read_text(const fs::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    std::ostringstream text;
+    text << file.rdbuf();
+    return text.str();
 }
+
+bool write_text(const fs::path& path, const std::string& text, std::string& error) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        error = "cannot write " + winutil::path_to_utf8(path);
+        return false;
+    }
+    file << text;
+    return static_cast<bool>(file);
+}
+
+std::string quoted(const fs::path& path) { return "\"" + winutil::path_to_utf8(path) + "\""; }
 
 }  // namespace
 
-void GuiApp::init() {
-    config_ = default_case();
-    settings.load(paths.settings_file);
-    if (!settings.last_config.empty()) {
-        const fs::path last = winutil::utf8_to_path(settings.last_config);
-        if (fs::exists(last)) load_config_from(last);
-    }
-    if (config_path_.empty()) {
-        // Fall back to a config.txt next to the exe if one is shipped there.
-        const fs::path sibling = winutil::executable_dir() / "config.txt";
-        if (fs::exists(sibling)) load_config_from(sibling);
-    }
-    std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s",
-                  settings.solver_path.c_str());
+// ===========================================================================
+// Lifecycle
+// ===========================================================================
 
-    // Pick up results from a previous session right away.
-    const fs::path output_dir = resolve_output_dir();
+void GuiApp::init() {
+    angle_zero_ = static_cast<gui::AngleZero>(std::clamp(settings.angle_zero, 0, 4));
+    library_.set_root(fluid_root());
+    refresh_pairs();
+    std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s", settings.solver_path.c_str());
+    std::snprintf(fluid_dir_buffer_, sizeof(fluid_dir_buffer_), "%s", settings.fluid_dir.c_str());
+
+    fs::path start = startup_case;
+    if (start.empty() && !settings.last_config.empty()) start = winutil::utf8_to_path(settings.last_config);
     std::error_code ec;
-    if (fs::exists(output_dir / "results.pvd", ec)) request_scan(output_dir);
+    if (!start.empty() && fs::exists(start, ec)) load_case(start);
+    else new_case();
+    if (!startup_screenshots.empty()) {
+        screenshot_dir_ = startup_screenshots;
+        exit_after_screenshots_ = true;
+        start_screenshot_series();
+    }
 }
 
 void GuiApp::shutdown() {
     runner_.cancel();
+    settings.angle_zero = static_cast<int>(angle_zero_);
     settings.save(paths.settings_file);
 }
 
@@ -96,34 +107,526 @@ void GuiApp::capture_finished(bool ok, const std::string& message) {
 void GuiApp::draw() {
     process_runner_events();
     poll_loader();
-
-    issues_ = validate_config(config_);
-    // Surface GUI-side property-table load failures (clearer than the generic
-    // "TABLE needs entries" the solver reports when the 2-D table is empty).
-    for (const std::string& error : property_table_errors_) {
-        issues_.push_back({true, "", "Property table - " + error});
-    }
-    has_errors_ = std::any_of(issues_.begin(), issues_.end(),
-                              [](const ValidationIssue& issue) { return issue.is_error; });
+    poll_result_tasks();
 
     draw_dockspace_and_menu();
-    draw_setup_panel();
-    draw_results_panel();
-    draw_convergence_panel();
-    draw_log_panel();
+    draw_workflow_window();
+    draw_panel_window();
+    draw_live_view_window();
+    draw_results_window();
+    draw_monitor_window();
+    draw_log_window();
+    if (show_batch_) draw_batch_window();
+    if (show_fluid_library_) draw_fluid_library_dialog();
     draw_status_bar();
     draw_modals();
 
-    // Keyboard flow: F5 / Enter (outside text inputs) runs, Ctrl+S saves.
     ImGuiIO& io = ImGui::GetIO();
-    const bool can_run = !has_errors_ && !runner_.running();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5, false) && can_run) start_run();
-    if (setup_panel_focused_ && !io.WantTextInput &&
-        ImGui::IsKeyPressed(ImGuiKey_Enter, false) && can_run) {
-        start_run();
-    }
-    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) save_config(false);
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false) && ready_to_run() && !runner_.running()) start_run();
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) save_case(false);
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O, false)) open_case_dialog();
+    if (screenshot_step_ >= 0) advance_screenshot_series();
 }
+
+// ===========================================================================
+// Case files
+// ===========================================================================
+
+void GuiApp::mark_changed() {
+    dirty_ = true;
+    refresh_derived();
+}
+
+void GuiApp::refresh_derived() {
+    if (case_.fluid_pair != pair_.id || (!pair_ok_ && pair_error_.empty())) select_pair(case_.fluid_pair);
+    config_ = gui::to_config(case_, pair(), base_config_, loaded_case_);
+    if (pair()) {
+        config_.solubility_curve_table = pair_.solubility;
+        config_.kinematic_composition_table = pair_.viscosity;
+    }
+    if (!case_path_.empty()) config_.config_dir = case_path_.parent_path();
+    estimates_ = gui::compute_estimates(case_, pair());
+
+    gui::StatusInputs inputs;
+    inputs.model = &case_;
+    inputs.pair = pair();
+    inputs.pair_error = pair_error_;
+    inputs.estimates = &estimates_;
+    inputs.config = &config_;
+    inputs.allow_out_of_range = allow_out_of_range_;
+    inputs.load_table_found = load_table_ok_;
+    inputs.load_table_error = load_table_error_;
+    const int record = shown_record_;
+    if (runner_.running()) {
+        inputs.results_light = gui::Light::Idle;
+        inputs.results_reason = "Running.";
+    } else if (record >= 0 && record < static_cast<int>(records_.size())) {
+        const RunRecord& r = records_[static_cast<std::size_t>(record)];
+        if (r.outcome == SolverState::Failed) {
+            inputs.results_light = gui::Light::Red;
+            inputs.results_reason = "The last run failed; see the solver log.";
+        } else if (!r.converged) {
+            inputs.results_light = gui::Light::Yellow;
+            inputs.results_reason = "The last run did not converge; results are not reliable.";
+        } else {
+            inputs.results_light = gui::Light::Green;
+            inputs.results_reason = "Results of the last run.";
+        }
+    }
+    status_ = gui::compute_status(inputs);
+}
+
+void GuiApp::new_case() {
+    case_ = gui::CaseModel{};
+    if (!pair_ids_.empty()) case_.fluid_pair = pair_ids_.front();
+    loaded_case_.reset();
+    base_config_ = gui::new_case_template();
+    base_text_.clear();
+    case_path_.clear();
+    hidden_keys_.clear();
+    load_notes_.clear();
+    allow_out_of_range_ = false;
+    reload_load_table();
+    refresh_derived();
+    dirty_ = false;
+    set_status("New case.");
+}
+
+void GuiApp::open_case_dialog() {
+    const fs::path picked = exports::open_file_dialog(hwnd, kConfigFilter);
+    if (!picked.empty()) load_case(picked);
+}
+
+void GuiApp::load_case(const fs::path& path) {
+    const std::string text = read_text(path);
+    SimulationConfig cfg;
+    cfg.load_from_text(text);
+    cfg.config_dir = path.parent_path();
+    for (const std::string& error : cfg.parse_errors)
+        log_.push_back({"Case file: " + error, IM_COL32(200, 60, 60, 255)});
+
+    const gui::GuiMeta meta = gui::read_gui_meta(text);
+    // Pair: from the GUI metadata, else the library folder whose table this config uses.
+    std::string pair_id;
+    if (const auto it = meta.find("fluid_pair"); it != meta.end()) pair_id = it->second;
+    if (pair_id.empty()) pair_id = library_.find_by_table(cfg.solution_table_file);
+    select_pair(pair_id);
+
+    const gui::CaseRead read = gui::from_config(cfg, meta, pair());
+    case_ = read.model;
+    if (case_.fluid_pair.empty()) case_.fluid_pair = pair_id;
+    loaded_case_ = case_;
+    base_config_ = cfg;
+    base_text_ = text;
+    case_path_ = path;
+    hidden_keys_ = read.hidden_keys;
+    load_notes_ = read.notes;
+    allow_out_of_range_ = false;
+    for (const std::string& note : load_notes_)
+        log_.push_back({"Case note: " + note, IM_COL32(160, 110, 10, 255)});
+    if (!hidden_keys_.empty())
+        log_.push_back({"This case uses " + std::to_string(hidden_keys_.size()) +
+                            " settings the GUI does not show; they are kept on save.",
+                        IM_COL32(160, 110, 10, 255)});
+    if (pair_id.empty() && !cfg.solution_table_file.empty())
+        log_.push_back({"The fluid table of this case (" + cfg.solution_table_file.generic_string() +
+                            ") is not in the fluid directory. Choose a pair to run it here.",
+                        IM_COL32(160, 110, 10, 255)});
+    settings.last_config = winutil::path_to_utf8(path);
+    reload_load_table();
+    refresh_derived();
+    dirty_ = false;
+    set_status("Opened " + winutil::path_to_utf8(path));
+}
+
+bool GuiApp::write_case_file(const gui::CaseModel& model, const fs::path& path,
+                             const fs::path& output_dir, std::string& error) {
+    SimulationConfig cfg = gui::to_config(model, pair(), base_config_, loaded_case_);
+    std::error_code ec;
+    fs::path relative = fs::relative(output_dir, path.parent_path(), ec);
+    cfg.output_dir = (ec || relative.empty()) ? winutil::path_to_utf8(output_dir)
+                                              : relative.generic_string();
+    const gui::GuiMeta meta = gui::case_meta(model);
+    const std::string text = base_text_.empty()
+                                 ? gui::new_config_text(cfg, meta)
+                                 : gui::patch_config_text(base_text_, base_config_, cfg, meta);
+    return write_text(path, text, error);
+}
+
+bool GuiApp::save_case(bool save_as) {
+    fs::path target = case_path_;
+    if (save_as || target.empty()) {
+        target = exports::save_file_dialog(hwnd, kConfigFilter, L"txt", L"case.txt");
+        if (target.empty()) return false;
+    }
+    std::string error;
+    if (!write_case_file(case_, target, output_dir_for(target), error)) {
+        set_status("Save failed: " + error);
+        return false;
+    }
+    // The saved file becomes the base: later saves patch it.
+    load_case(target);
+    set_status("Saved " + winutil::path_to_utf8(target));
+    return true;
+}
+
+void GuiApp::duplicate_case() {
+    fs::path suggestion = case_path_.empty() ? fs::path("case_copy.txt")
+                                             : case_path_.parent_path() /
+                                                   (case_path_.stem().wstring() + L"_copy.txt");
+    const fs::path target = exports::save_file_dialog(hwnd, kConfigFilter, L"txt",
+                                                      suggestion.filename().wstring());
+    if (target.empty()) return;
+    std::string error;
+    if (!write_case_file(case_, target, output_dir_for(target), error)) {
+        set_status("Duplicate failed: " + error);
+        return;
+    }
+    load_case(target);
+    set_status("Duplicated as " + winutil::path_to_utf8(target));
+}
+
+fs::path GuiApp::output_dir_for(const fs::path& config_file) const {
+    return config_file.parent_path() / (config_file.stem().wstring() + L"_results");
+}
+
+// ===========================================================================
+// Fluid library
+// ===========================================================================
+
+fs::path GuiApp::fluid_root() const {
+    if (!settings.fluid_dir.empty()) return winutil::utf8_to_path(settings.fluid_dir);
+    return winutil::executable_dir() / "fluids";
+}
+
+void GuiApp::refresh_pairs() {
+    library_.set_root(fluid_root());
+    pair_ids_ = library_.list();
+}
+
+void GuiApp::select_pair(const std::string& id) {
+    pair_ok_ = false;
+    pair_error_.clear();
+    pair_ = gui::FluidPair{};
+    pair_.id = id;
+    if (id.empty()) return;
+    gui::FluidPair loaded;
+    if (library_.load(id, loaded, pair_error_)) {
+        pair_ = std::move(loaded);
+        pair_ok_ = true;
+    }
+}
+
+void GuiApp::reload_load_table() {
+    load_rows_.clear();
+    load_table_ok_ = true;
+    load_table_error_.clear();
+    if (case_.analysis != gui::AnalysisType::Transient || case_.load_table.file.empty()) return;
+    fs::path file = case_.load_table.file;
+    if (file.is_relative() && !case_path_.empty()) file = case_path_.parent_path() / file;
+    std::ifstream input(file);
+    if (!input) {
+        load_table_ok_ = false;
+        load_table_error_ = "file not found (" + winutil::path_to_utf8(file) + ")";
+        return;
+    }
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        for (char& ch : line)
+            if (ch == ',' || ch == ';' || ch == '\t') ch = ' ';
+        std::istringstream cells(line);
+        LoadRow row{};
+        if (!(cells >> row.abscissa >> row.a >> row.b)) continue;  // header or text line
+        load_rows_.push_back(row);
+    }
+    if (load_rows_.size() < 2) {
+        load_table_ok_ = false;
+        load_table_error_ = "fewer than two numeric rows";
+    }
+}
+
+// ===========================================================================
+// Run control
+// ===========================================================================
+
+std::string GuiApp::command_line_for(const fs::path& config, int cores) const {
+    std::string source;
+    const fs::path solver = discover_solver(source);
+    const std::string exe = solver.empty() ? std::string("pancake.exe") : quoted(solver);
+    if (cores > 1) return "mpiexec -n " + std::to_string(cores) + " " + exe + " -c " + quoted(config);
+    return exe + " -c " + quoted(config);
+}
+
+fs::path GuiApp::discover_solver(std::string& source) const {
+    if (!settings.solver_path.empty()) {
+        fs::path override_path = winutil::utf8_to_path(settings.solver_path);
+        if (override_path.is_relative()) override_path = winutil::executable_dir() / override_path;
+        if (fs::exists(override_path)) {
+            source = "settings";
+            return override_path;
+        }
+    }
+    const fs::path candidate = winutil::executable_dir() / "pancake.exe";
+    if (fs::exists(candidate)) {
+        source = "next to the GUI";
+        return candidate;
+    }
+    source = "not found";
+    return {};
+}
+
+void GuiApp::start_run() {
+    if (runner_.running() || !ready_to_run()) return;
+    if (case_path_.empty() || dirty_) {
+        if (!save_case(case_path_.empty())) return;
+    }
+    const auto make_job = [&](const gui::CaseModel& model, const std::string& label,
+                              const fs::path& file) {
+        RunJob job;
+        job.label = label;
+        job.group = comparison_mode_ ? "comparison" : "single";
+        job.config_file = file;
+        job.output_dir = output_dir_for(file);
+        job.cores = std::max(1, model.cores);
+        job.model = model;
+        job.config = gui::to_config(model, pair(), base_config_, loaded_case_);
+        if (pair()) {
+            job.saturation_pressure =
+                pair_.saturation_pressure(gui::effective_content(model, pair()), model.ambient_temperature).value;
+        }
+        return job;
+    };
+    if (!comparison_mode_) {
+        enqueue(make_job(case_, "case", case_path_));
+        return;
+    }
+    // Comparison: two copies of the case, gas on and gas off, run one after another.
+    for (bool gas : {true, false}) {
+        gui::CaseModel model = case_;
+        model.dissolved_gas = gas;
+        const fs::path file = case_path_.parent_path() /
+                              (case_path_.stem().wstring() + (gas ? L"_gas_on.txt" : L"_gas_off.txt"));
+        std::string error;
+        if (!write_case_file(model, file, output_dir_for(file), error)) {
+            set_status("Cannot write the comparison case: " + error);
+            return;
+        }
+        enqueue(make_job(model, gas ? "gas on (GC+VC)" : "gas off (VC only)", file));
+    }
+}
+
+void GuiApp::enqueue(RunJob job) {
+    queue_.push_back(std::move(job));
+    if (!runner_.running() && !active_job_) launch_next();
+}
+
+void GuiApp::cancel_all() {
+    queue_.clear();
+    runner_.cancel();
+}
+
+void GuiApp::launch_next() {
+    if (queue_.empty() || runner_.running()) return;
+    RunJob job = std::move(queue_.front());
+    queue_.pop_front();
+
+    std::string source;
+    SolverRunner::LaunchSpec spec;
+    spec.solver_exe = discover_solver(source);
+    if (spec.solver_exe.empty()) {
+        set_status("pancake.exe not found. Place it next to this program or set it in Tools > Settings.");
+        log_.push_back({"Run aborted: pancake.exe not found.", IM_COL32(185, 35, 35, 255)});
+        queue_.clear();
+        return;
+    }
+    if (job.cores > 1) {
+        spec.mpiexec = find_mpiexec();
+        if (spec.mpiexec.empty()) {
+            set_status("mpiexec.exe not found. Install Microsoft MPI or use 1 core.");
+            log_.push_back({"Run aborted: mpiexec.exe not found (needed for more than 1 core).",
+                            IM_COL32(185, 35, 35, 255)});
+            queue_.clear();
+            return;
+        }
+        spec.ranks = job.cores;
+    }
+    spec.config_file = job.config_file;
+    spec.working_dir = job.config_file.parent_path();
+    spec.diagnostics_csv = job.output_dir / "diagnostics.csv";
+    spec.end_t = job.config.solution_mode == SolutionMode::TRANSIENT ? job.config.end_t : 0.0;
+    spec.steady_state = job.config.solution_mode == SolutionMode::STEADY_STATE;
+    std::error_code ec;
+    fs::remove(spec.diagnostics_csv, ec);
+
+    diagnostics_.clear();
+    monitors_.clear();
+    stage_text_ = "Starting";
+    log_.push_back({"> " + command_line_for(job.config_file, job.cores), IM_COL32(40, 90, 170, 255)});
+    std::string error;
+    if (!runner_.start(spec, error)) {
+        set_status("Launch failed: " + error);
+        log_.push_back({"Launch failed: " + error, IM_COL32(185, 35, 35, 255)});
+        return;
+    }
+    active_started_at_ = local_time_string();
+    active_job_ = std::move(job);
+    results_dir_ = active_job_->output_dir;
+    refresh_derived();
+}
+
+void GuiApp::process_runner_events() {
+    const std::size_t before = log_.size();
+    runner_.drain_log(log_);
+    runner_.drain_diagnostics(diagnostics_);
+    runner_.drain_monitors(monitors_);
+    const SolverState previous = progress_.state;
+    progress_ = runner_.snapshot();
+
+    // Plain-words stage from the solver log.
+    for (std::size_t i = before; i < log_.size(); ++i) {
+        const std::string& line = log_[i].text;
+        char text[160];
+        if (const auto pos = line.find("Equilibrium iter="); pos != std::string::npos) {
+            const int iteration = std::atoi(line.c_str() + pos + 17);
+            const auto rf = line.find("R_F=");
+            const double residual = rf != std::string::npos ? std::atof(line.c_str() + rf + 4) : NAN;
+            std::snprintf(text, sizeof(text), "Load balance: iteration %d, force residual %.1e",
+                          iteration, residual);
+            stage_text_ = text;
+        } else if (line.find("Coupled FBNS initialization") != std::string::npos) {
+            stage_text_ = "Initial solution (gas-free start)";
+        } else if (const auto step = line.find("Step "); step != std::string::npos && active_job_ &&
+                                                          active_job_->config.solution_mode ==
+                                                              SolutionMode::TRANSIENT) {
+            const auto tpos = line.find("t=", step);
+            if (tpos != std::string::npos && active_job_->model.speed != 0.0) {
+                const double t = std::atof(line.c_str() + tpos + 2);
+                const double period = 2.0 * kPi / std::abs(active_job_->model.speed);
+                const double turns = t / period;
+                std::snprintf(text, sizeof(text), "Revolution %d of %.0f, angle %.0f deg",
+                              static_cast<int>(turns) + 1, active_job_->model.revolutions,
+                              std::fmod(turns, 1.0) * 360.0);
+                stage_text_ = text;
+            }
+        } else if (line.find("finished successfully") != std::string::npos) {
+            stage_text_ = "Finished";
+        }
+    }
+    if (log_.size() > 60000) log_.erase(log_.begin(), log_.begin() + (log_.size() - 50000));
+
+    if (previous == SolverState::Running && progress_.state != SolverState::Running)
+        on_job_finished(progress_.state);
+}
+
+void GuiApp::on_job_finished(SolverState outcome) {
+    if (!active_job_) return;
+    RunRecord record;
+    record.job = std::move(*active_job_);
+    active_job_.reset();
+    record.outcome = outcome;
+    record.exit_code = progress_.exit_code;
+    record.duration_s = progress_.elapsed_s;
+    record.started_at = active_started_at_;
+    record.command = command_line_for(record.job.config_file, record.job.cores);
+    record.converged = outcome == SolverState::Finished &&
+                       (diagnostics_.empty() || diagnostics_.back().converged);
+    records_.push_back(record);
+    const int index = static_cast<int>(records_.size()) - 1;
+    shown_record_ = index;
+
+    if (outcome == SolverState::Finished || outcome == SolverState::Cancelled) {
+        // Key results of the last step, parsed off the UI thread.
+        const fs::path dir = record.job.output_dir;
+        const std::string prefix = record.job.config.filename_prefix;
+        const SimulationConfig cfg = record.job.config;
+        result_tasks_.emplace_back(index, std::async(std::launch::async, [dir, prefix, cfg]() {
+            ParsedResult parsed;
+            std::string error;
+            fs::path folder = dir / "flat";
+            std::error_code ec;
+            if (!fs::exists(folder / "results.pvd", ec)) folder = dir;
+            const auto steps = parse_pvd(folder, prefix, error);
+            if (steps.empty()) {
+                parsed.error = error.empty() ? "no result steps found" : error;
+                return parsed;
+            }
+            const auto grid = parse_step_grid(steps.back(), error);
+            if (!grid) {
+                parsed.error = error;
+                return parsed;
+            }
+            parsed.results = gui::compute_key_results(*grid, cfg);
+            parsed.ok = true;
+            return parsed;
+        }));
+        selected_step_ = -1;
+        request_scan(record.job.output_dir);
+    }
+    if (outcome == SolverState::Failed)
+        set_status("The run failed (exit " + std::to_string(progress_.exit_code) +
+                   "); the solver log names the cause.");
+    else if (outcome == SolverState::Finished)
+        set_status("Run finished in " + std::to_string(static_cast<int>(progress_.elapsed_s)) + " s.");
+    refresh_derived();
+    if (outcome != SolverState::Cancelled) launch_next();
+    else queue_.clear();
+}
+
+void GuiApp::poll_result_tasks() {
+    for (auto it = result_tasks_.begin(); it != result_tasks_.end();) {
+        if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            ++it;
+            continue;
+        }
+        const ParsedResult parsed = it->second.get();
+        RunRecord& record = records_[static_cast<std::size_t>(it->first)];
+        record.results_ready = parsed.ok;
+        record.results = parsed.results;
+        record.results_error = parsed.error;
+        it = result_tasks_.erase(it);
+    }
+}
+
+int GuiApp::latest_record(const std::string& group) const {
+    for (int i = static_cast<int>(records_.size()) - 1; i >= 0; --i)
+        if (records_[static_cast<std::size_t>(i)].job.group == group) return i;
+    return -1;
+}
+
+// ===========================================================================
+// Results loading
+// ===========================================================================
+
+void GuiApp::request_scan(const fs::path& output_dir) {
+    // The GUI reads the unwrapped (flat) output when present.
+    std::error_code ec;
+    const fs::path flat = output_dir / "flat";
+    results_dir_ = fs::exists(flat / "results.pvd", ec) ? flat : output_dir;
+    loader_.scan(results_dir_, config_.filename_prefix.empty() ? "solution" : config_.filename_prefix);
+}
+
+void GuiApp::poll_loader() {
+    const unsigned revision = loader_.revision();
+    if (revision == loader_revision_seen_) {
+        if (!loader_.busy() && !steps_.empty()) {
+            const int index = selected_step_ < 0 ? static_cast<int>(steps_.size()) - 1 : selected_step_;
+            const StepInfo& desired = steps_[static_cast<std::size_t>(std::min(index, static_cast<int>(steps_.size()) - 1))];
+            if (!grid_ || grid_->step != desired.step) loader_.load_step(desired);
+        }
+        return;
+    }
+    loader_revision_seen_ = revision;
+    steps_ = loader_.steps();
+    grid_ = loader_.grid();
+    results_error_ = loader_.error();
+    if (selected_step_ >= static_cast<int>(steps_.size())) selected_step_ = -1;
+}
+
+// ===========================================================================
+// Shell: menus, layout, status bar, log, modals
+// ===========================================================================
 
 void GuiApp::draw_dockspace_and_menu() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -134,59 +637,71 @@ void GuiApp::draw_dockspace_and_menu() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    const ImGuiWindowFlags host_flags =
-        ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
-        ImGuiWindowFlags_MenuBar;
-    ImGui::Begin("##host", nullptr, host_flags);
+    ImGui::Begin("##host", nullptr,
+                 ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+                     ImGuiWindowFlags_MenuBar);
     ImGui::PopStyleVar(3);
 
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("New case", nullptr)) new_case();
-            if (ImGui::MenuItem("Open config...", "Ctrl+O")) open_config_dialog();
-            if (ImGui::MenuItem("Save", "Ctrl+S")) save_config(false);
-            if (ImGui::MenuItem("Save as...")) save_config(true);
-            if (ImGui::MenuItem("Reload from disk", nullptr, false, !config_path_.empty())) {
-                load_config_from(config_path_);
-            }
+            if (ImGui::MenuItem("New case")) new_case();
+            if (ImGui::MenuItem("Open case...", "Ctrl+O")) open_case_dialog();
+            if (ImGui::MenuItem("Save", "Ctrl+S")) save_case(false);
+            if (ImGui::MenuItem("Save as...")) save_case(true);
+            if (ImGui::MenuItem("Duplicate case...")) duplicate_case();
+            if (ImGui::MenuItem("Reload from disk", nullptr, false, !case_path_.empty())) load_case(case_path_);
             ImGui::Separator();
             if (ImGui::MenuItem("Exit")) wants_exit = true;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Run")) {
-            if (ImGui::MenuItem("Run", "F5", false, !has_errors_ && !runner_.running())) {
-                start_run();
-            }
-            if (ImGui::MenuItem("Cancel run", nullptr, false, runner_.running())) {
-                runner_.cancel();
-            }
+            if (ImGui::MenuItem("Run", "F5", false, ready_to_run() && !runner_.running())) start_run();
+            if (ImGui::MenuItem("Cancel", nullptr, false, runner_.running())) cancel_all();
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sweep / batch...")) show_batch_ = true;
+            if (ImGui::MenuItem("Copy command line", nullptr, false, !case_path_.empty()))
+                ImGui::SetClipboardText(command_line_for(case_path_, case_.cores).c_str());
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Results")) {
-            if (ImGui::MenuItem("Refresh results")) {
-                request_scan(resolve_output_dir());
-            }
-            const bool have_dir = !results_dir_.empty() && fs::exists(results_dir_);
-            if (ImGui::MenuItem("Open results folder", nullptr, false, have_dir)) {
+            const bool have = !results_dir_.empty() && fs::exists(results_dir_);
+            if (ImGui::MenuItem("Open results folder", nullptr, false, have))
                 ShellExecuteW(hwnd, L"open", results_dir_.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            }
             const fs::path pvd = results_dir_ / "results.pvd";
-            if (ImGui::MenuItem("Open in ParaView", nullptr, false, have_dir && fs::exists(pvd))) {
+            if (ImGui::MenuItem("Open in ParaView", nullptr, false, have && fs::exists(pvd)))
                 ShellExecuteW(hwnd, L"open", pvd.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("View")) {
+            ImGui::MenuItem("Fluid library", nullptr, &show_fluid_library_);
+            ImGui::MenuItem("Sweep / batch", nullptr, &show_batch_);
+            if (ImGui::BeginMenu("Angle zero")) {
+                for (gui::AngleZero zero : {gui::AngleZero::Fixed, gui::AngleZero::MaxFilm,
+                                            gui::AngleZero::MinFilm, gui::AngleZero::Feed,
+                                            gui::AngleZero::OppositeFeed}) {
+                    if (ImGui::MenuItem(gui::angle_zero_name(zero), nullptr, angle_zero_ == zero)) {
+                        angle_zero_ = zero;
+                        settings.angle_zero = static_cast<int>(zero);
+                    }
+                }
+                ImGui::EndMenu();
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Reset window layout")) reset_layout_ = true;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Tools")) {
             if (ImGui::MenuItem("Settings...")) show_settings_ = true;
-            if (ImGui::MenuItem("Open data folder (settings, layout)")) {
-                ShellExecuteW(hwnd, L"open", paths.data_dir.c_str(), nullptr, nullptr,
-                              SW_SHOWNORMAL);
+            if (ImGui::MenuItem("Save screenshots of every screen...")) {
+                const fs::path target = exports::save_file_dialog(hwnd, L"PNG images (*.png)\0*.png\0",
+                                                                  L"png", L"screens.png");
+                if (!target.empty()) {
+                    screenshot_dir_ = target.parent_path();
+                    start_screenshot_series();
+                }
             }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Reset window layout")) reset_layout_ = true;
-            ImGui::MenuItem("Show advanced parameters", nullptr, &show_advanced_);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -196,30 +711,34 @@ void GuiApp::draw_dockspace_and_menu() {
         ImGui::EndMenuBar();
     }
 
-    const ImGuiID dockspace_id = ImGui::GetID("pancake_dockspace");
+    const ImGuiID dockspace_id = ImGui::GetID("pancake_dockspace_v2");
     if (reset_layout_ || ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
         build_default_layout(dockspace_id);
         reset_layout_ = false;
     }
     ImGui::DockSpace(dockspace_id, ImVec2(0, 0), ImGuiDockNodeFlags_None);
     ImGui::End();
-
-    if (ImGui::IsKeyPressed(ImGuiKey_O, false) && ImGui::GetIO().KeyCtrl) open_config_dialog();
 }
 
 void GuiApp::build_default_layout(unsigned dockspace_id) {
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->WorkSize);
-
-    ImGuiID center = dockspace_id;
-    const ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.30f, nullptr, &center);
-    const ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.30f, nullptr, &center);
-
-    ImGui::DockBuilderDockWindow("Case Setup", left);
-    ImGui::DockBuilderDockWindow("Results", center);
-    ImGui::DockBuilderDockWindow("Monitors", center);
-    ImGui::DockBuilderDockWindow("Solver Log", bottom);
+    ImGuiID rest = dockspace_id;
+    const ImGuiID left = ImGui::DockBuilderSplitNode(rest, ImGuiDir_Left, 0.19f, nullptr, &rest);
+    ImGuiID right = 0;
+    ImGuiID middle = ImGui::DockBuilderSplitNode(rest, ImGuiDir_Left, 0.42f, nullptr, &right);
+    ImGuiID middle_bottom = 0;
+    const ImGuiID middle_top = ImGui::DockBuilderSplitNode(middle, ImGuiDir_Up, 0.56f, nullptr, &middle_bottom);
+    ImGuiID right_bottom = 0;
+    const ImGuiID right_top = ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.74f, nullptr, &right_bottom);
+    ImGui::DockBuilderDockWindow("Workflow", left);
+    ImGui::DockBuilderDockWindow("Case setup", middle_top);
+    ImGui::DockBuilderDockWindow("Live view", middle_bottom);
+    ImGui::DockBuilderDockWindow("Results", right_top);
+    ImGui::DockBuilderDockWindow("Run monitor", right_top);
+    ImGui::DockBuilderDockWindow("Sweep / batch", right_top);
+    ImGui::DockBuilderDockWindow("Solver log", right_bottom);
     ImGui::DockBuilderFinish(dockspace_id);
 }
 
@@ -232,76 +751,81 @@ void GuiApp::draw_status_bar() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 3));
     ImGui::Begin("##statusbar", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    // Solver state chip: idle / running step N / finished / failed / cancelled.
-    ImVec4 chip_color = theme::kMuted;
-    std::string state_text = to_string(progress_.state);
-    switch (progress_.state) {
-        case SolverState::Running:
-            chip_color = theme::kAccent;
-            state_text = "running";
-            if (progress_.step >= 0) state_text += "  step " + std::to_string(progress_.step);
-            break;
-        case SolverState::Finished: chip_color = theme::kOk; state_text = "converged / finished"; break;
-        case SolverState::Failed:
-            chip_color = theme::kError;
-            state_text = "failed (exit " + std::to_string(progress_.exit_code) + ")";
-            break;
-        case SolverState::Cancelled: chip_color = theme::kWarn; break;
-        case SolverState::Idle: break;
-    }
-    ImGui::TextColored(chip_color, "[%s]", state_text.c_str());
-
-    ImGui::SameLine();
-    {
-        std::string solver_source;
-        if (discover_solver(solver_source).empty()) {
-            ImGui::TextColored(theme::kWarn, "solver not found");
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-                ImGui::SetTooltip("pancake.exe was not found.\nPlace it next to this program or "
-                                  "set the path in Tools > Settings.");
+    // First yellow/red reason of the setup, or the run state.
+    std::string message;
+    gui::Light light = gui::Light::Green;
+    for (int i = 0; i < static_cast<int>(gui::Node::Results); ++i) {
+        const gui::NodeStatus& node = status_[static_cast<std::size_t>(i)];
+        if (node.light == gui::Light::Red || (node.light == gui::Light::Yellow && light != gui::Light::Red)) {
+            if (node.light == gui::Light::Red || message.empty()) {
+                light = node.light;
+                message = std::string(gui::node_name(static_cast<gui::Node>(i))) + ": " +
+                          (node.reasons.empty() ? "" : node.reasons.front());
             }
-            ImGui::SameLine();
+            if (node.light == gui::Light::Red) break;
         }
     }
-    if (progress_.state == SolverState::Running || progress_.elapsed_s > 0.0) {
-        ImGui::TextDisabled("elapsed %.1f s", progress_.elapsed_s);
+    if (runner_.running()) {
+        ImGui::TextColored(theme::kAccent, "Running: %s", stage_text_.c_str());
         ImGui::SameLine();
-    }
-    if (std::isfinite(progress_.last_residual)) {
-        ImGui::TextDisabled("residual %.2e", progress_.last_residual);
+        ImGui::TextDisabled("%.0f s", progress_.elapsed_s);
+        if (!queue_.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%zu queued)", queue_.size());
+        }
+    } else if (!message.empty()) {
+        ui::status_dot(light);
         ImGui::SameLine();
-    }
-    if (progress_.state == SolverState::Running && progress_.end_t > 0.0) {
-        const float fraction =
-            static_cast<float>(std::clamp(progress_.sim_t / progress_.end_t, 0.0, 1.0));
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
-        char overlay[48];
-        std::snprintf(overlay, sizeof(overlay), "t = %.4g / %.4g s", progress_.sim_t,
-                      progress_.end_t);
-        ImGui::ProgressBar(fraction, ImVec2(ImGui::GetFontSize() * 12, 0), overlay);
-        ImGui::SameLine();
-    }
-
-    // Right side: transient status message, then config path.
-    std::string right_text;
-    if (!status_message_.empty() && ImGui::GetTime() < status_message_until_) {
-        right_text = status_message_;
+        ImGui::TextColored(ui::light_color(light), "%s", message.c_str());
     } else {
-        right_text = config_path_.empty() ? std::string("unsaved case")
-                                          : winutil::path_to_utf8(config_path_);
-        if (dirty_) right_text += " *";
+        ui::status_dot(gui::Light::Green);
+        ImGui::SameLine();
+        ImGui::TextColored(theme::kOk, "Ready to run.");
     }
-    const float text_width = ImGui::CalcTextSize(right_text.c_str()).x;
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
-                             ImGui::GetWindowWidth() - text_width - 12.0f));
-    ImGui::TextDisabled("%s", right_text.c_str());
 
+    std::string right = (!status_message_.empty() && ImGui::GetTime() < status_message_until_)
+                            ? status_message_
+                            : (case_path_.empty() ? std::string("unsaved case")
+                                                  : winutil::path_to_utf8(case_path_)) +
+                                  (dirty_ ? " *" : "");
+    const float width = ImGui::CalcTextSize(right.c_str()).x;
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - width - 12.0f));
+    ImGui::TextDisabled("%s", right.c_str());
     ImGui::End();
     ImGui::PopStyleVar(2);
+}
+
+void GuiApp::draw_log_window() {
+    if (!ImGui::Begin("Solver log")) {
+        ImGui::End();
+        return;
+    }
+    if (ImGui::SmallButton("Clear")) log_.clear();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Copy all")) {
+        std::string all;
+        for (const LogLine& line : log_) all += line.text + "\n";
+        ImGui::SetClipboardText(all.c_str());
+    }
+    ImGui::BeginChild("##log", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::PushFont(fonts.mono);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(log_.size()));
+    while (clipper.Step()) {
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+            const LogLine& line = log_[static_cast<std::size_t>(i)];
+            if (line.color) ImGui::PushStyleColor(ImGuiCol_Text, line.color);
+            ImGui::TextUnformatted(line.text.c_str());
+            if (line.color) ImGui::PopStyleColor();
+        }
+    }
+    ImGui::PopFont();
+    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 20.0f) ImGui::SetScrollHereY(1.0f);
+    ImGui::EndChild();
+    ImGui::End();
 }
 
 void GuiApp::draw_modals() {
@@ -310,550 +834,121 @@ void GuiApp::draw_modals() {
         show_settings_ = false;
     }
     if (ImGui::BeginPopupModal("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Solver executable");
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 28);
-        ImGui::InputTextWithHint("##solverpath", "auto-discover (pancake.exe next to this app)",
-                                 solver_path_buffer_, sizeof(solver_path_buffer_));
+        ImGui::TextUnformatted("Solver program (pancake.exe)");
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 30);
+        ImGui::InputTextWithHint("##solver", "pancake.exe next to this program", solver_path_buffer_,
+                                 sizeof(solver_path_buffer_));
         ImGui::SameLine();
-        if (ImGui::Button("Browse...")) {
-            const fs::path picked = exports::open_file_dialog(
-                hwnd, L"Executables (*.exe)\0*.exe\0All files\0*.*\0");
-            if (!picked.empty()) {
+        if (ImGui::Button("Browse...##solver")) {
+            const fs::path picked = exports::open_file_dialog(hwnd, L"Programs (*.exe)\0*.exe\0");
+            if (!picked.empty())
                 std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s",
                               winutil::path_to_utf8(picked).c_str());
-            }
         }
         std::string source;
-        const fs::path discovered = discover_solver(source);
-        if (discovered.empty()) {
-            ImGui::TextColored(theme::kError,
-                               "Solver not found. Place pancake.exe next to this program or set "
-                               "a path above.");
-        } else {
-            ImGui::TextColored(theme::kOk, "Using: %s (%s)",
-                               winutil::path_to_utf8(discovered).c_str(), source.c_str());
-        }
+        const fs::path solver = discover_solver(source);
+        if (solver.empty()) ImGui::TextColored(theme::kError, "Solver not found.");
+        else ImGui::TextColored(theme::kOk, "Using %s (%s)", winutil::path_to_utf8(solver).c_str(), source.c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Fluid directory");
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 30);
+        ImGui::InputTextWithHint("##fluids", "fluids next to this program", fluid_dir_buffer_,
+                                 sizeof(fluid_dir_buffer_));
+        ImGui::TextDisabled("Now: %s", winutil::path_to_utf8(fluid_root()).c_str());
         ImGui::Separator();
         if (ImGui::Button("OK", ImVec2(120, 0))) {
             settings.solver_path = solver_path_buffer_;
+            settings.fluid_dir = fluid_dir_buffer_;
             settings.save(paths.settings_file);
+            refresh_pairs();
+            select_pair(case_.fluid_pair);
+            refresh_derived();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
-            std::snprintf(solver_path_buffer_, sizeof(solver_path_buffer_), "%s",
-                          settings.solver_path.c_str());
-            ImGui::CloseCurrentPopup();
-        }
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
-
     if (show_about_) {
-        ImGui::OpenPopup("About Pancake GUI");
+        ImGui::OpenPopup("About pancake");
         show_about_ = false;
     }
-    if (ImGui::BeginPopupModal("About Pancake GUI", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Pancake GUI 2.0");
-        ImGui::TextDisabled("Journal-bearing thin-film solver front end.");
-        ImGui::Separator();
-        ImGui::TextDisabled("Dear ImGui (docking) + ImPlot, Win32 + Direct3D 11.");
-        ImGui::TextDisabled("Fonts: Roboto (Apache-2.0), JetBrains Mono (OFL-1.1), embedded.");
-        ImGui::TextDisabled("PNG export: stb_image_write (public domain).");
-        ImGui::TextDisabled("Settings & layout: %s", winutil::path_to_utf8(paths.data_dir).c_str());
+    if (ImGui::BeginPopupModal("About pancake", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("pancake GUI 3.0 - journal bearings with refrigerant-oil mixtures");
+        ImGui::TextDisabled("Every case is a config file: pancake.exe -c <case.txt> reproduces it.");
+        ImGui::TextDisabled("Dear ImGui + ImPlot, Win32 + Direct3D 11. Fonts: Roboto, JetBrains Mono.");
+        ImGui::TextDisabled("Settings: %s", winutil::path_to_utf8(paths.data_dir).c_str());
         if (ImGui::Button("Close", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }
-
-// ---------------------------------------------------------------------------
-// Run lifecycle
-// ---------------------------------------------------------------------------
-
-void GuiApp::process_runner_events() {
-    const size_t log_before = log_.size();
-    runner_.drain_log(log_);
-    runner_.drain_diagnostics(diagnostics_);
-    runner_.drain_monitors(monitors_);
-    progress_ = runner_.snapshot();
-
-    // Friction torque only appears in DETAILED per-step lines ("| M=<x> Nm").
-    for (size_t i = log_before; i < log_.size(); ++i) {
-        const std::string& line = log_[i].text;
-        const size_t torque_pos = line.find("| M=");
-        if (torque_pos != std::string::npos) {
-            last_detailed_torque_ = std::atof(line.c_str() + torque_pos + 4);
-        }
-    }
-    if (log_.size() > 60000) log_.erase(log_.begin(), log_.begin() + (log_.size() - 50000));
-
-    if (progress_.state != previous_state_) {
-        if (previous_state_ == SolverState::Running) on_run_finished(progress_.state);
-        previous_state_ = progress_.state;
-    }
-}
-
-void GuiApp::start_run() {
-    if (runner_.running() || has_errors_) return;
-
-    // The solver reads a config file from disk; persist the case first.
-    if (config_path_.empty()) {
-        const fs::path case_dir = paths.data_dir / "case";
-        std::error_code ec;
-        fs::create_directories(case_dir, ec);
-        config_path_ = case_dir / "config.txt";
-    }
-    if (!save_config(false)) return;
-
-    std::string source;
-    SolverRunner::LaunchSpec spec;
-    spec.solver_exe = discover_solver(source);
-    if (spec.solver_exe.empty()) {
-        set_status("Solver not found - place pancake.exe next to this program or set the path "
-                   "in Tools > Settings.");
-        log_.push_back({"Run aborted: pancake.exe not found. Place it next to this program or "
-                        "set the path in Tools > Settings.",
-                        IM_COL32(185, 35, 35, 255)});
-        return;
-    }
-    if (settings.mpi_ranks > 1) {
-        spec.mpiexec = find_mpiexec();
-        if (spec.mpiexec.empty()) {
-            set_status("mpiexec.exe not found - install Microsoft MPI or set ranks to 1.");
-            log_.push_back({"Run aborted: mpiexec.exe not found (needed for MPI ranks > 1). "
-                            "Install the Microsoft MPI runtime or set ranks to 1.",
-                            IM_COL32(185, 35, 35, 255)});
-            return;
-        }
-        spec.ranks = settings.mpi_ranks;
-    }
-
-    spec.config_file = config_path_;
-    spec.working_dir = config_path_.parent_path();
-    active_output_dir_ = resolve_output_dir();
-    spec.diagnostics_csv = active_output_dir_ / "diagnostics.csv";
-    spec.end_t = config_.end_t;
-    spec.steady_state = config_.solution_mode == SolutionMode::STEADY_STATE;
-
-    // Remove a stale diagnostics file so the tail only sees this run's rows.
-    std::error_code ec;
-    fs::remove(spec.diagnostics_csv, ec);
-
-    diagnostics_.clear();
-    monitors_.clear();
-    last_detailed_torque_ = std::numeric_limits<double>::quiet_NaN();
-    running_config_ = config_;
-    run_started_at_ = local_time_string();
-
-    std::string error;
-    if (!runner_.start(spec, error)) {
-        set_status("Launch failed: " + error);
-        log_.push_back({"Launch failed: " + error, IM_COL32(185, 35, 35, 255)});
-        return;
-    }
-    set_status("Solver started.");
-}
-
-void GuiApp::on_run_finished(SolverState outcome) {
-    RunRecord record;
-    record.id = ++run_counter_;
-    record.started_at = run_started_at_;
-    record.duration_s = progress_.elapsed_s;
-    record.outcome = outcome;
-    record.exit_code = progress_.exit_code;
-    record.config = running_config_;
-    record.friction_torque = last_detailed_torque_;
-    if (std::isfinite(last_detailed_torque_)) {
-        record.friction_power = std::abs(last_detailed_torque_ * running_config_.omega);
-    }
-    if (!diagnostics_.empty()) {
-        record.cavitated_fraction = diagnostics_.back().cavitated_fraction;
-        record.boundary_flux = diagnostics_.back().liquid_boundary_flux;
-    }
-    history_.push_back(std::move(record));
-
-    if (outcome == SolverState::Finished || outcome == SolverState::Cancelled) {
-        fill_history_when_loaded_ = true;
-        selected_step_ = -1;  // jump to the latest step of the fresh run
-        request_scan(active_output_dir_);
-    }
-    if (outcome == SolverState::Failed) {
-        set_status("Solver failed (exit " + std::to_string(progress_.exit_code) +
-                   ") - see the Solver Log for the error.");
-    } else if (outcome == SolverState::Finished) {
-        set_status("Run finished in " + std::to_string(progress_.elapsed_s).substr(0, 5) + " s.");
-    }
-}
-
-void GuiApp::fill_history_results(RunRecord& record) {
-    if (!grid_) return;
-    const auto* h = grid_->field("h");
-    const auto* p = grid_->field("p");
-    if (h && !h->empty()) {
-        double h_min = std::numeric_limits<double>::infinity();
-        for (double value : *h) {
-            if (std::isfinite(value)) h_min = std::min(h_min, value);
-        }
-        if (std::isfinite(h_min)) record.h_min = h_min;
-    }
-    if (p && !p->empty()) {
-        double p_max = -std::numeric_limits<double>::infinity();
-        for (double value : *p) {
-            if (std::isfinite(value)) p_max = std::max(p_max, value);
-        }
-        if (std::isfinite(p_max)) record.p_max = p_max;
-    }
-
-    // The solver writes these resultants as constant cell fields when enabled.
-    const auto first_cell = [&](const char* name) {
-        const auto* values = grid_->field(name);
-        return (values && !values->empty()) ? (*values)[0]
-                                            : std::numeric_limits<double>::quiet_NaN();
-    };
-    const double attitude = first_cell("bearing_attitude_angle");
-    record.attitude_deg = std::isfinite(attitude) ? attitude : record.config.attitude_angle_deg;
-    const double torque = first_cell("friction_torque");
-    if (std::isfinite(torque)) {
-        record.friction_torque = torque;
-        record.friction_power = std::abs(torque * record.config.omega);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Config file handling
-// ---------------------------------------------------------------------------
-
-void GuiApp::normalize_motion_config() {
-    config_.bearing_initial_from_attitude = true;
-    config_.bearing_initial_x = config_.bearing_initial_y = config_.bearing_initial_z = 0.0;
-    config_.bearing_initial_vx = config_.bearing_initial_vy = config_.bearing_initial_vz = 0.0;
-    config_.bearing_stiffness_y = config_.bearing_stiffness_z = config_.bearing_stiffness_x;
-    config_.bearing_damping_y = config_.bearing_damping_z = config_.bearing_damping_x;
-}
-
-void GuiApp::mirror_isotropic_support(const std::string& edited_key) {
-    if (edited_key == "bearing_stiffness_x") {
-        config_.bearing_stiffness_y = config_.bearing_stiffness_z = config_.bearing_stiffness_x;
-    } else if (edited_key == "bearing_damping_x") {
-        config_.bearing_damping_y = config_.bearing_damping_z = config_.bearing_damping_x;
-    }
-}
-
-void GuiApp::warn_unrepresentable_motion_config() {
-    const auto note = [&](const std::string& text) {
-        log_.push_back({"Config note: " + text, IM_COL32(160, 110, 10, 255)});
-    };
-    const bool anisotropic_stiffness =
-        config_.bearing_stiffness_y != config_.bearing_stiffness_x ||
-        config_.bearing_stiffness_z != config_.bearing_stiffness_x;
-    const bool anisotropic_damping =
-        config_.bearing_damping_y != config_.bearing_damping_x ||
-        config_.bearing_damping_z != config_.bearing_damping_x;
-    if (anisotropic_stiffness || anisotropic_damping) {
-        note("this config has anisotropic support; the editor shows only the x "
-             "component. The y/z values are kept as loaded unless you edit the "
-             "support field, which re-applies the GUI's isotropic contract.");
-    }
-    const bool explicit_initial =
-        !config_.bearing_initial_from_attitude ||
-        config_.bearing_initial_x != 0.0 || config_.bearing_initial_y != 0.0 ||
-        config_.bearing_initial_z != 0.0 || config_.bearing_initial_vx != 0.0 ||
-        config_.bearing_initial_vy != 0.0 || config_.bearing_initial_vz != 0.0;
-    if (explicit_initial) {
-        note("this config sets the bearing initial position/velocity explicitly; "
-             "the editor has no control for it and leaves it untouched.");
-    }
-}
-
-void GuiApp::reload_property_tables() {
-    // Resolve relative *_table_file paths against the saved config's directory
-    // first (matching the solver), then the CWD; the loader handles absolutes.
-    if (!config_path_.empty()) config_.config_dir = config_path_.parent_path();
-    config_.solubility_table_2d = {};
-    config_.viscosity_table_2d = {};
-    config_.density_table_2d = {};
-    property_table_errors_.clear();
-    FluidProperties::load_config_property_tables(config_, property_table_errors_);
-}
-
-void GuiApp::new_case() {
-    config_ = default_case();
-    normalize_motion_config();
-    reload_property_tables();
-    config_path_.clear();
-    dirty_ = false;
-    set_status("New case with default parameters.");
-}
-
-void GuiApp::open_config_dialog() {
-    const fs::path picked = exports::open_file_dialog(hwnd, kConfigFilter);
-    if (!picked.empty()) load_config_from(picked);
-}
-
-void GuiApp::load_config_from(const fs::path& path) {
-    SimulationConfig fresh;
-    fresh.load_from_file(path);
-    config_ = std::move(fresh);
-    // No normalization here. Normalizing on load overwrote anisotropic support
-    // with the x value and zeroed every initial condition, and the subsequent
-    // save persisted the mutilated version -- silent data loss on any config the
-    // GUI did not author. The GUI contract is applied to GUI edits instead.
-    config_path_ = path;
-    reload_property_tables();
-    dirty_ = false;
-    settings.last_config = winutil::path_to_utf8(path);
-    for (const std::string& warning : config_.parse_warnings) {
-        log_.push_back({"Config warning: " + warning, IM_COL32(160, 110, 10, 255)});
-    }
-    for (const std::string& error : config_.parse_errors) {
-        log_.push_back({"Config error: " + error, IM_COL32(200, 60, 60, 255)});
-    }
-    warn_unrepresentable_motion_config();
-    set_status("Loaded " + winutil::path_to_utf8(path));
-}
-
-bool GuiApp::save_config(bool save_as) {
-    fs::path target = config_path_;
-    if (save_as || target.empty()) {
-        target = exports::save_file_dialog(hwnd, kConfigFilter, L"txt", L"config.txt");
-        if (target.empty()) return false;
-    }
-    // Save what is in the config, not what the GUI would have authored. The
-    // isotropy contract is applied when the support field is edited, so a
-    // GUI-built case is already isotropic here and an externally authored one
-    // keeps the values it was loaded with.
-    try {
-        config_.save_to_file(target);
-    } catch (const std::exception& ex) {
-        set_status(std::string("Save failed: ") + ex.what());
-        return false;
-    }
-    config_path_ = target;
-    dirty_ = false;
-    settings.last_config = winutil::path_to_utf8(target);
-    set_status("Saved " + winutil::path_to_utf8(target));
-    return true;
-}
-
-
-
-// ---------------------------------------------------------------------------
-// Results helpers
-// ---------------------------------------------------------------------------
-
-void GuiApp::request_scan(const fs::path& output_dir) {
-    results_dir_ = output_dir;
-    loader_.scan(output_dir, config_.filename_prefix);
-}
-
-void GuiApp::poll_loader() {
-    const unsigned revision = loader_.revision();
-    if (revision == loader_revision_seen_) {
-        // Still kick a pending step load if the worker is free.
-        if (!loader_.busy() && !steps_.empty()) {
-            const int desired_index =
-                selected_step_ < 0 ? static_cast<int>(steps_.size()) - 1 : selected_step_;
-            const StepInfo& desired = steps_[static_cast<size_t>(desired_index)];
-            if (!grid_ || grid_->step != desired.step) loader_.load_step(desired);
-        }
-        return;
-    }
-    loader_revision_seen_ = revision;
-    steps_ = loader_.steps();
-    grid_ = loader_.grid();
-    results_error_ = loader_.error();
-    if (selected_step_ >= static_cast<int>(steps_.size())) selected_step_ = -1;
-
-    if (fill_history_when_loaded_ && grid_ && !history_.empty() && !steps_.empty() &&
-        grid_->step == steps_.back().step) {
-        fill_history_results(history_.back());
-        fill_history_when_loaded_ = false;
-    }
-}
-
-void GuiApp::select_step(int index) {
-    selected_step_ = index;
-    if (steps_.empty()) return;
-    const int clamped =
-        index < 0 ? static_cast<int>(steps_.size()) - 1
-                  : std::clamp(index, 0, static_cast<int>(steps_.size()) - 1);
-    loader_.load_step(steps_[static_cast<size_t>(clamped)]);
-}
-
-// ---------------------------------------------------------------------------
-// Misc helpers
-// ---------------------------------------------------------------------------
 
 void GuiApp::set_status(const std::string& message) {
     status_message_ = message;
     status_message_until_ = ImGui::GetTime() + 6.0;
 }
 
-bool GuiApp::field_invalid(const char* key) const {
-    for (const ValidationIssue& issue : issues_) {
-        if (issue.is_error && issue.field == key) return true;
-    }
-    return false;
+// ===========================================================================
+// Screenshot series (user guide figures)
+// ===========================================================================
+//
+// Steps: each setup node, then the fluid library, the batch window and the
+// results. Each step selects a screen, waits a few frames for layout, then
+// captures the whole window into <dir>/NN_<name>.png.
+
+namespace {
+struct ScreenStep {
+    const char* name;
+    int node;          // gui::Node to select, or -1
+    int live_tab;      // live view tab
+    bool fluid_library;
+    bool batch;
+};
+constexpr ScreenStep kScreens[] = {
+    {"geometry", 0, 0, false, false},      {"fluid", 1, 0, false, false},
+    {"operating", 2, 0, false, false},     {"boundaries", 3, 0, false, false},
+    {"mesh", 4, 1, false, false},          {"solution", 5, 0, false, false},
+    {"results", 6, 0, false, false},       {"fluid_library", 1, 0, true, false},
+    {"batch", 0, 0, false, true},
+};
+constexpr int kFramesPerScreen = 12;
+}  // namespace
+
+void GuiApp::start_screenshot_series() {
+    std::error_code ec;
+    fs::create_directories(screenshot_dir_, ec);
+    screenshot_step_ = 0;
 }
 
-const char* GuiApp::first_error() const {
-    for (const ValidationIssue& issue : issues_) {
-        if (issue.is_error) return issue.message.c_str();
+void GuiApp::advance_screenshot_series() {
+    static int frame = 0;
+    const int count = static_cast<int>(sizeof(kScreens) / sizeof(kScreens[0]));
+    if (screenshot_step_ >= count) {
+        screenshot_step_ = -1;
+        show_fluid_library_ = false;
+        show_batch_ = false;
+        set_status("Screenshots saved to " + winutil::path_to_utf8(screenshot_dir_));
+        if (exit_after_screenshots_) wants_exit = true;
+        return;
     }
-    return nullptr;
-}
-
-std::filesystem::path GuiApp::discover_solver(std::string& source) const {
-    if (!settings.solver_path.empty()) {
-        fs::path override_path = winutil::utf8_to_path(settings.solver_path);
-        if (override_path.is_relative()) {
-            override_path = winutil::executable_dir() / override_path;
-        }
-        if (fs::exists(override_path)) {
-            source = "settings override";
-            return override_path;
-        }
+    const ScreenStep& screen = kScreens[screenshot_step_];
+    if (frame == 0) {
+        selected_node_ = static_cast<gui::Node>(screen.node);
+        live_view_tab_ = screen.live_tab;
+        show_fluid_library_ = screen.fluid_library;
+        show_batch_ = screen.batch;
+        if (screen.node == static_cast<int>(gui::Node::Results)) ImGui::SetWindowFocus("Results");
+        if (screen.batch) ImGui::SetWindowFocus("Sweep / batch");
     }
-    const fs::path exe_dir = winutil::executable_dir();
-    for (const wchar_t* name : {L"pancake.exe", L"solver.exe"}) {
-        const fs::path candidate = exe_dir / name;
-        if (fs::exists(candidate)) {
-            source = "next to the GUI";
-            return candidate;
-        }
+    if (++frame == kFramesPerScreen) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "%02d_%s.png", screenshot_step_ + 1, screen.name);
+        CaptureRequest request;  // whole window
+        request.path = screenshot_dir_ / name;
+        pending_capture = request;
+    } else if (frame > kFramesPerScreen + 1) {
+        frame = 0;
+        ++screenshot_step_;
     }
-    source = "not found";
-    return {};
-}
-
-std::filesystem::path GuiApp::resolve_output_dir() const {
-    fs::path output_dir = winutil::utf8_to_path(config_.output_dir);
-    if (output_dir.is_relative()) {
-        const fs::path base =
-            config_path_.empty() ? winutil::executable_dir() : config_path_.parent_path();
-        output_dir = base / output_dir;
-    }
-    return output_dir;
-}
-
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
-
-int& GuiApp::unit_choice(const char* key, UnitFamily family) {
-    int& choice = settings.unit_choices[key];
-    const int count = static_cast<int>(unit_options(family).size());
-    if (choice < 0 || choice >= count) choice = 0;
-    return choice;
-}
-
-void GuiApp::export_grid_csv() {
-    if (!grid_) return;
-    const auto* field = grid_->field(selected_field_);
-    if (!field) return;
-    const fs::path target = exports::save_file_dialog(
-        hwnd, L"CSV files (*.csv)\0*.csv\0", L"csv",
-        winutil::utf8_to_wide(selected_field_ + "_step" + std::to_string(grid_->step) + ".csv"));
-    if (target.empty()) return;
-    std::vector<double> theta_column, z_column, value_column;
-    theta_column.reserve(field->size());
-    for (int j = 0; j < grid_->ny; ++j) {
-        for (int i = 0; i < grid_->nx; ++i) {
-            theta_column.push_back(grid_->theta_deg[i]);
-            z_column.push_back(grid_->z_m[j]);
-            value_column.push_back((*field)[static_cast<size_t>(j) * grid_->nx + i]);
-        }
-    }
-    std::string error;
-    if (exports::write_csv_columns(target, {"theta_deg", "z_m", selected_field_},
-                                   {theta_column, z_column, value_column}, error)) {
-        set_status("Saved " + winutil::path_to_utf8(target));
-    } else {
-        set_status(error);
-    }
-}
-
-void GuiApp::export_profiles_csv() {
-    if (!grid_) return;
-    const fs::path target = exports::save_file_dialog(
-        hwnd, L"CSV files (*.csv)\0*.csv\0", L"csv",
-        winutil::utf8_to_wide("profiles_step" + std::to_string(grid_->step) + ".csv"));
-    if (target.empty()) return;
-    const int j = profile_z_index_ < 0 ? grid_->ny / 2
-                                       : std::clamp(profile_z_index_, 0, grid_->ny - 1);
-    std::vector<std::string> headers = {"theta_deg"};
-    std::vector<std::vector<double>> columns = {grid_->theta_deg};
-    for (const char* name : {"p", "h", "film_content", "T"}) {
-        const auto* field = grid_->field(name);
-        if (!field) continue;
-        std::vector<double> column(grid_->nx);
-        for (int i = 0; i < grid_->nx; ++i) {
-            column[i] = (*field)[static_cast<size_t>(j) * grid_->nx + i];
-        }
-        headers.push_back(name);
-        columns.push_back(std::move(column));
-    }
-    std::string error;
-    if (exports::write_csv_columns(target, headers, columns, error)) {
-        set_status("Saved " + winutil::path_to_utf8(target));
-    } else {
-        set_status(error);
-    }
-}
-
-// Union of the physical monitors (DETAILED stdout) and diagnostics.csv rows,
-// merged by step; blank cells where one source has no row for that step.
-void GuiApp::export_monitors_csv() {
-    if (monitors_.empty() && diagnostics_.empty()) return;
-    const fs::path target = exports::save_file_dialog(hwnd, L"CSV files (*.csv)\0*.csv\0", L"csv",
-                                                      L"monitors.csv");
-    if (target.empty()) return;
-
-    std::map<int, std::pair<const MonitorRow*, const DiagRow*>> by_step;
-    for (const MonitorRow& row : monitors_) by_step[row.step].first = &row;
-    for (const DiagRow& row : diagnostics_) by_step[row.step].second = &row;
-
-    std::vector<std::vector<std::string>> rows;
-    char cell[48];
-    const auto fmt = [&](double value) -> std::string {
-        if (!std::isfinite(value)) return "";
-        std::snprintf(cell, sizeof(cell), "%.9g", value);
-        return cell;
-    };
-    for (const auto& [step, sources] : by_step) {
-        const MonitorRow* monitor = sources.first;
-        const DiagRow* diag = sources.second;
-        const double time = monitor ? monitor->t : diag->time;
-        rows.push_back({std::to_string(step), fmt(time),
-                        fmt(monitor ? monitor->h_min : NAN),
-                        fmt(monitor ? monitor->t_min : NAN),
-                        fmt(monitor ? monitor->t_max : NAN),
-                        fmt(monitor ? std::hypot(monitor->force_x, monitor->force_y) : NAN),
-                        fmt(monitor ? monitor->torque : NAN),
-                        fmt(diag ? diag->cavitated_fraction : NAN),
-                        fmt(diag ? diag->liquid_residual : NAN)});
-    }
-    std::string error;
-    if (exports::write_csv_rows(target,
-                                {"step", "time_s", "h_min_m", "T_min_K", "T_max_K", "force_N",
-                                 "friction_torque_Nm", "cavitated_fraction", "liquid_residual"},
-                                rows, error)) {
-        set_status("Saved " + winutil::path_to_utf8(target));
-    } else {
-        set_status(error);
-    }
-}
-
-void GuiApp::request_plot_capture(const char* suggested_name, float min_x, float min_y,
-                                  float max_x, float max_y) {
-    const fs::path target =
-        exports::save_file_dialog(hwnd, L"PNG images (*.png)\0*.png\0", L"png",
-                                  winutil::utf8_to_wide(suggested_name));
-    if (target.empty()) return;
-    CaptureRequest request;
-    request.min_x = min_x;
-    request.min_y = min_y;
-    request.max_x = max_x;
-    request.max_y = max_y;
-    request.path = target;
-    pending_capture = request;
 }

@@ -37,6 +37,8 @@ void UserSettings::load(const std::filesystem::path& file) {
         const std::string value = line.substr(eq + 1);
         if (key == "solver_path") solver_path = value;
         else if (key == "last_config") last_config = value;
+        else if (key == "fluid_dir") fluid_dir = value;
+        else if (key == "angle_zero") angle_zero = std::atoi(value.c_str());
         else if (key.rfind("unit.", 0) == 0) unit_choices[key.substr(5)] = std::atoi(value.c_str());
         else if (key == "mpi_ranks") mpi_ranks = std::max(1, std::atoi(value.c_str()));
         else if (key == "window_width") window_width = std::max(640, std::atoi(value.c_str()));
@@ -50,6 +52,8 @@ void UserSettings::save(const std::filesystem::path& file) const {
     if (!output.is_open()) return;
     output << "solver_path=" << solver_path << "\n"
            << "last_config=" << last_config << "\n"
+           << "fluid_dir=" << fluid_dir << "\n"
+           << "angle_zero=" << angle_zero << "\n"
            << "mpi_ranks=" << mpi_ranks << "\n"
            << "window_width=" << window_width << "\n"
            << "window_height=" << window_height << "\n"

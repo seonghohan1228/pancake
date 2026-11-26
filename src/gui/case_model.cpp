@@ -204,7 +204,9 @@ void write_feed(const CaseModel& m, const FluidPair* pair, SimulationConfig& cfg
 
 void write_motion(const CaseModel& m, const SimulationConfig& base, bool new_case,
                   SimulationConfig& cfg) {
-    const double direction = m.load_direction_deg * kPi / 180.0;
+    // The solver applies the external load to the moving bearing; a load W on
+    // the shaft is the same as -W on the bearing.
+    const double direction = (m.load_direction_deg + 180.0) * kPi / 180.0;
     cfg.bearing_stiffness_x = cfg.bearing_stiffness_y = cfg.bearing_stiffness_z = 0.0;
     cfg.bearing_damping_x = cfg.bearing_damping_y = cfg.bearing_damping_z = 0.0;
     cfg.external_load_z = 0.0;
@@ -213,8 +215,9 @@ void write_motion(const CaseModel& m, const SimulationConfig& base, bool new_cas
     // else start at 0.8 c roughly opposite the load, as a Newton seed.
     const bool keep_position = !new_case && base.e > 0.0 && base.e < 0.95 * m.radial_clearance;
     if (!keep_position) {
+        // Seed: journal displaced towards the shaft load, ~20 deg ahead.
         cfg.e = 0.8 * m.radial_clearance;
-        cfg.attitude_angle_deg = wrap_degrees(m.load_direction_deg + 200.0);
+        cfg.attitude_angle_deg = wrap_degrees(m.load_direction_deg + 20.0);
     }
     if (m.analysis == AnalysisType::Steady) {
         cfg.solution_mode = SolutionMode::STEADY_STATE;
@@ -491,8 +494,8 @@ CaseRead from_config(const SimulationConfig& cfg, const GuiMeta& meta, const Flu
                                                          : ShaftPosition::LoadBalance;
     m.load = std::hypot(cfg.external_load_x, cfg.external_load_y);
     m.load_direction_deg =
-        m.load > 0.0 ? wrap_degrees(std::atan2(cfg.external_load_y, cfg.external_load_x) * 180.0 / kPi)
-                     : 90.0;
+        m.load > 0.0 ? wrap_degrees(std::atan2(-cfg.external_load_y, -cfg.external_load_x) * 180.0 / kPi)
+                     : 270.0;
     m.fixed_eccentricity_ratio = cfg.c > 0.0 ? cfg.e / cfg.c : 0.0;
     m.fixed_attitude_deg = cfg.attitude_angle_deg;
     m.moving_mass = cfg.bearing_mass;
