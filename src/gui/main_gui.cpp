@@ -316,6 +316,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
             Sleep(10);
             continue;
         }
+        // Scripted modes keep running while occluded; cap them at ~60 frames/s
+        // so the render loop does not take CPU from the solver.
+        if (platform.occluded) Sleep(15);
         platform.occluded = false;
 
         if (platform.resize_width != 0 && platform.resize_height != 0) {

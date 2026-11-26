@@ -13,6 +13,7 @@
 
 #include "angle_reference.hpp"
 #include "case_model.hpp"
+#include "case_status.hpp"
 #include "config_text_patch.hpp"
 #include "estimates.hpp"
 #include "fluid_library.hpp"
@@ -355,6 +356,47 @@ void test_new_case_defaults_and_mapping() {
           "the FW68D test pair names the R410A gas model");
 }
 
+// Test 4: a pair created from a CSV (the dialog's Import CSV + Save path) loads
+// with the solver's loader and gives a case that validates.
+void test_pair_from_csv() {
+    const fs::path root = fs::temp_directory_path() / "pancake_gui_test_fluids";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    FluidLibrary library(root);
+    std::vector<SolutionRow> rows;
+    std::string error;
+    check(read_solution_rows(fs::path(PANCAKE_SOURCE_DIR) / "fluids" / "example_vg68_rx" / "solution.csv",
+                             rows, error),
+          "CSV rows read: " + error);
+    FluidPair created;
+    created.id = "imported_pair";
+    created.name = "Imported pair";
+    created.source = "test";
+    check(library.save(created, rows, error), "new pair saved and reloaded: " + error);
+    FluidPair loaded;
+    check(library.load("imported_pair", loaded, error) && loaded.loaded(), "new pair loads: " + error);
+    CaseModel m;
+    m.fluid_pair = loaded.id;
+    m.load = 2000.0;
+    m.ambient_pressure = 15e5;
+    const SimulationConfig cfg = to_config(m, &loaded, new_case_template());
+    std::vector<std::string> errors, warnings;
+    cfg.validate(errors, warnings);
+    check(errors.empty(), "case with the new pair validates: " + (errors.empty() ? std::string() : errors.front()));
+    // Out-of-range content gives the warning (yellow), not a silent result.
+    m.saturated = false;
+    m.content = 0.9;
+    const Estimates e = compute_estimates(m, &loaded);
+    check(!e.fluid_in_range, "content above the table is flagged out of range");
+    StatusInputs inputs;
+    inputs.model = &m;
+    inputs.pair = &loaded;
+    inputs.estimates = &e;
+    const StatusArray status = compute_status(inputs);
+    check(status[static_cast<int>(Node::Fluid)].light == Light::Yellow, "out-of-range turns Fluid yellow");
+    fs::remove_all(root, ec);
+}
+
 // Test 11: an FBNS result never shows a nonzero gas field.
 void test_fbns_result_fields() {
     ResultGrid grid;
@@ -416,6 +458,29 @@ void test_run_time_model() {
     t.steps_per_revolution = 360;
     check(close(estimate_run_time(t, &pair).typical_s / 3600.0, 0.5, 1e-9),
           "transient at 1 deg: 0.5 core-h per revolution");
+
+    // Acceptance test 10 on the development machine (4 cores, 8 threads),
+    // 8 processes, measured by terminal on 2026-11-26:
+    //   compressor GC+VC, fine mesh, isothermal steady FBNS: 147 s
+    //   example pure-oil thermal steady FBNS, medium mesh:    202 s
+    set_machine_cores(4, 8);
+    CaseModel iso = compressor_case();
+    iso.cores = 8;
+    const double iso_estimate = estimate_run_time(iso, &pair).typical_s;
+    std::cout << "  test 10: isothermal steady estimate " << iso_estimate << " s, measured 147 s, ratio "
+              << 147.0 / iso_estimate << "\n";
+    check(147.0 / iso_estimate < 2.0 && iso_estimate / 147.0 < 2.0,
+          "isothermal steady estimate within a factor of 2 (test 10)");
+    CaseModel thermal = iso;
+    thermal.saturated = false;
+    thermal.content = 0.0;
+    thermal.dissolved_gas = false;
+    thermal.thermal = true;
+    thermal.mesh_level = MeshLevel::Medium;
+    const double thermal_estimate = estimate_run_time(thermal, &pair).typical_s;
+    std::cout << "  test 10: thermal steady estimate " << thermal_estimate << " s, measured 202 s, ratio "
+              << thermal_estimate / 202.0 << " (reported, see the final report)\n";
+    set_machine_cores(0, 0);
 }
 
 }  // namespace
@@ -536,6 +601,7 @@ int main(int argc, char** argv) {
     test_estimates();
     test_angle_references();
     test_new_case_defaults_and_mapping();
+    test_pair_from_csv();
     test_fbns_result_fields();
     test_run_time_model();
     if (failures) {

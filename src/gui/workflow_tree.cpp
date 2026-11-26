@@ -120,10 +120,14 @@ void GuiApp::draw_workflow_window() {
     if (ImGui::GetContentRegionAvail().x < cores_w) ImGui::NewLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("CPU cores");
-    const char* cores_help =
+    std::string cores_help =
         "Number of processes the solver runs on. More cores = faster; above 1 the solver "
-        "needs Microsoft MPI (mpiexec) installed. Typical: 1 to 8.";
-    ui::item_tooltip(cores_help);
+        "needs Microsoft MPI (mpiexec) installed.";
+    if (gui::machine_physical_cores() > 0)
+        cores_help += " This computer has " + std::to_string(gui::machine_physical_cores()) +
+                      " physical cores (" + std::to_string(gui::machine_logical_cores()) +
+                      " threads); processes beyond the physical cores add little speed.";
+    ui::item_tooltip(cores_help.c_str());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(cores_input_w);
     int cores = std::max(1, case_.cores);
@@ -134,7 +138,7 @@ void GuiApp::draw_workflow_window() {
             mark_changed();
         }
     }
-    ui::item_tooltip(cores_help);
+    ui::item_tooltip(cores_help.c_str());
 
     // Workflow tree
     ui::section("Workflow");

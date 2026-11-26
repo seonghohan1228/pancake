@@ -7,6 +7,7 @@
 
 #include "gui_app.hpp"
 #include "imgui.h"
+#include "imgui_internal.h"  // ImRect
 
 #include <algorithm>
 #include <cmath>
@@ -42,12 +43,16 @@ void draw_arrow(ImDrawList* dl, ImVec2 from, ImVec2 to, ImU32 color, float thick
 }
 
 /// Text placed just outside a circle at fixed-frame angle `deg`.
-void label_outside(ImDrawList* dl, ImVec2 anchor, double deg, ImU32 color, const char* text) {
+/// Top-left corner of a label placed outside the ring at `anchor`.
+ImVec2 label_corner(ImVec2 anchor, double deg, const char* text) {
     const ImVec2 size = ImGui::CalcTextSize(text);
     const float c = static_cast<float>(std::cos(deg * kDeg));
     const float s = static_cast<float>(std::sin(deg * kDeg));
-    dl->AddText(ImVec2(anchor.x + (c - 1.0f) * 0.5f * size.x, anchor.y - (s + 1.0f) * 0.5f * size.y),
-                color, text);
+    return ImVec2(anchor.x + (c - 1.0f) * 0.5f * size.x, anchor.y - (s + 1.0f) * 0.5f * size.y);
+}
+
+void label_outside(ImDrawList* dl, ImVec2 anchor, double deg, ImU32 color, const char* text) {
+    dl->AddText(label_corner(anchor, deg, text), color, text);
 }
 
 /// Largest of 1, 2, 5 x 10^k not above `value` (at least 1).
@@ -381,19 +386,24 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
     const Mark marks[] = {{hmax_deg, accent, hmax_text},
                           {feed_deg, highlighted_zone_ == 1 ? highlight : ink, feed_text},
                           {hmin_deg, ink, hmin_text}};
-    std::vector<double> placed;
+    // Each label moves outwards until its rectangle overlaps no label placed before.
+    std::vector<ImRect> placed;
     for (const Mark& mark : marks) {
-        int stack = 0;
-        for (double other : placed) {
-            double gap = std::abs(wrap_deg(mark.deg - other));
-            gap = std::min(gap, 360.0 - gap);
-            if (gap < 18.0) ++stack;
+        const ImVec2 size = ImGui::CalcTextSize(mark.text);
+        ImVec2 anchor, corner;
+        for (int stack = 0; stack < 8; ++stack) {
+            anchor = polar(centre, r_outer + 8.0f + stack * 1.15f * font, mark.deg);
+            corner = label_corner(anchor, mark.deg, mark.text);
+            const ImRect box(ImVec2(corner.x - 2.0f, corner.y - 1.0f),
+                             ImVec2(corner.x + size.x + 2.0f, corner.y + size.y + 1.0f));
+            bool clear = true;
+            for (const ImRect& other : placed) clear = clear && !box.Overlaps(other);
+            if (clear) break;
         }
-        placed.push_back(mark.deg);
-        dl->AddLine(polar(centre, r_bore - 0.5f * c_px, mark.deg), polar(centre, r_outer + 6.0f, mark.deg),
-                    mark.color, 1.5f);
-        label_outside(dl, polar(centre, r_outer + 8.0f + stack * 1.15f * font, mark.deg), mark.deg,
-                      mark.color, mark.text);
+        placed.emplace_back(ImVec2(corner.x - 2.0f, corner.y - 1.0f),
+                            ImVec2(corner.x + size.x + 2.0f, corner.y + size.y + 1.0f));
+        dl->AddLine(polar(centre, r_bore - 0.5f * c_px, mark.deg), anchor, mark.color, 1.5f);
+        dl->AddText(corner, mark.color, mark.text);
     }
     if (highlighted_zone_ == 4 && !case_.thermal)
         label_outside(dl, polar(centre, r_outer + 8.0f, 45.0), 45.0, highlight,

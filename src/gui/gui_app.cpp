@@ -50,6 +50,32 @@ bool write_text(const fs::path& path, const std::string& text, std::string& erro
 // ===========================================================================
 
 void GuiApp::init() {
+    {
+        // Physical cores and threads, for the run-time estimate.
+        DWORD length = 0;
+        GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &length);
+        std::vector<unsigned char> buffer(length);
+        int physical = 0, logical = 0;
+        if (length && GetLogicalProcessorInformationEx(
+                          RelationProcessorCore,
+                          reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
+                          &length)) {
+            for (DWORD offset = 0; offset < length;) {
+                const auto* info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(
+                    buffer.data() + offset);
+                ++physical;
+                for (WORD g = 0; g < info->Processor.GroupCount; ++g) {
+                    KAFFINITY mask = info->Processor.GroupMask[g].Mask;
+                    while (mask) {
+                        logical += static_cast<int>(mask & 1);
+                        mask >>= 1;
+                    }
+                }
+                offset += info->Size;
+            }
+        }
+        gui::set_machine_cores(physical, logical);
+    }
     angle_zero_ = static_cast<gui::AngleZero>(std::clamp(settings.angle_zero, 0, 4));
     library_.set_root(fluid_root());
     refresh_pairs();

@@ -9,7 +9,16 @@ namespace gui {
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+int g_physical_cores = 0;
+int g_logical_cores = 0;
 }
+
+void set_machine_cores(int physical, int logical) {
+    g_physical_cores = std::max(0, physical);
+    g_logical_cores = std::max(g_physical_cores, logical);
+}
+int machine_physical_cores() { return g_physical_cores; }
+int machine_logical_cores() { return g_logical_cores; }
 
 const char* onset_verdict_text(OnsetVerdict verdict) {
     switch (verdict) {
@@ -108,7 +117,15 @@ RunTime estimate_run_time(const CaseModel& m, const FluidPair* pair) {
     int n_theta = m.n_theta, n_z = m.n_z;
     if (m.mesh_level != MeshLevel::Custom) mesh_level_cells(m.mesh_level, n_theta, n_z);
     const double cell_ratio = static_cast<double>(n_theta) * n_z / (720.0 * 192.0);
-    const double p = r.cores;
+    // Processes on physical cores count fully; on hyperthreads 0.25 each;
+    // beyond the hardware threads they only share time.
+    double p = r.cores;
+    if (g_physical_cores > 0) {
+        const double physical = std::min<double>(r.cores, g_physical_cores);
+        const double threads = std::min<double>(r.cores, g_logical_cores) - physical;
+        p = physical + 0.25 * std::max(0.0, threads);
+    }
+    r.effective_cores = p;
     const double processes = p / (1.0 + 0.02 * (p - 1.0));  // p x efficiency
     const auto wall = [&](double core_hours) { return core_hours * cell_ratio * 3600.0 / processes; };
     r.low_s = wall(core_h.low);

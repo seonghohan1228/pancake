@@ -48,6 +48,7 @@ struct RunTime {
     double core_hours = 0.0;    // typical core-time (wall x processes)
     double per_revolution_s = 0.0;  // transient: typical wall time of one revolution
     int cores = 1;
+    double effective_cores = 1.0;  // processes counted as physical cores
     std::string basis;          // which measured form the estimate scales
 };
 
@@ -77,6 +78,13 @@ double sommerfeld_number(double viscosity, double speed_rad_s, double length, do
 
 /// Verdict from the margin ratio and Phi(S).
 OnsetVerdict onset_verdict(double margin_ratio, double phi);
+
+/// Physical cores and hardware threads of this computer (0 = unknown). Set once
+/// by the GUI; processes beyond the physical cores count as 0.25 of a core
+/// each (hyperthreads), beyond the threads as nothing.
+void set_machine_cores(int physical, int logical);
+int machine_physical_cores();
+int machine_logical_cores();
 
 /// Run-time estimate from the measured core-times at 720 x 192 (plan 0.2),
 /// scaled linearly with the cell count, by steps per revolution (transient)
