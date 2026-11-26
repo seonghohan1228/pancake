@@ -66,6 +66,11 @@ KeyResults compute_key_results(const ResultGrid& grid, const SimulationConfig& c
         for (double v : *t)
             if (std::isfinite(v)) hi = std::max(hi, v);
         if (std::isfinite(hi)) r.t_max = hi;
+        double sum = 0.0;
+        std::size_t count = 0;
+        for (double v : *t)
+            if (std::isfinite(v)) { sum += v; ++count; }
+        if (count) r.t_mean = sum / static_cast<double>(count);
     }
 
     r.friction_torque = first_cell(grid, "friction_torque");

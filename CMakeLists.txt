@@ -300,6 +300,7 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
     add_executable(pancake_gui WIN32
         src/gui/main_gui.cpp
         src/gui/gui_app.cpp
+        src/gui/run_control.cpp
         # Toolkit-free core (unit-tested in tests/test_gui_case_model.cpp)
         src/gui/case_model.cpp
         src/gui/case_status.cpp

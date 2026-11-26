@@ -40,6 +40,7 @@ struct KeyResults {
     double shear_share = kNaN;         // 0..1
     double lambda = kNaN;              // film thickness ratio
     double t_max = kNaN;               // K (thermal runs)
+    double t_mean = kNaN;              // K, mean film temperature (thermal runs)
     double time = 0.0;
     int step = 0;
 };

@@ -46,6 +46,9 @@ struct RunJob {
     SimulationConfig config;              // config as run (tables attached)
     double saturation_pressure = 0.0;     // Pa, for the gas-release check
     double sweep_value = 0.0;             // batch: the swept input (SI)
+    /// Two-step thermal route: the isothermal transient queued when this thermal
+    /// steady job finishes, at its mean film temperature.
+    std::optional<gui::CaseModel> followup;
 };
 
 /// A finished (or failed) run and its key results.
@@ -189,7 +192,18 @@ private:
     std::string stage_text_;                     // plain-words stage of the active run
 
     /// Run the current case (or the gas on / gas off pair in comparison mode).
+    /// A thermal transient case asks for confirmation first.
     void start_run();
+    RunJob make_job(const gui::CaseModel& model, const std::string& label,
+                    const std::filesystem::path& file, const std::string& group) const;
+    // Thermal transient confirmation (run_control.cpp, plan 0.3).
+    bool show_thermal_transient_dialog_ = false;
+    bool thermal_transient_confirmed_ = false;
+    void draw_thermal_transient_dialog();
+    /// Step 1 thermal steady at the mean load, step 2 isothermal transient at
+    /// the mean film temperature of step 1. Returns false when not possible.
+    bool two_step_cases(gui::CaseModel& step1, gui::CaseModel& step2, std::string& reason) const;
+    void start_two_step_route();
     void enqueue(RunJob job);
     void cancel_all();
     void process_runner_events();
@@ -257,6 +271,7 @@ private:
     std::string results_error_;
     std::filesystem::path results_dir_;
     int selected_step_ = -1;                     // -1 = latest
+    std::filesystem::path loaded_step_file_;     // step file last requested from the loader
     int shown_record_ = -1;                      // index into records_ shown in Results
     void request_scan(const std::filesystem::path& output_dir);
     void poll_loader();                          // gui_app.cpp
