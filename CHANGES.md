@@ -1,5 +1,23 @@
 # Change Log
 
+## 2026-11-26 - GUI case model, fluid pairs, estimates (`lge-gui`)
+
+- New toolkit-free GUI core in `src/gui/`: `case_model` (engineer inputs, mapping to and
+  from `SimulationConfig`, settings the GUI does not show), `config_text_patch` (saving a
+  loaded config by patching its text, so CRLF, comments and afml-r6 paths survive),
+  `fluid_library` (oil-refrigerant pairs as `pair.txt` + the solver's solution-table CSV),
+  `estimates` (Sommerfeld number, saturation pressure, pressure margin, onset verdict,
+  run time) and `angle_reference` (selectable angle zero).
+- The onset curve Phi(S) = (p_amb - p_min)/P comes from the gas-free runs G1-G8 of
+  `lge-onset-chart-20261116`; G4, G5 and G9 give the same Phi at S = 0.2.
+- Model mapping follows the deck runs: FBNS pressure plateau for dissolved gas,
+  COUPLED for gas transport and for any thermal case with refrigerant in the oil
+  (the solver's FBNS film energy needs pure oil; film energy is steady-only).
+- `tests/test_gui_case_model` (no MPI): all seven deck configs round-trip with every
+  solver key equal and their lines byte-identical; a new compressor case reproduces the
+  deck B0 keys (mu 5.0850 mPa s, content 0.22535); tester S = 0.0159, p_sat = 9.65 bar.
+  LGE test data lives in `tests/data/lge/` (not shipped).
+
 ## 2026-11-26 - Steady load balance for FBNS with dissolved gas (`lge-gui`)
 
 - `motion_model = STEADY_EQUILIBRIUM` now accepts FBNS with dissolved gas:

@@ -140,3 +140,14 @@ add_test(NAME test_coupled_fbns_initialization
         -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_fbns_initialization
         -DMPIEXEC=${MPIEXEC_EXECUTABLE} -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_fbns_initialization.cmake)
+# GUI case model (toolkit-free sources of src/gui), acceptance tests 1, 2, 5-7.
+add_executable(test_gui_case_model test_gui_case_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/case_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/config_text_patch.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/estimates.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/fluid_library.cpp)
+target_include_directories(test_gui_case_model PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
+target_link_libraries(test_gui_case_model PRIVATE pancake_core)
+target_compile_definitions(test_gui_case_model PRIVATE PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+pancake_deploy_mingw_runtime(test_gui_case_model)
+add_test(NAME test_gui_case_model COMMAND test_gui_case_model)

@@ -257,7 +257,7 @@ Plan: `docs/GUI_LGE_PLAN.md` (approved 2026-11-26, D1-D8 as recommended).
 - [x] D3. Config writer keeps the steady coupling keys; round-trip test.
 - [x] D2. `STEADY_EQUILIBRIUM` for FBNS with dissolved gas; matches the driver
   load balances within 0.02 % (B0 mean, P5g).
-- [ ] Case model, config mapping both ways, text-preserving save, tests.
+- [x] Case model, config mapping both ways, text-preserving save, tests.
 - [ ] Fluid directory, synthetic example pair and load table, onset curve data.
 - [ ] Workflow tree, panels, live views, estimates (colours = design risk).
 - [ ] Results (card, maps, polar, transient, comparison), batch, report.

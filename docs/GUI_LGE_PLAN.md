@@ -159,6 +159,8 @@ The engineer picks three things: dissolved gas on/off, thermal on/off, steady/tr
 | Steady, fixed shaft position (Expanded) | | `STATIC`, `e`, `attitude_angle_deg` | optical rig |
 | Transient | | `TRANSIENT`, `MOVING_BEARING`, `motion_coupling = IMPLICIT`, `EULER_IMPLICIT`; load table → `load_model = TABLE` | rev03 |
 
+**Found during the build (2026-11-26):** the solver allows the film energy model in steady runs only, and FBNS film energy only for pure oil (`FLUX_BALANCED` requires content 0, as in the O-runs). A thermal case with refrigerant in the oil therefore runs COUPLED, gas off as SINGLE_PHASE and gas on as equilibrium TWO_PHASE, as in the X-runs. Gas release in COUPLED needs the free-gas viscosity, and with heat also the caloric data (dissolved heat capacity, desorption energy). These are optional fields of a fluid pair; a pair without them turns the case red with that reason. Thermal + transient is red. The cavitated area is the fraction of cells with film content below 1: it reproduces the deck values (57.09 %, 11.83 %); the void >= 0.5 measure gives 52.8 % and 7.4 %.
+
 Unsupported combinations turn the Solution node red with one sentence. Examples: COUPLED + transient + turning feed; COUPLED with a fluid pair whose refrigerant has no equation of state in the solver (only R410A real-fluid, air and propane ideal gas exist).
 
 Expanded shows the chosen form read-only, e.g. "Solver form: FBNS (complementarity), steady load balance (Newton), isothermal".
