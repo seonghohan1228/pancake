@@ -289,66 +289,52 @@ all checked-in tests pass.
 
 ## GUI Workflow
 
-`pancake_gui.exe` is a Dear ImGui (docking) + ImPlot desktop app on Win32 +
-Direct3D 11 (sources in `src/gui/`; see `BUILD.md` and
-`docs/GUI_ARCHITECTURE.md`). It drives `pancake.exe` as a subprocess; the two
-exes travel together in one folder. Dockable panels (layout is remembered in
-`%LOCALAPPDATA%\PancakeGui\`):
+`pancake_gui.exe` is a design tool for compressor-bearing engineers (Dear ImGui
++ ImPlot on Win32 + Direct3D 11; sources in `src/gui/`, see `BUILD.md`,
+`docs/GUI_ARCHITECTURE.md`, plan `docs/GUI_LGE_PLAN.md`, terms
+`docs/GUI_GLOSSARY.md`). It drives `pancake.exe` as a subprocess.
 
-- **Case Setup** (left): Run/Cancel bar with the MPI process count beside it
-  (more processes = faster solve; needs MS-MPI above 1) and a stated reason
-  while inputs are invalid, parameter filter, `Advanced` toggle, presets, and
-  the grouped parameter form (labels left, tooltip help, live red-highlight
-  validation, inlet editor). Groups are ordered by edit frequency — Operating
-  conditions, Geometry, Lubricant, Cavitation, Time stepping, Mesh open at
-  the top; Boundaries, Thermal, Motion, Fluid properties, Output, Numerics
-  collapsed below. Numeric fields have display-unit selectors (`Pa/kPa/MPa/bar`,
-  `GPa` for bulk modulus, `K/degC`, `deg/rad/mrad`, `rad/s`/`rpm`, `m/mm/um`,
-  `s/ms`, mass fraction/percent, and engineering stiffness/damping units) — values convert in place
-  while the config file stays solver-native SI. Every dropdown option shows a
-  hover description; the convection scheme offers Upwind and Linear (type
-  differencing), with TVD values from existing config files preserved.
-  Validation merges the solver's own `SimulationConfig::validate()`, so Run
-  is enabled exactly when the solver would accept the case. `Enter`/`F5`
-  runs.
-- **Results** (center): field heatmap over the unwrapped bearing surface drawn
-  with the true cell aspect ratio (equal-aspect; window resizes zoom rather
-  than stretch, a `Fit` button in the plot corner restores the full domain),
-  cavitation zone and inlet zone overlays, pan/zoom/hover readout, Viridis
-  or blue-white-red color scale, and optional manual color limits;
-  mid-plane/arbitrary-slice pressure and film-thickness profiles; and a key
-  results summary (min film thickness, peak pressure, attitude angle, friction
-  torque/power, cavitated fraction) with one-click Copy per value.
-- **Monitors**: live physical traces while the solver runs — minimum film
-  thickness [µm], film temperature range [K], fluid force [N], friction
-  torque [N·m], cavitated area [%], and the liquid mass residual (log) —
-  selectable, each in its own stacked subplot with real engineering units
-  and a shared time axis (sources: DETAILED step lines + `diagnostics.csv`).
-- **Solver Log**: the colorized solver output (ANSI colors preserved),
-  clipped/virtualized for long runs, with Copy-all.
-- **Status bar**: solver state (idle / running step N / finished / failed /
-  cancelled), elapsed time, last residual, progress vs `end_t`, and a
-  persistent warning chip when `pancake.exe` is not found.
+**Workflow.** A tree on the left (Geometry, Fluid, Operating conditions,
+Boundary conditions, Mesh, Solution, Results) with a status light per step:
+green complete, yellow input needed, red conflict (the case will not run, with
+the reason in one sentence). Run is enabled only when every step is green; the
+red reasons include the solver's own `SimulationConfig::validate()`. Each panel
+has an Advanced toggle for tolerances, exact mesh sizes, tilt, and the settings
+chosen automatically (shown read-only).
 
-Every plot exports PNG and every table/curve exports CSV. `Results > Open in
-ParaView` hands `results.pvd` to ParaView for full 3D inspection.
+**Model choices.** Dissolved-gas release on or off (GC+VC or VC only), thermal
+analysis on or off, steady or transient. Dissolved gas on runs FBNS with the
+cavity held at the saturation pressure by default; "Gas transport (detailed,
+slower)" switches to COUPLED. Every FBNS case uses the STRIATED cavity shear.
+Thermal transient cases use a simplified thermal model and ask for confirmation
+(with the time per revolution and the two-step route).
 
-**Configuration files.** The GUI reads/writes the same `key = value` config
-the solver consumes (shared `src/config.hpp`). It opens the last-used config
-(or `config.txt` beside the exe) at startup; Run auto-saves the current case
-first. Relative `output_dir` resolves next to the config file. Cavitation
-threshold and released-gas pressure coupling are editable in the Cavitation
-panel. TABLE property models expose CSV file pickers and a live loaded-grid
-status; the selected paths are preserved when the GUI saves the case.
+**Before Run.** Live geometry and mesh views; Sommerfeld number, saturation
+pressure, pressure margin, the onset-chart verdict (gas release expected /
+borderline / not expected, coloured as a design risk) and a run-time estimate
+for the chosen core count.
 
-**Solver discovery.** `pancake.exe` next to the GUI exe is used by default;
-a custom path can be set in *Tools > Settings* (persisted). MPI ranks > 1
-launch through `mpiexec` (Microsoft MPI).
+**Results.** Key results (minimum film thickness, eccentricity, attitude angle,
+friction torque and power loss, peak pressure, cavitated area, Lambda) with
+design checks, field maps on the unwrapped film with a selectable angle zero,
+polar pressure plot, profiles, transient histories with a cursor, gas on/off
+comparison, sweeps with a live table and the onset chart, PNG/CSV export and a
+one-page HTML report. FBNS results show the void fraction 1 - theta; gas fields
+appear only for COUPLED results.
 
-**Standalone binary.** The GUI is a single statically linked exe: fonts
-(Roboto, JetBrains Mono) are embedded byte arrays, the import table contains
-only Windows-shipped DLLs, all runtime writes go to `%LOCALAPPDATA%\PancakeGui\`,
-and it runs from read-only locations. Per-monitor-v2 DPI aware.
+**Fluids.** Oil-refrigerant pairs live in `fluids/` next to the exe (format:
+`fluids/README.md`) and are edited in the fluid library dialog. The shipped
+`example_vg68_rx` pair is synthetic, example only, not for design.
+
+**Terminal.** Every case is a config file: `pancake.exe -c <case.txt>`
+reproduces it (`mpiexec -n N` for N cores); the results window shows and copies
+the exact command, and sweeps write `run_all.ps1` / `run_all.bat`. Configs from
+earlier campaigns open in the GUI; settings it does not show are kept on save
+(the file is patched, not rewritten).
+
+**Standalone binary.** The GUI is a single statically linked exe (embedded
+fonts, Windows DLLs only) that writes only under `%LOCALAPPDATA%\PancakeGui\`.
+`tools/make_release.ps1` builds the release folder.
 
 The Windows application logo is embedded from `src/pancake.ico` in both
 `pancake.exe` and `pancake_gui.exe`. The editable source-style logo is

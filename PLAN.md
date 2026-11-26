@@ -258,10 +258,15 @@ Plan: `docs/GUI_LGE_PLAN.md` (approved 2026-11-26, D1-D8 as recommended).
 - [x] D2. `STEADY_EQUILIBRIUM` for FBNS with dissolved gas; matches the driver
   load balances within 0.02 % (B0 mean, P5g).
 - [x] Case model, config mapping both ways, text-preserving save, tests.
-- [ ] Fluid directory, synthetic example pair and load table, onset curve data.
-- [ ] Workflow tree, panels, live views, estimates (colours = design risk).
-- [ ] Results (card, maps, polar, transient, comparison), batch, report.
-- [ ] Acceptance tests 1-9, screenshots, glossary, user-facing docs.
+- [x] Fluid directory, synthetic example pair and load table, onset curve data.
+- [x] Workflow tree, panels, live views, estimates (colours = design risk).
+- [x] Results (card, maps, polar, transient, comparison), batch, report.
+- [x] Rev. 3 (2026-11-26): run-time model, honest FBNS results, gas block, STRIATED,
+  thermal transient with confirmation and two-step route, no overlapping text.
+- [x] Acceptance tests 1-12, screenshots, glossary, user-facing docs (report: docs/GUI_LGE_REPORT.md).
+- [ ] Open: thermal-steady run-time typical value (test 10 off by 2.4x on one case);
+  solver key for a free ideal gas (`gas_molar_mass`); unknown enum values as parse
+  errors (X4 `HOMOGENEOUS`); user guide (KPI) from docs/gui_screens.
 
 ### Storage layout and run-data hygiene (`storage-layout`, 2026-11-13)
 

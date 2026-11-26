@@ -94,6 +94,11 @@ void draw_field_map(PlotCapture& capture, const MapCache& m, const std::string& 
         ImPlot::SetupAxes(x_label.c_str(), "z / L", ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
         ImPlot::SetupAxisLimits(ImAxis_X1, start, start + 360.0, ImPlotCond_Always);
         ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
+        // A flat map (pi D >> L) leaves little height: fewer z/L ticks so they never collide.
+        static const double few_ticks[] = {0.0, 1.0};
+        static const double some_ticks[] = {0.0, 0.5, 1.0};
+        if (inner_h < 3.0f * font) ImPlot::SetupAxisTicks(ImAxis_Y1, few_ticks, 2);
+        else if (inner_h < 7.0f * font) ImPlot::SetupAxisTicks(ImAxis_Y1, some_ticks, 3);
         ImPlot::PlotHeatmap("##values", m.values.data(), m.rows, m.cols, m.vmin, m.vmax, nullptr,
                             ImPlotPoint(m.x_left, 0.0), ImPlotPoint(m.x_left + 360.0, 1.0));
         ImDrawList* draw = ImPlot::GetPlotDrawList();
@@ -129,7 +134,10 @@ void draw_field_map(PlotCapture& capture, const MapCache& m, const std::string& 
     std::string bar = bar_label;
     const std::size_t bracket = bar.find(" [");
     if (ImGui::CalcTextSize(bar.c_str()).x > size.y - font && bracket != std::string::npos) bar = bar.substr(bracket + 1);
-    ImPlot::ColormapScale(bar.c_str(), m.vmin, m.vmax, ImVec2(bar_w, size.y), "%.3g");
+    // The colour bar keeps a readable height even beside a flat map.
+    const float bar_h = std::max(size.y, 9.0f * font);
+    if (ImGui::CalcTextSize(bar.c_str()).x > bar_h - font && bracket != std::string::npos) bar = bar.substr(bracket + 1);
+    ImPlot::ColormapScale(bar.c_str(), m.vmin, m.vmax, ImVec2(bar_w, bar_h), "%.3g");
     ImPlot::PopColormap();
     ImGui::EndGroup();
     remember_plot(capture, "field_map");

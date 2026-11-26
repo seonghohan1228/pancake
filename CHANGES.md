@@ -1,5 +1,29 @@
 # Change Log
 
+## 2026-11-26 - GUI for LGE bearing engineers (`lge-gui`)
+
+New workflow GUI (plan `docs/GUI_LGE_PLAN.md`, rev. 2 and rev. 3 approved; terms
+`docs/GUI_GLOSSARY.md`; structure `docs/GUI_ARCHITECTURE.md`). Why: LGE engineers
+need to run and judge cases without help after the final presentation.
+
+- Workflow tree with status lights (green / yellow / red with one-sentence reasons,
+  red includes the solver's own validation); seven panels with Basic and Advanced
+  views; live geometry and mesh views; estimates (S, p_sat, margin, onset verdict as
+  a design risk, run time from measured core-times, physical cores counted).
+- Case model mapped both ways to `SimulationConfig`; loaded configs are saved by
+  patching their text, so settings the GUI does not show are kept.
+- Fluid directory `fluids/` with an optional gas block; the shipped pair is
+  synthetic (FBNS only). LGE data only under `tests/data/lge/`.
+- Model rules: dissolved gas on = FBNS pressure plateau (default) or COUPLED gas
+  transport; STRIATED cavity shear for every FBNS case; thermal steady with
+  refrigerant runs COUPLED; thermal transient uses the simplified thermal model
+  and asks for confirmation (two-step route offered).
+- Results by solver form (FBNS shows void fraction 1 - theta, never gas fields),
+  comparison mode, sweeps with scripts, HTML report, `--run` and `--screenshots`.
+- Acceptance (numbers in `docs/GUI_LGE_REPORT.md`): all seven deck configs round-trip;
+  GUI-written configs reproduce the compressor deck runs (steady h_min -0.008 %,
+  57.09 %; transient cycle h_min within 0.07 %); GUI run = terminal run.
+
 ## 2026-11-26 - GUI case model, fluid pairs, estimates (`lge-gui`)
 
 - New toolkit-free GUI core in `src/gui/`: `case_model` (engineer inputs, mapping to and
