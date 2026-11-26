@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 
 namespace gui {
@@ -65,26 +66,74 @@ OnsetVerdict onset_verdict(double margin_ratio, double phi) {
     return margin_ratio < phi ? OnsetVerdict::Expected : OnsetVerdict::NotExpected;
 }
 
-double estimate_run_time(const CaseModel& m) {
+RunTime estimate_run_time(const CaseModel& m, const FluidPair* pair) {
+    // Measured core-times at 720 x 192 on afml-r6 (rev. 3; core-time = wall x
+    // processes): {low, typical, high} in core-hours.
+    struct Range { double low, typical, high; };
+    const bool coupled = uses_coupled(m, pair);
+    RunTime r;
+    r.cores = std::max(1, m.cores);
+    Range core_h{};
+    if (m.analysis == AnalysisType::Steady) {
+        if (!m.thermal && !coupled) {
+            core_h = {5.0 / 60.0, 10.0 / 60.0, 15.0 / 60.0};
+            r.basis = "isothermal steady FBNS: 5-15 core-min";
+        } else if (!m.thermal) {
+            core_h = {0.8, 9.6, 29.6};  // 2-74 min wall, median 24 min, on 24 processes
+            r.basis = "isothermal steady COUPLED: 2-74 min on 24 processes";
+        } else if (!coupled) {
+            core_h = {0.8, 2.5, 8.0};
+            r.basis = "thermal steady FBNS: 0.8-8 core-h";
+        } else {
+            core_h = {10.0, 22.0, 50.0};
+            r.basis = "thermal steady COUPLED: 10-50 core-h";
+        }
+    } else {
+        // FBNS transient per revolution: 0.5 core-h at 360 steps, 3.7 core-h at
+        // 1440 steps -> C(n) = 0.5 (n / 360)^1.44.
+        const double steps = std::max(1, m.steps_per_revolution);
+        const double per_rev = 0.5 * std::pow(steps / 360.0, 1.44);
+        Range factor = {0.7, 1.0, 1.4};
+        r.basis = "isothermal transient FBNS: 0.5 core-h/rev at 1 deg, 3.7 at 0.25 deg";
+        if (m.thermal) {
+            // Simplified thermal transient, measured 1.0-1.5 x isothermal per step.
+            factor = {1.0, 1.5, 2.0};
+            r.basis += "; thermal x1.0-2.0 (measured per step)";
+        }
+        const double revolutions = std::max(0.0, m.revolutions);
+        core_h = {per_rev * factor.low * revolutions, per_rev * factor.typical * revolutions,
+                  per_rev * factor.high * revolutions};
+        r.per_revolution_s = per_rev * factor.typical * 3600.0;
+    }
     int n_theta = m.n_theta, n_z = m.n_z;
     if (m.mesh_level != MeshLevel::Custom) mesh_level_cells(m.mesh_level, n_theta, n_z);
-    const double cells = static_cast<double>(n_theta) * n_z;
-    // Calibration: compressor B0 mean (720 x 192 FBNS, load balance, 6 outer
-    // iterations of ~4 film solves) took 101 s on 8 ranks of this workstation.
-    const double seconds_per_cell_solve = 101.0 * 8.0 / (720.0 * 192.0 * 24.0);
-    double solves = 24.0;  // steady load balance
-    if (m.analysis == AnalysisType::Transient)
-        solves = m.revolutions * m.steps_per_revolution * 3.0;  // ~3 coupled solves per step
-    double factor = 1.0;
-    if (m.thermal) factor *= 8.0;
-    if (m.dissolved_gas && m.gas_model == GasModel::Transport) factor *= 10.0;
-    const double parallel = std::max(1, m.cores) * 0.85 + 0.15;
-    return cells * solves * seconds_per_cell_solve * factor / parallel;
+    const double cell_ratio = static_cast<double>(n_theta) * n_z / (720.0 * 192.0);
+    const double p = r.cores;
+    const double processes = p / (1.0 + 0.02 * (p - 1.0));  // p x efficiency
+    const auto wall = [&](double core_hours) { return core_hours * cell_ratio * 3600.0 / processes; };
+    r.low_s = wall(core_h.low);
+    r.typical_s = wall(core_h.typical);
+    r.high_s = wall(core_h.high);
+    r.core_hours = core_h.typical * cell_ratio;
+    r.per_revolution_s *= cell_ratio / processes;
+    return r;
+}
+
+std::string format_run_time(const RunTime& r) {
+    const auto text = [](double seconds) {
+        char buffer[32];
+        if (seconds < 90.0) std::snprintf(buffer, sizeof(buffer), "%.0f s", seconds);
+        else if (seconds < 5400.0) std::snprintf(buffer, sizeof(buffer), "%.0f min", seconds / 60.0);
+        else std::snprintf(buffer, sizeof(buffer), "%.1f h", seconds / 3600.0);
+        return std::string(buffer);
+    };
+    return "about " + text(r.typical_s) + " (" + text(r.low_s) + " to " + text(r.high_s) + ") on " +
+           std::to_string(r.cores) + (r.cores == 1 ? " core" : " cores");
 }
 
 Estimates compute_estimates(const CaseModel& m, const FluidPair* pair) {
     Estimates e;
-    e.run_time_s = estimate_run_time(m);
+    e.run_time = estimate_run_time(m, pair);
     e.specific_load = m.bearing_length > 0.0 && m.bearing_diameter > 0.0
                           ? m.load / (m.bearing_length * m.bearing_diameter)
                           : 0.0;

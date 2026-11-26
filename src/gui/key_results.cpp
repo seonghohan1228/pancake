@@ -132,3 +132,70 @@ double percent_difference(double a, double b) {
 }
 
 }  // namespace gui
+
+namespace gui {
+
+ResultForm result_form(const SimulationConfig& cfg) {
+    if (cfg.cavitation_model == CavitationModel::FBNS) return ResultForm::Fbns;
+    if (cfg.cavitation_model == CavitationModel::COUPLED) return ResultForm::Coupled;
+    return ResultForm::Other;
+}
+
+std::vector<FieldView> result_fields(const SimulationConfig& cfg, const ResultGrid& grid) {
+    std::vector<FieldView> views;
+    const auto add_if = [&](const char* field, FieldView view) {
+        if (grid.field(field)) views.push_back(std::move(view));
+    };
+    add_if("p", {"p", "Pressure", "Pa", "Film pressure, absolute."});
+    add_if("h", {"h", "Film thickness", "m", "Gap between shaft and bore."});
+    const ResultForm form = result_form(cfg);
+    if (form == ResultForm::Coupled) {
+        add_if("alpha_gas", {"alpha_gas", "Free-gas volume fraction", "-",
+                             "Volume fraction of released refrigerant gas and oil vapour."});
+        add_if("dissolved_gas", {"dissolved_gas", "Dissolved refrigerant content", "kg/kg",
+                                 "Refrigerant still dissolved in the oil."});
+        add_if("gas_mass_transfer", {"gas_mass_transfer", "Gas mass transfer", "kg/(m2 s)",
+                                     "Release from the oil (positive) or absorption (negative)."});
+        add_if("rho", {"rho", "Mixture density", "kg/m3", "Density of oil, dissolved and free refrigerant."});
+        add_if("mu", {"mu", "Mixture viscosity", "Pa s",
+                      "Void-weighted (Dukler) mixture viscosity; not validated for "
+                      "oil-refrigerant mixtures."});
+    } else {
+        // FBNS (and older models): the void is massless; only theta is computed.
+        add_if("film_content", {"void", "Void fraction 1 - theta", "-",
+                                "Part of the gap not filled by liquid. In this model the void is "
+                                "massless; gas and vapour are not distinguished."});
+        add_if("film_content", {"effective_density", "Effective density theta x rho_liquid", "kg/m3",
+                                "Liquid streaks at fraction theta; the void carries no mass."});
+    }
+    add_if("T", {"T", "Temperature", "K", "Film temperature."});
+    return views;
+}
+
+std::vector<double> field_view_values(const FieldView& view, const ResultGrid& grid,
+                                      const SimulationConfig& cfg) {
+    const auto* film = grid.field("film_content");
+    if (view.id == "void") {
+        if (!film) return {};
+        std::vector<double> out(film->size());
+        for (std::size_t i = 0; i < film->size(); ++i) out[i] = 1.0 - (*film)[i];
+        return out;
+    }
+    if (view.id == "effective_density") {
+        if (!film) return {};
+        const auto* rho_liquid = grid.field("rho_liquid_solution");
+        std::vector<double> out(film->size());
+        for (std::size_t i = 0; i < film->size(); ++i)
+            out[i] = (*film)[i] * (rho_liquid && i < rho_liquid->size() ? (*rho_liquid)[i] : cfg.rho);
+        return out;
+    }
+    // Gas fields exist only in COUPLED results; FBNS never shows them.
+    if (result_form(cfg) != ResultForm::Coupled &&
+        (view.id == "alpha_gas" || view.id == "dissolved_gas" || view.id == "gas_mass_transfer" ||
+         view.id == "rho" || view.id == "mu"))
+        return {};
+    const auto* values = grid.field(view.id);
+    return values ? *values : std::vector<double>{};
+}
+
+}  // namespace gui

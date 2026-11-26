@@ -145,7 +145,9 @@ add_executable(test_gui_case_model test_gui_case_model.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/case_model.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/config_text_patch.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/estimates.cpp
-    ${CMAKE_SOURCE_DIR}/src/gui/fluid_library.cpp)
+    ${CMAKE_SOURCE_DIR}/src/gui/fluid_library.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/key_results.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/case_status.cpp)
 target_include_directories(test_gui_case_model PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
 target_link_libraries(test_gui_case_model PRIVATE pancake_core)
 target_compile_definitions(test_gui_case_model PRIVATE PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

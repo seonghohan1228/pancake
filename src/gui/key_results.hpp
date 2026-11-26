@@ -18,6 +18,7 @@
 
 #include <limits>
 #include <string>
+#include <vector>
 
 namespace gui {
 
@@ -58,6 +59,33 @@ struct DesignChecks {
 /// `p_sat` [Pa] is the saturation pressure of the case (0 if unknown);
 /// `gas_model_on` says whether the run itself modelled gas release.
 DesignChecks design_checks(const KeyResults& results, double p_sat, bool gas_model_on);
+
+/// Field maps offered for a result, by solver form (plan 0.5).
+///
+/// FBNS: the cavity is liquid streaks at fraction theta plus a massless void at
+/// the cavity pressure. No gas mass is tracked, so FBNS offers pressure, film
+/// thickness, void fraction 1 - theta, effective density theta x rho_liquid and
+/// temperature; never alpha_gas, dissolved_gas, rho or gas_mass_transfer.
+/// COUPLED: pressure, film thickness, free-gas volume fraction, dissolved
+/// content, gas mass transfer, mixture density and viscosity, temperature.
+struct FieldView {
+    std::string id;        // "p", "h", "void", "effective_density", or a grid field name
+    std::string label;     // UI label
+    std::string unit;      // SI unit of the values
+    std::string tooltip;   // one line; model caveats
+};
+
+enum class ResultForm { Fbns, Coupled, Other };
+ResultForm result_form(const SimulationConfig& cfg);
+
+/// Views available for `grid` under the run's model (fields missing from the
+/// grid are left out).
+std::vector<FieldView> result_fields(const SimulationConfig& cfg, const ResultGrid& grid);
+
+/// Values of a view, row-major like the grid fields (derived views computed).
+/// Empty when the view is not available.
+std::vector<double> field_view_values(const FieldView& view, const ResultGrid& grid,
+                                      const SimulationConfig& cfg);
 
 /// Percent difference (b - a) / |a| x 100; NaN when a is 0 or either is NaN.
 double percent_difference(double a, double b);

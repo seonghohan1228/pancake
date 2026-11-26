@@ -189,8 +189,12 @@ bool load_fluid_pair(const fs::path& folder, FluidPair& out, std::string& error)
     pair.refrigerant = text("refrigerant");
     pair.source = text("source");
     pair.note = text("note");
-    if (!parse_species(text("solver_species", "PROPANE"), pair.solver_species)) {
-        error = "pair.txt: solver_species must be PROPANE, AIR or R410A";
+    // gas_model (rev. 3); solver_species is the earlier name of the same key.
+    const std::string gas_model =
+        !text("gas_model").empty() ? text("gas_model") : text("solver_species");
+    pair.has_gas_phase = !gas_model.empty();
+    if (pair.has_gas_phase && !parse_species(gas_model, pair.solver_species)) {
+        error = "pair.txt: gas_model must be R410A, PROPANE or AIR";
         return false;
     }
     pair.density_intercept = number("density_intercept_kg_m3", pair.density_intercept);
@@ -370,7 +374,9 @@ bool FluidLibrary::save(const FluidPair& pair, const std::vector<SolutionRow>& r
            << "refrigerant = " << pair.refrigerant << "\n"
            << "source = " << pair.source << "\n"
            << "note = " << pair.note << "\n"
-           << "solver_species = " << species_name(pair.solver_species) << "\n"
+           << (pair.has_gas_phase
+                   ? std::string("gas_model = ") + species_name(pair.solver_species) + "\n"
+                   : std::string("# no gas_model: FBNS only (no gas transport)\n"))
            << "density_intercept_kg_m3 = " << pair.density_intercept << "\n"
            << "density_slope_kg_m3_K = " << pair.density_slope << "\n"
            << "oil_vapour_pressure_Pa = " << pair.oil_vapour_pressure << "\n"

@@ -40,6 +40,17 @@ struct OnsetCurve {
 /// The curve shipped with the GUI (tester bearing, gas-free runs G1-G8).
 const OnsetCurve& tester_onset_curve();
 
+/// Wall-time estimate for the chosen core count (docs/GUI_LGE_PLAN.md 0.2).
+struct RunTime {
+    double typical_s = 0.0;     // headline value
+    double low_s = 0.0;
+    double high_s = 0.0;
+    double core_hours = 0.0;    // typical core-time (wall x processes)
+    double per_revolution_s = 0.0;  // transient: typical wall time of one revolution
+    int cores = 1;
+    std::string basis;          // which measured form the estimate scales
+};
+
 struct Estimates {
     double viscosity = 0.0;          // Pa s at ambient T and content
     double specific_load = 0.0;      // P = W / (L D) [Pa]
@@ -51,7 +62,7 @@ struct Estimates {
     double onset_phi = 0.0;          // Phi(S) from the chart
     OnsetVerdict verdict = OnsetVerdict::Unknown;
     bool fluid_in_range = true;      // ambient state inside the fluid table
-    double run_time_s = 0.0;         // rough wall-clock estimate
+    RunTime run_time;                // wall-time estimate at the case's core count
     std::string note;                // why something is unknown
 };
 
@@ -67,7 +78,11 @@ double sommerfeld_number(double viscosity, double speed_rad_s, double length, do
 /// Verdict from the margin ratio and Phi(S).
 OnsetVerdict onset_verdict(double margin_ratio, double phi);
 
-/// Rough run time [s]: cells x iterations x cost per cell-iteration / cores.
-double estimate_run_time(const CaseModel& model);
+/// Run-time estimate from the measured core-times at 720 x 192 (plan 0.2),
+/// scaled linearly with the cell count, by steps per revolution (transient)
+/// and by the core count with parallel efficiency 1 / (1 + 0.02 (p - 1)).
+RunTime estimate_run_time(const CaseModel& model, const FluidPair* pair);
+/// "about 25 min (12-40 min) on 4 cores".
+std::string format_run_time(const RunTime& run_time);
 
 }  // namespace gui

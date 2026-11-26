@@ -189,8 +189,8 @@ void GuiApp::draw_estimates_box() {
         ImGui::TextColored(theme::kRiskMedium,
                            "The ambient state is outside the fluid table; values are clamped.");
     ImGui::PopTextWrapPos();
-    if (e.run_time_s > 0.0 && shown(e.run_time_s)) {
-        const double minutes = std::max(1.0, std::round(e.run_time_s / 60.0));
+    if (e.run_time.typical_s > 0.0 && shown(e.run_time.typical_s)) {
+        const double minutes = std::max(1.0, std::round(e.run_time.typical_s / 60.0));
         ImGui::TextDisabled("Run time: about %.0f min (rough)", minutes);
         ui::item_tooltip("Cells x typical iterations x time per cell-iteration, divided by the cores.");
     }

@@ -27,15 +27,20 @@ bool near(double a, double b, double rel = 1e-9) {
 
 bool uses_coupled(const CaseModel& m, const FluidPair* pair) {
     if (m.dissolved_gas && m.gas_model == GasModel::Transport) return true;
-    // FBNS film energy needs a gas-free film (pure oil, deck O-runs); with
-    // refrigerant in the oil the thermal case runs COUPLED (deck X-runs).
-    return m.thermal && effective_content(m, pair) > 0.0;
+    // Steady FBNS film energy (finite-volume form) needs a gas-free film (pure
+    // oil, deck O-runs); with refrigerant in the oil a steady thermal case runs
+    // COUPLED (deck X-runs). Transient thermal uses the simplified FBNS form.
+    return m.thermal && m.analysis == AnalysisType::Steady && effective_content(m, pair) > 0.0;
 }
 
 std::string unsupported_reason(const CaseModel& m, const FluidPair* pair) {
-    if (m.thermal && m.analysis == AnalysisType::Transient)
-        return "Thermal analysis is available for steady cases only.";
     const bool coupled = uses_coupled(m, pair);
+    if (coupled && pair && pair->loaded() && !pair->has_gas_phase) {
+        if (!(m.dissolved_gas && m.gas_model == GasModel::Transport))
+            return "A steady thermal case with refrigerant in the oil uses gas transport, which "
+                   "needs gas-phase data; this pair has none.";
+        return "This pair has no gas-phase data; gas transport is not available.";
+    }
     if (m.analysis == AnalysisType::Transient && coupled)
         return "Gas transport is available for steady cases only; transient cases use the "
                "pressure-plateau gas model.";
@@ -65,7 +70,8 @@ auto tilt_inputs(const CaseModel& m) { return std::tie(m.tilt_angle, m.tilt_dire
 auto speed_inputs(const CaseModel& m) { return std::tie(m.speed); }
 auto fluid_inputs(const CaseModel& m) {
     return std::tie(m.fluid_pair, m.saturated, m.content, m.ambient_pressure,
-                    m.ambient_temperature, m.dissolved_gas, m.gas_model, m.thermal, m.analysis);
+                    m.ambient_temperature, m.film_temperature, m.dissolved_gas, m.gas_model,
+                    m.thermal, m.analysis);
 }
 auto feed_inputs(const CaseModel& m) {
     return std::tuple_cat(std::tie(m.feed, m.bearing_length, m.speed), fluid_inputs(m));
@@ -102,7 +108,9 @@ void write_tilt(const CaseModel& m, SimulationConfig& cfg) {
 }
 
 void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConfig& cfg) {
-    const double temperature = m.ambient_temperature;
+    // Isothermal film temperature: ambient, unless set (two-step thermal route).
+    const double temperature = (!m.thermal && m.film_temperature > 0.0) ? m.film_temperature
+                                                                         : m.ambient_temperature;
     cfg.bc_z_south_type = cfg.bc_z_north_type = BCType::DIRICHLET;
     cfg.bc_z_south_val = cfg.bc_z_north_val = m.ambient_pressure;
     cfg.bc_z_south_thermal = cfg.bc_z_north_thermal = ThermalInflowMode::CONSTANT;
@@ -121,6 +129,7 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
         cfg.coupled_fbns_initialization = m.analysis == AnalysisType::Steady;
         cfg.cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
         cfg.mixture_viscosity_model = MixtureViscosityModel::DUKLER;
+        cfg.cavitated_film_model = CavitatedFilmModel::FULL_FILM;  // STRIATED is JFO/FBNS only
     } else {
         // FBNS: dissolved gas holds the cavitated film at the saturation pressure
         // (LOCAL_PSAT plateau); without it the film cavitates at the oil vapour
@@ -130,6 +139,9 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
         cfg.cavitation_threshold = m.dissolved_gas ? CavitationThreshold::LOCAL_PSAT
                                                    : CavitationThreshold::SCALAR_PCAV;
         cfg.steady_gas_model = SteadyGasModel::FROZEN;
+        // Fixed for every FBNS case (plan R3): the cavity is liquid streaks at
+        // fraction theta plus a massless void, so only the streaks carry shear.
+        cfg.cavitated_film_model = CavitatedFilmModel::STRIATED;
     }
     cfg.gas_pressure_coupling = GasPressureCoupling::NONE;
     if (!pair || !pair->loaded()) return;
@@ -137,7 +149,10 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
     // R410A has a real-fluid gas model the solver allows only with COUPLED; the
     // FBNS plateau does not use the species, so it keeps the propane label of the
     // deck runs.
-    cfg.dissolved_gas_species = (!transport && pair->solver_species == DissolvedGasSpecies::R410A)
+    // FBNS does not use the gas species; R410A is allowed only with COUPLED, so
+    // FBNS keeps the propane label of the deck runs.
+    cfg.dissolved_gas_species = (!transport && (!pair->has_gas_phase ||
+                                                pair->solver_species == DissolvedGasSpecies::R410A))
                                     ? DissolvedGasSpecies::PROPANE
                                     : pair->solver_species;
     const double content = effective_content(m, pair);
@@ -274,7 +289,23 @@ void write_thermal(const CaseModel& m, const FluidPair* pair, SimulationConfig& 
         cfg.temperature_model = TemperatureModel::ISOTHERMAL;
         cfg.cross_film_thermal_model = CrossFilmModel::NONE;
         cfg.bush_thermal_model = BushThermalModel::LOCAL;
-        cfg.cavitated_film_model = CavitatedFilmModel::FULL_FILM;
+        return;
+    }
+    if (m.analysis == AnalysisType::Transient) {
+        // Simplified thermal model for transient cases (plan R2): the solver runs
+        // the finite-volume film and 3-D housing in steady cases only.
+        cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
+        cfg.cross_film_thermal_model = CrossFilmModel::POLYNOMIAL;
+        cfg.cross_film_profile_order = 4;
+        cfg.cross_film_quadrature_points = 6;
+        cfg.bush_thermal_model = BushThermalModel::CONDUCTION_2D;
+        cfg.bush_outer_radius = m.housing.outer_diameter > 0.0 ? 0.5 * m.housing.outer_diameter : 0.0;
+        cfg.bush_thermal_conductivity = m.housing.conductivity;
+        cfg.bush_outer_boundary = BushOuterBoundary::CONVECTION;
+        cfg.bush_outer_heat_transfer = m.housing.outer_heat_transfer;
+        cfg.shaft_ambient_heat_transfer = m.housing.shaft_heat_transfer;
+        cfg.shaft_ambient_area_ratio = m.housing.shaft_area_ratio;
+        cfg.groove_mixing_model = GrooveMixingModel::PINNED;
         return;
     }
     // Film + housing + shaft, as in the deck thermal runs (O/X series).
@@ -294,15 +325,10 @@ void write_thermal(const CaseModel& m, const FluidPair* pair, SimulationConfig& 
     cfg.bush_end_natural_convection = true;
     cfg.shaft_ambient_heat_transfer = m.housing.shaft_heat_transfer;
     cfg.shaft_ambient_area_ratio = m.housing.shaft_area_ratio;
-    if (uses_coupled(m, pair)) {
-        // COUPLED film energy (deck X-runs): pinned feed temperature, full film.
-        cfg.cavitated_film_model = CavitatedFilmModel::FULL_FILM;
-        cfg.groove_mixing_model = GrooveMixingModel::PINNED;
-    } else {
-        // Gas-free FBNS film energy (deck O-runs): striated cavity, flux-balanced feed.
-        cfg.cavitated_film_model = CavitatedFilmModel::STRIATED;
-        cfg.groove_mixing_model = GrooveMixingModel::FLUX_BALANCED;
-    }
+    // COUPLED film energy (deck X-runs): pinned feed temperature. Gas-free FBNS
+    // film energy (deck O-runs): flux-balanced feed.
+    cfg.groove_mixing_model = uses_coupled(m, pair) ? GrooveMixingModel::PINNED
+                                                    : GrooveMixingModel::FLUX_BALANCED;
 }
 
 void write_mesh(const CaseModel& m, SimulationConfig& cfg) {

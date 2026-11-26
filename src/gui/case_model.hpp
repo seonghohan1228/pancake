@@ -102,6 +102,8 @@ struct CaseModel {
     double fixed_attitude_deg = 0.0;
     double ambient_pressure = 101325.0;     // Pa abs
     double ambient_temperature = 333.15;    // K
+    double film_temperature = -1.0;         // K, isothermal film; <= 0 means ambient
+                                            // (set by the two-step thermal route)
 
     // Fluid
     std::string fluid_pair;           // id in the fluid directory

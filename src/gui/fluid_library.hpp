@@ -40,7 +40,11 @@ struct FluidPair {
     std::string refrigerant;
     std::string source;         // citation or "synthetic"
     std::string note;           // e.g. "example only, not for design"
-    DissolvedGasSpecies solver_species = DissolvedGasSpecies::PROPANE;  // gas model for COUPLED
+    // Optional gas-phase block: the solver's gas data for released refrigerant
+    // (R410A real-fluid EOS; PROPANE, AIR ideal gas). Without it the pair runs
+    // FBNS only (the pressure plateau needs only the saturation pressure).
+    bool has_gas_phase = false;
+    DissolvedGasSpecies solver_species = DissolvedGasSpecies::PROPANE;  // valid if has_gas_phase
     double density_intercept = 954.9;     // kg/m^3 at 0 degC
     double density_slope = -0.7284;       // kg/(m^3 K)
     double oil_vapour_pressure = 500.0;   // Pa (vaporous cavitation pressure)

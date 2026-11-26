@@ -88,18 +88,13 @@ def write_pair():
         "source = synthetic: ISO VG 68 grade point, assumed VI ~100, Raoult's law, "
         "invented vapour pressure (tools/make_example_fluid.py)\n"
         f"note = {NOTE}\n"
-        "solver_species = PROPANE\n"
+        "# No gas-phase block: this example runs FBNS only (no gas transport).\n"
         "density_intercept_kg_m3 = 885\n"
         "density_slope_kg_m3_K = -0.62\n"
         "oil_vapour_pressure_Pa = 500\n"
         "specific_heat_J_kgK = 2000\n"
         "thermal_conductivity_W_mK = 0.13\n"
-        "table = solution.csv\n"
-        "# Synthetic values for gas transport and thermal gas release:\n"
-        "gas_viscosity_Pa_s = 1.2e-05\n"
-        "dissolved_heat_capacity_J_kgK = 1500\n"
-        "desorption_energy_J_kg = 200000\n"
-        "gas_thermal_conductivity_W_mK = 0.013\n",
+        "table = solution.csv\n",
         newline="\n")
     return len(rows)
 

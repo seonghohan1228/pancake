@@ -16,6 +16,7 @@
 #include "config_text_patch.hpp"
 #include "estimates.hpp"
 #include "fluid_library.hpp"
+#include "key_results.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -299,11 +300,18 @@ void test_new_case_defaults_and_mapping() {
     check(r.thermal && r.saturated && r.dissolved_gas && r.mesh_level == MeshLevel::Fine,
           "model choices read back");
     check(close(cfg.dt, 1.0 / 130.0 / 1440.0, 1e-12), "1440 steps per revolution at 130 Hz");
-    check(unsupported_reason(m, &pair).find("steady cases only") != std::string::npos,
-          "thermal + transient is reported as unsupported (red light)");
+    // Thermal transient (rev. 3): simplified thermal model, FBNS, validates.
+    check(unsupported_reason(m, &pair).empty(), "thermal transient is supported");
+    check(cfg.cross_film_thermal_model == CrossFilmModel::POLYNOMIAL &&
+              cfg.bush_thermal_model == BushThermalModel::CONDUCTION_2D &&
+              cfg.cavitation_model == CavitationModel::FBNS,
+          "thermal transient uses the simplified thermal model with FBNS");
     std::vector<std::string> errors, warnings;
     cfg.validate(errors, warnings);
-    check(!errors.empty(), "the solver also rejects thermal + transient");
+    check(errors.empty(), "thermal transient validates: " +
+                              (errors.empty() ? std::string() : errors.front()));
+    check(cfg.cavitated_film_model == CavitatedFilmModel::STRIATED,
+          "every FBNS case uses the STRIATED cavity shear (plan R3)");
 
     // Supported thermal forms validate: gas-free FBNS (O-runs) and COUPLED (X-runs).
     for (bool gas : {false, true}) {
@@ -327,6 +335,87 @@ void test_new_case_defaults_and_mapping() {
     std::vector<std::string> e3, w3;
     transient_cfg.validate(e3, w3);
     check(e3.empty(), "transient plateau case validates: " + (e3.empty() ? std::string() : e3.front()));
+
+    // A pair without a gas block runs FBNS only: gas transport is red with the reason.
+    FluidPair example;
+    std::string error;
+    load_fluid_pair(fs::path(PANCAKE_SOURCE_DIR) / "fluids" / "example_vg68_rx", example, error);
+    check(!example.has_gas_phase, "the shipped example pair has no gas block (plan R5)");
+    CaseModel transport = compressor_case();
+    transport.fluid_pair = example.id;
+    transport.gas_model = GasModel::Transport;
+    check(unsupported_reason(transport, &example).find("no gas-phase data") != std::string::npos,
+          "gas transport with a pair without gas data is red");
+    CaseModel thermal_example = transport;
+    thermal_example.gas_model = GasModel::Plateau;
+    thermal_example.thermal = true;
+    check(unsupported_reason(thermal_example, &example).find("gas-phase data") != std::string::npos,
+          "steady thermal with refrigerant needs gas data: red for the example pair");
+    check(pair.has_gas_phase && pair.solver_species == DissolvedGasSpecies::R410A,
+          "the FW68D test pair names the R410A gas model");
+}
+
+// Test 11: an FBNS result never shows a nonzero gas field.
+void test_fbns_result_fields() {
+    ResultGrid grid;
+    grid.nx = 4;
+    grid.ny = 1;
+    grid.theta_deg = {45, 135, 225, 315};
+    grid.z_m = {0.01};
+    grid.fields["p"] = {2e6, 3e6, 2.4e6, 2.4e6};
+    grid.fields["h"] = {3e-5, 2e-5, 1e-5, 2e-5};
+    grid.fields["film_content"] = {1.0, 1.0, 0.4, 0.7};
+    grid.fields["alpha_gas"] = {0, 0, 0, 0};             // as written by FBNS
+    grid.fields["dissolved_gas"] = {0.2, 0.2, 0.2, 0.2};  // constant in FBNS
+    grid.fields["rho"] = {900, 900, 900, 900};
+    SimulationConfig fbns;
+    fbns.cavitation_model = CavitationModel::FBNS;
+    fbns.rho = 900.0;
+    bool void_found = false;
+    for (const FieldView& view : result_fields(fbns, grid)) {
+        check(view.id != "alpha_gas" && view.id != "dissolved_gas" && view.id != "rho" &&
+                  view.id != "gas_mass_transfer",
+              "FBNS result offers no gas field (" + view.id + ")");
+        if (view.id == "void") {
+            void_found = true;
+            const auto values = field_view_values(view, grid, fbns);
+            check(values.size() == 4 && close(values[2], 0.6, 1e-12),
+                  "void fraction is 1 - theta");
+        }
+    }
+    check(void_found, "FBNS result offers the void fraction");
+    check(field_view_values({"alpha_gas", "", "", ""}, grid, fbns).empty(),
+          "asking an FBNS result for alpha_gas returns nothing");
+    SimulationConfig coupled;
+    coupled.cavitation_model = CavitationModel::COUPLED;
+    bool gas_found = false;
+    for (const FieldView& view : result_fields(coupled, grid)) gas_found |= view.id == "alpha_gas";
+    check(gas_found, "COUPLED result offers the free-gas fraction");
+}
+
+// Run-time model (plan 0.2): scaling with cells, cores and steps per revolution.
+void test_run_time_model() {
+    const FluidPair pair = fw68d();
+    CaseModel m = compressor_case();
+    m.cores = 1;
+    const RunTime one = estimate_run_time(m, &pair);
+    check(close(one.typical_s, 600.0, 1e-9), "isothermal FBNS steady at 720 x 192, 1 core: 10 min");
+    m.cores = 8;
+    const RunTime eight = estimate_run_time(m, &pair);
+    check(close(eight.typical_s, 600.0 * 1.14 / 8.0, 1e-9), "8 cores with 2 % efficiency loss each");
+    m.mesh_level = MeshLevel::Medium;
+    check(close(estimate_run_time(m, &pair).typical_s, eight.typical_s / 4.0, 1e-9),
+          "a quarter of the cells, a quarter of the time");
+    CaseModel t = compressor_case();
+    t.analysis = AnalysisType::Transient;
+    t.revolutions = 1.0;
+    t.cores = 1;
+    t.steps_per_revolution = 1440;
+    check(close(estimate_run_time(t, &pair).typical_s / 3600.0, 3.7, 0.01),
+          "transient at 0.25 deg: 3.7 core-h per revolution");
+    t.steps_per_revolution = 360;
+    check(close(estimate_run_time(t, &pair).typical_s / 3600.0, 0.5, 1e-9),
+          "transient at 1 deg: 0.5 core-h per revolution");
 }
 
 }  // namespace
@@ -427,6 +516,8 @@ int main(int argc, char** argv) {
     test_estimates();
     test_angle_references();
     test_new_case_defaults_and_mapping();
+    test_fbns_result_fields();
+    test_run_time_model();
     if (failures) {
         std::cerr << failures << " check(s) failed\n";
         return 1;
