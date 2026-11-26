@@ -3333,6 +3333,36 @@ coupling does not justify clipping temperature or weakening its acceptance
 criterion. The unsuccessful reservoir-collocation experiment is preserved
 outside the source snapshot and excluded from this implementation.
 
+## 2026-11-26 - Steady load balance with dissolved gas in the FBNS path
+
+The position update above is model-independent: it calls the same steady
+pressure/cavitation solve that a prescribed-position (`STATIC`) steady run
+uses, and the property, gas and energy updates of the coupling iteration
+follow it unchanged. It was first admitted only for gas-free SINGLE_PHASE
+FBNS. It now also accepts FBNS with dissolved gas where the steady loop is
+defined:
+
+- SINGLE_PHASE with `cavitation_threshold = LOCAL_PSAT`. The cavitated film is
+  held at the uniform datum \(p_{\rm cav,eff}=\max(p_{\rm cav},\,p_{\rm sat}(c_0,T_0))\);
+  dissolved gas enters only through this datum and the properties.
+- TWO_PHASE with `steady_gas_model = EQUILIBRIUM`. The local flash runs after
+  every accepted pressure solve, as in the prescribed-position loop.
+
+Force-Jacobian probes freeze the gas fields exactly as they freeze the thermal
+coefficients; the accepted iterate must still satisfy every outer residual and
+the force tolerance. Frozen TWO_PHASE gas and `VOID_COUPLED` stay rejected.
+
+Verification against the Newton load balances that the case drivers ran over
+`STATIC` solves (720 x 192, started from a different initial position):
+
+| Case | h_min | Cavitated area | Torque | p_max |
+|---|---|---|---|---|
+| Compressor B0 mean (SINGLE_PHASE, LOCAL_PSAT, 3,450 N) | 1.6877 um (-0.002 %) | 57.09 % (equal) | -0.007 % | 439.49 bar (-0.002 %) |
+| Tester P5g (TWO_PHASE equilibrium, 500 rpm, 2,610 N) | 3.2424 um (+0.011 %) | 11.83 % (equal) | +0.016 % | 90.58 bar (equal) |
+
+Both reach the driver eccentricity (0.94375 and 0.92371). The cavitated area
+here and in the deck is the fraction of cells with film content below 1.
+
 ### September 28 correction: resolved film energy and exposed housing ends
 
 The FW68D campaign now selects `cross_film_thermal_model = FINITE_VOLUME`.

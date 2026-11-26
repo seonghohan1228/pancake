@@ -897,6 +897,11 @@ controls this correction. The final force and thermal convergence checks must
 all pass at the same position. `STATIC` remains a prescribed-position solve;
 `MOVING_BEARING` retains its physical transient motion model.
 
+FBNS accepts this mode with dissolved gas when the steady loop is defined:
+SINGLE_PHASE (for example `cavitation_threshold = LOCAL_PSAT`) or TWO_PHASE
+with `steady_gas_model = EQUILIBRIUM`. It reproduces the driver-side Newton
+load balances of the LGE compressor and tester cases within 0.02 %.
+
 The FW68D case driver retains the external natural-convection coefficient
 iteration, but no longer fully converges a separate thermal CFD problem for
 each force-Jacobian probe. See [PHYSICS.md](PHYSICS.md) for the equations and

@@ -310,6 +310,7 @@ Instant estimates (no run):
 - S = μ N L D (R/c)² / W, N in rev/s, μ from the fluid table at the ambient temperature and the content.
 - p_sat(T_amb, content) by the solver's own `saturation_pressure` (header-only, linked into the GUI).
 - Pressure margin p_amb − p_sat, its ratio to P = W/(LD), the chart point and the verdict: "gaseous cavitation expected / borderline (within ±20 % of the curve) / not expected".
+- **Colours mean design risk, not model state** (Seongho, 2026-11-26: this is a design tool, and GC expected is not a good outcome). Gas release expected = red, borderline = yellow, not expected = green. The same rule applies to the results card: Λ < 3 red, a table range left yellow, not converged red. Model colours (VC red, GC+VC green, as in the deck) are used only for curves that compare the two models, never for a verdict.
 - The run-time estimate is cells × typical iterations × time per cell-iteration. It is measured on this machine and scaled by cores; it is labelled "rough".
 
 After the run, the onset check is direct: GC is expected if the gas-off film p_min < p_sat. In a gas-on run the plateau at p_sat shows it as a cavitated region at p_sat.

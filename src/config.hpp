@@ -1925,16 +1925,22 @@ struct SimulationConfig {
             if (motion_coupling_max_iters < 4) error("motion_coupling_max_iters must be at least 4.");
         }
         if (motion_model == MotionModel::STEADY_EQUILIBRIUM) {
+            // FBNS: the load step reuses the plain steady pressure solve, so dissolved gas
+            // is allowed where the steady loop itself is defined: SINGLE_PHASE (gas only
+            // moves the cavitation datum, e.g. LOCAL_PSAT) or TWO_PHASE with the steady
+            // equilibrium flash. Probes freeze the gas fields like the thermal ones.
             const bool fbns_equilibrium = cavitation_model == CavitationModel::FBNS &&
-                fluid_property_model == FluidPropertyModel::SINGLE_PHASE && dissolved_gas_initial == 0.0 &&
-                dissolved_gas_henry_coeff == 0.0 && gas_pressure_coupling == GasPressureCoupling::NONE;
+                gas_pressure_coupling == GasPressureCoupling::NONE &&
+                (fluid_property_model == FluidPropertyModel::SINGLE_PHASE ||
+                 (fluid_property_model == FluidPropertyModel::TWO_PHASE &&
+                  steady_gas_model == SteadyGasModel::EQUILIBRIUM));
             const bool coupled_equilibrium = cavitation_model == CavitationModel::COUPLED &&
                 (fluid_property_model == FluidPropertyModel::SINGLE_PHASE ||
                  (fluid_property_model == FluidPropertyModel::TWO_PHASE && coupled_phase_equilibrium)) &&
                 (temperature_model == TemperatureModel::ISOTHERMAL ||
                  cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME);
             if (solution_mode != SolutionMode::STEADY_STATE || (!fbns_equilibrium && !coupled_equilibrium))
-                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS, or SINGLE_PHASE/equilibrium TWO_PHASE COUPLED.");
+                error("STEADY_EQUILIBRIUM requires steady SINGLE_PHASE or equilibrium-gas TWO_PHASE FBNS (gas_pressure_coupling = NONE), or SINGLE_PHASE/equilibrium TWO_PHASE COUPLED.");
             require_positive(steady_force_tolerance, "steady_force_tolerance");
             require_positive(steady_position_step_limit, "steady_position_step_limit");
             require_positive(steady_position_fd_step, "steady_position_fd_step");

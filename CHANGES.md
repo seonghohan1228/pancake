@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-11-26 - Steady load balance for FBNS with dissolved gas (`lge-gui`)
+
+- `motion_model = STEADY_EQUILIBRIUM` now accepts FBNS with dissolved gas:
+  SINGLE_PHASE (dissolved gas allowed, e.g. the `LOCAL_PSAT` plateau) and
+  TWO_PHASE with `steady_gas_model = EQUILIBRIUM`. The load step already reused
+  the plain steady pressure solve; the guard from 2026-09-28 only limited scope.
+  Frozen TWO_PHASE gas and VOID_COUPLED remain rejected.
+- Why: the deck's GC+VC steady cases (compressor B0 mean, tester P5g) were
+  load-balanced by Python drivers over STATIC runs, so `pancake -c` alone could
+  not reproduce them. The GUI needs a single-config, terminal-reproducible run.
+- Verified from a different initial position at 720 x 192, 8 ranks: B0 mean
+  h_min 1.6877 um (-0.002 %), cavitated area 57.09 %, torque -0.007 %; P5g
+  h_min 3.2424 um (+0.011 %), 11.83 %, torque +0.016 %. Details in PHYSICS.md.
+- `test_config_keys` pins the accepted and rejected combinations.
+
 ## 2026-11-26 - Config writer keeps the steady coupling keys (`lge-gui`)
 
 - `to_config_text()` never wrote `coupling_max_iters`, `coupling_tolerance`,

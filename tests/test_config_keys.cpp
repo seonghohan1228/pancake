@@ -280,6 +280,40 @@ void test_steady_coupling_keys_round_trip() {
           "cavitated-film and boundary-flux settings must survive serialization");
 }
 
+// STEADY_EQUILIBRIUM accepts FBNS with dissolved gas where the steady loop is
+// defined (SINGLE_PHASE plateau, TWO_PHASE equilibrium flash), and still
+// rejects the frozen TWO_PHASE gas and void coupling.
+void test_fbns_equilibrium_with_dissolved_gas() {
+    const auto errors_of = [](const std::string& extra) {
+        SimulationConfig cfg;
+        cfg.load_from_text(
+            "R = 0.0105\nc = 3e-05\nL = 0.02\ne = 2.7e-05\nattitude_angle_deg = 280\n"
+            "omega = 816.8\nmu = 0.005\nrho = 900\np_cav = 500\n"
+            "bc_z_south_val = 2.45e6\nbc_z_north_val = 2.45e6\n"
+            "solution_mode = STEADY_STATE\ncavitation_model = FBNS\n"
+            "motion_model = STEADY_EQUILIBRIUM\nexternal_load_y = 3450\n"
+            "dissolved_gas_species = PROPANE\ndissolved_gas_initial = 0.2\n"
+            "solubility_model = HENRY\ndissolved_gas_henry_coeff = 8e-8\n" + extra);
+        std::vector<std::string> errors, warnings;
+        cfg.validate(errors, warnings);
+        return errors;
+    };
+    const auto rejects_equilibrium = [](const std::vector<std::string>& errors) {
+        return mentions(errors, "STEADY_EQUILIBRIUM requires steady");
+    };
+    check(!rejects_equilibrium(errors_of(
+              "fluid_property_model = SINGLE_PHASE\ncavitation_threshold = LOCAL_PSAT\n")),
+          "SINGLE_PHASE FBNS with a dissolved-gas plateau must allow STEADY_EQUILIBRIUM");
+    check(!rejects_equilibrium(errors_of(
+              "fluid_property_model = TWO_PHASE\nsteady_gas_model = EQUILIBRIUM\n"
+              "cavitation_threshold = LOCAL_PSAT\n")),
+          "TWO_PHASE FBNS with the equilibrium flash must allow STEADY_EQUILIBRIUM");
+    check(rejects_equilibrium(errors_of(
+              "fluid_property_model = TWO_PHASE\nsteady_gas_model = FROZEN\n"
+              "allow_frozen_gas_steady = true\n")),
+          "TWO_PHASE FBNS with frozen gas must still reject STEADY_EQUILIBRIUM");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -297,6 +331,7 @@ int main(int argc, char** argv) {
     test_coupled_nonlinear_tolerance();
     test_writer_covers_every_value_key();
     test_steady_coupling_keys_round_trip();
+    test_fbns_equilibrium_with_dissolved_gas();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();
