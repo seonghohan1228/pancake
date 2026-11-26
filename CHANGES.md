@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-11-26 - Config writer keeps the steady coupling keys (`lge-gui`)
+
+- `to_config_text()` never wrote `coupling_max_iters`, `coupling_tolerance`,
+  `coupling_relaxation*`, `coupling_keep_best_iterate`, `log_coupling_history`,
+  `steady_gas_model`, `allow_frozen_gas_steady`, `cavitated_film_model`,
+  `consistent_boundary_flux` or `void_coupling_relaxation`. The GUI saves the
+  config before every run, so a loaded case silently fell back to the defaults
+  for these keys (for example `coupling_max_iters = 4000` became 30). The writer
+  now emits them; serialization only, no solver behaviour changes.
+- `known_config_keys()` now lists the six `coupling_relaxation_*`,
+  `coupling_keep_best_iterate` and `log_coupling_history` keys the parser
+  already accepted.
+- `test_config_keys` checks that every value key appears in the written text and
+  that non-default values of the formerly dropped keys survive write and parse.
+
 ## 2026-11-15 - Run data consolidated on D; afml-r6 emptied of results
 
 No code change; this records the data migration the scripts above were

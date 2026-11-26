@@ -3016,7 +3016,29 @@ struct SimulationConfig {
             << "fbns_max_iters = " << fbns_max_iters << "\n"
             << "fbns_tol = " << fbns_tol << "\n"
             << "fbns_relaxation = " << fbns_relaxation << "\n"
-            << "fbns_pressure_scale = " << fbns_pressure_scale << "\n\n";
+            << "fbns_pressure_scale = " << fbns_pressure_scale << "\n"
+            << "# Film rupture shear/heat: FULL_FILM or STRIATED (JFO/FBNS only).\n"
+            << "cavitated_film_model = "
+            << (cavitated_film_model == CavitatedFilmModel::STRIATED ? "STRIATED" : "FULL_FILM") << "\n"
+            << "consistent_boundary_flux = " << (consistent_boundary_flux ? "true" : "false") << "\n"
+            << "void_coupling_relaxation = " << void_coupling_relaxation << "\n\n";
+
+        out << "# Steady outer coupling (Picard over pressure, properties, energy, gas)\n"
+            << "coupling_max_iters = " << coupling_max_iters << "\n"
+            << "coupling_tolerance = " << coupling_tolerance << "\n"
+            << "coupling_relaxation = " << coupling_relaxation << "\n"
+            << "# coupling_relaxation_mode: FIXED or ADAPTIVE (min/backoff/growth apply to ADAPTIVE).\n"
+            << "coupling_relaxation_mode = "
+            << (coupling_relaxation_mode == CouplingRelaxationMode::ADAPTIVE ? "ADAPTIVE" : "FIXED") << "\n"
+            << "coupling_relaxation_min = " << coupling_relaxation_min << "\n"
+            << "coupling_relaxation_backoff = " << coupling_relaxation_backoff << "\n"
+            << "coupling_relaxation_growth = " << coupling_relaxation_growth << "\n"
+            << "coupling_keep_best_iterate = " << (coupling_keep_best_iterate ? "true" : "false") << "\n"
+            << "log_coupling_history = " << (log_coupling_history ? "true" : "false") << "\n"
+            << "# steady_gas_model: FROZEN or EQUILIBRIUM (steady dissolved-gas treatment).\n"
+            << "steady_gas_model = "
+            << (steady_gas_model == SteadyGasModel::EQUILIBRIUM ? "EQUILIBRIUM" : "FROZEN") << "\n"
+            << "allow_frozen_gas_steady = " << (allow_frozen_gas_steady ? "true" : "false") << "\n\n";
 
         out << "# Inlets\n"
             << "# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]\n"
@@ -3152,6 +3174,8 @@ struct SimulationConfig {
             "asperity_eta_beta_sigma", "asperity_sigma_over_beta", "contact_modulus",
             "boundary_friction_coefficient",
             "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
+            "coupling_relaxation_mode", "coupling_relaxation_min", "coupling_relaxation_backoff",
+            "coupling_relaxation_growth", "coupling_keep_best_iterate", "log_coupling_history",
             "steady_gas_model",
             "allow_frozen_gas_steady", "max_outer_iters", "outer_tol",
             "fbns_max_iters", "fbns_tol", "fbns_relaxation",

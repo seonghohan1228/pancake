@@ -226,6 +226,60 @@ void test_coupled_nonlinear_tolerance() {
     }
 }
 
+// Every key that holds a value must be written by to_config_text(); a GUI save
+// that drops one silently resets it to the default. Aliases, warn-and-drop keys,
+// deprecated keys and the repeated inlet lines are not value keys.
+void test_writer_covers_every_value_key() {
+    static const std::vector<std::string> not_value_keys = {
+        "oil_gas_solution_model", "viscosity_model", "gas_mixture_viscosity_model",
+        "pressure_time_method", "temperature_time_method", "dissolved_gas_bunsen_coeff",
+        "bc_z_south_theta", "bc_z_north_theta",
+        "inlet_circular", "inlet_groove", "inlet_species"};
+    const std::string text = SimulationConfig{}.to_config_text();
+    for (const std::string& key : SimulationConfig::known_config_keys()) {
+        if (std::find(not_value_keys.begin(), not_value_keys.end(), key) != not_value_keys.end())
+            continue;
+        const bool written = text.rfind(key + " =", 0) == 0 ||
+                             text.find("\n" + key + " =") != std::string::npos;
+        check(written, "to_config_text() does not write '" + key + "'");
+    }
+}
+
+// Non-default values of the keys the writer used to drop survive write and parse.
+void test_steady_coupling_keys_round_trip() {
+    SimulationConfig cfg;
+    cfg.load_from_text(
+        "coupling_max_iters = 4000\n"
+        "coupling_tolerance = 1e-4\n"
+        "coupling_relaxation = 0.7\n"
+        "coupling_relaxation_mode = ADAPTIVE\n"
+        "coupling_relaxation_min = 0.2\n"
+        "coupling_relaxation_backoff = 0.4\n"
+        "coupling_relaxation_growth = 1.3\n"
+        "coupling_keep_best_iterate = false\n"
+        "log_coupling_history = true\n"
+        "steady_gas_model = EQUILIBRIUM\n"
+        "allow_frozen_gas_steady = true\n"
+        "cavitated_film_model = STRIATED\n"
+        "consistent_boundary_flux = true\n"
+        "void_coupling_relaxation = 0.6\n");
+    check(cfg.parse_errors.empty(), "the steady coupling keys must parse");
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.coupling_max_iters == 4000 && copy.coupling_tolerance == 1e-4 &&
+              copy.coupling_relaxation == 0.7 &&
+              copy.coupling_relaxation_mode == CouplingRelaxationMode::ADAPTIVE &&
+              copy.coupling_relaxation_min == 0.2 && copy.coupling_relaxation_backoff == 0.4 &&
+              copy.coupling_relaxation_growth == 1.3 && !copy.coupling_keep_best_iterate &&
+              copy.log_coupling_history,
+          "steady outer-coupling settings must survive serialization");
+    check(copy.steady_gas_model == SteadyGasModel::EQUILIBRIUM && copy.allow_frozen_gas_steady,
+          "steady gas settings must survive serialization");
+    check(copy.cavitated_film_model == CavitatedFilmModel::STRIATED &&
+              copy.consistent_boundary_flux && copy.void_coupling_relaxation == 0.6,
+          "cavitated-film and boundary-flux settings must survive serialization");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -241,6 +295,8 @@ int main(int argc, char** argv) {
     test_shipped_configs_parse();
     test_reservoir_states();
     test_coupled_nonlinear_tolerance();
+    test_writer_covers_every_value_key();
+    test_steady_coupling_keys_round_trip();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();
