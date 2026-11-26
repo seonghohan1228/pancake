@@ -108,6 +108,17 @@ void test_fluid_pair() {
     check(close(p_sat.value, kShellPressure, 1e-6), "p_sat inverts c_sat at the deck state");
     const PropertyValue out = pair.saturated_content(4.5e6, kShellTemperature);
     check(!out.in_range, "a pressure above the table is flagged out of range");
+    // The shipped synthetic example loads with the solver's loader and is usable
+    // at a compressor-like state (20 bar, 70 degC).
+    FluidPair example;
+    std::string error;
+    check(load_fluid_pair(fs::path(PANCAKE_SOURCE_DIR) / "fluids" / "example_vg68_rx", example, error),
+          "shipped example pair loads: " + error);
+    const PropertyValue example_c = example.saturated_content(20e5, 343.15);
+    check(example_c.in_range && example_c.value > 0.05 && example_c.value < 0.5,
+          "example pair: saturated content at 20 bar, 70 degC is inside the table");
+    check(example.note.find("NOT FOR DESIGN") != std::string::npos, "example pair is labelled");
+
     const PropertyValue hot = pair.saturation_pressure(0.3, 473.15);
     check(!hot.in_range, "200 degC is above the table and flagged out of range");
     const PropertyValue rich = pair.saturation_pressure(0.95, 293.15);
