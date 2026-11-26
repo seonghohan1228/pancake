@@ -210,6 +210,9 @@ void GuiApp::draw_batch_window() {
     if (ImGui::RadioButton("Sweep one input of the current case", !s.files_mode)) s.files_mode = false;
     ui::item_tooltip("Copies of the current case that differ in one input.");
     ImGui::SameLine();
+    if (ImGui::GetContentRegionAvail().x < ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                                             ImGui::CalcTextSize("Run existing case files").x)
+        ImGui::NewLine();
     if (ImGui::RadioButton("Run existing case files", s.files_mode)) s.files_mode = true;
     ui::item_tooltip("Run config files as they are, one after another.");
     if (!s.files_mode && ui::begin_form("sweep_form")) {
@@ -401,7 +404,8 @@ void GuiApp::draw_batch_window() {
     const float table_h = std::min(ImGui::GetTextLineHeightWithSpacing() * (s.cases.size() + 1.5f),
                                    ImGui::GetContentRegionAvail().y * 0.45f);
     if (ImGui::BeginTable("batch_table", 11, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                                 ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit,
+                                                 ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX |
+                                                 ImGuiTableFlags_SizingFixedFit,
                           ImVec2(0, std::max(table_h, 80.0f)))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         for (const char* header : headers) ImGui::TableSetupColumn(header);

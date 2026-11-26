@@ -492,11 +492,31 @@ int write_acceptance(const fs::path& dir) {
     tester.saturated = false;
     tester.content = 0.274;
     tester.convergence.force_tolerance = 1e-3;  // run_fbns.py FORCE_TOL
+    // Test 10: a thermal steady case on this machine. Pure oil (content 0) with
+    // the synthetic example pair, deck O-run form (FBNS, finite-volume film,
+    // 3-D housing), medium mesh.
+    FluidPair example;
+    std::string error;
+    load_fluid_pair(fs::path(PANCAKE_SOURCE_DIR) / "fluids" / "example_vg68_rx", example, error);
+    CaseModel thermal;
+    thermal.fluid_pair = example.id;
+    thermal.saturated = false;
+    thermal.content = 0.0;
+    thermal.dissolved_gas = false;
+    thermal.thermal = true;
+    thermal.load = 2000.0;
+    thermal.ambient_pressure = 15e5;
+    thermal.feed.hole_diameter = 3e-3;
+    thermal.housing.outer_diameter = 0.060;
+    thermal.mesh_level = MeshLevel::Medium;
+    thermal.cores = 8;
     const std::pair<const char*, CaseModel> cases[] = {
         {"compressor_gcvc_steady.txt", gcvc}, {"compressor_vc_steady.txt", vc},
-        {"compressor_transient.txt", transient}, {"tester_500rpm_2610N.txt", tester}};
+        {"compressor_transient.txt", transient}, {"tester_500rpm_2610N.txt", tester},
+        {"example_thermal_steady_pure_oil.txt", thermal}};
     for (const auto& [name, model] : cases) {
-        SimulationConfig cfg = to_config(model, &pair, new_case_template());
+        const FluidPair& used = model.fluid_pair == example.id ? example : pair;
+        SimulationConfig cfg = to_config(model, &used, new_case_template());
         cfg.output_dir = fs::path(name).stem().string() + "_results";
         std::ofstream out(dir / name, std::ios::binary);
         out << new_config_text(cfg, case_meta(model));

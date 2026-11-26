@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,32 @@ bool plain_number(const char* label, const char* help, const char* id, double& v
     return changed;
 }
 
+/// Form row of radio buttons that continue on the next line when the column is
+/// too narrow (no label is cut off at the panel edge). Returns true on edit.
+template <typename Enum>
+bool radio_row(const char* label, const char* help, const char* id, Enum& value,
+               std::initializer_list<ui::Option<Enum>> options) {
+    ui::form_label(label, help);
+    ImGui::PushID(id);
+    bool changed = false, first = true;
+    for (const auto& option : options) {
+        if (!first) {
+            const float width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                                ImGui::CalcTextSize(option.label).x;
+            ImGui::SameLine();
+            if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+        }
+        first = false;
+        if (ImGui::RadioButton(option.label, value == option.value) && value != option.value) {
+            value = option.value;
+            changed = true;
+        }
+        if (option.tooltip) ui::item_tooltip(option.tooltip);
+    }
+    ImGui::PopID();
+    return changed;
+}
+
 }  // namespace
 
 /// Analysis type, speed, ambient state, load; transient load table and plot.
@@ -38,7 +65,7 @@ void GuiApp::draw_operating_panel() {
     if (!ui::begin_form("##operating")) return;
     bool changed = false;
 
-    if (ui::form_radio<gui::AnalysisType>(
+    if (radio_row<gui::AnalysisType>(
             "Analysis type", "Steady: fixed operating point. Transient: load varying in time.", "op.analysis",
             case_.analysis,
             {{gui::AnalysisType::Steady, "Steady", "Fixed operating point; the shaft finds its load balance."},
@@ -67,7 +94,7 @@ void GuiApp::draw_operating_panel() {
                                    "op.load_direction", case_.load_direction_deg, gui::UnitFamily::Angle,
                                    units());
         if (advanced) {
-            changed |= ui::form_radio<gui::ShaftPosition>(
+            changed |= radio_row<gui::ShaftPosition>(
                 "Shaft position", "How the shaft position is found.", "op.position", case_.position,
                 {{gui::ShaftPosition::LoadBalance, "From load balance",
                   "The shaft moves until the film force carries the load."},

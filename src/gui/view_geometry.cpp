@@ -59,6 +59,28 @@ double nice_factor(double value) {
     return step * decade;
 }
 
+/// Splits `text` into lines no wider than `width` [px] (breaks at spaces).
+std::vector<std::string> wrap_lines(const std::string& text, float width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        std::size_t end = text.find(' ', start);
+        if (end == std::string::npos) end = text.size();
+        const std::string word = text.substr(start, end - start);
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && ImGui::CalcTextSize(candidate.c_str()).x > width) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = candidate;
+        }
+        start = end + 1;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
 double wrap_deg(double deg) {
     double value = std::fmod(deg, 360.0);
     if (value < 0.0) value += 360.0;
@@ -211,11 +233,62 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
     }
     const double feed_deg = case_.feed.angle_deg;
 
-    // Pixel scale: below the captions, with room for the angle labels around the ring.
-    const float caption_h = (highlighted_zone_ == 0 ? 4.0f : 3.0f) * 1.2f * font + 0.4f * font;
+    // Captions (top left), wrapped to the canvas width; the arrows are named here so
+    // that no text is drawn on the shaft.
+    struct Caption {
+        std::string text;
+        ImU32 color;
+    };
+    std::vector<Caption> captions;
+    {
+        char text[96];
+        std::snprintf(text, sizeof(text), "; clearance x %.0f (exaggerated), the rest to scale", factor);
+        captions.push_back({"D = " + ui::format_value(case_.bearing_diameter, gui::UnitFamily::Length, units(),
+                                                      "geom.diameter") +
+                                ", c = " + ui::format_value(case_.radial_clearance, gui::UnitFamily::SmallLength,
+                                                            units(), "geom.clearance") +
+                                text,
+                            ink});
+        captions.push_back({position_note, muted});
+        std::string arrows = "Arrows: blue = rotation " +
+                             ui::format_value(std::abs(case_.speed), gui::UnitFamily::Speed, units(), "op.speed", "%.0f");
+        const bool fixed = case_.analysis == gui::AnalysisType::Steady && case_.position == gui::ShaftPosition::Fixed;
+        if (load_known && !fixed)
+            arrows += load_from_table ? std::string(", black = load on the shaft (mean of the load table)")
+                                      : ", black = load on the shaft, W = " +
+                                            ui::format_value(case_.load, gui::UnitFamily::Force, units(), "op.load",
+                                                             "%.0f");
+        captions.push_back({arrows, muted});
+        if (highlighted_zone_ == 0) captions.push_back({"Bearing ends: see Mesh view", highlight});
+    }
+    using CaptionLines = std::vector<std::pair<std::string, ImU32>>;
+    const auto wrap_captions = [&](float width) {
+        CaptionLines lines;
+        for (const Caption& caption : captions)
+            for (std::string& line : wrap_lines(caption.text, std::max(width, 40.0f)))
+                lines.emplace_back(std::move(line), caption.color);
+        return lines;
+    };
+    const auto block_height = [&](const CaptionLines& lines) {
+        return static_cast<float>(lines.size()) * 1.2f * font + 0.4f * font;
+    };
+
+    // Layout: captions above the drawing, or in a left column when that leaves a
+    // larger drawing (wide, short canvas). The ring keeps room for its angle labels.
     const float label_w = ImGui::CalcTextSize("theta_in = 0 (feed)").x + 0.5f * font;
-    const ImVec2 centre(p0.x + 0.5f * size.x, p0.y + caption_h + 0.5f * (size.y - caption_h));
-    const float avail_r = std::min(0.5f * size.x - label_w, 0.5f * (size.y - caption_h) - 2.6f * font);
+    CaptionLines top_lines = wrap_captions(size.x - font);
+    const float top_h = block_height(top_lines);
+    const float r_top = std::min(0.5f * size.x - label_w, 0.5f * (size.y - top_h) - 2.6f * font);
+    const float column_w = 0.4f * size.x;
+    CaptionLines side_lines = wrap_captions(column_w - font);
+    const float side_h = block_height(side_lines);
+    const float region_w = size.x - column_w;
+    const float r_side = std::min(0.5f * region_w - label_w, 0.5f * size.y - 2.6f * font);
+    const bool side = r_side > r_top && side_h < size.y - 3.5f * font;
+    const CaptionLines caption_lines = side ? std::move(side_lines) : std::move(top_lines);
+    const ImVec2 centre = side ? ImVec2(p0.x + column_w + 0.5f * region_w, p0.y + 0.5f * size.y)
+                               : ImVec2(p0.x + 0.5f * size.x, p0.y + top_h + 0.5f * (size.y - top_h));
+    const float avail_r = side ? r_side : r_top;
     const float scale = std::max(avail_r, 20.0f) / static_cast<float>(outer_radius);  // px per m
     const float r_bore = static_cast<float>(radius) * scale;
     const float r_outer = static_cast<float>(outer_radius) * scale;
@@ -288,31 +361,12 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
         const ImVec2 tip = polar(shaft_centre, r_arc, to_deg);
         const ImVec2 back = polar(shaft_centre, r_arc, to_deg - rotation * 10.0);
         draw_arrow(dl, back, tip, accent, 2.0f, 0.6f * font);
-        char text[64];
-        std::snprintf(text, sizeof(text), "rotation %s",
-                      ui::format_value(std::abs(case_.speed), gui::UnitFamily::Speed, units(), "op.speed",
-                                       "%.0f")
-                          .c_str());
-        const ImVec2 at = polar(shaft_centre, 0.38f * r_shaft, mid);
-        const ImVec2 text_size = ImGui::CalcTextSize(text);
-        dl->AddText(ImVec2(at.x - 0.5f * text_size.x, at.y - 0.5f * text_size.y), accent, text);
     }
 
     // Load arrow from the shaft centre.
     if (load_known) {
         const ImVec2 tip = polar(shaft_centre, 0.62f * r_shaft, load_deg);
         draw_arrow(dl, shaft_centre, tip, ink, 2.2f, 0.75f * font);
-        std::string text = load_from_table
-                               ? std::string("W (mean of load table)")
-                               : "W = " + ui::format_value(case_.load, gui::UnitFamily::Force, units(),
-                                                           "op.load", "%.0f");
-        if (case_.analysis == gui::AnalysisType::Steady && case_.position == gui::ShaftPosition::Fixed)
-            text.clear();
-        if (!text.empty()) {
-            // Beside the arrow shaft, on its counterclockwise side.
-            const ImVec2 mid = polar(shaft_centre, 0.4f * r_shaft, load_deg);
-            label_outside(dl, polar(mid, 6.0f, load_deg + 90.0), load_deg + 90.0, ink, text.c_str());
-        }
     }
 
     // Angle zeros and h_min, labelled outside the ring; nearby labels are stacked outwards.
@@ -358,23 +412,9 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
     // Captions, top left.
     {
         ImVec2 at(p0.x + 0.5f * font, p0.y + 0.3f * font);
-        char text[160];
-        std::snprintf(text, sizeof(text), "clearance x %.0f (exaggerated); everything else to scale", factor);
-        dl->AddText(at, ink, text);
-        at.y += 1.2f * font;
-        std::snprintf(text, sizeof(text), "D = %s, c = %s",
-                      ui::format_value(case_.bearing_diameter, gui::UnitFamily::Length, units(),
-                                       "geom.diameter")
-                          .c_str(),
-                      ui::format_value(case_.radial_clearance, gui::UnitFamily::SmallLength, units(),
-                                       "geom.clearance")
-                          .c_str());
-        dl->AddText(at, muted, text);
-        at.y += 1.2f * font;
-        dl->AddText(at, muted, position_note.c_str());
-        if (highlighted_zone_ == 0) {
+        for (const auto& [line, color] : caption_lines) {
+            dl->AddText(at, color, line.c_str());
             at.y += 1.2f * font;
-            dl->AddText(at, highlight, "Bearing ends: see Mesh view");
         }
     }
     dl->PopClipRect();

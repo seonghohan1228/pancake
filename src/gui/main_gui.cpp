@@ -309,7 +309,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
         }
         if (done || app.wants_exit) break;
 
-        if (platform.occluded &&
+        // Scripted modes (--screenshots, --run) render even while
+        // the window is occluded (a locked screen); captures read the backbuffer.
+        if (platform.occluded && app.startup_screenshots.empty() && !app.startup_run &&
             platform.swap_chain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) {
             Sleep(10);
             continue;

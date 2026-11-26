@@ -323,6 +323,7 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
         src/gui/dialog_fluid_library.cpp
         src/gui/onset_plot.cpp
         src/gui/results_window.cpp
+        src/gui/results_tabs.cpp
         src/gui/run_monitor.cpp
         src/gui/batch.cpp
         src/gui/case_report.cpp

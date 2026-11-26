@@ -264,7 +264,7 @@ fbns_tol = 1e-10
 fbns_relaxation = 1
 fbns_pressure_scale = 0
 # Film rupture shear/heat: FULL_FILM or STRIATED (JFO/FBNS only).
-cavitated_film_model = FULL_FILM
+cavitated_film_model = STRIATED
 consistent_boundary_flux = false
 void_coupling_relaxation = 0.29999999999999999
 

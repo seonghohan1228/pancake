@@ -318,13 +318,6 @@ void GuiApp::draw_fluid_library_dialog() {
                              "source", pair.source);
         changed |= form_text("Note", "Any limitation, e.g. 'example only, not for design'.", "note",
                              pair.note);
-        changed |= ui::form_combo(
-            "Gas model for gas transport",
-            "Equation of state of the free gas used when the gas is transported with the film.",
-            "fluid_lib.species", pair.solver_species,
-            {{DissolvedGasSpecies::PROPANE, "PROPANE", "Propane (R290) ideal-gas properties."},
-             {DissolvedGasSpecies::AIR, "AIR", "Air ideal-gas properties."},
-             {DissolvedGasSpecies::R410A, "R410A", "R410A ideal-gas properties."}});
         auto& units_map = units();
         changed |= ui::form_number("Density at 0 degC [kg/m3]",
                                    "Liquid density at 0 degC; the density is linear in temperature. "
@@ -346,38 +339,59 @@ void GuiApp::draw_fluid_library_dialog() {
                                    "fluid_lib.k", pair.thermal_conductivity, gui::UnitFamily::Conductivity,
                                    units_map);
         ui::end_form();
-        const bool optional_open = ImGui::TreeNodeEx("Optional: gas transport and thermal gas release",
-                                                     ImGuiTreeNodeFlags_SpanAvailWidth);
-        ui::item_tooltip("Free-gas viscosity and caloric data; needed only for gas transport and "
-                         "thermal gas release.");
-        if (optional_open) {
-            if (ui::begin_form("##header_optional")) {
-                changed |= ui::form_number("Free-gas viscosity (optional)",
-                                           "Dynamic viscosity of the released gas, used with gas transport. "
-                                           "0 = not given. Typical: 1e-5 Pa s.",
-                                           "fluid_lib.mu_gas", pair.gas_viscosity, gui::UnitFamily::Viscosity,
-                                           units_map);
-                changed |= ui::form_number("Dissolved heat capacity [J/(kg K)] (optional)",
-                                           "Heat capacity of the dissolved refrigerant, for thermal gas release. "
-                                           "0 = not given.",
-                                           "fluid_lib.cp_dissolved", pair.dissolved_heat_capacity,
-                                           gui::UnitFamily::Fixed, units_map);
-                double desorption = std::isfinite(pair.desorption_energy) ? pair.desorption_energy : 0.0;
-                if (ui::form_number("Desorption energy [J/kg] (optional)",
-                                    "Energy taken up when dissolved refrigerant comes out of solution "
-                                    "(u_gas - u_dissolved), for thermal gas release. 0 = not given.",
-                                    "fluid_lib.desorption", desorption, gui::UnitFamily::Fixed, units_map)) {
-                    pair.desorption_energy = desorption != 0.0 ? desorption : std::numeric_limits<double>::quiet_NaN();
+        if (ImGui::Checkbox("Gas-phase data (needed for gas transport)", &pair.has_gas_phase)) changed = true;
+        ui::item_tooltip("Data of the released refrigerant gas. Without it the pair runs the pressure plateau "
+                         "only, which needs just the saturation pressure from the table.");
+        if (pair.has_gas_phase && ui::begin_form("##header_gas")) {
+            changed |= ui::form_combo(
+                "Gas model", "Which of the solver's gas models describes the released refrigerant.",
+                "fluid_lib.gas_model", pair.solver_species,
+                {{DissolvedGasSpecies::R410A, "R410A", "R410A: real-fluid equation of state."},
+                 {DissolvedGasSpecies::PROPANE, "PROPANE",
+                  "Propane: ideal gas with the solver's built-in molar mass."},
+                 {DissolvedGasSpecies::AIR, "AIR", "Air: ideal gas with the solver's built-in molar mass."}});
+            changed |= ui::form_number("Free-gas viscosity",
+                                       "Dynamic viscosity of the released gas, used with gas transport. "
+                                       "0 = not given. Typical: 1e-5 Pa s.",
+                                       "fluid_lib.mu_gas", pair.gas_viscosity, gui::UnitFamily::Viscosity,
+                                       units_map);
+            if (pair.solver_species != DissolvedGasSpecies::R410A) {
+                double cv = pair.gas_heat_capacity_cv > 0.0 ? pair.gas_heat_capacity_cv : 0.0;
+                if (ui::form_number("Gas heat capacity c_v [J/(kg K)] (optional)",
+                                    "Constant-volume heat capacity of the ideal gas; overrides the solver's "
+                                    "default. 0 = solver default.",
+                                    "fluid_lib.cv_gas", cv, gui::UnitFamily::Fixed, units_map)) {
+                    pair.gas_heat_capacity_cv = cv > 0.0 ? cv : -1.0;
                     changed = true;
                 }
-                changed |= ui::form_number("Free-gas thermal conductivity (optional)",
-                                           "Thermal conductivity of the released gas, for thermal gas release. "
-                                           "Saved together with the two values above.",
-                                           "fluid_lib.k_gas", pair.gas_thermal_conductivity,
-                                           gui::UnitFamily::Conductivity, units_map);
-                ui::end_form();
             }
-            ImGui::TreePop();
+            changed |= ui::form_number("Free-gas thermal conductivity",
+                                       "Thermal conductivity of the released gas, for thermal gas release.",
+                                       "fluid_lib.k_gas", pair.gas_thermal_conductivity,
+                                       gui::UnitFamily::Conductivity, units_map);
+            double cp_dissolved = pair.dissolved_heat_capacity > 0.0 ? pair.dissolved_heat_capacity : 0.0;
+            if (ui::form_number("Dissolved heat capacity [J/(kg K)]",
+                                "Heat capacity of the dissolved refrigerant, for thermal gas release. "
+                                "0 = not given.",
+                                "fluid_lib.cp_dissolved", cp_dissolved, gui::UnitFamily::Fixed, units_map)) {
+                pair.dissolved_heat_capacity = cp_dissolved > 0.0 ? cp_dissolved : -1.0;
+                changed = true;
+            }
+            double desorption = std::isfinite(pair.desorption_energy) ? pair.desorption_energy : 0.0;
+            if (ui::form_number("Desorption energy [J/kg]",
+                                "Energy taken up when dissolved refrigerant comes out of solution "
+                                "(u_gas - u_dissolved), for thermal gas release. 0 = not given.",
+                                "fluid_lib.desorption", desorption, gui::UnitFamily::Fixed, units_map)) {
+                pair.desorption_energy = desorption != 0.0 ? desorption : std::numeric_limits<double>::quiet_NaN();
+                changed = true;
+            }
+            ui::end_form();
+            if (!pair.has_caloric_data()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("Thermal gas release needs the dissolved heat capacity and the desorption "
+                                    "energy; the gas conductivity and c_v are saved with them.");
+                ImGui::PopTextWrapPos();
+            }
         }
         if (changed) state.modified = true;
     }
@@ -386,7 +400,8 @@ void GuiApp::draw_fluid_library_dialog() {
     if (ImGui::CollapsingHeader("Table (solution.csv)", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::TextWrapped("Each content curve lists the temperature at which that content is saturated "
-                           "at the given pressure, with the viscosity there.");
+                           "at the given pressure p_sat, with the viscosity there. Pure-oil rows (content 0) "
+                           "leave p_sat blank.");
         ImGui::PopStyleColor();
         if (ImGui::Button("Add row")) {
             state.rows.push_back(state.rows.empty() ? gui::SolutionRow{} : state.rows.back());
@@ -428,7 +443,7 @@ void GuiApp::draw_fluid_library_dialog() {
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableSetupColumn("Content [kg/kg]");
             ImGui::TableSetupColumn("Temperature [degC]");
-            ImGui::TableSetupColumn("Saturation pressure [MPa, abs; blank for pure oil]");
+            ImGui::TableSetupColumn("p_sat [MPa abs]");
             ImGui::TableSetupColumn("Viscosity [mm2/s]");
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 1.6f * font);
             ImGui::TableHeadersRow();

@@ -2,12 +2,15 @@
 
 // Data helpers shared by the results window, run monitor, batch window and case
 // report: numeric CSV tables (motion.csv, equilibrium_history.csv), the column
-// order of a result grid by display angle, mid-plane profiles, the gas-fraction
-// field, display units of result quantities, field-map and profile extraction,
-// async readers for motion.csv and comparison runs, and a reload guard for the
-// results loader. Header-only (no CMake entry needed); no solver calls.
+// order of a result grid by display angle, mid-plane profiles, the cavity
+// fraction (void fraction 1 - theta for FBNS, free-gas fraction for COUPLED;
+// docs/GUI_LGE_PLAN.md 0.5), display units of result quantities, field-map and
+// profile extraction, async readers for motion.csv and comparison runs, and a
+// reload guard for the results loader. Header-only apart from the Results tabs
+// at the end (results_tabs.cpp); no solver calls.
 
 #include "angle_reference.hpp"
+#include "case_model.hpp"
 #include "config.hpp"
 #include "key_results.hpp"
 #include "results.hpp"
@@ -27,6 +30,8 @@
 #include <numeric>
 #include <string>
 #include <vector>
+
+struct RunRecord;  // gui_app.hpp
 
 namespace result_data {
 
@@ -125,18 +130,23 @@ inline bool read_csv(const std::filesystem::path& path, CsvTable& table, std::st
     return true;
 }
 
-/// Gas fraction of the film: alpha_gas when written and nonzero somewhere (gas transport
-/// runs), else 1 - film content (FBNS runs write alpha_gas = 0 and carry the void in it).
-inline std::vector<double> gas_fraction(const ResultGrid& grid) {
-    if (const auto* alpha = grid.field("alpha_gas"))
-        if (std::any_of(alpha->begin(), alpha->end(), [](double v) { return std::isfinite(v) && v > 0.0; }))
-            return *alpha;
-    std::vector<double> out;
-    if (const auto* film = grid.field("film_content")) {
-        out.resize(film->size());
-        for (std::size_t i = 0; i < film->size(); ++i) out[i] = 1.0 - (*film)[i];
-    }
-    return out;
+/// The field whose 0.5 contour outlines the cavitated region, chosen by the run's
+/// model and never guessed from the data: the free-gas volume fraction alpha_gas
+/// for COUPLED, the void fraction 1 - theta otherwise (FBNS tracks no gas).
+inline gui::FieldView cavity_view(const SimulationConfig& cfg) {
+    if (gui::result_form(cfg) == gui::ResultForm::Coupled)
+        return {"alpha_gas", "Free-gas volume fraction", "-", ""};
+    return {"void", "Void fraction 1 - theta", "-", ""};
+}
+
+/// Values of cavity_view(cfg), row-major like the grid fields; empty when not written.
+inline std::vector<double> cavity_fraction(const ResultGrid& grid, const SimulationConfig& cfg) {
+    return gui::field_view_values(cavity_view(cfg), grid, cfg);
+}
+
+/// CSV column name of cavity_view(cfg).
+inline const char* cavity_column(const SimulationConfig& cfg) {
+    return gui::result_form(cfg) == gui::ResultForm::Coupled ? "free_gas_volume_fraction" : "void_fraction";
 }
 
 /// Columns of a grid ordered by display angle (ascending).
@@ -215,13 +225,11 @@ struct ReloadGuard {
     }
 };
 
-/// Field shown in a map.
-enum class MapField { Pressure, Film, Gas, Temperature };
-
-/// A field in display order, ready for a heatmap, with the cavitated-region outline.
+/// A field view in display order, ready for a heatmap, with the cavitated-region outline.
 struct MapCache {
     const ResultGrid* grid = nullptr;
-    MapField field = MapField::Pressure;
+    std::string view_id;
+    gui::ResultForm form = gui::ResultForm::Other;
     double zero = std::numeric_limits<double>::quiet_NaN(), start = std::numeric_limits<double>::quiet_NaN(), scale = 1.0, offset = 0.0;
     bool available = false;
     std::vector<double> values;  // display order, first row at z = L (heatmap top)
@@ -230,29 +238,18 @@ struct MapCache {
     std::vector<double> outline;  // x0, y0, x1, y1 per cell edge (plot coordinates)
 };
 
-/// Values along the angle (display order) at one axial position [SI].
+/// Values along the angle (display order) at one axial position [SI]; `cavity` is
+/// cavity_fraction (void fraction or free-gas fraction, by model).
 struct Profile {
-    std::vector<double> angle, p, h, gas, t;
+    std::vector<double> angle, p, h, cavity, t;
 };
 
-/// The grid values of a map field (gas fraction computed into `gas`).
-inline const std::vector<double>* map_source(const ResultGrid& grid, MapField field,
-                                      std::vector<double>& gas) {
-    switch (field) {
-        case MapField::Pressure: return grid.field("p");
-        case MapField::Film: return grid.field("h");
-        case MapField::Temperature: return grid.field("T");
-        case MapField::Gas: break;
-    }
-    gas = gas_fraction(grid);
-    return gas.empty() ? nullptr : &gas;
-}
-
-/// Fills `m` for one grid, field, angle zero and display unit (null unit = as stored).
-inline void build_map(MapCache& m, const ResultGrid& grid, MapField field, double zero, double start,
-               const gui::UnitOption* unit) {
+/// Fills `m` for one grid, view, angle zero and display unit (null unit = as stored).
+inline void build_map(MapCache& m, const ResultGrid& grid, const gui::FieldView& view,
+                      const SimulationConfig& cfg, double zero, double start, const gui::UnitOption* unit) {
     m.grid = &grid;
-    m.field = field;
+    m.view_id = view.id;
+    m.form = gui::result_form(cfg);
     m.zero = zero;
     m.start = start;
     m.scale = unit ? unit->scale : 1.0;
@@ -260,11 +257,11 @@ inline void build_map(MapCache& m, const ResultGrid& grid, MapField field, doubl
     m.available = false;
     m.values.clear();
     m.outline.clear();
-    std::vector<double> gas_store;
-    const std::vector<double>* source = map_source(grid, field, gas_store);
+    const std::vector<double> values = gui::field_view_values(view, grid, cfg);
+    const std::vector<double>* source = &values;
     const int nx = grid.nx, ny = grid.ny;
     const std::size_t cells = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
-    if (!source || nx <= 0 || ny <= 0 || source->size() < cells) return;
+    if (nx <= 0 || ny <= 0 || source->size() < cells) return;
     const auto order = angle_order(grid, zero, start);
     m.rows = ny;
     m.cols = nx;
@@ -288,8 +285,8 @@ inline void build_map(MapCache& m, const ResultGrid& grid, MapField field, doubl
     m.vmax = hi;
     m.x_left = order.angles.front() - 0.5 * order.cell_deg;
 
-    // Cavitated-region outline: cell edges where the gas fraction crosses 0.5.
-    const std::vector<double> gas = field == MapField::Gas ? gas_store : gas_fraction(grid);
+    // Cavitated-region outline: cell edges where the cavity fraction crosses 0.5.
+    const std::vector<double> gas = view.id == cavity_view(cfg).id ? values : cavity_fraction(grid, cfg);
     if (gas.size() >= cells) {
         const double dx = order.cell_deg, dy = 1.0 / ny;
         const auto cavitated = [&](int k, int j) {
@@ -313,7 +310,8 @@ inline void build_map(MapCache& m, const ResultGrid& grid, MapField field, doubl
 }
 
 /// Profiles at axial fraction z / L, in display-angle order.
-inline Profile make_profile(const ResultGrid& grid, double zero, double start, double z_fraction) {
+inline Profile make_profile(const ResultGrid& grid, const SimulationConfig& cfg, double zero, double start,
+                            double z_fraction) {
     Profile out;
     const auto order = angle_order(grid, zero, start);
     const int j = row_at(grid, z_fraction);
@@ -321,8 +319,8 @@ inline Profile make_profile(const ResultGrid& grid, double zero, double start, d
     if (const auto* p = grid.field("p")) out.p = row_values(grid, *p, j, order);
     if (const auto* h = grid.field("h")) out.h = row_values(grid, *h, j, order);
     if (const auto* t = grid.field("T")) out.t = row_values(grid, *t, j, order);
-    const auto gas = gas_fraction(grid);
-    if (!gas.empty()) out.gas = row_values(grid, gas, j, order);
+    const auto cavity = cavity_fraction(grid, cfg);
+    if (!cavity.empty()) out.cavity = row_values(grid, cavity, j, order);
     return out;
 }
 
@@ -411,5 +409,67 @@ inline void ensure_compare(CompareRun& run, const std::filesystem::path& output_
     });
 }
 
+// ---------------------------------------------------------------------------
+// Results window tabs (results_tabs.cpp; the window itself is results_window.cpp)
+// ---------------------------------------------------------------------------
+
+/// Screen rectangle of the last plot drawn, saved by the PNG export.
+struct PlotCapture {
+    float min_x = 0.0f, min_y = 0.0f, max_x = 0.0f, max_y = 0.0f;
+    std::string name = "plot";
+};
+/// Remembers the last ImGui item as the plot the PNG export saves.
+void remember_plot(PlotCapture& capture, const char* name);
+
+/// What the tabs need about the result shown.
+struct TabContext {
+    const ResultGrid* grid = nullptr;          // null: no step loaded
+    const SimulationConfig* config = nullptr;  // config of the shown run (never null)
+    const gui::CaseModel* model = nullptr;     // case of the shown run (never null)
+    gui::KeyResults grid_results;              // key results of `grid`
+    double zero = 0.0;                         // fixed-frame angle of the chosen zero [deg]
+    double start = 0.0;                        // first angle of the axes [deg]
+    std::string x_label;
+    double p_sat = 0.0;                        // Pa; 0 = unknown
+    std::map<std::string, int>* units = nullptr;
+    bool loading = false;                      // the loader is reading a step
+};
+
+/// Field-map tab state: the view shown and its cached heatmap.
+struct FieldMapUi {
+    std::string view_id = "p";
+    MapCache map;
+};
+/// Views of gui::result_fields for the run's model, the heatmap to scale (pi D : L),
+/// the cavitated-region outline and the model note.
+void draw_field_maps_tab(FieldMapUi& state, const TabContext& tab, PlotCapture& capture);
+/// Mid-plane pressure around the bearing with the ambient and saturation circles.
+void draw_polar_tab(const TabContext& tab, PlotCapture& capture);
+/// Pressure and film thickness along the angle at an axial position.
+void draw_profiles_tab(const TabContext& tab, float& profile_z, PlotCapture& capture);
+
+/// Transient tab state.
+struct TransientUi {
+    int x_axis = 0;  // 0 time, 1 crank angle
+    double cursor = 0.0;
+    bool playing = false;
+    double last_tick = 0.0;
+    MotionCache motion;
+};
+/// Time history of motion.csv with a cursor on the step shown. Returns the step to
+/// show (index into `steps`, -1 = latest) when the cursor was dragged or the player
+/// advanced; -2 when nothing changed.
+int draw_transient_tab(TransientUi& state, const TabContext& tab, const std::filesystem::path& motion_csv,
+                       const std::vector<StepInfo>& steps, int shown_step, bool loader_busy,
+                       PlotCapture& capture);
+
+/// One side of the gas on / gas off comparison.
+struct ComparisonSide {
+    const RunRecord* record = nullptr;
+    CompareRun* run = nullptr;
+};
+/// Gas on vs gas off: key-result table and the mid-plane pressure of both runs.
+void draw_comparison_tab(ComparisonSide on, ComparisonSide off, const TabContext& tab,
+                         gui::AngleZero angle_zero, PlotCapture& capture);
 
 }  // namespace result_data

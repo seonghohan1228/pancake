@@ -1,5 +1,6 @@
 #include "onset_plot.hpp"
 
+#include "imgui_internal.h"
 #include "implot.h"
 #include "theme.hpp"
 
@@ -20,6 +21,13 @@ ImVec4 verdict_color(gui::OnsetVerdict verdict) {
         case gui::OnsetVerdict::Unknown: break;
     }
     return theme::kMuted;
+}
+
+/// True when `rect` overlaps none of `taken`.
+bool free_rect(const ImRect& rect, const std::vector<ImRect>& taken) {
+    for (const ImRect& other : taken)
+        if (rect.Overlaps(other)) return false;
+    return true;
 }
 
 ImVec4 with_alpha(ImVec4 color, float alpha) {
@@ -76,12 +84,6 @@ void onset_chart(const char* id, ImVec2 size, const std::vector<OnsetMarker>& ma
         ImPlot::SetNextMarkerStyle(ImPlotMarker_Square, 3.5f, theme::kMuted, 1.0f, theme::kMuted);
         ImPlot::PlotLine("Onset curve Phi(S)", xs.data(), ys.data(), count);
 
-        const double s_low = 0.1, s_high = 1.0;
-        const double phi_low = curve.phi(s_low), phi_high = curve.phi(s_high);
-        if (std::isfinite(phi_low))
-            ImPlot::PlotText("gas release", s_low, phi_low * 0.3);
-        if (std::isfinite(phi_high))
-            ImPlot::PlotText("no gas release", s_high, phi_high * 4.0);
     }
 
     // Case points, one scatter per verdict so the legend names the categories.
@@ -120,32 +122,83 @@ void onset_chart(const char* id, ImVec2 size, const std::vector<OnsetMarker>& ma
         }
     }
 
-    // Marker labels, offset to the upper right of each point.
+    // Text annotations in pixel space, placed so that none overlaps another or
+    // leaves the plot area: case labels first (they matter most), then the
+    // region names, then the caption; a text that finds no free place is left out.
+    const ImVec2 plot_pos = ImPlot::GetPlotPos();
+    const ImVec2 plot_size = ImPlot::GetPlotSize();
+    const ImRect area(plot_pos.x + 2.0f, plot_pos.y + 2.0f, plot_pos.x + plot_size.x - 2.0f,
+                      plot_pos.y + plot_size.y - 2.0f);
+    std::vector<ImRect> taken;
+    for (const OnsetMarker& marker : markers) {
+        // Markers occupy their own small square so labels do not cover them.
+        if (!std::isfinite(marker.sommerfeld) || marker.sommerfeld <= 0.0 || !std::isfinite(marker.margin_ratio))
+            continue;
+        const double y = marker.margin_ratio > 0.0 ? marker.margin_ratio : y_min * 1.15;
+        const ImVec2 c = ImPlot::PlotToPixels(marker.sommerfeld, y);
+        taken.emplace_back(c.x - marker_size, c.y - marker_size, c.x + marker_size, c.y + marker_size);
+    }
+    ImDrawList* draw = ImPlot::GetPlotDrawList();
+    ImPlot::PushPlotClipRect();
     if (!compact || markers.size() <= 3) {
         for (const OnsetMarker& marker : markers) {
             if (marker.label.empty() || !std::isfinite(marker.sommerfeld) || marker.sommerfeld <= 0.0 ||
                 !std::isfinite(marker.margin_ratio))
                 continue;
             const bool below = marker.margin_ratio <= 0.0;
-            const double y = below ? y_min * 1.15 : marker.margin_ratio;
+            const ImVec2 c = ImPlot::PlotToPixels(marker.sommerfeld, below ? y_min * 1.15 : marker.margin_ratio);
             std::string text = marker.label;
             if (below) text += " (margin <= 0)";
-            ImPlot::PushStyleColor(ImPlotCol_InlayText, verdict_color(marker.verdict));
-            ImPlot::PlotText(text.c_str(), marker.sommerfeld, y, ImVec2(6.0f, -10.0f),
-                             ImPlotTextFlags_None);
-            ImPlot::PopStyleColor();
+            if (ImGui::CalcTextSize(text.c_str()).x > area.GetWidth() - 4.0f) text = marker.label;
+            const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+            // Above-right, above-left, then further up (stacked), right and left.
+            const float gap = marker_size + 2.0f;
+            ImVec2 candidates[8];
+            int n = 0;
+            for (int level = 0; level < 4; ++level) {
+                const float top = c.y - gap - size.y - level * size.y;
+                candidates[n++] = ImVec2(c.x + gap, top);
+                candidates[n++] = ImVec2(c.x - gap - size.x, top);
+            }
+            for (int k = 0; k < n; ++k) {
+                ImVec2 pos = candidates[k];
+                pos.x = std::clamp(pos.x, area.Min.x, std::max(area.Min.x, area.Max.x - size.x));
+                pos.y = std::clamp(pos.y, area.Min.y, std::max(area.Min.y, area.Max.y - size.y));
+                const ImRect rect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+                if (!free_rect(rect, taken)) continue;
+                taken.push_back(rect);
+                draw->AddText(pos, ImGui::GetColorU32(verdict_color(marker.verdict)), text.c_str());
+                break;
+            }
         }
     }
-
-    if (!compact) {
-        const ImVec2 pos = ImPlot::GetPlotPos();
-        const ImVec2 plot_size = ImPlot::GetPlotSize();
-        const char* caption = "approximate for other bearings";
-        const ImVec2 text_size = ImGui::CalcTextSize(caption);
-        ImPlot::GetPlotDrawList()->AddText(
-            ImVec2(pos.x + plot_size.x - text_size.x - 6.0f, pos.y + plot_size.y - text_size.y - 4.0f),
-            ImGui::GetColorU32(theme::kMuted), caption);
+    if (count >= 2) {
+        const ImU32 region_colour = ImGui::GetColorU32(theme::kMuted);
+        const struct { const char* text; double s; double factor; } regions[] = {
+            {"gas release", 0.1, 0.3}, {"no gas release", 1.0, 4.0}};
+        for (const auto& region : regions) {
+            const double phi = curve.phi(region.s);
+            if (!std::isfinite(phi)) continue;
+            const ImVec2 size = ImGui::CalcTextSize(region.text);
+            const ImVec2 c = ImPlot::PlotToPixels(region.s, phi * region.factor);
+            ImVec2 pos(c.x - size.x * 0.5f, c.y - size.y * 0.5f);
+            pos.x = std::clamp(pos.x, area.Min.x, std::max(area.Min.x, area.Max.x - size.x));
+            pos.y = std::clamp(pos.y, area.Min.y, std::max(area.Min.y, area.Max.y - size.y));
+            const ImRect rect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+            if (!free_rect(rect, taken)) continue;
+            taken.push_back(rect);
+            draw->AddText(pos, region_colour, region.text);
+        }
     }
+    if (!compact) {
+        const char* caption = "approximate for other bearings";
+        const ImVec2 size = ImGui::CalcTextSize(caption);
+        const ImVec2 pos(area.Max.x - size.x - 4.0f, area.Max.y - size.y - 2.0f);
+        const ImRect rect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+        if (pos.x > area.Min.x && free_rect(rect, taken))
+            draw->AddText(pos, ImGui::GetColorU32(theme::kMuted), caption);
+    }
+    ImPlot::PopPlotClipRect();
 
     if (ImPlot::IsPlotHovered()) {
         ImGui::BeginTooltip();

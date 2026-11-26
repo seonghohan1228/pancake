@@ -519,7 +519,7 @@ void GuiApp::poll_loader() {
             const int index = selected_step_ < 0 ? static_cast<int>(steps_.size()) - 1 : selected_step_;
             const StepInfo& desired = steps_[static_cast<std::size_t>(std::min(index, static_cast<int>(steps_.size()) - 1))];
             // Compare the step file, not the number: steady snapshots are all step 0.
-            if (!grid_ || grid_->step != desired.step || loaded_step_file_ != desired.pvts) {
+            if (loaded_step_file_ != desired.pvts) {
                 loaded_step_file_ = desired.pvts;
                 loader_.load_step(desired);
             }

@@ -38,15 +38,29 @@ ImVec4 verdict_color(gui::OnsetVerdict verdict) {
     return theme::kMuted;
 }
 
-/// One row of the estimates table: label (with tooltip) | value.
+/// One row of the estimates table: label (with tooltip) | value. Both wrap inside
+/// their column, so nothing is cut off in a narrow panel.
 void estimate_row(const char* label, const char* help, const std::string& value) {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
     ui::item_tooltip(help);
     ImGui::TableSetColumnIndex(1);
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(value.c_str());
+    ImGui::PopTextWrapPos();
     ui::item_tooltip(help);
+}
+
+/// "40 s", "25 min" or "3.1 h".
+std::string duration_text(double seconds) {
+    char buffer[32];
+    if (seconds < 90.0) std::snprintf(buffer, sizeof(buffer), "%.0f s", seconds);
+    else if (seconds < 5400.0) std::snprintf(buffer, sizeof(buffer), "%.0f min", seconds / 60.0);
+    else std::snprintf(buffer, sizeof(buffer), "%.1f h", seconds / 3600.0);
+    return buffer;
 }
 
 /// All reasons of a node, one per line, for the tree tooltip.
@@ -97,7 +111,13 @@ void GuiApp::draw_workflow_window() {
     ImGui::EndDisabled();
     ui::item_tooltip("Stop the running case and drop any queued runs.");
 
+    // CPU cores: on the same line when label and input fit, else on the next line.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float cores_input_w = ImGui::CalcTextSize("000").x + style.FramePadding.x * 2.0f +
+                                2.0f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
+    const float cores_w = ImGui::CalcTextSize("CPU cores").x + style.ItemSpacing.x + cores_input_w;
     ImGui::SameLine();
+    if (ImGui::GetContentRegionAvail().x < cores_w) ImGui::NewLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("CPU cores");
     const char* cores_help =
@@ -105,7 +125,7 @@ void GuiApp::draw_workflow_window() {
         "needs Microsoft MPI (mpiexec) installed. Typical: 1 to 8.";
     ui::item_tooltip(cores_help);
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.5f);
+    ImGui::SetNextItemWidth(cores_input_w);
     int cores = std::max(1, case_.cores);
     if (ImGui::InputInt("##cores", &cores, 1, 4)) {
         cores = std::clamp(cores, 1, 64);
@@ -145,8 +165,8 @@ void GuiApp::draw_estimates_box() {
     const bool have_fluid = pair() != nullptr;
 
     if (ImGui::BeginTable("##estimates", 2, ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthStretch, 0.56f);
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch, 0.44f);
         estimate_row("Specific load P", "Load per projected area, P = W / (L D).",
                      have_load ? ui::format_value(e.specific_load, gui::UnitFamily::Pressure, units(),
                                                   "est.specific_load")
@@ -189,10 +209,20 @@ void GuiApp::draw_estimates_box() {
         ImGui::TextColored(theme::kRiskMedium,
                            "The ambient state is outside the fluid table; values are clamped.");
     ImGui::PopTextWrapPos();
-    if (e.run_time.typical_s > 0.0 && shown(e.run_time.typical_s)) {
-        const double minutes = std::max(1.0, std::round(e.run_time.typical_s / 60.0));
-        ImGui::TextDisabled("Run time: about %.0f min (rough)", minutes);
-        ui::item_tooltip("Cells x typical iterations x time per cell-iteration, divided by the cores.");
+    const gui::RunTime& run_time = e.run_time;
+    if (run_time.typical_s > 0.0 && shown(run_time.typical_s)) {
+        std::string text = "Run time: " + gui::format_run_time(run_time);
+        if (case_.analysis == gui::AnalysisType::Transient && run_time.per_revolution_s > 0.0)
+            text += "; " + duration_text(run_time.per_revolution_s) + " per revolution";
+        char tip[384];
+        std::snprintf(tip, sizeof(tip),
+                      "Scaled from measured runs (%s) by the cell count and the cores. Typical core-time "
+                      "%.2g core-h (wall time x cores).",
+                      run_time.basis.c_str(), run_time.core_hours);
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", text.c_str());
+        ImGui::PopTextWrapPos();
+        ui::item_tooltip(tip);
     }
 
     std::vector<ui::OnsetMarker> markers;
@@ -277,7 +307,8 @@ void GuiApp::draw_panel_window() {
                                shown(r.p_max) ? ui::format_value(r.p_max, gui::UnitFamily::Pressure,
                                                                  units(), "res.p_max")
                                               : "-");
-                ui::form_value("Cavitated area", "Fraction of the film with film content below 1.",
+                ui::form_value("Cavitated area (void fraction > 0)",
+                               "Share of the film area where the gap is not filled by liquid.",
                                shown(r.cavitated_fraction)
                                    ? number_text(100.0 * r.cavitated_fraction, "%.1f %%")
                                    : "-");

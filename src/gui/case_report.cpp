@@ -146,13 +146,14 @@ std::string svg_profile(const std::vector<double>& x, const std::vector<Series>&
     return svg.str();
 }
 
-/// Unwrapped pressure map (block-averaged to at most 180 x 48 cells) as inline SVG.
-std::string svg_map(const ResultGrid& grid, double zero, double start, double aspect, const gui::UnitOption& unit,
-                    const std::string& x_label) {
-    const auto* p = grid.field("p");
-    if (!p || grid.nx <= 0 || grid.ny <= 0 ||
+/// Unwrapped field map (block-averaged to at most 180 x 48 cells) as inline SVG.
+/// `field` is row-major like the grid fields, in SI; `unit` converts it for display.
+std::string svg_map(const ResultGrid& grid, const std::vector<double>& field, double zero, double start,
+                    double aspect, const gui::UnitOption& unit, const std::string& x_label) {
+    const auto* p = &field;
+    if (grid.nx <= 0 || grid.ny <= 0 ||
         p->size() < static_cast<std::size_t>(grid.nx) * static_cast<std::size_t>(grid.ny))
-        return "<p class=\"muted\">No pressure field.</p>";
+        return "<p class=\"muted\">Field not in the output.</p>";
     const auto order = result_data::angle_order(grid, zero, start);
     const int cols = std::min(grid.nx, 180), rows = std::min(grid.ny, 48);
     std::vector<double> cells(static_cast<std::size_t>(cols) * rows, 0.0);
@@ -173,7 +174,7 @@ std::string svg_map(const ResultGrid& grid, double zero, double start, double as
             if (std::isfinite(v)) lo = std::min(lo, v), hi = std::max(hi, v);
         }
     }
-    if (!std::isfinite(lo)) return "<p class=\"muted\">No pressure values.</p>";
+    if (!std::isfinite(lo)) return "<p class=\"muted\">No values.</p>";
     if (hi <= lo) hi = lo + 1e-12;
     const double map_w = 600, map_h = std::clamp(600.0 * aspect, 50.0, 360.0);
     const double left = 52, top = 10, bar_x = left + map_w + 18;
@@ -358,7 +359,7 @@ bool GuiApp::export_case_report(const fs::path& html) {
         key.row("Friction torque", rv(results.friction_torque, gui::UnitFamily::Torque, result_data::kUnitTorque));
         key.row("Friction power loss", rv(results.friction_power, gui::UnitFamily::Power, result_data::kUnitPower));
         key.row("Peak pressure", rv(results.p_max, gui::UnitFamily::Pressure, result_data::kUnitPressure));
-        key.row("Cavitated area", num(results.cavitated_fraction * 100.0, "%.1f") + " %");
+        key.row("Cavitated area (void fraction > 0)", num(results.cavitated_fraction * 100.0, "%.1f") + " %");
         key.row("Shear share of film force", num(results.shear_share * 100.0, "%.1f") + " %");
         if (std::isfinite(results.lambda)) key.row("Film thickness ratio Lambda", num(results.lambda, "%.2f"));
         if (transient) key.row("Time of the step shown", num(results.time, "%.6g") + " s");
@@ -379,8 +380,22 @@ bool GuiApp::export_case_report(const fs::path& html) {
         const auto& pu = result_data::unit_of(unit_map, result_data::kUnitPressure, gui::UnitFamily::Pressure);
         const auto& hu = result_data::unit_of(unit_map, result_data::kUnitFilm, gui::UnitFamily::SmallLength);
         const double aspect = m.bearing_diameter > 0.0 ? m.bearing_length / (kPi * m.bearing_diameter) : 0.3;
-        out << "<h2>Film pressure, unwrapped (to scale, pi D : L)</h2>" << svg_map(*grid_, zero, start, aspect, pu, x_label);
-        const result_data::Profile profile = result_data::make_profile(*grid_, zero, start, 0.5);
+        if (const auto* p = grid_->field("p"))
+            out << "<h2>Film pressure, unwrapped (to scale, pi D : L)</h2>"
+                << svg_map(*grid_, *p, zero, start, aspect, pu, x_label);
+        // Cavitated region by model (plan 0.5): void fraction 1 - theta for the pressure
+        // plateau, free-gas volume fraction for gas transport; never a gas field for FBNS.
+        const gui::FieldView cavity = result_data::cavity_view(cfg);
+        const std::vector<double> cavity_values = result_data::cavity_fraction(*grid_, cfg);
+        if (!cavity_values.empty()) {
+            static const gui::UnitOption fraction{"-", 1.0};
+            out << "<h2>" << esc(cavity.label) << ", unwrapped</h2>"
+                << svg_map(*grid_, cavity_values, zero, start, aspect, fraction, x_label);
+            if (gui::result_form(cfg) == gui::ResultForm::Fbns)
+                out << "<p class=\"muted\">Pressure-plateau model: the cavity is liquid streaks plus a massless "
+                       "void; gas is not tracked.</p>";
+        }
+        const result_data::Profile profile = result_data::make_profile(*grid_, cfg, zero, start, 0.5);
         out << "<h2>Mid-plane pressure</h2>"
             << svg_profile(profile.angle, {{result_data::scaled(profile.p, pu), hex(theme::kAccent), "pressure"}}, start,
                            x_label, std::string("Pressure [") + pu.label + "]");

@@ -22,6 +22,17 @@ bool is_example_only(const gui::FluidPair& pair) {
     return note.find("synthetic") != std::string::npos || note.find("not for design") != std::string::npos;
 }
 
+/// Read-only description of the pair's gas-phase block.
+const char* gas_phase_text(const gui::FluidPair& pair) {
+    if (!pair.has_gas_phase) return "none: pressure plateau only (no gas transport)";
+    switch (pair.solver_species) {
+        case DissolvedGasSpecies::R410A: return "R410A real-fluid model";
+        case DissolvedGasSpecies::PROPANE: return "Propane, ideal gas";
+        case DissolvedGasSpecies::AIR: return "Air, ideal gas";
+    }
+    return "-";
+}
+
 }  // namespace
 
 /// Pair choice, refrigerant content, roughness; Advanced: fluid properties at ambient.
@@ -74,14 +85,40 @@ void GuiApp::draw_fluid_panel() {
         }
     }
 
+    if (pair_ok_) {
+        ui::form_label("Gas phase",
+                       "Data of the released refrigerant gas, needed for gas transport. Edit it in the fluid "
+                       "library.");
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", gas_phase_text(pair_));
+        ImGui::PopTextWrapPos();
+    }
+
     // Refrigerant content
-    if (ui::form_radio<bool>(
-            "Refrigerant content", "Mass fraction of refrigerant dissolved in the oil.", "fluid.saturated",
-            case_.saturated,
-            {{true, "Saturated at ambient pressure",
-              "Content at which the oil is in equilibrium with the refrigerant at the ambient pressure "
-              "and temperature."},
-             {false, "Given", "Enter the content directly."}})) {
+    ui::form_label("Refrigerant content", "Mass fraction of refrigerant dissolved in the oil.");
+    bool saturated_edit = false;
+    {
+        // Radio buttons that wrap in a narrow panel instead of running past its edge.
+        const char* given_label = "Given";
+        ImGui::PushID("fluid.saturated");
+        if (ImGui::RadioButton("Saturated at ambient pressure", case_.saturated) && !case_.saturated) {
+            case_.saturated = true;
+            saturated_edit = true;
+        }
+        ui::item_tooltip("Content at which the oil is in equilibrium with the refrigerant at the ambient pressure "
+                         "and temperature.");
+        ImGui::SameLine();
+        const float given_w = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                              ImGui::CalcTextSize(given_label).x;
+        if (ImGui::GetContentRegionAvail().x < given_w) ImGui::NewLine();
+        if (ImGui::RadioButton(given_label, !case_.saturated) && case_.saturated) {
+            case_.saturated = false;
+            saturated_edit = true;
+        }
+        ui::item_tooltip("Enter the content directly.");
+        ImGui::PopID();
+    }
+    if (saturated_edit) {
         if (!case_.saturated && case_.content <= 0.0) case_.content = estimates_.content;
         changed = true;
     }
@@ -146,9 +183,6 @@ void GuiApp::draw_fluid_panel() {
                        "Pressure at which the oil itself boils (vapour cavitation, VC).",
                        ui::format_value(pair_.oil_vapour_pressure, gui::UnitFamily::Pressure, units(),
                                         "fluid.p_vap"));
-        ui::form_value("Solver gas model",
-                       "Equation of state the gas-transport solver uses for the released refrigerant.",
-                       gui::species_name(pair_.solver_species));
     }
     ui::end_form();
     if (changed) mark_changed();

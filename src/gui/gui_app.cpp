@@ -481,7 +481,17 @@ void GuiApp::draw_status_bar() {
     } else if (!message.empty()) {
         ui::status_dot(light);
         ImGui::SameLine();
-        ImGui::TextColored(ui::light_color(light), "%s", message.c_str());
+        // Leave room for the right-aligned text; cut the message with "..." and
+        // show it whole in a tooltip.
+        const float room = ImGui::GetContentRegionAvail().x * 0.62f;
+        std::string shown = message;
+        if (ImGui::CalcTextSize(shown.c_str()).x > room) {
+            while (shown.size() > 4 && ImGui::CalcTextSize((shown + "...").c_str()).x > room)
+                shown.pop_back();
+            shown += "...";
+        }
+        ImGui::TextColored(ui::light_color(light), "%s", shown.c_str());
+        if (shown != message) ui::item_tooltip(message.c_str());
     } else {
         ui::status_dot(gui::Light::Green);
         ImGui::SameLine();
@@ -493,9 +503,19 @@ void GuiApp::draw_status_bar() {
                             : (case_path_.empty() ? std::string("unsaved case")
                                                   : winutil::path_to_utf8(case_path_)) +
                                   (dirty_ ? " *" : "");
-    const float width = ImGui::CalcTextSize(right.c_str()).x;
+    // Right-aligned text fits the space left after the message (cut from the left).
+    ImGui::SameLine();
+    const float available = ImGui::GetContentRegionAvail().x - 12.0f;
+    std::string right_shown = right;
+    if (ImGui::CalcTextSize(right_shown.c_str()).x > available) {
+        while (right_shown.size() > 4 && ImGui::CalcTextSize(("..." + right_shown).c_str()).x > available)
+            right_shown.erase(right_shown.begin());
+        right_shown = "..." + right_shown;
+    }
+    const float width = ImGui::CalcTextSize(right_shown.c_str()).x;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - width - 12.0f));
-    ImGui::TextDisabled("%s", right.c_str());
+    ImGui::TextDisabled("%s", right_shown.c_str());
+    if (right_shown != right) ui::item_tooltip(right.c_str());
     ImGui::End();
     ImGui::PopStyleVar(2);
 }

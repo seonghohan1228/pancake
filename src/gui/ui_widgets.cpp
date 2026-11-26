@@ -87,7 +87,9 @@ void form_label(const char* label, const char* help) {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
     ImGui::AlignTextToFramePadding();
+    ImGui::PushTextWrapPos(0.0f);  // wrap at the column edge, never clip
     ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
     item_tooltip(help);
     ImGui::TableSetColumnIndex(1);
 }
@@ -159,7 +161,9 @@ bool form_checkbox(const char* label, const char* help, const char* id, bool& va
 
 void form_value(const char* label, const char* help, const std::string& text) {
     form_label(label, help);
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", text.c_str());
+    ImGui::PopTextWrapPos();
 }
 
 std::string format_value(double si, gui::UnitFamily family, UnitChoices& choices, const char* id,

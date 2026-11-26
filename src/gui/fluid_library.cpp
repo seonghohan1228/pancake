@@ -384,12 +384,15 @@ bool FluidLibrary::save(const FluidPair& pair, const std::vector<SolutionRow>& r
            << "thermal_conductivity_W_mK = " << pair.thermal_conductivity << "\n"
            << "table = solution.csv\n";
     if (pair.gas_viscosity > 0.0) header << "gas_viscosity_Pa_s = " << pair.gas_viscosity << "\n";
-    if (pair.has_caloric_data()) {
-        header << "dissolved_heat_capacity_J_kgK = " << pair.dissolved_heat_capacity << "\n"
-               << "desorption_energy_J_kg = " << pair.desorption_energy << "\n"
-               << "gas_thermal_conductivity_W_mK = " << pair.gas_thermal_conductivity << "\n";
+    if (pair.has_gas_phase) {
         if (pair.gas_heat_capacity_cv > 0.0)
             header << "gas_heat_capacity_cv_J_kgK = " << pair.gas_heat_capacity_cv << "\n";
+        if (pair.gas_thermal_conductivity > 0.0)
+            header << "gas_thermal_conductivity_W_mK = " << pair.gas_thermal_conductivity << "\n";
+    }
+    if (pair.has_caloric_data()) {
+        header << "dissolved_heat_capacity_J_kgK = " << pair.dissolved_heat_capacity << "\n"
+               << "desorption_energy_J_kg = " << pair.desorption_energy << "\n";
     }
     if (!header) {
         error = "cannot write pair.txt";

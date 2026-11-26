@@ -40,6 +40,28 @@ std::string format_cell(double metres) {
     return text;
 }
 
+/// Splits `text` into lines no wider than `width` [px] (breaks at spaces).
+std::vector<std::string> wrap_lines(const std::string& text, float width) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        std::size_t end = text.find(' ', start);
+        if (end == std::string::npos) end = text.size();
+        const std::string word = text.substr(start, end - start);
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && ImGui::CalcTextSize(candidate.c_str()).x > width) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = candidate;
+        }
+        start = end + 1;
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
 }  // namespace
 
 void GuiApp::draw_mesh_view(ImVec2 size) {
@@ -119,15 +141,22 @@ void GuiApp::draw_mesh_view(ImVec2 size) {
         if (estimated) second += " h_max, h_min: estimated, no result yet.";
         info.emplace_back(second, muted);
     }
+    if (highlighted_zone_ == 0)
+        info[1] = {"Bearing ends: the top and bottom edges (z = L, z = 0), highlighted.", highlight};
+    // Info lines wrap to the canvas width; room is kept for the grid note (known after the layout).
+    const float info_width = std::max(size.x - font, 40.0f);
+    int info_line_count =
+        static_cast<int>(wrap_lines("Grid: every 10th line around, every 10th line along shown.", info_width).size());
+    for (const auto& entry : info) info_line_count += static_cast<int>(wrap_lines(entry.first, info_width).size());
 
     // Plot rectangle with true proportions (pi D : L).
     const float line = 1.25f * font;
-    const float info_h = 3.0f * line + 0.4f * font;          // info lines (third: grid note)
+    const float info_h = static_cast<float>(info_line_count) * line + 0.4f * font;
     const float top = p0.y + info_h;
     const float left = p0.x + 2.6f * font + ImGui::CalcTextSize("0.75").x;  // z/L title and ticks
     const float right = p1.x - 1.0f * font;
     const float bottom = p1.y - 2.4f * line;                 // angle ticks and title
-    const float marker_row = 2.2f * font;                    // h_max / h_min / feed labels, two rows
+    const float marker_row = 0.5f * font + 3.0f * ImGui::GetTextLineHeight();  // h_max / h_min / feed, up to 3 rows
     const float avail_w = std::max(right - left, 40.0f);
     const float avail_h = std::max(bottom - top - marker_row, 20.0f);
     const float aspect = static_cast<float>(circumference / length);
@@ -198,7 +227,7 @@ void GuiApp::draw_mesh_view(ImVec2 size) {
         const char* text;
     };
     const Mark marks[] = {{hmax_deg, accent, "h_max"}, {hmin_deg, ink, "h_min"}, {feed_deg, ink, "feed"}};
-    std::vector<std::pair<float, float>> taken[2];  // label x ranges per row
+    std::vector<std::pair<float, float>> taken[3];  // label x ranges per row
     for (const Mark& mark : marks) {
         const float x = x_of(mark.deg);
         dl->AddLine(ImVec2(x, y0 - 0.25f * font), ImVec2(x, y1), color_u32(theme::kAccent, 0.35f), 1.0f);
@@ -207,8 +236,12 @@ void GuiApp::draw_mesh_view(ImVec2 size) {
         const ImVec2 text_size = ImGui::CalcTextSize(mark.text);
         const float tx = std::clamp(x - 0.5f * text_size.x, x0 - 0.5f * text_size.x, x1 - 0.5f * text_size.x);
         int row = 0;
-        for (const auto& range : taken[0])
-            if (tx < range.second + 4.0f && tx + text_size.x > range.first - 4.0f) row = 1;
+        for (; row < 2; ++row) {
+            bool free = true;
+            for (const auto& range : taken[row])
+                if (tx < range.second + 4.0f && tx + text_size.x > range.first - 4.0f) free = false;
+            if (free) break;
+        }
         taken[row].emplace_back(tx, tx + text_size.x);
         dl->AddText(ImVec2(tx, y0 - 0.4f * font - text_size.y * (1.0f + row)), mark.color, mark.text);
     }
@@ -244,11 +277,12 @@ void GuiApp::draw_mesh_view(ImVec2 size) {
                                 " along shown.";
         info.emplace_back(grid_note, muted);
     }
-    if (highlighted_zone_ == 0)
-        info[1] = {"Bearing ends: the top and bottom edges (z = L, z = 0), highlighted.", highlight};
-    for (std::size_t i = 0; i < info.size() && i < 3; ++i)
-        dl->AddText(ImVec2(p0.x + 0.5f * font, p0.y + 0.3f * font + static_cast<float>(i) * line),
-                    info[i].second, info[i].first.c_str());
+    float info_y = p0.y + 0.3f * font;
+    for (const auto& entry : info)
+        for (const std::string& text : wrap_lines(entry.first, info_width)) {
+            dl->AddText(ImVec2(p0.x + 0.5f * font, info_y), entry.second, text.c_str());
+            info_y += line;
+        }
     dl->PopClipRect();
 
     ui::item_tooltip("Film unwrapped around the bearing: angle along x (zero from the Angle zero "
