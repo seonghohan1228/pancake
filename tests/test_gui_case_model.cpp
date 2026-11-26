@@ -369,8 +369,56 @@ int write_examples(const fs::path& dir) {
     return 0;
 }
 
+// Writes the acceptance-test cases (test 2) through the GUI case model with the
+// FW68D test pair. Inputs are the deck-run values (tests/data/lge/README.md):
+//   test_gui_case_model --write-acceptance <dir>
+int write_acceptance(const fs::path& dir) {
+    const FluidPair pair = fw68d();
+    if (!pair.loaded()) return 1;
+    CaseModel gcvc = compressor_case();
+    gcvc.convergence.force_tolerance = 1e-4;  // the driver's tolerance (part_b.py FORCE_TOL)
+    CaseModel vc = gcvc;
+    vc.dissolved_gas = false;
+    CaseModel transient = gcvc;
+    transient.analysis = AnalysisType::Transient;
+    transient.load_table.file = kData / "os_load_130hz.csv";
+    transient.load_table.frequency_hz = 130.0;
+    transient.moving_mass = 0.686;
+    transient.revolutions = 3.0;           // the deck accepted the third revolution (rev03)
+    transient.steps_per_revolution = 1440;
+    transient.outputs_per_revolution = 36;
+    // Tester, 500 rpm, 2,610 N, c = 0.274 (P5g inputs), in the GUI's plateau form (D5).
+    CaseModel tester = compressor_case();
+    tester.bearing_diameter = 0.043;
+    tester.bearing_length = 0.040;
+    tester.radial_clearance = 42.5e-6;
+    tester.feed.type = FeedType::Groove;
+    tester.feed.angle_deg = 90.0;
+    tester.feed.groove_width_deg = 13.298312524795712;
+    tester.feed.supply_overpressure = 0.0;
+    tester.speed = 52.35987755982988;
+    tester.load = 2610.276612252356;
+    tester.ambient_pressure = 1657756.124499086;
+    tester.ambient_temperature = 297.5390033315531;
+    tester.saturated = false;
+    tester.content = 0.274;
+    tester.convergence.force_tolerance = 1e-3;  // run_fbns.py FORCE_TOL
+    const std::pair<const char*, CaseModel> cases[] = {
+        {"compressor_gcvc_steady.txt", gcvc}, {"compressor_vc_steady.txt", vc},
+        {"compressor_transient.txt", transient}, {"tester_500rpm_2610N.txt", tester}};
+    for (const auto& [name, model] : cases) {
+        SimulationConfig cfg = to_config(model, &pair, new_case_template());
+        cfg.output_dir = fs::path(name).stem().string() + "_results";
+        std::ofstream out(dir / name, std::ios::binary);
+        out << new_config_text(cfg, case_meta(model));
+        std::cout << "wrote " << (dir / name).string() << "\n";
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--write-examples") return write_examples(argv[2]);
+    if (argc == 3 && std::string(argv[1]) == "--write-acceptance") return write_acceptance(argv[2]);
     std::cout << "Running test_gui_case_model...\n";
     test_fluid_pair();
     test_new_compressor_case_matches_deck();

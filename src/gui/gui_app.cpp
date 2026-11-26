@@ -87,7 +87,9 @@ void GuiApp::init() {
     std::error_code ec;
     if (!start.empty() && fs::exists(start, ec)) load_case(start);
     else new_case();
-    if (!startup_screenshots.empty()) {
+    if (startup_run) {
+        scripted_run_state_ = 1;  // screenshots, if requested, follow the run
+    } else if (!startup_screenshots.empty()) {
         screenshot_dir_ = startup_screenshots;
         exit_after_screenshots_ = true;
         start_screenshot_series();
@@ -125,7 +127,64 @@ void GuiApp::draw() {
     if (ImGui::IsKeyPressed(ImGuiKey_F5, false) && ready_to_run() && !runner_.running()) start_run();
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) save_case(false);
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O, false)) open_case_dialog();
+    if (scripted_run_state_ > 0 && scripted_run_state_ < 3) advance_scripted_run();
     if (screenshot_step_ >= 0) advance_screenshot_series();
+}
+
+void GuiApp::advance_scripted_run() {
+    if (scripted_run_state_ == 1) {
+        if (!ready_to_run()) {
+            log_.push_back({"--run: the case is not ready to run.", IM_COL32(185, 35, 35, 255)});
+            scripted_run_state_ = 3;
+            wants_exit = startup_screenshots.empty();
+            return;
+        }
+        start_run();
+        scripted_run_state_ = 2;
+        return;
+    }
+    if (runner_.running() || !queue_.empty() || active_job_ || !result_tasks_.empty()) return;
+    for (const RunRecord& record : records_)
+        write_key_results_json(record, record.job.output_dir / "gui_key_results.json");
+    scripted_run_state_ = 3;
+    if (!startup_screenshots.empty()) {
+        screenshot_dir_ = startup_screenshots;
+        exit_after_screenshots_ = true;
+        start_screenshot_series();
+    } else {
+        wants_exit = true;
+    }
+}
+
+bool GuiApp::write_key_results_json(const RunRecord& record, const fs::path& file) const {
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    const gui::KeyResults& r = record.results;
+    const char* nl = "\n";
+    const auto number = [&](const char* key, double value, bool last = false) {
+        out << "  \"" << key << "\": ";
+        if (std::isfinite(value)) out << value;
+        else out << "null";
+        out << (last ? "" : ",") << nl;
+    };
+    out.precision(10);
+    out << "{" << nl << "  \"label\": \"" << record.job.label << "\"," << nl
+        << "  \"outcome\": \"" << to_string(record.outcome) << "\"," << nl
+        << "  \"converged\": " << (record.converged ? "true" : "false") << "," << nl
+        << "  \"results_ready\": " << (record.results_ready ? "true" : "false") << "," << nl
+        << "  \"duration_s\": " << record.duration_s << "," << nl;
+    number("h_min_m", r.h_min);
+    number("eccentricity_ratio", r.eccentricity_ratio);
+    number("attitude_deg", r.attitude_deg);
+    number("friction_torque_Nm", r.friction_torque);
+    number("friction_power_W", r.friction_power);
+    number("p_max_Pa", r.p_max);
+    number("p_min_Pa", r.p_min);
+    number("cavitated_fraction", r.cavitated_fraction);
+    number("shear_share", r.shear_share);
+    number("lambda", r.lambda, true);
+    out << "}" << nl;
+    return static_cast<bool>(out);
 }
 
 // ===========================================================================
@@ -218,10 +277,11 @@ void GuiApp::load_case(const fs::path& path) {
     loaded_case_ = case_;
     base_config_ = cfg;
     base_text_ = text;
+    const bool same_case = path == case_path_;
     case_path_ = path;
     hidden_keys_ = read.hidden_keys;
     load_notes_ = read.notes;
-    allow_out_of_range_ = false;
+    if (!same_case) allow_out_of_range_ = false;  // keep it across a re-save
     for (const std::string& note : load_notes_)
         log_.push_back({"Case note: " + note, IM_COL32(160, 110, 10, 255)});
     if (!hidden_keys_.empty())
@@ -295,6 +355,7 @@ fs::path GuiApp::output_dir_for(const fs::path& config_file) const {
 // ===========================================================================
 
 fs::path GuiApp::fluid_root() const {
+    if (!startup_fluids.empty()) return startup_fluids;
     if (!settings.fluid_dir.empty()) return winutil::utf8_to_path(settings.fluid_dir);
     return winutil::executable_dir() / "fluids";
 }
@@ -379,9 +440,9 @@ fs::path GuiApp::discover_solver(std::string& source) const {
 
 void GuiApp::start_run() {
     if (runner_.running() || !ready_to_run()) return;
-    if (case_path_.empty() || dirty_) {
-        if (!save_case(case_path_.empty())) return;
-    }
+    // The solver runs the file on disk: save first so the file equals the GUI
+    // state and writes its results where the GUI reads them (<case>_results).
+    if (!save_case(case_path_.empty())) return;
     const auto make_job = [&](const gui::CaseModel& model, const std::string& label,
                               const fs::path& file) {
         RunJob job;

@@ -1,10 +1,11 @@
 # GUI for LGE bearing engineers: plan (Step 0)
 
-Status: **for approval**, 2026-11-26. Nothing is built or merged yet.
+Status: rev. 2 approved 2026-11-26 (D1-D8 as recommended); **rev. 3 for approval** (section 0).
 Branch: `lge-gui` (from `main` a11f131), worktree `C:\Dev\pancake\worktrees\lge-gui`.
-Prompt: `C:\Workspace\02. 2025 LG전자\07. 최종발표\2026-11-26 pancake prompt (GUI for LGE engineers).md` (rev. 2).
+Prompt: `C:\Workspace\02. 2025 LG전자\07. 최종발표\2026-11-26 pancake prompt (GUI for LGE engineers).md` (rev. 2), plus the rev. 3 update in chat (2026-11-26).
 
 Sections:
+0. Rev. 3 changes (supersede the older sections where they differ)
 1. Decisions needed before the build
 2. Solver base
 3. Inventory of the current GUI (Basic / Expanded / Auto / Removed)
@@ -17,6 +18,112 @@ Sections:
 10. Acceptance tests: sources and recorded values
 11. Draft glossary
 12. Open items and risks
+
+---
+
+## 0. Rev. 3 changes (2026-11-26)
+
+State when rev. 3 arrived: D1-D3 done and committed; the case model, fluid library and all screens are written and build; steady acceptance runs pass (section 10). Nothing below is built yet. Measurements made for this revision are marked *measured*.
+
+### 0.1 Decisions for rev. 3
+
+| # | Question | Proposal |
+|---|---|---|
+| R1 | Default model with dissolved gas on | **FBNS with the cavity pressure = saturation pressure** (the pressure plateau): fast (5-15 core-min steady), the form of the deck's compressor results. "Gas transport (detailed, slower)" in the Advanced view switches to COUPLED. **You decide.** |
+| R2 | Thermal model for a thermal *transient* case | The deck's thermal form (finite-volume film energy + 3-D housing conduction) is refused by the solver in transient (*measured*: "FINITE_VOLUME requires steady"). Offer thermal transient with **polynomial cross-film energy + 2-D housing conduction**, the most complete form the solver runs in transient, labelled "simplified thermal model (transient)". Alternative: film-averaged energy with wall heat-transfer coefficients (no housing). |
+| R3 | Cavity shear for all FBNS cases | **STRIATED**, fixed, read-only in Advanced (0.6). It is the shear that matches the FBNS cavity (liquid streaks at Θ, massless void). FULL_FILM shears the whole gap and overstates friction loss (solver documentation). *Measured* on the compressor GC+VC case: torque −18.2 %, h_min +0.02 %, cavitated area equal, p_max −0.03 %. The deck's compressor torque, power loss and the tester P5g torque were FULL_FILM, so GUI torque will read about 18 % lower than the deck at 57 % cavitated area. Acceptance test 2 compares h_min and cavitated area (unchanged); torque is checked against a FULL_FILM run of the same config. |
+| R4 | Gas phase of a pair | Optional gas block (0.4). The solver has gas data only for R410A (real-fluid EOS), propane and air (ideal gas, fixed molar mass), so the block names one of these. A free ideal gas with its own molar mass needs a new solver key (`gas_molar_mass`); proposed, not built. |
+| R5 | Shipped example pair | **No gas block** (FBNS only; COUPLED red with the reason). It stays non-LGE: synthetic VG 68 oil + fictitious refrigerant RX. Alternative: call the example refrigerant propane with synthetic solubility, which enables COUPLED demos but attaches invented solubility to a real refrigerant. |
+
+### 0.2 Run-time estimate (before Run)
+
+Reference core-time C_ref at 720 × 192 cells on afml-r6 (core-time = wall time × processes), from the rev. 3 measurements:
+
+| Form | Low | Typical | High |
+|---|---|---|---|
+| Isothermal steady, FBNS | 5 core-min | 10 core-min | 15 core-min |
+| Isothermal steady, COUPLED | 0.8 core-h | 9.6 core-h | 30 core-h |
+| Isothermal transient, FBNS, per revolution | C(n) × 0.7 | C(n) = 0.5 core-h × (n/360)^1.44 | C(n) × 1.4 |
+| Thermal steady, FBNS (pure oil) | 0.8 core-h | 2.5 core-h | 8 core-h |
+| Thermal steady, COUPLED | 10 core-h | 22 core-h | 50 core-h |
+| Thermal transient (simplified, R2), per revolution | 1.0 × isothermal | 1.5 × isothermal | 2.0 × isothermal |
+
+- **COUPLED isothermal steady** was given as 2-74 min wall (median 24 min). I assumed 24 processes (afml-r6), which gives the core-times above. **Please confirm the process count.**
+- **Transient:** n is the number of steps per revolution. The two measured points (3.7 core-h at 1440 steps, 0.5 core-h at 360) fix the exponent 1.44. Total = per revolution × the revolutions set (2-3 to settle; the GUI says so).
+- **Thermal transient factor:** *measured* on 180 × 48 cells, 4 processes, time per step from 40 minus 20 steps:
+
+  | Form | Time per step | Relative to isothermal |
+  |---|---|---|
+  | Isothermal | 0.18 s | 1.0 |
+  | Film-averaged energy | 0.26 s | 1.5 |
+  | Polynomial cross-film + 2-D housing | 0.18 s | 1.0 |
+
+  Scaled to 720 × 192 at 1440 steps per revolution, the isothermal case gives 4.6 core-h per revolution, against 3.7 measured, so the cell scaling holds within 25 %. The user's 25-70 core-h per revolution referred to the deck thermal form, which cannot run transient.
+- **Scaling:**
+  - **Cells:** linear in n_θ × n_z.
+  - **Processes:** wall = core-time / (p · η(p)) with η(p) = 1 / (1 + 0.02 (p − 1)), about 68 % at 24. This is an assumption, checked by acceptance test 10.
+  - **Machine:** factor 1. The compressor B0 run on 8 local processes took 13.5 core-min, inside the afml-r6 FBNS range.
+- **Display:** "about 25 min on 4 cores (range 12-40 min)". The headline is the typical value at the chosen core count.
+
+### 0.3 Thermal transient (an option, not blocked)
+
+- *Measured:* the solver runs energy + transient together in two forms: film-averaged energy, and polynomial cross-film + 2-D housing.
+  - Time per step is in 0.2.
+  - The deck thermal form is steady-only: it is red with the solver's reason if forced.
+- **Before Run, a confirmation dialog shows:**
+  - the time per revolution and the total for the chosen revolutions and cores;
+  - the line: "The housing warms over seconds to minutes; a few revolutions (milliseconds each) do not reach the thermal periodic state.";
+  - the faster two-step route as a second button: (1) thermal steady at the mean load of the table, with the deck thermal form; (2) isothermal transient with the film temperature set to the mean film temperature of step 1. The GUI writes both cases and queues them.
+- Run starts only after the user confirms.
+
+### 0.4 Fluid file: optional gas block
+
+```
+# Gas phase (optional). Needed for gas transport (COUPLED).
+gas_model = R410A | PROPANE | AIR     # R410A: real-fluid EOS; PROPANE, AIR: ideal gas
+gas_viscosity_Pa_s = ...
+gas_heat_capacity_cv_J_kgK = ...      # optional; ideal gases only (overrides the default)
+gas_thermal_conductivity_W_mK = ...
+dissolved_heat_capacity_J_kgK = ...   # thermal + gas release
+desorption_energy_J_kg = ...          # thermal + gas release
+```
+
+- `solver_species` is replaced by `gas_model`.
+- A pair without the block runs FBNS only. Gas transport (and any thermal case with refrigerant in the oil, which needs COUPLED) turns the Solution node red: "This pair has no gas-phase data; gas transport is not available."
+- The FBNS plateau needs no gas data: it uses only the saturation pressure from the table.
+
+### 0.5 Showing FBNS results honestly
+
+- **FBNS:** the cavity is liquid streaks at fraction Θ plus a massless void at the cavity pressure. No gas mass is tracked, and GC and VC differ only in the cavity pressure.
+  - Field maps offer "Void fraction 1 − Θ" (outline at 0.5). If density is shown, it is "Effective density Θ · ρ_liquid".
+  - `alpha_gas`, `dissolved_gas` and `rho` are hidden for FBNS. If a user opens a file view of them, they are labelled "not computed in this model".
+  - The results card says "Cavitated area (void fraction > 0)".
+- **COUPLED:** free-gas volume fraction (`alpha_gas`), dissolved content (`dissolved_gas`), gas mass transfer (`gas_mass_transfer`), mixture density (`rho`) and mixture viscosity (`mu`). Tooltip on the viscosity: "Void-weighted (Dukler) mixture viscosity; not validated for oil-refrigerant mixtures."
+- **Test 11:** an FBNS result never shows a nonzero gas field. This is checked on the compressor case G_eps0.9300 (`D:\Seongho\Sim\pancake\lge-gc-sign-eccentricity-20261125-16b9796`) and on a GUI-run FBNS case.
+
+### 0.6 Fixed choices shown read-only in Advanced
+
+- **Cavity shear:** "Liquid streaks carry the shear (STRIATED)" for every FBNS case (R3). COUPLED keeps its own full-film treatment (the solver accepts STRIATED only with JFO/FBNS).
+- **Solver form, gas model, thermal form:** read-only lines (section 4).
+
+### 0.7 Layout rule: no overlapping text
+
+- Every label is measured (`CalcTextSize`) before it is placed. Long labels wrap or are cut with "…" and a tooltip.
+- Plot annotations that would collide are stacked, as for the h_max/h_min/feed marks in the live views.
+- **Check:** the screenshot series at 1600 × 1000 and at 1280 × 800. Each screenshot is inspected for overlapping or clipped text before acceptance (test 9).
+
+### 0.8 New acceptance tests
+
+| # | Test | Pass |
+|---|---|---|
+| 10 | Run-time estimate vs measured, this machine: one isothermal steady case (compressor GC+VC) and one thermal steady case | estimate within a factor of 2 of the measured wall time |
+| 11 | FBNS result never shows a nonzero gas field | `alpha_gas`, `dissolved_gas` hidden or labelled; void fraction from Θ only |
+| 12 | Thermal transient small test | *measured* (0.2): the two simplified forms run; time per step reported; the deck thermal form is red with the solver's reason |
+
+### 0.9 Other findings while preparing rev. 3
+
+- **X4 config:** it says `cavitated_film_model = HOMOGENEOUS`. The parser silently ignores unknown values of this key, so the run used FULL_FILM. The same silent fallback affects other enum keys. Proposal: make unknown enum values a parse error (solver change, small). Not built.
+- **Steady result snapshots:** they all share step 0, so the Results view did not reload between snapshots or between two steady records. To be fixed in `poll_loader` by comparing the step file path, not the step number.
 
 ---
 

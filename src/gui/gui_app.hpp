@@ -73,6 +73,8 @@ public:
     /// Command line: case to open at start, and the screenshot-series folder.
     std::filesystem::path startup_case;
     std::filesystem::path startup_screenshots;
+    bool startup_run = false;               // --run: run the opened case, write key results
+    std::filesystem::path startup_fluids;   // --fluids: fluid directory for this session only
 
     /// Screen-region PNG capture handshake with the frame loop: the app requests,
     /// the main loop captures the next rendered frame and reports back.
@@ -215,6 +217,10 @@ private:
     std::filesystem::path screenshot_dir_;
     bool exit_after_screenshots_ = false;    // --screenshots: quit when done
     void start_screenshot_series();
+    // --run (gui_app.cpp): 0 idle, 1 waiting to start, 2 running, 3 done.
+    int scripted_run_state_ = 0;
+    void advance_scripted_run();
+    bool write_key_results_json(const RunRecord& record, const std::filesystem::path& file) const;
     void advance_screenshot_series();
 
     // ===================================================================
