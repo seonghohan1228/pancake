@@ -17,6 +17,7 @@
 #include <d3d11.h>
 
 #include <algorithm>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -220,12 +221,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
     app.paths = AppPaths::resolve();
     app.settings.load(app.paths.settings_file);
 
-    // Command line: pancake_gui.exe [--open <config>] [--run] [--screenshots <dir>]
+    // Command line: pancake_gui.exe [--open <config>] [--run] [--screenshots <dir>] [--size WxH]
     // --run runs the opened case through the GUI and writes gui_key_results.json
     // into its results folder (then exits unless screenshots follow).
     // --screenshots renders every screen of the given case into <dir> as PNG
     // (user-guide figures) at a fixed 1600 x 1000 window and exits.
     {
+        int screenshot_width = 1600, screenshot_height = 1000;
         int argc = 0;
         LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         for (int i = 1; argv && i < argc; ++i) {
@@ -235,11 +237,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
             else if (flag == L"--open") app.startup_case = argv[++i];
             else if (flag == L"--screenshots") app.startup_screenshots = argv[++i];
             else if (flag == L"--fluids") app.startup_fluids = argv[++i];
+            else if (flag == L"--size") {
+                int w = 0, h = 0;
+                if (swscanf(argv[++i], L"%dx%d", &w, &h) == 2 && w >= 640 && h >= 480) {
+                    screenshot_width = w;
+                    screenshot_height = h;
+                }
+            }
         }
         if (argv) LocalFree(argv);
         if (!app.startup_screenshots.empty()) {
-            app.settings.window_width = 1600;
-            app.settings.window_height = 1000;
+            app.settings.window_width = screenshot_width;
+            app.settings.window_height = screenshot_height;
             app.settings.window_maximized = false;
         }
     }
