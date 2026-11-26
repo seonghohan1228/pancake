@@ -43,6 +43,22 @@ enum class BCType { DIRICHLET, NEUMANN, INLET_OUTLET };
 ///                   (constant) supply temperature temperature_reference.
 enum class ThermalInflowMode { ZERO_GRADIENT, CONSTANT };
 enum class MotionModel { STATIC, MOVING_BEARING, STEADY_EQUILIBRIUM };
+// Time history of the external load on the moving bearing (MOVING_BEARING):
+//   CONSTANT - external_load_x|y|z (the historical input).
+//   ROTATING - load_magnitude at load_rotation_start_deg + load_rotation_speed * t.
+//   TABLE    - load_table_file rows interpolated in phase (periodic) or time.
+// external_load_z is added unchanged under every option.
+enum class LoadModel { CONSTANT, ROTATING, TABLE };
+// Abscissa of a load table: PHASE_DEG is periodic over 360 deg of the load
+// cycle, which advances at load_frequency [Hz]; TIME_S is not periodic.
+enum class LoadTableAbscissa { PHASE_DEG, TIME_S };
+// Load table ordinates: POLAR (magnitude [N], direction [deg]) or CARTESIAN (x, y [N]).
+enum class LoadTableFormat { POLAR, CARTESIAN };
+// Coupling of the bearing equation of motion to the film force in TRANSIENT:
+//   EXPLICIT - the force of the previous step drives the motion (historical).
+//   IMPLICIT - position and film are iterated to agreement within each step
+//              (backward Euler, quasi-Newton on the force residual).
+enum class MotionCoupling { EXPLICIT, IMPLICIT };
 // Integrator for the bearing equation of motion only (field solves are
 // backward-Euler), ordered by increasing order/accuracy. EULER_IMPLICIT (stable)
 // and RK4 (accurate) are maintained; the others are kept as references.
@@ -152,6 +168,13 @@ enum class GasPressureCoupling { NONE, VOID_COUPLED };
 //   STRIATED  - in cavitated cells only the liquid fraction theta carries Couette
 //               shear, thermal capacity, and enthalpy; full-film cells unchanged.
 enum class CavitatedFilmModel { FULL_FILM, STRIATED };
+// Mixed lubrication (see mixed_lubrication.hpp and PHYSICS.md):
+//   asperity_contact_model NONE / GREENWOOD_TRIPP - asperity load and boundary
+//     friction from the local film ratio h/sigma (load-sharing model).
+//   flow_factor_model NONE / PATIR_CHENG - isotropic average-Reynolds flow and
+//     shear-stress factors (JFO or FBNS only).
+enum class AsperityContactModel { NONE, GREENWOOD_TRIPP };
+enum class FlowFactorModel { NONE, PATIR_CHENG };
 // Cross-film (through-thickness) temperature treatment:
 //   NONE       - the film is isothermal across the gap: viscosity is taken at the
 //                depth-averaged temperature and wall heat loss is Newton cooling
@@ -195,6 +218,14 @@ enum class GrooveMixingModel { PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCE
 struct PropertyTablePoint {
     double x = 0.0;
     double value = 0.0;
+};
+
+/// One row of an external-load table, stored as Cartesian parts. The abscissa
+/// is the load phase [deg] or the time [s] (LoadTableAbscissa).
+struct LoadTableRow {
+    double abscissa = 0.0;
+    double load_x = 0.0;
+    double load_y = 0.0;
 };
 
 /// 2-D property table on a rectangular (pressure, temperature) grid, used to
@@ -413,6 +444,27 @@ inline const char* to_config_value(MixtureViscosityModel model) {
     return "MCADAMS";
 }
 
+inline const char* to_config_value(LoadModel model) {
+    switch (model) {
+        case LoadModel::CONSTANT: return "CONSTANT";
+        case LoadModel::ROTATING: return "ROTATING";
+        case LoadModel::TABLE: return "TABLE";
+    }
+    return "CONSTANT";
+}
+
+inline const char* to_config_value(LoadTableAbscissa abscissa) {
+    return abscissa == LoadTableAbscissa::TIME_S ? "TIME_S" : "PHASE_DEG";
+}
+
+inline const char* to_config_value(LoadTableFormat format) {
+    return format == LoadTableFormat::CARTESIAN ? "CARTESIAN" : "POLAR";
+}
+
+inline const char* to_config_value(MotionCoupling coupling) {
+    return coupling == MotionCoupling::IMPLICIT ? "IMPLICIT" : "EXPLICIT";
+}
+
 inline const char* to_config_value(MotionModel model) {
     switch (model) {
         case MotionModel::STATIC: return "STATIC";
@@ -583,6 +635,35 @@ inline MotionModel motion_model_from_config(std::string value) {
         return MotionModel::MOVING_BEARING;
     }
     return MotionModel::STATIC;
+}
+
+inline LoadModel load_model_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "CONSTANT") return LoadModel::CONSTANT;
+    if (value == "ROTATING") return LoadModel::ROTATING;
+    if (value == "TABLE") return LoadModel::TABLE;
+    throw std::invalid_argument("Unknown load_model '" + value + "'. Options: CONSTANT, ROTATING, TABLE.");
+}
+
+inline LoadTableAbscissa load_table_abscissa_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "PHASE_DEG" || value == "PHASE") return LoadTableAbscissa::PHASE_DEG;
+    if (value == "TIME_S" || value == "TIME") return LoadTableAbscissa::TIME_S;
+    throw std::invalid_argument("Unknown load_table_abscissa '" + value + "'. Options: PHASE_DEG, TIME_S.");
+}
+
+inline LoadTableFormat load_table_format_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "POLAR") return LoadTableFormat::POLAR;
+    if (value == "CARTESIAN") return LoadTableFormat::CARTESIAN;
+    throw std::invalid_argument("Unknown load_table_format '" + value + "'. Options: POLAR, CARTESIAN.");
+}
+
+inline MotionCoupling motion_coupling_from_config(std::string value) {
+    value = normalise_config_token(value);
+    if (value == "EXPLICIT") return MotionCoupling::EXPLICIT;
+    if (value == "IMPLICIT") return MotionCoupling::IMPLICIT;
+    throw std::invalid_argument("Unknown motion_coupling '" + value + "'. Options: EXPLICIT, IMPLICIT.");
 }
 
 inline TimeSteppingMethod time_stepping_from_config(std::string value) {
@@ -913,6 +994,10 @@ struct SimulationConfig {
     double gas_mass_transfer_rate = 0.0;         // Release rate [1/s]; legacy absorption fallback.
     double gas_absorption_rate = -1.0;          // -1 inherits release rate; 0 disables absorption.
     bool coupled_phase_equilibrium = false;    // COUPLED: equilibrium instead of finite-rate exchange.
+    /// Scaled inner pressure/species residual limit, separate from outer thermal coupling.
+    double coupled_nonlinear_tolerance = 1e-10;
+    /// Seed steady resolved COUPLED pressure/film content with a gas-free FBNS solve.
+    bool coupled_fbns_initialization = false;
     /// Separate absorption kinetics; bubble compression alone exchanges no mass.
     double effective_gas_absorption_rate() const {
         return gas_absorption_rate >= 0 ? gas_absorption_rate : gas_mass_transfer_rate;
@@ -993,6 +1078,30 @@ struct SimulationConfig {
     double external_load_x = 0.0;
     double external_load_y = 0.0;
     double external_load_z = 0.0;
+    // Time history of the in-plane external load (MOVING_BEARING, TRANSIENT).
+    LoadModel load_model = LoadModel::CONSTANT;
+    double load_magnitude = 0.0;            // ROTATING: constant size [N]
+    double load_rotation_start_deg = 0.0;            // ROTATING: direction at t = 0 [deg]
+    double load_rotation_speed = 0.0;       // ROTATING: direction rate [rad/s]
+    std::filesystem::path load_table_file;  // TABLE: CSV, abscissa then two ordinates
+    LoadTableAbscissa load_table_abscissa = LoadTableAbscissa::PHASE_DEG;
+    LoadTableFormat load_table_format = LoadTableFormat::POLAR;
+    double load_frequency = 0.0;            // TABLE + PHASE_DEG: cycles per second [Hz]
+    double load_phase_offset_deg = 0.0;     // TABLE + PHASE_DEG: phase at t = 0 [deg]
+    double load_table_angle_offset_deg = 0.0; // TABLE: added to every row direction [deg]
+    double load_table_scale = 1.0;          // TABLE: multiplies every row
+    std::vector<LoadTableRow> load_table;   // Filled from load_table_file (Cartesian rows)
+    // Bearing equation of motion coupling to the film force (TRANSIENT only).
+    MotionCoupling motion_coupling = MotionCoupling::EXPLICIT;
+    double motion_coupling_tolerance = 1e-6;  // |force residual| / load scale
+    double motion_coupling_position_tolerance = 1e-6; // |Newton correction| / clearance
+    int motion_coupling_max_iters = 30;       // film solves per step, probes included
+    double motion_coupling_fd_step = 1e-5;    // Jacobian probe / clearance
+    double motion_coupling_step_limit = 0.05; // largest Newton correction / clearance
+    // Inlet rotation (TRANSIENT): every inlet_circular / inlet_groove turns at this
+    // rate about the bearing axis, theta_k(t) = theta_k(0) + rate t [rad/s]. 0 keeps
+    // the inlets fixed in the mesh frame (historical behaviour).
+    double inlet_rotation_speed = 0.0;
     double min_film_thickness = 1e-9;
     bool stop_on_nonpositive_film = true;
 
@@ -1037,6 +1146,16 @@ struct SimulationConfig {
     CavitationModel cavitation_model = CavitationModel::JFO;
     CavitationThreshold cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
     CavitatedFilmModel cavitated_film_model = CavitatedFilmModel::FULL_FILM;
+
+    // Mixed lubrication (off by default: smooth rigid surfaces)
+    AsperityContactModel asperity_contact_model = AsperityContactModel::NONE;
+    FlowFactorModel flow_factor_model = FlowFactorModel::NONE;
+    double roughness_rq_shaft = 0.0;               // RMS roughness of the shaft [m]
+    double roughness_rq_bush = 0.0;                // RMS roughness of the bush bore [m]
+    double asperity_eta_beta_sigma = 0.04;         // Greenwood-Williamson eta*beta*sigma [-]
+    double asperity_sigma_over_beta = 1.0e-3;      // RMS roughness / asperity tip radius [-]
+    double contact_modulus = 0.0;                  // E' with 1/E' = sum (1-nu^2)/E [Pa]
+    double boundary_friction_coefficient = 0.1;    // asperity shear / asperity pressure [-]
     // WP-11: at an axial boundary, a cavitated cell re-floods at the physical
     // Poiseuille reformation rate rather than the barotropic Gamma_base link
     // (which overstates re-flooding by ~beta/(p_bc-p_cav) since p = p_cav + beta
@@ -1256,6 +1375,12 @@ struct SimulationConfig {
             else if (key == "gas_mass_transfer_rate") gas_mass_transfer_rate = std::stod(value);
             else if (key == "gas_absorption_rate") gas_absorption_rate = std::stod(value);
             else if (key == "coupled_phase_equilibrium") coupled_phase_equilibrium = is_true(value);
+            else if (key == "coupled_nonlinear_tolerance") coupled_nonlinear_tolerance = std::stod(value);
+            else if (key == "coupled_fbns_initialization") {
+                if (is_true(value)) coupled_fbns_initialization = true;
+                else if (is_false(value)) coupled_fbns_initialization = false;
+                else parse_errors.push_back("coupled_fbns_initialization must be true or false.");
+            }
             else if (key == "dissolved_gas_diffusivity") dissolved_gas_diffusivity = std::stod(value);
             else if (key == "solution_density_gas_coeff") solution_density_gas_coeff = std::stod(value);
             else if (key == "solution_viscosity_gas_coeff") solution_viscosity_gas_coeff = std::stod(value);
@@ -1311,6 +1436,36 @@ struct SimulationConfig {
             else if (key == "external_load_x") external_load_x = std::stod(value);
             else if (key == "external_load_y") external_load_y = std::stod(value);
             else if (key == "external_load_z") external_load_z = std::stod(value);
+            else if (key == "load_model") {
+                try { load_model = load_model_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_magnitude") load_magnitude = std::stod(value);
+            else if (key == "load_rotation_start_deg") load_rotation_start_deg = std::stod(value);
+            else if (key == "load_rotation_speed") load_rotation_speed = std::stod(value);
+            else if (key == "load_table_file") load_table_file = value;
+            else if (key == "load_table_abscissa") {
+                try { load_table_abscissa = load_table_abscissa_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_table_format") {
+                try { load_table_format = load_table_format_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "load_frequency") load_frequency = std::stod(value);
+            else if (key == "load_phase_offset_deg") load_phase_offset_deg = std::stod(value);
+            else if (key == "load_table_angle_offset_deg") load_table_angle_offset_deg = std::stod(value);
+            else if (key == "load_table_scale") load_table_scale = std::stod(value);
+            else if (key == "motion_coupling") {
+                try { motion_coupling = motion_coupling_from_config(value); }
+                catch (const std::invalid_argument& ex) { parse_errors.push_back(ex.what()); }
+            }
+            else if (key == "motion_coupling_tolerance") motion_coupling_tolerance = std::stod(value);
+            else if (key == "motion_coupling_position_tolerance") motion_coupling_position_tolerance = std::stod(value);
+            else if (key == "motion_coupling_max_iters") motion_coupling_max_iters = std::stoi(value);
+            else if (key == "motion_coupling_fd_step") motion_coupling_fd_step = std::stod(value);
+            else if (key == "motion_coupling_step_limit") motion_coupling_step_limit = std::stod(value);
+            else if (key == "inlet_rotation_speed") inlet_rotation_speed = std::stod(value);
             else if (key == "min_film_thickness") min_film_thickness = std::stod(value);
             else if (key == "stop_on_nonpositive_film") {
                 if (is_true(value)) stop_on_nonpositive_film = true;
@@ -1354,6 +1509,22 @@ struct SimulationConfig {
                 else if (value == "SCALAR_PCAV" || value == "PCAV" || value == "SCALAR")
                     cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
             }
+            else if (key == "asperity_contact_model") {
+                if (value == "NONE") asperity_contact_model = AsperityContactModel::NONE;
+                else if (value == "GREENWOOD_TRIPP") asperity_contact_model = AsperityContactModel::GREENWOOD_TRIPP;
+                else parse_errors.push_back("asperity_contact_model must be NONE or GREENWOOD_TRIPP");
+            }
+            else if (key == "flow_factor_model") {
+                if (value == "NONE") flow_factor_model = FlowFactorModel::NONE;
+                else if (value == "PATIR_CHENG") flow_factor_model = FlowFactorModel::PATIR_CHENG;
+                else parse_errors.push_back("flow_factor_model must be NONE or PATIR_CHENG");
+            }
+            else if (key == "roughness_rq_shaft") roughness_rq_shaft = std::stod(value);
+            else if (key == "roughness_rq_bush") roughness_rq_bush = std::stod(value);
+            else if (key == "asperity_eta_beta_sigma") asperity_eta_beta_sigma = std::stod(value);
+            else if (key == "asperity_sigma_over_beta") asperity_sigma_over_beta = std::stod(value);
+            else if (key == "contact_modulus") contact_modulus = std::stod(value);
+            else if (key == "boundary_friction_coefficient") boundary_friction_coefficient = std::stod(value);
             else if (key == "cavitated_film_model") {
                 if (value == "STRIATED") cavitated_film_model = CavitatedFilmModel::STRIATED;
                 else if (value == "FULL_FILM") cavitated_film_model = CavitatedFilmModel::FULL_FILM;
@@ -1560,9 +1731,11 @@ struct SimulationConfig {
             gas_pressure_coupling == GasPressureCoupling::NONE &&
             dissolved_gas_initial == 0.0 && dissolved_gas_henry_coeff == 0.0 &&
             oil_vapor_temperature_coeff == 0.0;
-        if (!finite(p_cav) || p_cav < 0.0 || (p_cav == 0.0 && !zero_pressure_pure_oil)) {
-            error("p_cav must be a positive absolute pressure, except 0 Pa for gas-free "
-                  "SINGLE_PHASE FBNS with SCALAR_PCAV. Reservoir pressure belongs in "
+        const bool zero_pressure_coupled = cavitation_model == CavitationModel::COUPLED &&
+            cavitation_threshold == CavitationThreshold::SCALAR_PCAV && oil_vapor_temperature_coeff == 0.0;
+        if (!finite(p_cav) || p_cav < 0.0 || (p_cav == 0.0 && !zero_pressure_pure_oil && !zero_pressure_coupled)) {
+            error("p_cav must be positive, except a 0-Pa oil-vapor limit for gas-free "
+                  "SINGLE_PHASE FBNS or COUPLED with SCALAR_PCAV. Reservoir pressure belongs in "
                   "bc_z_south_val / bc_z_north_val.");
         }
         if (!finite(omega_ramp_time) || omega_ramp_time < 0.0) {
@@ -1608,13 +1781,17 @@ struct SimulationConfig {
             if (cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
                 if (cross_film_layers < 2 || cross_film_layers > 128)
                     error("cross_film_layers must be between 2 and 128.");
-                if (solution_mode != SolutionMode::STEADY_STATE ||
-                    cavitation_model != CavitationModel::FBNS ||
-                    fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
-                    groove_mixing_model != GrooveMixingModel::FLUX_BALANCED ||
+                const bool fbns_layers = cavitation_model == CavitationModel::FBNS &&
+                    fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+                    groove_mixing_model == GrooveMixingModel::FLUX_BALANCED;
+                const bool coupled_layers = cavitation_model == CavitationModel::COUPLED &&
+                    groove_mixing_model == GrooveMixingModel::PINNED &&
+                    cavitated_film_model == CavitatedFilmModel::FULL_FILM &&
+                    mixture_viscosity_model == MixtureViscosityModel::DUKLER;
+                if (solution_mode != SolutionMode::STEADY_STATE || (!fbns_layers && !coupled_layers) ||
                     thermal_convection_scheme != ConvectionScheme::UPWIND ||
                     liquid_specific_heat <= 0.0)
-                    error("FINITE_VOLUME requires steady single-phase FBNS, FLUX_BALANCED, upwind energy and liquid_specific_heat > 0.");
+                    error("FINITE_VOLUME requires steady UPWIND energy with positive liquid_specific_heat: single-phase FBNS/FLUX_BALANCED or FULL_FILM DUKLER COUPLED/PINNED.");
             }
             if (temperature_model != TemperatureModel::ENERGY_EQUATION) {
                 error("cross_film_thermal_model requires temperature_model = ENERGY_EQUATION; "
@@ -1716,11 +1893,48 @@ struct SimulationConfig {
         if (motion_model == MotionModel::MOVING_BEARING) {
             require_positive(bearing_mass, "bearing_mass");
         }
+        if (load_model != LoadModel::CONSTANT &&
+            (motion_model != MotionModel::MOVING_BEARING || solution_mode != SolutionMode::TRANSIENT))
+            error("load_model ROTATING or TABLE requires motion_model = MOVING_BEARING and TRANSIENT.");
+        if (load_model == LoadModel::ROTATING &&
+            (!finite(load_magnitude) || load_magnitude < 0.0 || !finite(load_rotation_start_deg) || !finite(load_rotation_speed)))
+            error("ROTATING load requires finite load_magnitude >= 0, load_rotation_start_deg and load_rotation_speed.");
+        if (load_model == LoadModel::TABLE) {
+            if (load_table_file.empty()) error("TABLE load requires load_table_file.");
+            if (!finite(load_table_scale) || !finite(load_table_angle_offset_deg) || !finite(load_phase_offset_deg))
+                error("load_table_scale, load_table_angle_offset_deg and load_phase_offset_deg must be finite.");
+            if (load_table_abscissa == LoadTableAbscissa::PHASE_DEG && (!finite(load_frequency) || load_frequency <= 0.0))
+                error("PHASE_DEG load table requires load_frequency > 0 [Hz].");
+        }
+        if (!finite(inlet_rotation_speed)) error("inlet_rotation_speed must be finite.");
+        if (inlet_rotation_speed != 0.0 && solution_mode != SolutionMode::TRANSIENT)
+            error("inlet_rotation_speed != 0 requires TRANSIENT.");
+        if (inlet_rotation_speed != 0.0 && cavitation_model == CavitationModel::COUPLED)
+            error("inlet_rotation_speed != 0 is not implemented for COUPLED cavitation.");
+        if (motion_coupling == MotionCoupling::IMPLICIT) {
+            if (motion_model != MotionModel::MOVING_BEARING || solution_mode != SolutionMode::TRANSIENT)
+                error("motion_coupling = IMPLICIT requires motion_model = MOVING_BEARING and TRANSIENT.");
+            if (cavitation_model == CavitationModel::COUPLED)
+                error("motion_coupling = IMPLICIT is not implemented for COUPLED cavitation.");
+            if (motion_time_method != TimeSteppingMethod::EULER_IMPLICIT)
+                error("motion_coupling = IMPLICIT integrates the motion with backward Euler; set motion_time_method = EULER_IMPLICIT.");
+            require_positive(motion_coupling_tolerance, "motion_coupling_tolerance");
+            require_positive(motion_coupling_position_tolerance, "motion_coupling_position_tolerance");
+            require_positive(motion_coupling_fd_step, "motion_coupling_fd_step");
+            require_positive(motion_coupling_step_limit, "motion_coupling_step_limit");
+            if (motion_coupling_max_iters < 4) error("motion_coupling_max_iters must be at least 4.");
+        }
         if (motion_model == MotionModel::STEADY_EQUILIBRIUM) {
-            if (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
-                fluid_property_model != FluidPropertyModel::SINGLE_PHASE || dissolved_gas_initial != 0.0 ||
-                dissolved_gas_henry_coeff != 0.0 || gas_pressure_coupling != GasPressureCoupling::NONE)
-                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS with gas_pressure_coupling = NONE.");
+            const bool fbns_equilibrium = cavitation_model == CavitationModel::FBNS &&
+                fluid_property_model == FluidPropertyModel::SINGLE_PHASE && dissolved_gas_initial == 0.0 &&
+                dissolved_gas_henry_coeff == 0.0 && gas_pressure_coupling == GasPressureCoupling::NONE;
+            const bool coupled_equilibrium = cavitation_model == CavitationModel::COUPLED &&
+                (fluid_property_model == FluidPropertyModel::SINGLE_PHASE ||
+                 (fluid_property_model == FluidPropertyModel::TWO_PHASE && coupled_phase_equilibrium)) &&
+                (temperature_model == TemperatureModel::ISOTHERMAL ||
+                 cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME);
+            if (solution_mode != SolutionMode::STEADY_STATE || (!fbns_equilibrium && !coupled_equilibrium))
+                error("STEADY_EQUILIBRIUM requires steady gas-free SINGLE_PHASE FBNS, or SINGLE_PHASE/equilibrium TWO_PHASE COUPLED.");
             require_positive(steady_force_tolerance, "steady_force_tolerance");
             require_positive(steady_position_step_limit, "steady_position_step_limit");
             require_positive(steady_position_fd_step, "steady_position_fd_step");
@@ -1852,6 +2066,8 @@ struct SimulationConfig {
                 warn("cavitation_model = FBNS transports the film content with first-order "
                      "upwind (the FBNS discretization); theta_convection_scheme is ignored.");
             }
+        }
+        if (cavitation_model == CavitationModel::FBNS || coupled_fbns_initialization) {
             if (fbns_max_iters <= 0) error("fbns_max_iters must be positive.");
             if (!finite(fbns_tol) || fbns_tol <= 0.0) error("fbns_tol must be positive.");
             if (!finite(fbns_relaxation) || fbns_relaxation <= 0.0 || fbns_relaxation > 1.0) {
@@ -1862,12 +2078,23 @@ struct SimulationConfig {
             }
         }
 
+        if (coupled_fbns_initialization) {
+            if (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::COUPLED ||
+                cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME || oil_vapor_temperature_coeff != 0)
+                error("coupled_fbns_initialization requires steady COUPLED FINITE_VOLUME with constant oil vapor pressure.");
+            if (bc_z_south_free_gas_mass_fraction != 0 || bc_z_north_free_gas_mass_fraction != 0 ||
+                std::any_of(inlets.begin(), inlets.end(), [](const auto& inlet) { return inlet.free_gas_mass_fraction != 0; }))
+                error("coupled_fbns_initialization requires gas-free feeds and reservoirs; prescribed free gas cannot be discarded.");
+        }
+
         if (cavitation_model == CavitationModel::COUPLED) {
+            if (!finite(coupled_nonlinear_tolerance) || coupled_nonlinear_tolerance <= 0 || coupled_nonlinear_tolerance >= 1)
+                error("coupled_nonlinear_tolerance must be finite and lie in (0, 1).");
             require_nonnegative(oil_vapor_temperature_coeff,"oil_vapor_temperature_coeff");
             if (cavitation_threshold != CavitationThreshold::SCALAR_PCAV || gas_pressure_coupling != GasPressureCoupling::NONE)
                 error("COUPLED requires SCALAR_PCAV and gas_pressure_coupling = NONE; pressure follows the gas EOS and gap volume.");
-            if (cross_film_thermal_model != CrossFilmModel::NONE)
-                error("COUPLED uses a common film temperature with prescribed wall heat transfer; cross_film_thermal_model must be NONE.");
+            if (cross_film_thermal_model != CrossFilmModel::NONE && cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME)
+                error("COUPLED supports NONE or steady FINITE_VOLUME thermal closure.");
             if (mixture_viscosity_model != MixtureViscosityModel::DUKLER)
                 error("COUPLED currently requires DUKLER volume-weighted mixture viscosity.");
             if (temperature_model == TemperatureModel::ENERGY_EQUATION) {
@@ -1908,12 +2135,9 @@ struct SimulationConfig {
             error("Temperature-dependent oil vapor pressure currently requires COUPLED.");
 
         // Outer (Picard) coupling schedule.
-        if (!steady_initial_state_file.empty() &&
-            (solution_mode != SolutionMode::STEADY_STATE || cavitation_model != CavitationModel::FBNS ||
-             fluid_property_model != FluidPropertyModel::SINGLE_PHASE ||
-             gas_pressure_coupling != GasPressureCoupling::NONE ||
-             cavitation_threshold != CavitationThreshold::SCALAR_PCAV || dissolved_gas_initial != 0.0)) {
-            error("steady_initial_state_file requires steady gas-free single-phase FBNS with scalar p_cav.");
+        if (!steady_initial_state_file.empty() && !single_phase_fbns_state()) {
+            error("steady_initial_state_file requires gas-free single-phase FBNS: scalar p_cav without "
+                  "dissolved gas, or the uniform bubble-point floor (LOCAL_PSAT).");
         }
         if (coupling_max_iters <= 0) error("coupling_max_iters must be positive.");
         if (!finite(coupling_tolerance) || coupling_tolerance <= 0.0) {
@@ -2128,6 +2352,29 @@ struct SimulationConfig {
         warn_table_use(density_table_2d, density_model == DensityModel::TABLE,
                        density_table, "density_table_file");
 
+        if (asperity_contact_model != AsperityContactModel::NONE ||
+            flow_factor_model != FlowFactorModel::NONE) {
+            if (!finite(roughness_rq_shaft) || !finite(roughness_rq_bush) ||
+                roughness_rq_shaft < 0 || roughness_rq_bush < 0 ||
+                roughness_rq_shaft + roughness_rq_bush <= 0)
+                error("Mixed lubrication requires nonnegative roughness_rq_shaft/roughness_rq_bush with a positive sum [m].");
+        }
+        if (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP) {
+            if (!finite(asperity_eta_beta_sigma) || asperity_eta_beta_sigma <= 0 || asperity_eta_beta_sigma >= 1)
+                error("asperity_eta_beta_sigma must lie in (0, 1); typical 0.03-0.05.");
+            if (!finite(asperity_sigma_over_beta) || asperity_sigma_over_beta <= 0 || asperity_sigma_over_beta >= 1)
+                error("asperity_sigma_over_beta must lie in (0, 1); typical 1e-4 to 1e-2.");
+            if (!finite(contact_modulus) || contact_modulus <= 0)
+                error("asperity_contact_model = GREENWOOD_TRIPP requires contact_modulus > 0 [Pa].");
+            if (!finite(boundary_friction_coefficient) || boundary_friction_coefficient < 0 || boundary_friction_coefficient > 1)
+                error("boundary_friction_coefficient must lie in [0, 1].");
+        }
+        if (flow_factor_model == FlowFactorModel::PATIR_CHENG &&
+            cavitation_model != CavitationModel::JFO && cavitation_model != CavitationModel::FBNS) {
+            error("flow_factor_model = PATIR_CHENG requires cavitation_model = JFO or FBNS "
+                  "(the COUPLED and Gumbel fluxes do not apply flow factors).");
+        }
+
         if (cavitated_film_model == CavitatedFilmModel::STRIATED &&
             cavitation_model != CavitationModel::JFO &&
             cavitation_model != CavitationModel::FBNS) {
@@ -2155,7 +2402,7 @@ struct SimulationConfig {
                 warn("TWO_PHASE is selected with zero initial dissolved gas; no gaseous cavitation will occur until gas enters the film.");
             }
             if (!finite(gas_mass_transfer_rate) || gas_mass_transfer_rate < 0.0) {
-                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables release).");
+                error("TWO_PHASE requires gas_mass_transfer_rate >= 0 (0 disables finite-rate release; equilibrium is separate).");
             }
             if (!finite(gas_absorption_rate) || (gas_absorption_rate < 0 && gas_absorption_rate != -1))
                 error("gas_absorption_rate must be -1 (inherit release rate) or >= 0 [1/s].");
@@ -2358,6 +2605,28 @@ struct SimulationConfig {
         return std::max(pressure_value, effective_p_cav());
     }
 
+    /// Place every inlet at time t for inlet_rotation_speed:
+    /// theta_k(t) = theta_start_deg[k] + rate t (degrees). No-op when the rate is 0.
+    void place_inlets(const std::vector<double>& theta_start_deg, double time) {
+        if (inlet_rotation_speed == 0.0) return;
+        const double turn_deg = inlet_rotation_speed * time * 180.0 / 3.14159265358979323846;
+        for (std::size_t k = 0; k < inlets.size() && k < theta_start_deg.size(); ++k)
+            inlets[k].theta = theta_start_deg[k] + turn_deg;
+    }
+
+    /// True when the FBNS state is fully described by pressure, film content and
+    /// temperature: SINGLE_PHASE without gas pressure coupling, and either a
+    /// scalar p_cav without dissolved gas or the uniform bubble-point floor
+    /// (LOCAL_PSAT, the dissolved fraction stays at its feed value). Only such a
+    /// state can be stored in, and restarted from, steady_state.dat.
+    bool single_phase_fbns_state() const {
+        return cavitation_model == CavitationModel::FBNS &&
+            fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
+            gas_pressure_coupling == GasPressureCoupling::NONE &&
+            ((cavitation_threshold == CavitationThreshold::SCALAR_PCAV && dissolved_gas_initial == 0.0) ||
+             cavitation_threshold == CavitationThreshold::LOCAL_PSAT);
+    }
+
     double elrod_boundary_theta(double pressure_value) const {
         const double beta = std::max(bulk_modulus, 1.0e-30);
         const double pressure = elrod_boundary_pressure(pressure_value);
@@ -2475,7 +2744,12 @@ struct SimulationConfig {
             "bearing_y",
             "bearing_z",
             "bearing_attitude_angle",
-            "friction_torque"};
+            "friction_torque",
+            "contact_pressure",
+            "contact_force_x",
+            "contact_force_y",
+            "contact_force_z",
+            "contact_friction_torque"};
     }
 
     std::string to_config_text() const {
@@ -2533,6 +2807,16 @@ struct SimulationConfig {
             << "p_cav = " << p_cav << "\n"
             << "oil_vapor_temperature_coeff = " << oil_vapor_temperature_coeff << "\n"
             << "bulk_modulus = " << bulk_modulus << "\n\n";
+
+        out << "# Mixed lubrication: asperity_contact_model NONE|GREENWOOD_TRIPP, flow_factor_model NONE|PATIR_CHENG\n"
+            << "asperity_contact_model = " << (asperity_contact_model == AsperityContactModel::GREENWOOD_TRIPP ? "GREENWOOD_TRIPP" : "NONE") << "\n"
+            << "flow_factor_model = " << (flow_factor_model == FlowFactorModel::PATIR_CHENG ? "PATIR_CHENG" : "NONE") << "\n"
+            << "roughness_rq_shaft = " << roughness_rq_shaft << "\n"
+            << "roughness_rq_bush = " << roughness_rq_bush << "\n"
+            << "asperity_eta_beta_sigma = " << asperity_eta_beta_sigma << "\n"
+            << "asperity_sigma_over_beta = " << asperity_sigma_over_beta << "\n"
+            << "contact_modulus = " << contact_modulus << "\n"
+            << "boundary_friction_coefficient = " << boundary_friction_coefficient << "\n\n";
 
         out << "# Energy Equation\n"
             << "# temperature_model options: ISOTHERMAL, ENERGY_EQUATION\n"
@@ -2604,6 +2888,9 @@ struct SimulationConfig {
             << "# gas_absorption_rate: -1 inherits release rate; 0 disables absorption\n"
             << "gas_absorption_rate = " << gas_absorption_rate << "\n"
             << "coupled_phase_equilibrium = " << (coupled_phase_equilibrium ? "true" : "false") << "\n"
+            << "coupled_nonlinear_tolerance = " << coupled_nonlinear_tolerance << "\n"
+            << "# Optional gas-free FBNS initial guess; final equations and acceptance remain COUPLED.\n"
+            << "coupled_fbns_initialization = " << (coupled_fbns_initialization ? "true" : "false") << "\n"
             << "dissolved_gas_diffusivity = " << dissolved_gas_diffusivity << "\n"
             << "solution_density_gas_coeff = " << solution_density_gas_coeff << "\n"
             << "solution_viscosity_gas_coeff = " << solution_viscosity_gas_coeff << "\n"
@@ -2662,6 +2949,29 @@ struct SimulationConfig {
             << "external_load_x = " << external_load_x << "\n"
             << "external_load_y = " << external_load_y << "\n"
             << "external_load_z = " << external_load_z << "\n"
+            << "# load_model options: CONSTANT (external_load_x|y|z), ROTATING, TABLE\n"
+            << "load_model = " << to_config_value(load_model) << "\n"
+            << "load_magnitude = " << load_magnitude << "\n"
+            << "load_rotation_start_deg = " << load_rotation_start_deg << "\n"
+            << "load_rotation_speed = " << load_rotation_speed << "\n"
+            << "load_table_file = " << load_table_file.generic_string() << "\n"
+            << "# load_table_abscissa options: PHASE_DEG (periodic), TIME_S\n"
+            << "load_table_abscissa = " << to_config_value(load_table_abscissa) << "\n"
+            << "# load_table_format options: POLAR (magnitude, angle_deg), CARTESIAN (x, y)\n"
+            << "load_table_format = " << to_config_value(load_table_format) << "\n"
+            << "load_frequency = " << load_frequency << "\n"
+            << "load_phase_offset_deg = " << load_phase_offset_deg << "\n"
+            << "load_table_angle_offset_deg = " << load_table_angle_offset_deg << "\n"
+            << "load_table_scale = " << load_table_scale << "\n"
+            << "# motion_coupling options: EXPLICIT (lagged force), IMPLICIT (iterated)\n"
+            << "motion_coupling = " << to_config_value(motion_coupling) << "\n"
+            << "motion_coupling_tolerance = " << motion_coupling_tolerance << "\n"
+            << "motion_coupling_position_tolerance = " << motion_coupling_position_tolerance << "\n"
+            << "motion_coupling_max_iters = " << motion_coupling_max_iters << "\n"
+            << "motion_coupling_fd_step = " << motion_coupling_fd_step << "\n"
+            << "motion_coupling_step_limit = " << motion_coupling_step_limit << "\n"
+            << "# inlet_rotation_speed [rad/s]: all inlets turn about the axis (0 = fixed)\n"
+            << "inlet_rotation_speed = " << inlet_rotation_speed << "\n"
             << "min_film_thickness = " << min_film_thickness << "\n"
             << "stop_on_nonpositive_film = " << (stop_on_nonpositive_film ? "true" : "false") << "\n\n";
 
@@ -2808,7 +3118,7 @@ struct SimulationConfig {
             "dissolved_gas_initial", "dissolved_gas_max",
             "dissolved_gas_henry_coeff", "dissolved_gas_henry_temp_coeff",
             "dissolved_gas_bunsen_coeff", "dissolved_gas_liquid_density",
-            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "inlet_species", "dissolved_gas_diffusivity",
+            "gas_mass_transfer_rate", "gas_absorption_rate", "coupled_phase_equilibrium", "coupled_nonlinear_tolerance", "coupled_fbns_initialization", "inlet_species", "dissolved_gas_diffusivity",
             "solution_density_gas_coeff", "solution_viscosity_gas_coeff",
             "viscosity_temperature_coeff", "viscosity_pressure_coeff",
             "viscosity_poly_k0", "viscosity_poly_k1", "viscosity_poly_k2",
@@ -2824,6 +3134,12 @@ struct SimulationConfig {
             "bearing_stiffness_x", "bearing_stiffness_y", "bearing_stiffness_z",
             "bearing_damping_x", "bearing_damping_y", "bearing_damping_z",
             "external_load_x", "external_load_y", "external_load_z",
+            "load_model", "load_magnitude", "load_rotation_start_deg", "load_rotation_speed",
+            "load_table_file", "load_table_abscissa", "load_table_format", "load_frequency",
+            "load_phase_offset_deg", "load_table_angle_offset_deg", "load_table_scale",
+            "motion_coupling", "motion_coupling_tolerance", "motion_coupling_position_tolerance",
+            "motion_coupling_max_iters",
+            "motion_coupling_fd_step", "motion_coupling_step_limit", "inlet_rotation_speed",
             "min_film_thickness", "stop_on_nonpositive_film", "bc_z_south_type",
             "bc_z_south_val", "bc_z_south_theta", "bc_z_south_thermal",
             "bc_z_north_type", "bc_z_north_val", "bc_z_north_theta",
@@ -2832,6 +3148,9 @@ struct SimulationConfig {
             "bc_z_south_dissolved_gas", "bc_z_north_dissolved_gas",
             "bc_z_south_free_gas_mass_fraction", "bc_z_north_free_gas_mass_fraction",
             "cavitated_film_model", "consistent_boundary_flux",
+            "asperity_contact_model", "flow_factor_model", "roughness_rq_shaft", "roughness_rq_bush",
+            "asperity_eta_beta_sigma", "asperity_sigma_over_beta", "contact_modulus",
+            "boundary_friction_coefficient",
             "coupling_max_iters", "coupling_tolerance", "coupling_relaxation",
             "steady_gas_model",
             "allow_frozen_gas_steady", "max_outer_iters", "outer_tol",

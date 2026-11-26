@@ -1063,6 +1063,181 @@ the mixed implicit/explicit trapezoidal update; the parser still accepts older
 `RK2`/`RK4` aliases for compatibility, but the GUI and default config no longer
 advertise them as pressure or thermal methods.
 
+### 12.1 Time-dependent external load (`load_model`, 2026-11-19)
+
+The external load $\mathbf{W}(t)$ on the moving bearing has three options. In
+every one, `external_load_z` is added unchanged.
+
+| `load_model` | $\mathbf{W}(t)$ in the plane |
+|---|---|
+| `CONSTANT` (default) | $(W_x, W_y)$ = `external_load_x`, `external_load_y` |
+| `ROTATING` | $W_0\,(\cos\beta(t), \sin\beta(t))$, $\beta(t) = \beta_0 + \Omega_W t$ |
+| `TABLE` | linear interpolation of tabulated rows in phase or time |
+
+`ROTATING` takes `load_magnitude` $W_0$ [N], `load_rotation_start_deg` $\beta_0$
+and `load_rotation_speed` $\Omega_W$ [rad/s]. The rotation speed is a single
+constant; a direction that changes in any other way is a table.
+
+`TABLE` reads `load_table_file` (CSV or blank-separated). Each row holds the
+abscissa and two ordinates: magnitude and direction in degrees
+(`load_table_format = POLAR`) or the $x$ and $y$ parts (`CARTESIAN`). Rows are
+multiplied by `load_table_scale` and rotated by `load_table_angle_offset_deg`,
+then stored as Cartesian parts. Interpolating the Cartesian parts keeps a
+direction that crosses $360^\circ$ continuous; interpolating the raw angle
+would swing through $180^\circ$. With `load_table_abscissa = PHASE_DEG` the
+table is periodic. The phase is
+
+$$\varphi(t) = \left(\varphi_0 + 360\,f_W\,t\right) \bmod 360,$$
+
+with $f_W$ = `load_frequency` [Hz], the frequency of the load cycle. It is
+separate from the shaft speed. $\varphi_0$ is `load_phase_offset_deg`. Rows
+must lie in $[0, 360)$. The interval after the last row joins it to the first
+row plus $360^\circ$; a row at $360^\circ$ would duplicate the next cycle's
+$0^\circ$ and is rejected. With `TIME_S` the table is not periodic, and a time
+outside its range stops the run. Rows are interpolated as given: two rows
+$1^\circ$ apart with very different values form a jump over that $1^\circ$, with
+no smoothing. A single row is a constant load.
+
+The load at the current time is written to the `external_load_*` fields and to
+`motion.csv` (below).
+
+### 12.2 Implicit motion coupling (`motion_coupling = IMPLICIT`, 2026-11-19)
+
+**Why.** With the historical `EXPLICIT` coupling, the step from $t_n$ to
+$t_{n+1}$ advances the bearing with the film force of the previous step,
+$\mathbf{F}^n$. The film is the stiffest part of the system: it acts as a
+damper $C_f$ (squeeze) and a spring $K_f$ on the bearing, with
+$C_f \propto \mu R L^3/c^3 \cdot (1-\varepsilon^2)^{-3/2}$. Lagging a damper
+by one step is stable only for
+
+$$\Delta t < \frac{2 m}{C_f}.$$
+
+For the compressor OS bearing ($m$ = 0.686 kg, $C_f \approx 0.6$–$1.2\times10^6$
+N s/m at $\varepsilon$ = 0.90–0.94) the limit is about 1–2 µs, one order below
+the 5 µs of $0.25^\circ$ crank angle at 130 Hz. A tester start-up failed the
+same way at $\Delta t$ = 20 µs. `IMPLICIT` removes the limit.
+
+**Equations.** The bearing equation is integrated by backward Euler, with the
+film force taken at the end of the step:
+
+$$\mathbf{v}^{n+1} = \frac{\mathbf{x}^{n+1}-\mathbf{x}^n}{\Delta t},\qquad
+m\,\frac{\mathbf{v}^{n+1}-\mathbf{v}^n}{\Delta t}
+ + \mathsf{C}\,\mathbf{v}^{n+1} + \mathsf{K}\,\mathbf{x}^{n+1}
+ = \mathbf{F}(\mathbf{x}^{n+1}) + \mathbf{W}(t_{n+1}),$$
+
+where $\mathsf{C}$ and $\mathsf{K}$ are the optional support damping and
+stiffness (`bearing_damping_*`, `bearing_stiffness_*`). $\mathbf{F}(\mathbf{x})$
+is the film force from a full field solve at the gap of $\mathbf{x}$. The film
+storage term is the backward difference of the liquid inventory,
+$\left[\rho h\theta\right]^{n+1} - \left[\rho h\theta\right]^n$, with
+$h^{n+1} = h(\mathbf{x}^{n+1})$ and $h^n$ the stored gap of step $n$. The
+squeeze term is therefore part of $\mathbf{F}(\mathbf{x}^{n+1})$, and the
+motion and film use one consistent backward-Euler step. The in-plane residual
+
+$$\mathbf{R}(\mathbf{x}) = m\left[\frac{\mathbf{x}-\mathbf{x}^n}{\Delta t}-\mathbf{v}^n\right]\frac{1}{\Delta t}
+ + \mathsf{C}\frac{\mathbf{x}-\mathbf{x}^n}{\Delta t} + \mathsf{K}\mathbf{x}
+ - \mathbf{F}(\mathbf{x}) - \mathbf{W}(t_{n+1})$$
+
+is driven to zero by a quasi-Newton iteration (`JournalMotion::ImplicitCoupling`):
+
+1. Predictor $\mathbf{x}_0 = \mathbf{x}^n + \Delta t\,\mathbf{v}^n$.
+2. Jacobian $\mathsf{J} = \partial\mathbf{R}/\partial\mathbf{x}$ from two
+   finite-difference probes of size `motion_coupling_fd_step`$\cdot c$ (one
+   film solve each). It approximates
+   $m/\Delta t^2 + C/\Delta t + K + C_f/\Delta t + K_f$ and is dominated by the
+   squeeze term $C_f/\Delta t$.
+3. Newton step $\mathbf{s} = -\mathsf{J}^{-1}\mathbf{R}$, limited to
+   `motion_coupling_step_limit`$\cdot c$. An accepted step (smaller $|\mathbf{R}|$)
+   updates $\mathsf{J}$ with Broyden's rank-one formula
+   $\mathsf{J} \leftarrow \mathsf{J} + (\Delta\mathbf{R} - \mathsf{J}\mathbf{s})\mathbf{s}^T/(\mathbf{s}\cdot\mathbf{s})$.
+   A rejected step is halved up to three times, then the Jacobian is probed again.
+4. The Jacobian is kept from step to step while $\Delta t$ is unchanged, so a
+   step typically costs three film solves.
+
+Every trial solve starts from the fields of the step start (all fields are
+restored from a snapshot), with the pressure and film content of the latest
+trial as the Newton initial guess. The axial axis is advanced by backward Euler
+with the latest axial film force (it carries no film stiffness in the 2D gap).
+
+**Convergence.** A step is accepted when either
+
+$$\frac{|\mathbf{R}|}{\max(|\mathbf{W}|, |\mathbf{F}|)} < \texttt{motion\_coupling\_tolerance}
+\quad\text{or}\quad
+\frac{|\mathsf{J}^{-1}\mathbf{R}|}{c} < \texttt{motion\_coupling\_position\_tolerance}.$$
+
+The second test exists because the film force carries the noise of the field
+solve tolerance. On the OS bearing, two converged FBNS solves at positions
+$10^{-13}$ m apart differ by about $5\times10^{-5}$ of the force, so a force
+test of $10^{-6}$ cannot be met. The position correction that this noise
+implies is $|\mathsf{J}^{-1}\mathbf{R}| \approx 10^{-12}$ m, i.e. $10^{-7}c$:
+far below anything that changes the film. When `motion_coupling_max_iters`
+solves are spent without either test passing, the run stops as unconverged.
+
+**Scope.** `IMPLICIT` requires `MOVING_BEARING`, `TRANSIENT`,
+`motion_time_method = EULER_IMPLICIT` and a non-`COUPLED` cavitation model.
+`EXPLICIT` stays the default and is unchanged.
+
+**Tests.** `test_journal_motion` checks that each implicit step equals the
+closed-form backward-Euler update for a linear film force
+$\mathbf{F} = -k_f\mathbf{x} - c_f\mathbf{v}$, that the response follows the
+analytic underdamped step response, and that at $\Delta t = 50\times 2m/c_f$
+the implicit coupling settles at $W/k_f$ while the lagged explicit coupling
+diverges. The solver-level checks are in
+`cases/02h_lge_compressor_transient/README.md`.
+
+### 12.3 Per-step motion record and restart (2026-11-19)
+
+Every `MOVING_BEARING` transient writes `results/motion.csv`, one row per step:
+time, load phase, load $x$ and $y$, bearing position and velocity, eccentricity
+ratio, attitude angle, minimum film thickness and its angle, journal friction
+torque, peak pressure, cavitated fraction (film content below $1-10^{-8}$),
+film force $x$ and $y$, and the coupling solves, force residual and position
+correction of the step.
+
+A transient whose state is fully described by pressure, film content and
+temperature (`SINGLE_PHASE` FBNS without gas pressure coupling, with a scalar
+$p_{cav}$ and no dissolved gas, or with the uniform bubble-point floor
+`LOCAL_PSAT`) writes `results/final_state.dat` at its end. The same states can
+now be read through `steady_initial_state_file` in `TRANSIENT` as well as
+`STEADY_STATE`, and steady `LOCAL_PSAT` runs write `steady_state.dat`. A run
+restarted from `final_state.dat` with `bearing_initial_x|y|vx|vy` from the last
+row of `motion.csv` (and `load_phase_offset_deg` advanced) continues the
+backward-Euler sequence, because a step needs only the state of the step before.
+The only difference from an uninterrupted run is the first step's Jacobian,
+which is probed again, so the continued states agree to within the coupling
+tolerance.
+
+### 12.4 Turning inlets (`inlet_rotation_speed`, 2026-11-19)
+
+Every `inlet_circular` and `inlet_groove` can turn about the bearing axis at
+one rate $\Omega_I$ = `inlet_rotation_speed` [rad/s], separate from the shaft
+speed and the load:
+
+$$\theta_k(t) = \theta_k(0) + \Omega_I\,t.$$
+
+The default 0 keeps the inlets fixed in the mesh frame, as before. In a
+`TRANSIENT` step the inlets are placed at the target time $t_{n+1}$ before the
+film geometry is updated, and every trial solve of the implicit motion coupling
+in that step uses that position. The `inlet_indicator` field (read by the
+property and gas-transport updates) is refreshed with the geometry.
+
+**Mass.** Inlet cells are pressure reservoirs: $p = p_{supply}$, $\theta = 1$.
+Their net outflow, storage included, is the inlet mass source of the liquid
+balance (`inlet_mass_source` in `diagnostics.csv`). When a cell enters the
+inlet, its film content jumps to 1; the liquid that fills it,
+$(\rho h)(1-\theta^n)A/\Delta t$, appears in that cell's storage term and is
+supplied by the reservoir, so it is counted in the inlet flow. When a cell
+leaves the inlet, it keeps $\theta^n = 1$ as its old inventory and becomes an
+ordinary cell; its liquid then moves with the film. No liquid is created or
+lost by the motion of the inlet itself, and the global liquid balance closes
+without extra terms. The inlet edge moves $\Omega_I\Delta t$ per step; a
+circular inlet should span several cells per step at most for its boundary flow
+to be resolved.
+
+Use: the bearing of a crank pin seen from the orbiting part (pin and its feed
+hole turning, bearing at rest), with a turning load (`load_model = TABLE` or
+`ROTATING`). `COUPLED` cavitation is not supported.
+
 ---
 
 ## 13. Thermal and ETHD Model
@@ -3396,4 +3571,369 @@ remain preserved in `lge-mixture-20261018`. The retry uses the isolated
 the earlier short pressure-refined attempt is also retained. Final cooling
 verification uses the recorded seed of that call. Physical inputs, equations
 and acceptance gates are unchanged.
-Campaign completion remains pending.
+That campaign subsequently completed all 17 cases and three focused checks;
+the original source, inputs and results remain preserved separately.
+
+# 2026-10-19 conditional LGE gas comparison and steady thermal extension
+
+The separate 02f follow-on has launched full-grid remote pilots. It compares paired
+steady COUPLED calculations with gas release disabled/enabled for the same
+17 experimental operating windows. Both branches use the full chart
+`nu(c,T)`, density law, resolved cross-film and housing energy model, geometry,
+cooling, boundaries and load balance. `coupling_relaxation = 0.3` is common.
+The control uses `SINGLE_PHASE` and no phase equilibrium; the gas-on case uses
+`TWO_PHASE` with instantaneous local equilibrium. The only branch switches
+are fluid-property model and the equilibrium flag, so their difference
+isolates release within this conditional numerical model. The earlier 02e
+completed campaign remains the distinct fixed-viscosity surrogate and is not
+used as a matched gas-off control.
+
+The source chart's pressure and concentration axes are unspecified. The
+explicitly authorized scenario treats pressure as absolute and the
+concentration coordinate as refrigerant mass fraction. Initial dissolved
+composition is uniformly 0.30 across the initial field and both axial feeds;
+incoming free-gas mass fraction is zero. Composition and phase fractions are
+uniform through the gap, and equilibrium uses the film-mean temperature.
+Layer temperatures remain separate energy unknowns. The solver computes equilibrium bubble pressure by inverting
+the chart's first crossing and requires strict support;
+unsupported chart or temperature queries fail without clamp or extrapolation.
+Free gas must also remain within the stable real-R410A EOS domain at all film
+layers and the journal/bearing walls. No fitted release or absorption rate is
+used: gas-off suppresses phase transfer and gas-on assumes instantaneous
+equilibrium.
+
+Both branches retain the pure-oil proxy
+\(\rho(T_C)=954.9-0.7284T_C\;\mathrm{kg\,m^{-3}}\), which came from a
+different PVE/R32 lubricant context and is not an FW68D/R410A mixture-density
+measurement (Zeng et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2021.12.009)*, 2022). Direct PVE/R410A literature distinguishes
+actual concentration from saturation solubility; its oil grade and reported
+scope do not establish FW68D coefficients (Fukuta et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2009.09.015)*, 2010). No verified
+exact-grade density or heat-of-solution table was identified in the review.
+
+The steady thermal extension alternates the coupled pressure/species
+equilibrium solve with finite-volume energy solves across the film layers and
+through the resolved housing network. It iterates local temperatures into
+full `nu(c,T)` and phase properties, and accounts for component face enthalpy,
+pressure work, dissipation, wall heat flux, feed enthalpy and solid conduction.
+It is not a cross-film transient Newton solve. Caloric inputs are explicit
+conditional analogues: oil \(c_p=2010\) J kg⁻¹ K⁻¹, liquid conductivity
+0.13 W m⁻¹ K⁻¹, steel conductivity 15 W m⁻¹ K⁻¹, and dissolved-refrigerant
+heat capacity (1656.9291 J kg⁻¹ K⁻¹), desorption internal energy
+(192486.2475 J kg⁻¹), gas conductivity (0.0129583 W m⁻¹ K⁻¹), and gas
+viscosity (1.26525×10⁻⁵ Pa s) from the [conditional caloric inputs](results/lge_mixture_density_gas_20261019/property_review/conditional_caloric_inputs.json).
+These values are referenced at 293.15 K and 100 kPa. The dissolved-phase
+analogue is pure saturated-liquid R410A at 20 °C with constant heat capacity
+and zero excess mixing energy; it is not measured FW68D heat of solution.
+Inputs are not fitted to torque or temperature.
+
+The driver rejects nonzero return codes, unconverged pressure/coupling,
+iteration-cap exhaustion, restored-best iterates, pressure residual at or
+above \(10^{-10}\), mass residual above the tighter of the requested tolerance
+and \(10^{-8}\), or volume, thermal, species, profile, global energy and
+independent load residuals outside configured limits. It also rejects
+nonfinite/nonphysical fields and any unsupported viscosity/chart or free-gas
+EOS state. These gates establish accepted numerical solutions under the
+scenario assumptions; they do not establish experimental accuracy. The
+gas-on 24×8 pilot and matched 48×16 M16 relaxation-0.3 checks passed strict
+raw-field acceptance. Three full-grid attempts have been interrupted and
+preserved while the M02 initialization and position solve are diagnosed.
+The full campaign is not complete and
+no campaign-level gas-on/off results are available.
+
+## Cavitating initial guess and load feedback
+
+The optional `coupled_fbns_initialization` first solves gas-free FBNS pressure
+and film content at the unchanged starting geometry, composition and
+temperature. It supplies an initial guess only. Conservative areal inventories
+are then reconstructed as
+\[
+m_o=(1-c_d)\rho_l h\theta_l,\qquad
+m_d=c_d\rho_l h\theta_l,\qquad m_g=0,
+\]
+where \(c_d\) is dissolved refrigerant mass fraction. Current and pseudo-time
+old inventories are initialized consistently. Every subsequent pressure,
+phase, thermal and load solution must pass the original COUPLED gates. The
+option defaults off and rejects configurations with prescribed free gas that
+the preliminary gas-free solve would discard. A preliminary FBNS result is
+never a completed COUPLED solution.
+
+With phase equilibrium disabled, the nonlinear species rows are the dissolved
+and free balances, respectively. Subtracting the dissolved balance from total
+species conservation gives
+\[
+\partial_t m_g+\nabla_s\cdot F_g=\Gamma,
+\]
+including the same incoming and outgoing boundary sources. Solving this row
+directly avoids cancellation between nearly equal dissolved and total-species
+equations when free gas is absent. This is an equation transformation, with no
+change to release physics. The original normalized total-species residual is
+still included in final acceptance; pressure, volume and mass bounds remain
+unchanged.
+
+The resolved steady COUPLED iteration also damps the inverse-viscosity
+profile. With layer index \(k\), its physical target is
+\[
+v_k^*=\left[\theta_l\mu_l(c_d,p,T_k)+(1-\theta_l)\mu_g\right]^{-1},
+\qquad
+v_k^{n+1}=\omega v_k^*+(1-\omega)v_k^n.
+\]
+The first update uses \(v_k^*\) directly. The current outer-controller
+relaxation \(\omega\) applies to all layers before computing the complete
+Dowson integrals. Pressure mobility, velocity weights and shear therefore
+use one consistent profile; the conservative phase inventories are not
+blended. This damps the observed alternating fill/viscosity iteration without
+changing its physical fixed point. After the pressure and energy solves,
+acceptance additionally requires
+\[
+R_\mu=\max_{i,j,k}\frac{|v_k-v_k^*(\theta_l,c_d,p,T_k)|}{v_k^*(\theta_l,c_d,p,T_k)}
+<\texttt{coupling_tolerance}.
+\]
+This comparison uses the unrelaxed current-state law and is independent of
+\(\omega\). The native summary records `viscosity_residual`, and the campaign
+checks it independently from the saved layer temperatures and inverse
+viscosities. Transient and other cavitation paths retain their prior update.
+
+The measured external load is prescribed, while the shaft position is solved:
+\[
+R_F=\frac{\lVert\mathbf F_{\rm film}+\mathbf W\rVert}{\lVert\mathbf W\rVert}
+<\texttt{steady_force_tolerance}.
+\]
+For the aligned circular geometry, \(h_{\min}=c-\sqrt{x^2+y^2}\). A viscosity
+reduction generally decreases capacity at fixed position; the load-controlled
+solve generally responds with greater eccentricity and a smaller minimum
+gap. Thus the Couette shear scale \(\mu U/h\) does not fall in direct
+proportion to viscosity. The position, pressure, local temperature, composition
+and void distribution must be solved together before assigning a torque change.
+
+The position Jacobian and line search evaluate disposable steady pressure
+states. Their failed direct solves are rejected so that the load search can
+try the opposite finite difference or a smaller displacement; pseudo-time
+continuation remains available for the main pressure state. Accepted trials
+must satisfy the same equations and admissibility gates, and rejected trials
+restore both current fields and old histories. A previous accepted CFD shaft
+position is a numerical starting guess only, never an imposed eccentricity.
+
+This load balance contains fluid pressure only. No surface-roughness or
+asperity-contact load/friction law is included, so a small predicted gap does
+not itself introduce contact friction. Reported journal torque remains the
+integrated fluid shear.
+
+The 02f campaign's wall-clock deadline is an operational control, not a
+convergence criterion. Its default is disabled after the inherited two-hour
+limit stopped progressing full-grid solves. A requested `--timeout SECONDS`
+still produces a rejected, preserved result if reached. Iteration caps and
+all residual, constitutive, conservation and admissibility gates remain in
+force; removing the clock limit does not make an unconverged state acceptable.
+
+### 19 October selected-case inner tolerance
+
+The user reduced the mixture comparison to the exact ten selected windows,
+P01--P10, and chose an inner pressure/species tolerance of 1e-8. The new
+`coupled_nonlinear_tolerance` sets the default PETSc absolute stopping threshold
+and the independent infinity-norm acceptance of the scaled conservative
+residual vector. Its native default remains 1e-10 for other configurations.
+The 02f driver writes 1e-8 and no longer forces a separate 1e-13 PETSc override.
+The raw-field verifier reads the same frozen configuration value.
+
+This is an inner algebraic residual tolerance, not a relative torque error or
+the outer thermal criterion. Normal outer coupling remains 1e-6, force balance
+remains 0.002, and oil/species conservation remains below
+min(coupling_tolerance, 1e-8). Pressure positivity, phase bounds, bubble-point
+equilibrium, property-table/EOS domains, positive gaps and energy checks remain
+required. No result is promoted solely because its nonlinear norm is small.
+The previous 800 rpm gas-on attempt repeatedly reached norms below 1e-10 but
+never reached its imposed 1e-13 threshold before the first thermal update.
+Local probes and subsequent remote checks must establish the effect of this
+change; no full-grid accuracy improvement is asserted before those results.
+
+The free-gas inventory roundoff guard permits a scaled negative inventory no
+larger than max(1e-9, min(coupled_nonlinear_tolerance, 1e-8)); the default guard
+is unchanged. This avoids rejecting a 1e-8-converged state merely for a few
+1e-9 of negative scaled inventory. It does not clip fields or bypass the
+independent [-1e-8, 1+1e-8] phase-fraction and conservation checks. The first
+selected 1100 rpm coarse probe exposed this mismatch and is retained as a
+failed check, not counted as accepted evidence.
+
+The pressure bound p >= p_v(T) follows the same rule (20 October). The coupled
+unknown and its residual are scaled by
+
+$$p_\mathrm{scale}=\max\left(10^5,\ p_\mathrm{south},\ p_\mathrm{north},\ \frac{\mu|\omega|R^2}{c^2}\right),$$
+
+so an accepted Newton state may satisfy the cavitation complementarity only to
+within the inner tolerance in scaled units. A cell is admissible when
+
+$$p-p_v(T)\ \ge\ -\max\left(10^{-9},\ \min(\epsilon_\mathrm{NL},10^{-8})\right)p_\mathrm{scale},$$
+
+where $\epsilon_\mathrm{NL}$ is `coupled_nonlinear_tolerance`. At 12.7 bar and
+1e-8 this is about 1.3e-2 Pa, nine orders below the supply pressure and
+physically negligible. The previous fixed 1e-6 Pa bound rejected the gas-off
+P01/P07 pilots at -7.0e-3 and -4.0e-3 Pa while they were still converging.
+The independent verifier applies the identical bound. Fields are not clipped.
+
+### 20 October film-fraction admissibility
+
+In a full-film cell the volume complementarity residual
+
+$$\mathcal{R}_V=\frac{2(ab-g)}{a+b+\sqrt{a^2+b^2+2g}},\quad a=\frac{\rho_g c}{g_\mathrm{scale}},\ b=1-\theta,\ g=\frac{m_g c}{g_\mathrm{scale}h},$$
+
+reduces for small $b$ and $g$ to $\mathcal{R}_V\approx b-g/a=b-\alpha_g$, where
+$\alpha_g=m_g/(\rho_g h)$ is the written gas fraction. A Newton state accepted
+with $|\mathcal{R}_V|\le r$ and an admitted negative free-gas round-off
+($m_g\ge-r\,g_\mathrm{scale}$) can therefore have $\theta-1\le r-\alpha_g$. The
+solver and verifier accept
+
+$$\theta\le1+r+\max(0,-\alpha_g),\qquad r=\max\left(10^{-9},\min(\epsilon_\mathrm{NL},10^{-8})\right),$$
+
+instead of a fixed $1+10^{-8}$. The verifier also requires
+$\alpha_g\ge-\min\left(r(c/h)/a_\mathrm{ideal},\sqrt{rc/(2h)}\right)$, the first
+term being the free-gas guard with an ideal-gas $a$ (conservative for $Z\le1$)
+and the second following from $a^2+b^2+2g\ge0$. Gas-on P01 was rejected at
+$\theta-1=3.8\times10^{-8}$ with scaled free gas $-2.4\times10^{-9}$ while its
+outer iteration was still converging.
+
+### 20 October relaxed outer coupling tolerance
+
+The remaining selected jobs use an outer coupling tolerance of
+$\epsilon_\mathrm{c}=10^{-4}$ instead of $10^{-6}$, by explicit user choice.
+The outer loop is an under-relaxed fixed point ($\omega=0.3$) between pressure,
+temperature, gas inventory, viscosity and the cross-film profile; each listed
+residual is a relative change per outer iteration and must fall below
+$\epsilon_\mathrm{c}$. With $\omega=0.3$ the residual contracts by roughly 0.7
+per iteration, so stopping at $10^{-4}$ removes about $\ln(100)/\ln(1/0.7)\approx13$
+iterations per thermal pass. In the accepted pilots the fluid force at
+$R_p<10^{-4}$ differed from its $10^{-6}$ value by at most 0.011%, below the
+0.2% force-balance tolerance. The same value sets the energy-balance and
+cross-film collocation/viscosity gates; inner Newton tolerance, conservation
+(1e-8), force balance, cooling closure and admissibility are unchanged.
+
+The independent bubble-point check uses the same outer tolerance. In free-gas
+cells it requires $|p-p_b(c,T)|\le\max(1\ \mathrm{Pa},\ \epsilon_\mathrm{c}\,p_\mathrm{scale})$,
+because the written $T$ and $c$ lag the last hydraulic solve by a relative
+change of order $\epsilon_\mathrm{c}$. At $10^{-4}$ the measured mismatch was
+1.8-4.2 Pa against an allowance of about 127 Pa; at $10^{-6}$ it was below
+0.02 Pa.
+
+## Mixed lubrication: asperity contact and average flow factors (23 October 2026)
+
+Smooth rigid-surface Reynolds models cannot carry load or torque through
+asperity contact. When the minimum film approaches a few times the composite
+roughness, part of the load is supported by asperities and the shaft torque gains
+a boundary-friction contribution. The implementation follows the standard
+load-sharing approach used for mixed-lubricated journal bearings: a Patir-Cheng
+average Reynolds equation for the fluid and a Greenwood-Tripp statistical
+contact model for the asperities. Both are independent switches and default off.
+
+### Film ratio
+
+With shaft and bush RMS roughness $R_{q,s}$, $R_{q,b}$,
+
+$$\sigma=\sqrt{R_{q,s}^2+R_{q,b}^2},\qquad H=\frac{h}{\sigma}.$$
+
+Conventional regimes: $H>3$-4 full film, $1<H<3$ mixed, $H<1$ boundary.
+
+### Greenwood-Tripp asperity contact (`asperity_contact_model = GREENWOOD_TRIPP`)
+
+$$p_c=K E' F_{5/2}(H),\qquad K=\frac{16\sqrt2\,\pi}{15}(\eta\beta\sigma)^2\sqrt{\frac{\sigma}{\beta}},\qquad
+\frac1{E'}=\frac{1-\nu_1^2}{E_1}+\frac{1-\nu_2^2}{E_2},$$
+
+$$F_{5/2}(H)=4.4086\times10^{-5}(4-H)^{6.804}\ (H<4),\qquad 0\ (H\ge4).$$
+
+$\eta$ is the summit density, $\beta$ the summit radius and $\sigma$ the RMS
+roughness. $\eta\beta\sigma$ is nearly constant for engineering surfaces,
+0.03-0.05 (Whitehouse and Archard); $\sigma/\beta$ is typically
+$10^{-4}$-$10^{-2}$ and should come from a surface measurement. The contact
+pressure acts on the bearing-surface normal like the fluid pressure, so the
+steady equilibrium balances fluid plus contact reaction against the external
+load. The asperity shear is $\tau_c=f_b p_c$ with boundary friction coefficient
+$f_b$ (0.1 is the common choice for lubricated steel contacts). It drags the
+bearing along the rotation and adds $f_b p_c R$ per unit shaft area to the shaft
+torque. The Reynolds solve itself is unchanged by contact.
+
+### Patir-Cheng average flow model (`flow_factor_model = PATIR_CHENG`)
+
+For isotropic Gaussian roughness ($\gamma=1$) the averaged mass flux per unit width is
+
+$$\dot m=-\rho\,\phi_x\frac{h^3}{12\mu}\nabla p+\rho\frac{U}{2}\theta\left(h+\sigma\phi_s\right),$$
+
+$$\phi_x=1-0.90e^{-0.56H}\ (H\ge0.5),\qquad
+\Phi_s=\begin{cases}1.899H^{0.98}e^{-0.92H+0.05H^2}&H\le5\\1.126e^{-0.25H}&H>5\end{cases},\qquad
+\phi_s=\frac{R_{q,s}^2-R_{q,b}^2}{\sigma^2}\Phi_s,$$
+
+with the shaft as the moving surface 1. The shear flow factor vanishes for
+equally rough surfaces. The wall shear on the shaft is
+
+$$\tau=\frac{\mu U}{h}\left(\phi_f+\frac{R_{q,s}^2-R_{q,b}^2}{\sigma^2}\Phi_{fs}\right)+\phi_{fp}\frac{h}{2}\frac{\partial p}{\partial x},$$
+
+$$\phi_f=\tfrac{35}{32}z\left[(1-z^2)^3\ln\frac{z+1}{z-1}+\tfrac{z}{15}\left(66+z^2(30z^2-80)\right)\right]\ (H>3),$$
+
+$$\phi_f=\tfrac{35}{32}z\left[(1-z^2)^3\ln\frac{z+1}{\varepsilon^*}+\tfrac1{60}\left(-55+z(132+z(345+z(-160+z(-405+z(60+147z))))))\right]\ (H\le3),$$
+
+$z=H/3$, $\varepsilon^*=1/300$, $\Phi_{fs}=11.1H^{2.31}e^{-2.38H+0.11H^2}$ for
+$H\le7$ (0 above), $\phi_{fp}=1-1.40e^{-0.66H}$. Fits below $H=0.5$ are held at
+their $H=0.5$ value. The coefficients were checked by continuity: both $\Phi_s$
+branches give 0.3226 at $H=5$, both $\phi_f$ branches give $7/6$ at $H=3$, and
+$\phi_f\to1$ as $H\to\infty$ (the $z^5$, $z^3$ and $z$ terms cancel and the
+$1/z$ term gives exactly 1).
+
+Assumptions and limits:
+
+- The expected local gap $E[h_T]$ is replaced by $h$ (within 0.5% for $H\ge2$),
+  so the contact factor of Wu and Zheng is omitted; results for $H<2$ are
+  indicative only.
+- Flow factors apply to the JFO and FBNS fluxes (Poiseuille mobility and the
+  mass-conserving Couette flux, which carries the shear-flow term with the film
+  content). COUPLED and Gumbel do not apply them; validation rejects the
+  combination. Asperity contact works with every cavitation model.
+- The $\phi_s$ and $\Phi_{fs}$ sign convention (shaft as surface 1) follows
+  Patir and Cheng (1979) but has not been verified here against an independent
+  unequal-roughness solution; equal roughness makes both terms vanish.
+- Rigid, aligned surfaces: no elastic deformation of the film, misalignment,
+  edge loading, wear or running-in. These usually lower the real local minimum
+  gap, so mixed lubrication in practice starts at larger computed $h_{min}$.
+
+References: Greenwood and Tripp, Proc. IMechE 185 (1970-71) 625-633; Patir and
+Cheng, J. Lubr. Technol. 100 (1978) 12-17 and 101 (1979) 220-229; Arcoumanis et
+al. (1997) for the $F_{5/2}$ fit; Gelinck and Schipper, Tribol. Int. 33 (2000)
+175-181; Lu, Khonsari and Gelinck, J. Tribol. 128 (2006) 789-794; Song, Wu and
+Yuan, AIP Advances 12 (2022) 015213 (journal bearing, Patir-Cheng with
+Greenwood-Tripp, $f_b=0.1$).
+
+### Sensitivity on the LGE density-off cases (23 October 2026)
+
+Twenty-five steady FBNS runs (commit 75299d8, afml-r6) on five accepted
+density-off cases: M01 200 rpm, M03 300, M05 500, M11 800, M16 1100. Each run
+reuses the accepted final-pass config (720x192, 16 film layers, same restart
+state and fixed exterior cooling) and adds only the mixed-lubrication keys.
+Variants: smooth control; Greenwood-Tripp + Patir-Cheng with composite
+sigma = 0.4, 0.8, 1.2 um (split equally between shaft and bush, so phi_s and
+Phi_fs vanish), eta beta sigma = 0.04, sigma/beta = 1e-3, f_b = 0.1,
+E' = 107 GPa (steel shaft, 304-stainless bush analogue); plus sigma = 0.8 um
+with sigma/beta = 1e-2. All runs converged (native equilibrium within 0.2%).
+The smooth controls reproduce the accepted torques (M01 0.0492 N m).
+
+| Case | rpm | Measured (N m) | Smooth | 0.4 um | 0.8 um | 1.2 um | 0.8 um, s/b 0.01 | h_min smooth (um) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| M01 | 200 | 0.326 | 0.049 | 0.050 | 0.059 | 0.178 | 0.072 | 1.88 |
+| M03 | 300 | 0.323 | 0.061 | 0.061 | 0.063 | 0.088 | 0.063 | 2.54 |
+| M05 | 500 | 0.238 | 0.071 | 0.071 | 0.072 | 0.073 | 0.072 | 4.13 |
+| M11 | 800 | 0.186 | 0.078 | 0.078 | 0.078 | 0.079 | 0.078 | 6.97 |
+| M16 | 1100 | 0.123 | 0.050 | 0.050 | 0.050 | 0.050 | 0.050 | 24.27 |
+
+- Contact acts only below H_min of about 3.5 (200-300 rpm). At M01 with
+  sigma = 1.2 um, asperities carry 4.9% of the load and 0.120 N m (67%) of the
+  torque, and h_min rises from 1.88 to 2.11 um.
+- Within the literature roughness range the model closes at most 47% of the
+  200 rpm gap and about 10% at 300 rpm, and nothing at 500 rpm and above.
+  The Greenwood-Tripp (4 - H)^6.8 dependence gives a sharp step, whereas the
+  measured excess is nearly equal at 200 and 300 rpm and still 0.07-0.12 N m at
+  thick films. Rigid aligned asperity contact therefore does not explain the
+  whole discrepancy; the constant offset points to the drag-reference
+  subtraction, and the low-speed rise to larger effective roughness or a
+  smaller real gap (misalignment, distortion) than the rigid model computes.
+- Limits: contact friction heat is not added to the energy equation, and the
+  exterior cooling was held at the smooth solution; at M01, sigma = 1.2 um the
+  contact power (about 2.5 W) is a large share of the heat input, so the
+  rough-case temperatures are lower bounds.
+
+Results, launcher and summary scripts: `results/lge_mixed_lubrication_20261023`
+(generated, not source).

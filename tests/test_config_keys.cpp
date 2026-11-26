@@ -98,6 +98,12 @@ void test_manifest_matches_parser() {
         SimulationConfig cfg;
         if (key == "inlet_species")
             cfg.load_from_text("inlet_groove = 90 10 2e5\ninlet_species = 0 .001 0\n");
+        else if (key == "asperity_contact_model" || key == "flow_factor_model")
+            cfg.load_from_text(key + " = NONE\n");  // enumerations reject unknown values
+        else if (key == "load_model") cfg.load_from_text(key + " = TABLE\n");
+        else if (key == "motion_coupling") cfg.load_from_text(key + " = IMPLICIT\n");
+        else if (key == "load_table_abscissa") cfg.load_from_text(key + " = PHASE_DEG\n");
+        else if (key == "load_table_format") cfg.load_from_text(key + " = POLAR\n");
         else cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");
@@ -204,6 +210,22 @@ void test_reservoir_states() {
           "a charge bubble point must not silently raise either reservoir pressure");
 }
 
+void test_coupled_nonlinear_tolerance() {
+    SimulationConfig cfg;
+    check(cfg.coupled_nonlinear_tolerance == 1e-10, "Preserve the native default tolerance");
+    cfg.load_from_text("coupled_nonlinear_tolerance = 1e-8\n");
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.coupled_nonlinear_tolerance == 1e-8, "Inner tolerance must survive serialization");
+    cfg.cavitation_model = CavitationModel::COUPLED;
+    for (double invalid : {0., -1., 1., std::numeric_limits<double>::infinity()}) {
+        cfg.coupled_nonlinear_tolerance = invalid;
+        std::vector<std::string> errors, warnings;
+        cfg.validate(errors, warnings);
+        check(mentions(errors, "coupled_nonlinear_tolerance"), "Reject invalid inner tolerance");
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -218,6 +240,7 @@ int main(int argc, char** argv) {
     test_written_config_round_trips();
     test_shipped_configs_parse();
     test_reservoir_states();
+    test_coupled_nonlinear_tolerance();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();

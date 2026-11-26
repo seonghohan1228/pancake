@@ -1,5 +1,13 @@
 # pancake
 
+The current LGE mixture comparison uses the ten operating windows selected on
+19 October, P01--P10, with matched gas-off/on conditions. The three newly selected
+200, 500 and 1100 rpm measurements require their own runs. The user-selected
+inner pressure/species criterion is `coupled_nonlinear_tolerance = 1e-8`;
+outer thermal, load, property-domain and conservation checks remain separate.
+Earlier 17-case results and unsuccessful attempts are retained. See
+`cases/02f_lge_mixture_gas/README.md` for the conditional physical model.
+
 `pancake` is a 2D finite-volume solver for compressible thin-film lubrication
 in a journal bearing. It solves the Reynolds equation on a cylindrical
 `(theta, z)` mesh with MPI parallelism and writes VTK/PVD results for ParaView.
@@ -56,12 +64,14 @@ explains the defects and their consequences. The
 contains before/after curves, thermal results and the failed gas-cavity
 experimental comparison.
 
-The current implementation passes all 51 CTest checks on native Windows,
-local WSL Linux and the remote Linux workstation, including MPI checks. These establish conservation,
+The current implementation passes all 65 CTest checks on native Windows
+and the remote Linux workstation, including MPI checks. These establish conservation,
 analytic limits and thermodynamic implementation. They do not establish
 experimental accuracy for FW68D. Oil vapor uses the negligible-mass JFO
-limit; separate condensed refrigerant, blend fractionation, cross-film
-temperature and conjugate solid conduction are not resolved by COUPLED.
+limit; separate condensed refrigerant and blend fractionation are not
+resolved. The steady finite-volume thermal path resolves film layers and
+conjugate solids; the transient thermal Newton state retains one mean
+temperature per film cell.
 
 `COMPOSITION_TABLE` viscosity uses actual dissolved mass fraction and
 temperature, with strict table bounds. A traceable
@@ -69,6 +79,16 @@ temperature, with strict table bounds. A traceable
 path; **FVC68B is not FW68D**, and its 23–65°C data do not cover 20–80°C.
 No CoolProp runtime dependency is added to the C++ solver. Python validation
 scripts use NumPy and Matplotlib and record the run machine and MPI count.
+
+The 2026-10-19 conditional LGE follow-on in
+[02f_lge_mixture_gas](cases/02f_lge_mixture_gas/README.md) compares matched
+steady COUPLED runs with refrigerant release disabled/enabled, using the full
+`nu(c,T)` chart, strict bubble-pressure support, and resolved cross-film/solid
+thermal conduction. Its 30 mass% and absolute-chart-basis interpretation,
+pure-oil density law and R410A caloric analogue are conditional assumptions;
+all 34 configurations passed input checks. Matched 48×16 relaxation-0.3 pilots
+passed strict raw-field acceptance. The isolated remote build passed 65 tests
+and the full campaign is running; campaign-level gas effects remain pending.
 
 ## Earlier audit and repaired segregated model
 
@@ -428,6 +448,31 @@ in time; only the bearing equation of motion has a selectable integrator
 never changed the field solves and have been removed; old configs still parse
 with a one-line "ignored" warning.
 
+Time-dependent load (2026-11-19, PHYSICS.md 12.1): `load_model = CONSTANT`
+(default, `external_load_x|y|z`), `ROTATING` (`load_magnitude`,
+`load_rotation_start_deg`, `load_rotation_speed` in rad/s) or `TABLE`
+(`load_table_file` with rows `abscissa, a, b`; `load_table_abscissa = PHASE_DEG`
+is periodic with `load_frequency` [Hz] and `load_phase_offset_deg`, `TIME_S` is
+not; `load_table_format = POLAR` (magnitude N, direction deg) or `CARTESIAN`;
+`load_table_scale`, `load_table_angle_offset_deg`). Rows are interpolated
+linearly in their x and y parts; jumps between rows are kept.
+
+`motion_coupling = IMPLICIT` (PHYSICS.md 12.2) solves the bearing motion by
+backward Euler with the film force at the end of the step, iterating position
+and film solve within the step. It removes the explicit stability limit
+dt < 2 m / C_squeeze. Requires `motion_time_method = EULER_IMPLICIT`; controls
+`motion_coupling_tolerance`, `motion_coupling_position_tolerance`,
+`motion_coupling_max_iters`, `motion_coupling_fd_step`,
+`motion_coupling_step_limit`. Every MOVING_BEARING transient writes
+`results/motion.csv` (one row per step), and single-phase FBNS transients write
+`results/final_state.dat`, which `steady_initial_state_file` reads back to
+restart (PHYSICS.md 12.3).
+
+`inlet_rotation_speed` [rad/s] turns every inlet about the axis in a TRANSIENT
+run (default 0: fixed in the mesh frame; PHYSICS.md 12.4). Inlet cells stay
+pressure reservoirs, so cells entering or leaving an inlet keep the liquid
+balance closed.
+
 Convection face interpolation is selectable per transported variable with
 `theta_convection_scheme`, `thermal_convection_scheme`, and
 `gas_convection_scheme` (`UPWIND` default; `LINEAR` — 2nd-order central, unbounded;
@@ -669,6 +714,27 @@ reference is easier to inspect. Positive `load_angle_deg` follows increasing
 solver `theta`, so the preview's zero column corresponds to
 `theta = 90 deg + load_angle_deg`.
 
+## Mixed lubrication (optional)
+
+Rough-surface effects are off by default. Enable asperity contact and/or average
+flow factors in the config:
+
+```text
+asperity_contact_model = GREENWOOD_TRIPP   # NONE | GREENWOOD_TRIPP
+flow_factor_model = PATIR_CHENG            # NONE | PATIR_CHENG (JFO or FBNS only)
+roughness_rq_shaft = 0.4e-6                # m, RMS
+roughness_rq_bush = 0.8e-6                 # m, RMS
+asperity_eta_beta_sigma = 0.04             # typical 0.03-0.05
+asperity_sigma_over_beta = 1e-3            # typical 1e-4 to 1e-2
+contact_modulus = 107e9                    # Pa, 1/E' = sum (1-nu^2)/E
+boundary_friction_coefficient = 0.1
+```
+
+Contact load is part of `fluid_force_*` (balanced against the load) and contact
+friction is part of `friction_torque`; the separate `contact_force_*`,
+`contact_friction_torque` and `contact_pressure` outputs show the contact share.
+See PHYSICS.md, "Mixed lubrication".
+
 ## Output
 
 Results are written under the configured `output_dir`. The default is
@@ -882,3 +948,18 @@ including failed/interrupted attempts, has been retrieved and hash-verified in
 overlay and methods are in its `analysis` directory; retained research records
 are updated. Physical inputs and acceptance criteria are unchanged.
 See the campaign methods for validity limits, remote execution and acceptance.
+
+The [matched thermal gas comparison](cases/02f_lge_mixture_gas/README.md)
+uses an optional `coupled_fbns_initialization` to obtain a cavitating starting
+pressure/film-content field for the COUPLED solve. It preserves the imposed
+load, geometry, composition, temperature and final convergence requirements.
+The preliminary FBNS field is never accepted as the coupled result.
+The resolved steady path damps the complete layer viscosity profile to settle
+fill/viscosity feedback, then checks it against the unrelaxed constitutive law.
+Saved inverse-viscosity layers support an independent campaign acceptance check.
+The load search rejects unresolved trial positions directly so it can try a
+smaller move; the main pressure state retains conservative pseudo-time recovery.
+The 02f gas worker has no wall-clock deadline by default; `--timeout SECONDS`
+opts into a bounded native solve. The former inherited two-hour limit stopped
+progressing full-grid pilots. Their evidence is retained, and the retry keeps
+all iteration, load, physical and conservation acceptance gates unchanged.

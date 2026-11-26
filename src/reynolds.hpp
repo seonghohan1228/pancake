@@ -26,9 +26,19 @@ namespace Reynolds {
         double viscous_x = 0.0;
         double viscous_y = 0.0;
         double viscous_z = 0.0;
+        // Asperity contact reaction (normal + boundary friction) on the bearing
+        // surface; zero unless asperity_contact_model is active.
+        double contact_x = 0.0;
+        double contact_y = 0.0;
+        double contact_z = 0.0;
+        double contact_torque = 0.0;
+        // Total bearing-surface reaction balanced against the external load:
+        // pressure + viscous + contact. Named fluid_* for its existing consumers;
+        // it equals the pure fluid force when contact is off.
         double fluid_x = 0.0;
         double fluid_y = 0.0;
         double fluid_z = 0.0;
+        // Shaft torque: hydrodynamic shear plus asperity boundary friction.
         double friction_torque = 0.0;
     };
 
