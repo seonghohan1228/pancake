@@ -13,6 +13,11 @@
   reads "3000 rpm (50 Hz)".
 - Geometry-view marks stop at the ring so they never cross a stacked label.
 - The screenshot series includes the run monitor.
+- Case files store file paths relative to the case: saving (and Run, which saves)
+  rewrites absolute table and load-table paths relative to the case file when on the
+  same drive, and rebases relative paths when a case is written to another folder
+  (comparison, sweep). A copied or moved case folder keeps working. Verified: a case
+  with an absolute path was saved as `../fluids/...` and ran after moving the folder.
 
 ## 2026-11-26 - GUI for LGE bearing engineers (`lge-gui`)
 

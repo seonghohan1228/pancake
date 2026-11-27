@@ -43,6 +43,23 @@ bool write_text(const fs::path& path, const std::string& text, std::string& erro
 }
 
 
+/// A file path as a case at `case_dir` should store it: relative to the case
+/// when on the same drive, so a copied or moved case folder keeps working.
+/// `base_dir` is the folder a relative `path` was relative to until now.
+fs::path portable_path(const fs::path& path, const fs::path& base_dir, const fs::path& case_dir) {
+    if (path.empty()) return path;
+    fs::path absolute = path;
+    if (path.is_relative()) {
+        if (base_dir.empty()) return path;
+        absolute = base_dir / path;
+    }
+    // Only paths of this machine (with a drive) are rebased; others are kept as text.
+    if (!absolute.has_root_name() || absolute.root_name() != case_dir.root_name()) return path;
+    std::error_code ec;
+    const fs::path relative = fs::proximate(absolute.lexically_normal(), case_dir.lexically_normal(), ec);
+    return ec ? path : relative;
+}
+
 }  // namespace
 
 // ===========================================================================
@@ -212,7 +229,11 @@ void GuiApp::load_case(const fs::path& path) {
     // Pair: from the GUI metadata, else the library folder whose table this config uses.
     std::string pair_id;
     if (const auto it = meta.find("fluid_pair"); it != meta.end()) pair_id = it->second;
-    if (pair_id.empty()) pair_id = library_.find_by_table(cfg.solution_table_file);
+    if (pair_id.empty()) {
+        fs::path table = cfg.solution_table_file;
+        if (!table.empty() && table.is_relative()) table = path.parent_path() / table;
+        pair_id = library_.find_by_table(table);
+    }
     select_pair(pair_id);
 
     const gui::CaseRead read = gui::from_config(cfg, meta, pair());
@@ -246,6 +267,13 @@ void GuiApp::load_case(const fs::path& path) {
 bool GuiApp::write_case_file(const gui::CaseModel& model, const fs::path& path,
                              const fs::path& output_dir, std::string& error) {
     SimulationConfig cfg = gui::to_config(model, pair(), base_config_, loaded_case_);
+    // File paths relative to the case file, rebased from the loaded case's folder.
+    const fs::path from_dir = case_path_.empty() ? fs::path() : case_path_.parent_path();
+    const fs::path to_dir = path.parent_path();
+    for (fs::path* file : {&cfg.solution_table_file, &cfg.load_table_file, &cfg.viscosity_table_file,
+                           &cfg.solubility_table_file, &cfg.density_table_file,
+                           &cfg.viscosity_composition_file})
+        *file = portable_path(*file, from_dir, to_dir);
     std::error_code ec;
     fs::path relative = fs::relative(output_dir, path.parent_path(), ec);
     cfg.output_dir = (ec || relative.empty()) ? winutil::path_to_utf8(output_dir)
