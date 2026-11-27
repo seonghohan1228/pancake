@@ -10,6 +10,7 @@
 #include "implot.h"
 #include "result_data.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -166,6 +167,8 @@ void plot_row(const char* title, const char* x_label, const char* y_label, const
     if (log_y) ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
     const int n = static_cast<int>(std::min(x.size(), y.size()));
     ImPlot::SetNextLineStyle(theme::kAccent, 1.5f);
+    // Markers so the first iterations (one or two points) are visible too.
+    ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, n > 60 ? 0.0f : 2.5f, theme::kAccent, 0.0f);
     ImPlot::PlotLine("##y", x.data(), y.data(), n);
     ImPlot::EndPlot();
 }
@@ -352,16 +355,27 @@ void GuiApp::draw_monitor_window() {
         return;
     }
     std::vector<double> mx, mh, mt, dx, dc;
+    // Steady: one point per outer iteration ("Outer iter" lines). The end-of-run
+    // step line (step 0) would sit apart from them on the shared x axis, so it is
+    // left out when outer rows exist; older solvers fall back to step lines.
+    const bool outer_rows = !s.transient && std::any_of(monitors_.begin(), monitors_.end(),
+                                                        [](const MonitorRow& r) { return r.outer; });
     for (const MonitorRow& row : monitors_) {
+        if (outer_rows != row.outer) continue;
         mx.push_back(s.transient ? row.t : row.step);
         mh.push_back(gui::to_display(hu, row.h_min));
         mt.push_back(gui::to_display(tu, row.torque));
+        if (outer_rows) {
+            dx.push_back(row.step);
+            dc.push_back(row.cavitated * 100.0);
+        }
     }
-    for (const DiagRow& row : diagnostics_) {
-        dx.push_back(s.transient ? row.time : row.step);
-        dc.push_back(row.cavitated_fraction * 100.0);
-    }
-    const char* x_label = s.transient ? "Time [s]" : "Outer iteration / step";
+    if (!outer_rows)
+        for (const DiagRow& row : diagnostics_) {
+            dx.push_back(s.transient ? row.time : row.step);
+            dc.push_back(row.cavitated_fraction * 100.0);
+        }
+    const char* x_label = s.transient ? "Time [s]" : "Outer iteration";
     const int rows = s.transient ? 3 : 4;
     if (ImPlot::BeginSubplots("##live", rows, 1, ImVec2(-1, height), ImPlotSubplotFlags_LinkAllX)) {
         plot_row("h_min", nullptr, h_label.c_str(), mx, mh, false);

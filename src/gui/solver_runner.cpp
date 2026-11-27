@@ -302,6 +302,24 @@ void SolverRunner::finish_line(std::string&& line) {
             if (pending_monitors_.size() > 200000) pending_monitors_.pop_front();
         }
     }
+    // Steady runs: "Outer iter=K | h_min=.. | M=.. Nm | cav=.." after every outer
+    // iteration, so the monitor moves while the load balance converges.
+    if (first_char != std::string::npos && clean.compare(first_char, 11, "Outer iter=") == 0) {
+        const auto value_after = [&](const char* token) {
+            const size_t pos = clean.find(token);
+            return pos == std::string::npos
+                       ? std::numeric_limits<double>::quiet_NaN()
+                       : std::atof(clean.c_str() + pos + std::strlen(token));
+        };
+        MonitorRow row;
+        row.outer = true;
+        row.step = std::atoi(clean.c_str() + first_char + 11);
+        row.h_min = value_after("h_min=");
+        row.torque = value_after("| M=");
+        row.cavitated = value_after("cav=");
+        pending_monitors_.push_back(row);
+        if (pending_monitors_.size() > 200000) pending_monitors_.pop_front();
+    }
     if (clean.find("finished successfully") != std::string::npos && progress_.end_t > 0.0) {
         progress_.sim_t = progress_.end_t;
     }

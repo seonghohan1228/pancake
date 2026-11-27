@@ -116,7 +116,7 @@ void GuiApp::init() {
 void GuiApp::shutdown() {
     runner_.cancel();
     settings.angle_zero = static_cast<int>(angle_zero_);
-    settings.save(paths.settings_file);
+    if (!scripted()) settings.save(paths.settings_file);
 }
 
 void GuiApp::capture_finished(bool ok, const std::string& message) {
@@ -247,12 +247,21 @@ void GuiApp::load_case(const fs::path& path) {
     hidden_keys_ = read.hidden_keys;
     load_notes_ = read.notes;
     if (!same_case) allow_out_of_range_ = false;  // keep it across a re-save
-    for (const std::string& note : load_notes_)
-        log_.push_back({"Case note: " + note, IM_COL32(160, 110, 10, 255)});
-    if (!hidden_keys_.empty())
-        log_.push_back({"This case uses " + std::to_string(hidden_keys_.size()) +
-                            " settings the GUI does not show; they are kept on save.",
-                        IM_COL32(160, 110, 10, 255)});
+    // Notes once per opened case, not again on every save (a save reloads the file).
+    if (!same_case) {
+        for (const std::string& note : load_notes_)
+            log_.push_back({"Case note: " + note, IM_COL32(160, 110, 10, 255)});
+        if (!hidden_keys_.empty()) {
+            std::string keys;
+            for (std::size_t i = 0; i < hidden_keys_.size() && i < 4; ++i)
+                keys += (i ? ", " : "") + hidden_keys_[i];
+            if (hidden_keys_.size() > 4) keys += ", ...";
+            // Information, not a problem: the file is saved and run as written.
+            log_.push_back({"Kept as written in the file (no GUI control): " + keys +
+                                ". Saving keeps " + (hidden_keys_.size() == 1 ? "it." : "them."),
+                            IM_COL32(110, 116, 128, 255)});
+        }
+    }
     if (pair_id.empty() && !cfg.solution_table_file.empty())
         log_.push_back({"The fluid table of this case (" + cfg.solution_table_file.generic_string() +
                             ") is not in the fluid directory. Choose a pair to run it here.",

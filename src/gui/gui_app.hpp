@@ -77,6 +77,9 @@ public:
     std::filesystem::path startup_case;
     std::filesystem::path startup_screenshots;
     bool startup_run = false;               // --run: run the opened case, write key results
+    /// Scripted session (--run or --screenshots): reads the user's settings and
+    /// layout but never writes them, so a test run leaves the user's GUI as it was.
+    bool scripted() const { return startup_run || !startup_screenshots.empty(); }
     std::filesystem::path startup_fluids;   // --fluids: fluid directory for this session only
 
     /// Screen-region PNG capture handshake with the frame loop: the app requests,

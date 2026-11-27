@@ -58,10 +58,9 @@ void onset_chart(const char* id, ImVec2 size, const std::vector<OnsetMarker>& ma
     if (compact) plot_flags |= ImPlotFlags_NoLegend | ImPlotFlags_NoTitle;
     if (!ImPlot::BeginPlot(id, size, plot_flags)) return;
 
-    const ImPlotAxisFlags axis_flags = compact ? ImPlotAxisFlags_NoLabel : ImPlotAxisFlags_None;
-    ImPlot::SetupAxes(compact ? nullptr : "Sommerfeld number S",
-                      compact ? nullptr : "Pressure margin / specific load, (p_amb - p_sat) / P",
-                      axis_flags, axis_flags);
+    // The compact chart keeps short axis titles so it still reads on its own.
+    ImPlot::SetupAxes("Sommerfeld number S",
+                      compact ? "Margin / P" : "Pressure margin / specific load, (p_amb - p_sat) / P");
     ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Log10);
     ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
     ImPlot::SetupAxesLimits(x_min, x_max, y_min, y_max, ImPlotCond_Always);
