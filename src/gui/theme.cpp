@@ -24,6 +24,7 @@ void apply_style(float dpi_scale) {
     style.IndentSpacing = 18.0f;
     style.CellPadding = ImVec2(6, 3);
     style.WindowBorderSize = 1.0f;
+    style.PopupBorderSize = 1.0f;
     style.FrameBorderSize = 1.0f;  // inputs need an outline on light backgrounds
     style.DockingSeparatorSize = 2.0f;
 
@@ -83,7 +84,9 @@ void apply_style(float dpi_scale) {
     colors[ImGuiCol_TableRowBgAlt] = ImVec4(0, 0, 0, 0.025f);
     colors[ImGuiCol_TextSelectedBg] = ImVec4(kAccent.x, kAccent.y, kAccent.z, 0.30f);
     colors[ImGuiCol_NavCursor] = kAccent;
-    colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.2f, 0.2f, 0.2f, 0.35f);
+    // Popups stand out: darker dim behind modal dialogs (borders and drop
+    // shadows are drawn per popup, see ui::window_shadow).
+    colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.12f, 0.13f, 0.15f, 0.45f);
 
     style.ScaleAllSizes(dpi_scale);
     ImGui::GetStyle() = style;

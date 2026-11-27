@@ -249,6 +249,7 @@ void GuiApp::draw_thermal_transient_dialog() {
     }
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 34.0f, 0.0f), ImGuiCond_Appearing);
     if (!ImGui::BeginPopupModal("Thermal transient", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ui::window_shadow();
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 33.0f);
     const gui::RunTime& direct = estimates_.run_time;
     const auto duration = [](double seconds) {

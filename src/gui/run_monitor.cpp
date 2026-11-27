@@ -155,13 +155,18 @@ std::string duration_text(double seconds) {
 void plot_row(const char* title, const char* x_label, const char* y_label, const std::vector<double>& x,
               const std::vector<double>& y, bool log_y) {
     if (!ImPlot::BeginPlot(title, ImVec2(), ImPlotFlags_NoLegend | ImPlotFlags_NoTitle)) return;
-    ImPlot::SetupAxes(x_label, y_label, ImPlotAxisFlags_AutoFit | (x_label ? 0 : ImPlotAxisFlags_NoTickLabels),
-                      ImPlotAxisFlags_AutoFit);
+    const bool data = ui::has_points(x, y);
+    ImPlot::SetupAxes(x_label, y_label, ui::fit_if(data) | (x_label ? 0 : ImPlotAxisFlags_NoTickLabels),
+                      ui::fit_if(data));
+    if (!data) {
+        ui::empty_plot("Waiting for data");
+        ImPlot::EndPlot();
+        return;
+    }
     if (log_y) ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
     const int n = static_cast<int>(std::min(x.size(), y.size()));
     ImPlot::SetNextLineStyle(theme::kAccent, 1.5f);
-    if (n > 0) ImPlot::PlotLine("##y", x.data(), y.data(), n);
-    if (n == 0) ImPlot::PlotText("waiting for data", 0.5, 0.5);
+    ImPlot::PlotLine("##y", x.data(), y.data(), n);
     ImPlot::EndPlot();
 }
 

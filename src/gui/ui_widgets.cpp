@@ -1,8 +1,10 @@
 #include "ui_widgets.hpp"
 
+#include "implot.h"
 #include "theme.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace ui {
@@ -174,6 +176,53 @@ std::string format_value(double si, gui::UnitFamily family, UnitChoices& choices
     std::snprintf(number, sizeof(number), format, gui::to_display(unit, si));
     std::string text = number;
     if (unit.label[0]) text += std::string(" ") + unit.label;
+    return text;
+}
+
+bool has_points(const std::vector<double>& x, const std::vector<double>& y) {
+    const std::size_t n = std::min(x.size(), y.size());
+    for (std::size_t i = 0; i < n; ++i)
+        if (std::isfinite(x[i]) && std::isfinite(y[i])) return true;
+    return false;
+}
+
+// Empty plots also hide their (meaningless) 0..1 tick labels.
+int fit_if(bool has_data) { return has_data ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_NoTickLabels; }
+
+void empty_plot(const char* text) {
+    ImPlot::SetupAxesLimits(0.0, 1.0, 0.0, 1.0, ImPlotCond_Always);
+    // Text must not take part in a fit: its size is fixed in pixels, so a fit
+    // to it changes the limits every frame (the plots "jump").
+    ImPlot::PlotText(text, 0.5, 0.5, ImVec2(0, 0), ImPlotItemFlags_NoFit);
+}
+
+void window_shadow() {
+    if (ImGui::IsWindowDocked()) return;
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 pos = ImGui::GetWindowPos();
+    const ImVec2 size = ImGui::GetWindowSize();
+    const float rounding = ImGui::GetStyle().WindowRounding;
+    constexpr int kRings = 14;
+    constexpr float kOffsetY = 3.0f;  // light from above: the shadow falls lower
+    draw->PushClipRect(ImVec2(pos.x - kRings - 2.0f, pos.y - kRings - 2.0f),
+                       ImVec2(pos.x + size.x + kRings + 2.0f, pos.y + size.y + kRings + kOffsetY + 2.0f),
+                       false);
+    for (int i = 1; i <= kRings; ++i) {
+        const float t = static_cast<float>(i) / kRings;
+        const float alpha = 0.24f * (1.0f - t) * (1.0f - t);
+        const float grow = static_cast<float>(i);
+        draw->AddRect(ImVec2(pos.x - grow, pos.y - grow + kOffsetY),
+                      ImVec2(pos.x + size.x + grow, pos.y + size.y + grow + kOffsetY),
+                      ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.0f, alpha)), rounding + grow, 0, 1.0f);
+    }
+    draw->PopClipRect();
+}
+
+std::string speed_all_units(double rad_s) {
+    constexpr double kPi = 3.14159265358979323846;
+    const double hz = std::abs(rad_s) / (2.0 * kPi);
+    char text[96];
+    std::snprintf(text, sizeof(text), "%.4g rpm = %.4g Hz = %.4g rad/s", hz * 60.0, hz, std::abs(rad_s));
     return text;
 }
 

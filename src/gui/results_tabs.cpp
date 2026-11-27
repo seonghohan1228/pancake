@@ -367,8 +367,13 @@ void draw_profiles_tab(const TabContext& tab, float& profile_z, PlotCapture& cap
     ImGui::BeginGroup();
     if (ImPlot::BeginPlot("##profiles", ImVec2(-1, height))) {
         ImPlot::SetupAxis(ImAxis_X1, tab.x_label.c_str());
-        ImPlot::SetupAxis(ImAxis_Y1, p_axis.c_str(), ImPlotAxisFlags_AutoFit);
-        ImPlot::SetupAxis(ImAxis_Y2, h_axis.c_str(), ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit);
+        const bool data = ui::has_points(profile.angle, p);
+        ImPlot::SetupAxis(ImAxis_Y1, p_axis.c_str(), ui::fit_if(data));
+        ImPlot::SetupAxis(ImAxis_Y2, h_axis.c_str(), ImPlotAxisFlags_AuxDefault | ui::fit_if(data));
+        if (!data) {
+            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
+            ImPlot::SetupAxisLimits(ImAxis_Y2, 0.0, 1.0, ImPlotCond_Always);
+        }
         ImPlot::SetupAxisLimits(ImAxis_X1, tab.start, tab.start + 360.0, ImPlotCond_Always);
         ImPlot::SetupLegend(ImPlotLocation_NorthEast);
         ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
@@ -451,10 +456,16 @@ int draw_transient_tab(TransientUi& state, const TabContext& tab, const std::fil
     if (ImPlot::BeginSubplots("##motion", 5, 1, ImVec2(-1, height), ImPlotSubplotFlags_LinkAllX)) {
         for (int k = 0; k < 5; ++k) {
             if (!ImPlot::BeginPlot(series[k].label, ImVec2(), ImPlotFlags_NoLegend | ImPlotFlags_NoTitle)) continue;
-            ImPlot::SetupAxes(k == 4 ? (state.x_axis == 1 ? "Crank angle [deg]" : "Time [s]") : nullptr,
-                              series[k].label, ImPlotAxisFlags_AutoFit | (k < 4 ? ImPlotAxisFlags_NoTickLabels : 0),
-                              ImPlotAxisFlags_AutoFit);
             const std::vector<double>& y = *series[k].y;
+            const bool data = ui::has_points(x, y);
+            ImPlot::SetupAxes(k == 4 ? (state.x_axis == 1 ? "Crank angle [deg]" : "Time [s]") : nullptr,
+                              series[k].label, ui::fit_if(data) | (k < 4 ? ImPlotAxisFlags_NoTickLabels : 0),
+                              ui::fit_if(data));
+            if (!data) {
+                ui::empty_plot();
+                ImPlot::EndPlot();
+                continue;
+            }
             const int n = static_cast<int>(std::min(x.size(), y.size()));
             ImPlot::SetNextLineStyle(theme::kAccent, 1.5f);
             if (n > 0) ImPlot::PlotLine("##y", x.data(), y.data(), n);
@@ -537,8 +548,12 @@ void draw_comparison_tab(ComparisonSide on, ComparisonSide off, const TabContext
     const float height = std::max(240.0f, ImGui::GetContentRegionAvail().y - ImGui::GetTextLineHeightWithSpacing());
     ImGui::BeginGroup();
     if (ImPlot::BeginPlot("##comparison_profiles", ImVec2(-1, height))) {
-        ImPlot::SetupAxes(tab.x_label.c_str(), p_axis.c_str(), 0, ImPlotAxisFlags_AutoFit);
+        bool any_run = false;
+        for (int k = 0; k < 2; ++k)
+            any_run = any_run || (sides[k].record && sides[k].run && sides[k].run->result.grid);
+        ImPlot::SetupAxes(tab.x_label.c_str(), p_axis.c_str(), 0, ui::fit_if(any_run));
         ImPlot::SetupAxisLimits(ImAxis_X1, tab.start, tab.start + 360.0, ImPlotCond_Always);
+        if (!any_run) ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
         for (int k = 0; k < 2; ++k) {
             const ComparisonSide& side = sides[k];
             if (!side.record || !side.run || !side.run->result.grid) continue;
