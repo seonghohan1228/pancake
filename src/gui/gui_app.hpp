@@ -233,6 +233,7 @@ private:
     int screenshot_step_ = -1;
     int screenshot_results_tab_ = -1;     // results tab a screenshot step selects (-1: leave)
     bool screenshot_units_popup_ = false;  // screenshot step with the Units popup open
+    int screenshot_zone_popup_ = -1;       // screenshot step with this boundary zone's values open
     std::filesystem::path screenshot_dir_;
     bool exit_after_screenshots_ = false;    // --screenshots: quit when done
     void start_screenshot_series();

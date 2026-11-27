@@ -28,8 +28,8 @@ bool near(double a, double b, double rel = 1e-9) {
 bool uses_coupled(const CaseModel& m, const FluidPair* pair) {
     if (m.dissolved_gas && m.gas_model == GasModel::Transport) return true;
     // Steady FBNS film energy (finite-volume form) needs a gas-free film (pure
-    // oil, deck O-runs); with refrigerant in the oil a steady thermal case runs
-    // COUPLED (deck X-runs). Transient thermal uses the simplified FBNS form.
+    // oil); with refrigerant in the oil a steady thermal case runs
+    // COUPLED. Transient thermal uses the simplified FBNS form.
     return m.thermal && m.analysis == AnalysisType::Steady && effective_content(m, pair) > 0.0;
 }
 
@@ -121,7 +121,7 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
     const bool transport = uses_coupled(m, pair);
     if (transport) {
         // Gas transport (gas on: equilibrium release) or refrigerant-oil film
-        // energy without release (gas off), as the deck X-runs.
+        // energy without release (gas off), as in the thermal runs with refrigerant.
         cfg.cavitation_model = CavitationModel::COUPLED;
         cfg.fluid_property_model = m.dissolved_gas ? FluidPropertyModel::TWO_PHASE
                                                    : FluidPropertyModel::SINGLE_PHASE;
@@ -310,7 +310,7 @@ void write_thermal(const CaseModel& m, const FluidPair* pair, SimulationConfig& 
         cfg.groove_mixing_model = GrooveMixingModel::PINNED;
         return;
     }
-    // Film + housing + shaft, as in the deck thermal runs (O/X series).
+    // Film + housing + shaft, as in the thermal runs.
     cfg.temperature_model = TemperatureModel::ENERGY_EQUATION;
     cfg.cross_film_thermal_model = CrossFilmModel::FINITE_VOLUME;
     cfg.cross_film_layers = m.cross_film_layers;
@@ -327,8 +327,8 @@ void write_thermal(const CaseModel& m, const FluidPair* pair, SimulationConfig& 
     cfg.bush_end_natural_convection = true;
     cfg.shaft_ambient_heat_transfer = m.housing.shaft_heat_transfer;
     cfg.shaft_ambient_area_ratio = m.housing.shaft_area_ratio;
-    // COUPLED film energy (deck X-runs): pinned feed temperature. Gas-free FBNS
-    // film energy (deck O-runs): flux-balanced feed.
+    // COUPLED film energy with refrigerant: pinned feed temperature. Gas-free FBNS
+    // film energy of pure oil: flux-balanced feed.
     cfg.groove_mixing_model = uses_coupled(m, pair) ? GrooveMixingModel::PINNED
                                                     : GrooveMixingModel::FLUX_BALANCED;
 }

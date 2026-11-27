@@ -16,7 +16,7 @@ void GuiApp::draw_geometry_panel() {
     changed |= ui::form_number("Bearing length L", "Axial length of the film. Typical L/D: 0.5 to 1.2.",
                                "geom.length", case_.bearing_length, gui::UnitFamily::Length, units());
     changed |= ui::form_number("Radial clearance c",
-                               "Bore radius minus shaft radius. Typical c/R: 1 to 2 per mille (10 to 40 um).",
+                               "Bore radius minus shaft radius. Typical c/R: 0.001 to 0.002 (10 to 40 um).",
                                "geom.clearance", case_.radial_clearance, gui::UnitFamily::SmallLength,
                                units());
 
@@ -68,8 +68,7 @@ void GuiApp::draw_geometry_panel() {
     if (case_.bearing_diameter > 0.0) {
         std::snprintf(text, sizeof(text), "%.3g", case_.bearing_length / case_.bearing_diameter);
         ui::form_value("L/D", "Length-to-diameter ratio.", text);
-        std::snprintf(text, sizeof(text), "%.3g per mille",
-                      1e3 * case_.radial_clearance / (0.5 * case_.bearing_diameter));
+        std::snprintf(text, sizeof(text), "%.3g", case_.radial_clearance / (0.5 * case_.bearing_diameter));
         ui::form_value("c/R", "Relative clearance: radial clearance per radius.", text);
     }
     ui::end_form();

@@ -692,6 +692,7 @@ struct ScreenStep {
     int live_tab;      // live view tab
     bool fluid_library;
     bool batch;
+    bool advanced = false;  // panel with its Advanced settings open
 };
 constexpr ScreenStep kScreens[] = {
     {"geometry", 0, 0, false, false},      {"fluid", 1, 0, false, false},
@@ -700,6 +701,10 @@ constexpr ScreenStep kScreens[] = {
     {"results", 6, 0, false, false},       {"fluid_library", 1, 0, true, false},
     {"batch", 0, 0, false, true},          {"run_monitor", 5, 0, false, false},
     {"results_polar", 6, 0, false, false}, {"results_units", 6, 0, false, false},
+    {"geometry_advanced", 0, 0, false, false, true},   {"fluid_advanced", 1, 0, false, false, true},
+    {"operating_advanced", 2, 0, false, false, true},  {"boundaries_advanced", 3, 0, false, false, true},
+    {"mesh_advanced", 4, 1, false, false, true},       {"solution_advanced", 5, 0, false, false, true},
+    {"boundaries_feed", 3, 0, false, false, false},
 };
 constexpr int kFramesPerScreen = 12;
 }  // namespace
@@ -717,6 +722,7 @@ void GuiApp::advance_screenshot_series() {
         screenshot_step_ = -1;
         screenshot_results_tab_ = -1;
         screenshot_units_popup_ = false;
+        screenshot_zone_popup_ = -1;
         show_fluid_library_ = false;
         show_batch_ = false;
         set_status("Screenshots saved to " + winutil::path_to_utf8(screenshot_dir_));
@@ -726,6 +732,8 @@ void GuiApp::advance_screenshot_series() {
     const ScreenStep& screen = kScreens[screenshot_step_];
     if (frame == 0) {
         selected_node_ = static_cast<gui::Node>(screen.node);
+        advanced_.fill(false);
+        if (screen.advanced) advanced_[static_cast<std::size_t>(screen.node)] = true;
         live_view_tab_ = screen.live_tab;
         show_fluid_library_ = screen.fluid_library;
         show_batch_ = screen.batch;
@@ -735,6 +743,7 @@ void GuiApp::advance_screenshot_series() {
         const std::string name = screen.name;
         screenshot_results_tab_ = name == "results_polar" ? 1 : (name == "results" ? 0 : -1);
         screenshot_units_popup_ = name == "results_units";
+        screenshot_zone_popup_ = name == "boundaries_feed" ? 1 : -1;
     }
     if (++frame == kFramesPerScreen) {
         char name[64];

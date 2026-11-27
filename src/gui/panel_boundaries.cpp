@@ -84,9 +84,16 @@ void GuiApp::draw_boundaries_panel() {
         }
         ImGui::EndTable();
     }
+    // A screenshot step may open one zone's values (user-guide figure).
+    const bool scripted_zone = screenshot_zone_popup_ >= 0 && !ImGui::IsPopupOpen("Zone values");
+    if (scripted_zone) {
+        open_zone = screenshot_zone_popup_;
+        highlighted_zone_ = open_zone;
+    }
     if (open_zone >= 0) {
         popup_zone = open_zone;
         ImGui::OpenPopup("Zone values");
+        if (scripted_zone) ImGui::SetNextWindowPos(ImGui::GetCursorScreenPos());
     }
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 30.0f, 0.0f));
     if (ImGui::BeginPopup("Zone values")) {

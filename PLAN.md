@@ -271,6 +271,8 @@ Plan: `docs/GUI_LGE_PLAN.md` (approved 2026-11-26, D1-D8 as recommended).
   shear from the bubble), Units popup, feed/h_min marks above the field map, polar
   over/under-ambient fills, heading font and primary buttons.
 - [ ] Headless capture sometimes saves blank frames (pre-existing); find the cause.
+- [x] Korean user manual for LGE engineers (27 slides), rotating-load example, c/R as a
+  number (2026-11-27, `lge-manual`).
 - [x] Live steady monitor (per outer iteration), field-view refresh setting, kept-settings
   note, scripted runs leave user settings alone (2026-11-27, `monitor-live`).
 

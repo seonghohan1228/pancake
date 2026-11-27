@@ -44,7 +44,7 @@ linear_pc_overlap = 1
 linear_solver_fallbacks = 2
 # Per-step mass-balance / convergence CSV cadence in steps; <= 0 disables.
 diagnostics_interval = 1
-steady_output_interval = 10
+steady_output_interval = 2
 steady_pressure_inner_only = false
 
 # Physics
