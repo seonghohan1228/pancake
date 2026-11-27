@@ -14,6 +14,7 @@ Example data only, not for design. Nothing here is measured or supplied data:
 Usage:  python tools/make_example_fluid.py  [output root, default: repository root]
 Writes  fluids/example_vg68_rx/{pair.txt,solution.csv} and
         examples/load_table_example.csv
+        examples/load_table_rotating.csv
 """
 
 import math
@@ -112,7 +113,23 @@ def write_load_table():
             f.write(f"{phi},{load:.3f},90\n")
 
 
+def write_rotating_load_table():
+    """Synthetic rotating load: the direction turns once per revolution, as on a
+    crank-driven compressor bearing; the magnitude varies twice per revolution."""
+    folder = ROOT / "examples"
+    with open(folder / "load_table_rotating.csv", "w", newline="\n") as f:
+        f.write(f"# {NOTE}. Synthetic rotating load: 1800 + 400 sin(2 phi) N,\n")
+        f.write("# direction 270 + phi deg (fixed frame, turns once per revolution).\n")
+        f.write("# Columns: crank angle [deg], magnitude [N], direction [deg]\n")
+        f.write("crank_angle_deg,load_N,direction_deg\n")
+        for phi in range(0, 360, 2):
+            r = math.radians(phi)
+            load = 1800.0 + 400.0 * math.sin(2.0 * r)
+            f.write(f"{phi},{load:.3f},{(270.0 + phi) % 360.0:.1f}\n")
+
+
 if __name__ == "__main__":
     count = write_pair()
     write_load_table()
+    write_rotating_load_table()
     print(f"wrote {count} table rows and the example load table under {ROOT}")
