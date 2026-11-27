@@ -195,6 +195,7 @@ void GuiApp::draw_batch_window() {
         ImGui::End();
         return;
     }
+    ui::window_shadow();
     ui::UnitChoices& unit_map = units();
     const InputInfo& in = info(s.input);
     const gui::UnitOption& unit = result_data::unit_of(unit_map, in.unit_id, in.family);
@@ -486,10 +487,12 @@ void GuiApp::draw_batch_window() {
         const std::string x_label = s.files_mode ? std::string("Case #") : std::string(in.name) + " [" + unit.label + "]";
         if (ImPlot::BeginPlot("##batch_curve", ImVec2(-1, plot_h - ImGui::GetFrameHeightWithSpacing()),
                               ImPlotFlags_NoLegend)) {
-            ImPlot::SetupAxes(x_label.c_str(), y_label.c_str(), ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+            const bool data = ui::has_points(xs, ys);
+            ImPlot::SetupAxes(x_label.c_str(), y_label.c_str(), ui::fit_if(data), ui::fit_if(data));
+            if (!data) ui::empty_plot("Results appear as cases finish");
             ImPlot::SetNextLineStyle(theme::kAccent, 2.0f);
             ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 4.0f);
-            if (!xs.empty()) ImPlot::PlotLine("##curve", xs.data(), ys.data(), static_cast<int>(xs.size()));
+            if (data) ImPlot::PlotLine("##curve", xs.data(), ys.data(), static_cast<int>(xs.size()));
             ImPlot::EndPlot();
         }
         ImGui::TableNextColumn();
