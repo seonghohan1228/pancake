@@ -15,6 +15,11 @@ endif()
 option(PANCAKE_BUILD_SOLVER "Build the MPI/PETSc solver and CLI executable" ON)
 option(PANCAKE_BUILD_TESTS "Build solver tests" ON)
 option(PANCAKE_BUILD_BUBBLE "Build the experimental bubble solver" OFF)
+# MinGW: link pancake.exe and the tests statically (PETSc, BLAS, METIS, GCC and
+# Fortran runtimes), so the solver needs no DLL besides msmpi.dll from the
+# Microsoft MPI install. Needs the static libraries of MSYS2 PETSc and
+# mingw-w64-x86_64-gcc-fortran (libgfortran.a).
+option(PANCAKE_STATIC_SOLVER "Link the solver statically (MinGW): no runtime DLLs except msmpi.dll" OFF)
 if(PANCAKE_BUILD_BUBBLE AND NOT PANCAKE_BUILD_SOLVER)
     message(FATAL_ERROR "PANCAKE_BUILD_BUBBLE requires PANCAKE_BUILD_SOLVER for MPI/PETSc discovery")
 endif()
@@ -72,7 +77,7 @@ function(pancake_copy_data_dir target_name)
 endfunction()
 
 function(pancake_deploy_mingw_runtime target_name)
-    if(MINGW)
+    if(MINGW AND NOT PANCAKE_STATIC_SOLVER)
         get_filename_component(PANCAKE_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
         add_custom_command(TARGET ${target_name} POST_BUILD
             COMMAND ${CMAKE_COMMAND}
@@ -144,6 +149,23 @@ if(PANCAKE_BUILD_SOLVER)
                 endif()
             endif()
         endforeach()
+    endif()
+
+    if(PANCAKE_STATIC_SOLVER)
+        if(NOT MINGW OR NOT PETSC_FOUND)
+            message(FATAL_ERROR "PANCAKE_STATIC_SOLVER needs MinGW and PETSc found by pkg-config")
+        endif()
+        # pkg-config --static: libpetsc.a and its dependencies in link order.
+        add_library(pancake_petsc_static INTERFACE)
+        target_include_directories(pancake_petsc_static INTERFACE ${PETSC_STATIC_INCLUDE_DIRS})
+        target_compile_options(pancake_petsc_static INTERFACE ${PETSC_STATIC_CFLAGS_OTHER})
+        # Static OpenBLAS is built with OpenMP and Fortran: their runtimes go last.
+        target_link_libraries(pancake_petsc_static INTERFACE ${PETSC_STATIC_LDFLAGS}
+            -lgfortran -lquadmath -lgomp -lpthread)
+        set(PETSC_TARGET pancake_petsc_static)
+        # Every executable created after this point (solver, tests) links statically.
+        add_link_options(-static)
+        message(STATUS "Static solver link: ${PETSC_STATIC_LDFLAGS}")
     endif()
 
     if(NOT PETSC_TARGET)

@@ -5,7 +5,8 @@
 # The folder runs on a Windows machine without MSYS2, CMake or PETSc:
 #   pancake_gui.exe   GUI (static; Windows DLLs only)
 #   pancake.exe       solver
-#   *.dll             MinGW, PETSc, BLAS, METIS runtime deployed by the build
+#   *.dll             MinGW, PETSc, BLAS, METIS runtime (dynamic builds only;
+#                     a -DPANCAKE_STATIC_SOLVER=ON build needs none)
 #   fluids/           oil-refrigerant pairs (the synthetic example only)
 #   examples/         example cases and the example load table
 #   README.txt        what is needed besides this folder
@@ -27,7 +28,15 @@ foreach ($exe in "pancake.exe", "pancake_gui.exe") {
 }
 New-Item -ItemType Directory -Force $outDir | Out-Null
 Copy-Item (Join-Path $buildDir "pancake.exe"), (Join-Path $buildDir "pancake_gui.exe") $outDir -Force
-Get-ChildItem (Join-Path $buildDir "*.dll") | Copy-Item -Destination $outDir -Force
+# Runtime DLLs only for a dynamically linked solver; a static build
+# (-DPANCAKE_STATIC_SOLVER=ON) needs none besides msmpi.dll from MS-MPI.
+$solverBytes = [System.IO.File]::ReadAllBytes((Join-Path $buildDir "pancake.exe"))
+$dynamic = [System.Text.Encoding]::ASCII.GetString($solverBytes).Contains("libpetsc")
+if ($dynamic) {
+    Get-ChildItem (Join-Path $buildDir "*.dll") | Copy-Item -Destination $outDir -Force
+} else {
+    Write-Host "Static solver: no runtime DLLs copied."
+}
 foreach ($folder in "fluids", "examples") {
     $target = Join-Path $outDir $folder
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }

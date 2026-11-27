@@ -1,5 +1,20 @@
 # Change Log
 
+## 2026-11-27 - Static solver build: two executables, no DLLs (`static-solver`)
+
+- New CMake option `PANCAKE_STATIC_SOLVER` (MinGW): `pancake.exe` and the tests link
+  PETSc, OpenBLAS, METIS, ParMETIS, hwloc and the GCC, Fortran and OpenMP runtimes
+  statically (pkg-config --static plus the OpenBLAS runtimes). The solver then
+  imports only Windows DLLs and `msmpi.dll` from the Microsoft MPI install, so a
+  working folder is `pancake.exe`, `pancake_gui.exe`, `fluids/`, `examples/`.
+- Why: engineers asked for a plain two-file program instead of 12 runtime DLLs.
+- Needs `mingw-w64-x86_64-gcc-fortran` (static libgfortran), installed 2026-11-27 at
+  the GCC version in use (16.1.0-5). Default builds are unchanged.
+- `tools/make_release.ps1` copies runtime DLLs only for a dynamic solver.
+- Verified: 70/70 tests pass in the static build; the GUI started from a folder with
+  only the two executables (clean PATH) and ran the example with the same result as
+  the dynamic build (h_min 7.1253 um, cavitated area 68.40 %).
+
 ## 2026-11-27 - GUI polish: stable empty plots, popup shadows, speed in Hz (`gui-polish`)
 
 - Empty plots no longer jump. ImPlot fitted the axes to the "waiting for data" text,
