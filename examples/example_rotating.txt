@@ -313,7 +313,7 @@ inlet_species = 0 0.083089916295506966 0
 #          flux [W/m^2], positive INTO the fluid). The last four require
 #          cross_film_thermal_model = POLYNOMIAL.
 #          Legacy load_x/load_y/load_z requests map to pressure_force_*.
-output_dir = example_transient_results
+output_dir = example_rotating_results
 steady_initial_state_file = 
 filename_prefix = solution
 # output_verbosity options: SIMPLIFIED (compact per-step line), DETAILED (per-step diagnostics)

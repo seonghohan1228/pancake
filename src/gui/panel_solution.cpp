@@ -190,17 +190,17 @@ void GuiApp::draw_solution_panel() {
             else if (!case_.dissolved_gas) plateau_reason = gas_off_reason;
             wrapped_label("Gas model", "How the released refrigerant is modelled.");
             ImGui::PushID("sol.gas_model");
-            if (gas_model_radio("Pressure plateau (fast; deck compressor form)",
+            if (gas_model_radio("Pressure plateau (fast; compressor results of the final report)",
                                 "FBNS: the cavitated film is held at the local saturation pressure. In the "
                                 "cavity the bubble carries no shear; only the liquid (fraction theta) does. "
-                                "Fast; the form of the deck's compressor results.",
+                                "Fast; the form used for the compressor results of the final report.",
                                 !transport_shown, plateau_reason)) {
                 case_.gas_model = gui::GasModel::Plateau;
                 changed = true;
             }
             if (gas_model_radio("Gas transport (detailed, slower)",
-                                "COUPLED: free gas is carried with the film and redissolves. Slower; deck "
-                                "X-runs and onset chart. Steady only.",
+                                "COUPLED: free gas is carried with the film and redissolves. Slower; used for "
+                                "the test-rig runs and the onset chart. Steady only.",
                                 transport_shown, transport_reason)) {
                 case_.gas_model = gui::GasModel::Transport;
                 changed = true;

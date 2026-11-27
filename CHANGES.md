@@ -8,6 +8,11 @@
   for design. Why: engineers need a rotating-load template to build their own load tables.
 - Shipped example cases refresh the live field maps every 2 outer iterations (was 10).
 - Geometry panel shows c/R as a plain number (0.001) instead of "1 per mille".
+- Gas-model options name what they were used for ("compressor results of the final
+  report", "test-rig runs and the onset chart") instead of internal shorthand
+  ("deck", "X-runs").
+- `example_rotating.txt` writes to `example_rotating_results` (it shared the transient
+  example's folder).
 - Screenshot series (user-guide figures) adds each panel with Advanced open and the oil-feed
   values pop-up (`boundaries_feed`).
 - The Korean user manual for LGE engineers (27 slides, the detail-slide format of the final
