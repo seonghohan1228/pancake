@@ -47,6 +47,23 @@ msvcrt). Verify with `dumpbin /DEPENDENTS pancake_gui.exe` or
 
 ## Distribution
 
+### Two-file build (no DLLs)
+
+With the static libraries of MSYS2 PETSc and the Fortran runtime
+(`pacman -S mingw-w64-x86_64-gcc-fortran`, matching the installed GCC), the
+solver links statically:
+
+```
+cmake -S . -B build-static -G Ninja -DCMAKE_BUILD_TYPE=Release -DPANCAKE_STATIC_SOLVER=ON
+cmake --build build-static
+```
+
+`pancake.exe` (about 60 MB) then imports only Windows DLLs and `msmpi.dll`,
+which the Microsoft MPI runtime installs into Windows. A working folder is
+`pancake.exe`, `pancake_gui.exe`, `fluids\` and `examples\`.
+
+### Release folder
+
 Build the full tree (solver + GUI), then collect the release folder:
 
 ```
