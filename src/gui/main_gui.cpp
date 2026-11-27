@@ -289,7 +289,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
     static std::string ini_path_utf8 = winutil::path_to_utf8(app.paths.imgui_ini);
-    io.IniFilename = ini_path_utf8.c_str();
+    if (app.scripted()) {
+        // Use the user's layout but never write it back.
+        std::error_code ini_error;
+        if (std::filesystem::exists(app.paths.imgui_ini, ini_error))
+            ImGui::LoadIniSettingsFromDisk(ini_path_utf8.c_str());
+        io.IniFilename = nullptr;
+    } else {
+        io.IniFilename = ini_path_utf8.c_str();
+    }
 
     ImGui_ImplWin32_Init(platform.hwnd);
     ImGui_ImplDX11_Init(platform.device, platform.context);

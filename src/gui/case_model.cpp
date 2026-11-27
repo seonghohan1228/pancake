@@ -361,6 +361,7 @@ void write_convergence(const CaseModel& m, SimulationConfig& cfg) {
     cfg.steady_force_tolerance = c.force_tolerance;
     cfg.coupling_tolerance = c.outer_tolerance;
     cfg.coupling_max_iters = c.outer_max_iterations;
+    cfg.steady_output_interval = std::max(1, c.field_view_interval);
     cfg.fbns_tol = c.inner_tolerance;
     cfg.fbns_max_iters = c.inner_max_iterations;
     cfg.coupled_nonlinear_tolerance = c.transport_tolerance;
@@ -402,7 +403,7 @@ SimulationConfig new_case_template() {
     cfg.output_write_flat = true;
     cfg.output_write_3d = false;
     cfg.log_outer_iters = false;
-    cfg.steady_output_interval = 10;
+    cfg.steady_output_interval = 2;
     cfg.output_dir = "results";
     cfg.filename_prefix = "solution";
     cfg.omega_ramp_time = 0.0;
@@ -607,6 +608,7 @@ CaseRead from_config(const SimulationConfig& cfg, const GuiMeta& meta, const Flu
     c.force_tolerance = cfg.steady_force_tolerance;
     c.outer_tolerance = cfg.coupling_tolerance;
     c.outer_max_iterations = cfg.coupling_max_iters;
+    if (cfg.steady_output_interval > 0) c.field_view_interval = cfg.steady_output_interval;
     c.inner_tolerance = cfg.fbns_tol;
     c.inner_max_iterations = cfg.fbns_max_iters;
     c.transport_tolerance = cfg.coupled_nonlinear_tolerance;
@@ -622,8 +624,11 @@ CaseRead from_config(const SimulationConfig& cfg, const GuiMeta& meta, const Flu
     const SimulationConfig fresh = to_config(m, pair, new_case_template());
     const auto mine = config_key_values(cfg.to_config_text());
     const auto theirs = config_key_values(fresh.to_config_text());
-    static const char* const kIgnored[] = {"output_dir", "filename_prefix", "e",
-                                           "attitude_angle_deg"};
+    // File paths are GUI inputs (fluid pair, load table) that a saved case stores
+    // relative to itself, so their text differs from a fresh case without meaning.
+    static const char* const kIgnored[] = {"output_dir",          "filename_prefix", "e",
+                                           "attitude_angle_deg",  "solution_table_file",
+                                           "load_table_file"};
     for (const auto& [key, value] : mine) {
         if (std::find(std::begin(kIgnored), std::end(kIgnored), key) != std::end(kIgnored)) continue;
         const auto it = theirs.find(key);

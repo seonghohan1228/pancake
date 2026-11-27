@@ -236,6 +236,10 @@ void GuiApp::draw_solution_panel() {
                                      c.outer_tolerance, defaults.outer_tolerance);
             changed |= iterations_row("Max outer iterations", "load balance / coupling iterations", "conv.outer_max",
                                       c.outer_max_iterations, defaults.outer_max_iterations);
+            if (!transient)
+                changed |= iterations_row("Field view refresh", "outer iterations between live field maps "
+                                          "(each map is a full snapshot on disk)", "conv.field_view",
+                                          c.field_view_interval, defaults.field_view_interval);
             changed |= tolerance_row("Inner tolerance", "FBNS film equations residual", "conv.inner",
                                      c.inner_tolerance, defaults.inner_tolerance);
             changed |= iterations_row("Max inner iterations", "FBNS Newton iterations", "conv.inner_max",

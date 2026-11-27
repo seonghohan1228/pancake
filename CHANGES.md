@@ -1,5 +1,33 @@
 # Change Log
 
+## 2026-11-27 - Live run monitor for steady runs; clearer kept-settings note (`monitor-live`)
+
+- Solver: every steady outer iteration logs one line,
+  `Outer iter=K | h_min=.. | M=.. Nm | cav=.. | R_p=.. R_T=..` (rank 0; h_min and the
+  cavitated area are global reductions on all ranks). Before, h_min, torque and
+  cavitated area were printed once at the end of a steady run. Results are unchanged;
+  the line is logging only.
+- Run monitor (steady): h_min, force residual, torque and cavitated area are plotted
+  per outer iteration on one shared x axis. Before, the end-of-run values sat alone at
+  "step 0" and the residual (iterations 1..N) fell outside the linked x range, so all
+  four plots looked empty. Points carry markers so the first iterations show.
+- Field-view refresh of steady runs is a setting (Solution > Advanced > Convergence,
+  "Field view refresh", default every 2 outer iterations, was fixed at 10). Each live
+  map is a full snapshot on disk (about 20 MB at the medium mesh), hence not 1.
+- The note about settings without a GUI control now names them, reads as information
+  ("Kept as written in the file (no GUI control): <keys>. Saving keeps it."), uses a
+  neutral colour and appears once per opened case instead of after every save. File
+  paths (fluid table, load table) no longer count: they are GUI inputs that a saved
+  case stores relative to itself, so every shipped example used to trigger the note.
+- Scripted sessions (`--run`, `--screenshots`) read but never write the user's
+  settings and window layout. A test run had set `last_config` to a scratch case, so
+  the user's GUI opened that case at start-up.
+- Estimates panel: the onset chart is taller (15 to 24 lines) with axis titles and a
+  heading.
+- Verified: test_gui_case_model passes; a scripted GUI run of the example plots all
+  four monitor rows over 7 outer iterations, final h_min 7.1253 um as before; settings
+  file unchanged after the scripted run.
+
 ## 2026-11-27 - GUI readability: cavity-shear wording, field-map marks, polar fills (`gui-readability`)
 
 - Cavity shear is described as "no shear from the bubble; only the liquid (fraction

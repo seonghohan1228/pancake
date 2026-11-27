@@ -238,7 +238,14 @@ void GuiApp::draw_estimates_box() {
         marker.verdict = e.verdict;
         markers.push_back(marker);
     }
-    ui::onset_chart("##mini", ImVec2(-1, 160), markers, true);
+    // Tall enough for both axes and their titles; grows into free space below.
+    const float font = ImGui::GetFontSize();
+    const float chart_height = std::clamp(ImGui::GetContentRegionAvail().y, 15.0f * font, 24.0f * font);
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Gas-release onset chart");
+    ui::item_tooltip("Pressure margin per specific load against the Sommerfeld number. Below the curve the "
+                     "tester bearing released gas.");
+    ui::onset_chart("##mini", ImVec2(-1, chart_height), markers, true);
 }
 
 /// Window "Case setup": heading, Advanced toggle, node reasons, then the node's panel.

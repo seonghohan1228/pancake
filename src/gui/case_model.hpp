@@ -77,6 +77,7 @@ struct ConvergenceInput {
     double transport_tolerance = 1e-10;  // COUPLED nonlinear tolerance
     double motion_tolerance = 1e-6;      // transient load-position coupling
     int motion_max_iterations = 30;
+    int field_view_interval = 2;         // steady: field snapshot every N outer iterations (live view)
     bool operator==(const ConvergenceInput&) const = default;
 };
 

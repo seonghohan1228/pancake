@@ -9,6 +9,7 @@
 #include <sstream>
 #include <vector>
 
+#include "full_film.hpp"
 #include "communicator.hpp"
 #include "config.hpp"
 #include "coupling.hpp"
@@ -59,6 +60,22 @@ fs::path executable_directory(const char* argv0) {
         }
     }
     return fs::current_path();
+}
+
+/// Share of film cells not completely filled by liquid (all ranks). The coupled
+/// two-phase solve marks them by theta < 1; the other models by the full-film test.
+double cavitated_fraction_now(const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg,
+                              bool coupled) {
+    double local = 0.0;
+    for (int i = 0; i < mesh.n_theta_local; ++i)
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const bool cavitated = coupled ? fields["theta"](i, j) < 1.0 - 1e-8
+                                           : !FullFilm::is_full_film(fields, cfg, i, j);
+            if (cavitated) local += 1.0;
+        }
+    double total = 0.0;
+    MPI_Allreduce(&local, &total, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    return total / (double(mesh.n_theta_global) * double(mesh.n_z_global));
 }
 
 double global_min_field(const Field& field, const Mesh& mesh) {
@@ -792,6 +809,18 @@ int main(int argc, char** argv) {
                         int history_failed = mesh.rank == 0 && !equilibrium_history ? 1 : 0;
                         MPI_Bcast(&history_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
                         if (history_failed) throw std::runtime_error("Cannot append equilibrium history");
+                    }
+                    {
+                        // Live monitor: the film state after every outer iteration, so the
+                        // GUI can plot h_min, torque and cavitated area while the run goes.
+                        // Collective: every rank takes part in the reductions.
+                        const double h_min_now = global_min_field(fields["h"], mesh);
+                        const double cavitated_now = cavitated_fraction_now(fields, mesh, step_cfg, coupled);
+                        std::ostringstream m;
+                        m << std::setprecision(8) << "Outer iter=" << (outer + 1) << " | h_min=" << h_min_now
+                          << " | M=" << forces.friction_torque << " Nm | cav=" << cavitated_now
+                          << " | R_p=" << coupling_R_p << " R_T=" << coupling_R_T;
+                        Utils::log(m.str(), Utils::Color::RESET, 1);
                     }
                     if (cfg.steady_pressure_inner_only) energy_balanced = energy_balanced && elrod_stats.converged;
                     const bool tolerance_met = coupling_control.record(

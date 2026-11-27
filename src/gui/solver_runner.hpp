@@ -42,6 +42,8 @@ struct MonitorRow {
     double force_x = std::numeric_limits<double>::quiet_NaN();  // N
     double force_y = std::numeric_limits<double>::quiet_NaN();  // N
     double torque = std::numeric_limits<double>::quiet_NaN();   // N.m
+    double cavitated = std::numeric_limits<double>::quiet_NaN();  // area fraction, 0..1
+    bool outer = false;  // steady outer iteration (step = iteration number), not a time step
 };
 
 /// One row of the solver's diagnostics.csv.
