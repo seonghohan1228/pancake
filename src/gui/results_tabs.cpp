@@ -50,45 +50,74 @@ const gui::UnitOption* view_unit(const gui::FieldView& view, ui::UnitChoices& un
     return nullptr;
 }
 
-/// Text placed at `pos` unless it overlaps a rectangle already taken; tries a few
-/// positions below. Returns false when no free place was found.
-bool place_text(ImDrawList* draw, std::vector<ImRect>& taken, const ImRect& area, ImVec2 pos, ImU32 colour,
-                const char* text) {
-    const ImVec2 size = ImGui::CalcTextSize(text);
-    for (int k = 0; k < 4; ++k) {
-        ImVec2 at(std::clamp(pos.x, area.Min.x, std::max(area.Min.x, area.Max.x - size.x)),
-                  std::clamp(pos.y + k * size.y, area.Min.y, std::max(area.Min.y, area.Max.y - size.y)));
-        const ImRect rect(at, ImVec2(at.x + size.x, at.y + size.y));
-        bool free = true;
-        for (const ImRect& other : taken)
-            if (rect.Overlaps(other)) free = false;
-        if (!free) continue;
-        taken.push_back(rect);
-        // Dark backing so white labels stay readable on light parts of the colormap.
-        draw->AddRectFilled(ImVec2(rect.Min.x - 2.0f, rect.Min.y), ImVec2(rect.Max.x + 2.0f, rect.Max.y),
-                            IM_COL32(0, 0, 0, 140), 3.0f);
-        draw->AddText(at, colour, text);
-        return true;
+/// Feed drawn on a field map: hole (ellipse in degrees x z/L) or groove (band
+/// over the whole length). Coordinates are display angle [deg] and z / L.
+struct FeedMark {
+    bool groove = false;
+    double x = 0.0, y = 0.5;
+    double half_width_deg = 0.0;  // hole radius or half groove width, along the film
+    double half_height = 0.0;     // hole radius per bearing length
+};
+
+/// Dashed line between two pixel points.
+void dashed_line(ImDrawList* draw, ImVec2 a, ImVec2 b, ImU32 colour, float thickness, float dash, float gap) {
+    const float length = std::hypot(b.x - a.x, b.y - a.y);
+    if (length <= 0.0f) return;
+    const ImVec2 step((b.x - a.x) / length, (b.y - a.y) / length);
+    for (float s = 0.0f; s < length; s += dash + gap) {
+        const float e = std::min(s + dash, length);
+        draw->AddLine(ImVec2(a.x + step.x * s, a.y + step.y * s), ImVec2(a.x + step.x * e, a.y + step.y * e),
+                      colour, thickness);
     }
-    return false;
+}
+
+/// Labels in a strip above a plot, each centred on its x pixel with a short
+/// tick down to the plot edge. A label that would overlap the previous one moves
+/// sideways; none is drawn on the plot itself.
+struct TopLabel {
+    float x;
+    const char* text;
+};
+void draw_top_labels(ImDrawList* draw, std::vector<TopLabel> labels, float strip_y, float plot_top,
+                     float left, float right) {
+    std::sort(labels.begin(), labels.end(), [](const TopLabel& p, const TopLabel& q) { return p.x < q.x; });
+    const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 tick = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    const float gap = ImGui::GetFontSize() * 0.5f;
+    float last_right = -1.0e9f;
+    for (const TopLabel& label : labels) {
+        const ImVec2 size = ImGui::CalcTextSize(label.text);
+        float x0 = std::clamp(label.x - 0.5f * size.x, left, std::max(left, right - size.x));
+        x0 = std::max(x0, last_right + gap);
+        last_right = x0 + size.x;
+        draw->AddText(ImVec2(x0, strip_y), ink, label.text);
+        const float text_bottom = strip_y + size.y;
+        const float anchor = std::clamp(label.x, x0, x0 + size.x);
+        draw->AddLine(ImVec2(anchor, text_bottom), ImVec2(label.x, plot_top - 1.0f), tick, 1.0f);
+    }
 }
 
 void draw_field_map(PlotCapture& capture, const MapCache& m, const std::string& bar_label,
-                    const std::string& x_label, double start, double aspect, double feed_x, double feed_y,
+                    const std::string& x_label, double start, double aspect, const FeedMark& feed,
                     double hmin_x) {
     const float font = ImGui::GetFontSize();
     const float bar_w = font * 6.5f;
+    const float strip_h = font * 1.6f;  // "feed" / "h_min" labels above the plot
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float pad_x = font * 4.0f, pad_y = font * 3.6f;
     float inner_w = std::max(avail.x - bar_w - ImGui::GetStyle().ItemSpacing.x - pad_x, 120.0f);
     float inner_h = inner_w * static_cast<float>(aspect);
-    const float max_h = std::max(avail.y - ImGui::GetTextLineHeightWithSpacing() * 4.0f - pad_y, 80.0f);
+    const float max_h = std::max(avail.y - ImGui::GetTextLineHeightWithSpacing() * 4.0f - pad_y - strip_h, 80.0f);
     if (inner_h > max_h) {
         inner_h = max_h;
         inner_w = inner_h / static_cast<float>(aspect);
     }
     const ImVec2 size(inner_w + pad_x, inner_h + pad_y);
     ImGui::BeginGroup();
+    const ImVec2 strip = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(size.x, strip_h - ImGui::GetStyle().ItemSpacing.y));
+    std::vector<TopLabel> labels;
+    float plot_top = 0.0f, plot_left = 0.0f, plot_right = 0.0f;
     ImPlot::PushColormap(ImPlotColormap_Viridis);
     if (ImPlot::BeginPlot("##field_map", size, ImPlotFlags_NoLegend | ImPlotFlags_NoMenus)) {
         ImPlot::SetupAxes(x_label.c_str(), "z / L", ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
@@ -107,33 +136,44 @@ void draw_field_map(PlotCapture& capture, const MapCache& m, const std::string& 
         for (std::size_t i = 0; i + 3 < m.outline.size(); i += 4)
             draw->AddLine(ImPlot::PlotToPixels(m.outline[i], m.outline[i + 1]),
                           ImPlot::PlotToPixels(m.outline[i + 2], m.outline[i + 3]), outline, 2.0f);
-        if (std::isfinite(hmin_x)) {
-            ImPlot::SetNextLineStyle(ImVec4(1, 1, 1, 0.9f), 1.5f);
-            ImPlot::PlotInfLines("##hmin", &hmin_x, 1);
+        // Feed: light outline of the hole or the groove, repeated one period
+        // either side so a feed at the seam shows on both edges.
+        const ImU32 light = IM_COL32(255, 255, 255, 150);
+        for (double shift : {-360.0, 0.0, 360.0}) {
+            const double cx = feed.x + shift;
+            if (feed.groove) {
+                for (double edge : {cx - feed.half_width_deg, cx + feed.half_width_deg})
+                    draw->AddLine(ImPlot::PlotToPixels(edge, 0.0), ImPlot::PlotToPixels(edge, 1.0), light, 1.2f);
+            } else {
+                ImVec2 ring[48];
+                for (int k = 0; k < 48; ++k) {
+                    const double a = 2.0 * kPi * k / 48.0;
+                    ring[k] = ImPlot::PlotToPixels(cx + feed.half_width_deg * std::cos(a),
+                                                   feed.y + feed.half_height * std::sin(a));
+                }
+                draw->AddPolyline(ring, 48, light, ImDrawFlags_Closed, 1.2f);
+            }
         }
-        ImPlot::SetNextMarkerStyle(ImPlotMarker_Down, 7.0f, ImVec4(1, 1, 1, 1), 1.0f, ImVec4(0, 0, 0, 1));
-        ImPlot::PlotScatter("##feed", &feed_x, &feed_y, 1);
-        // Labels in pixel space; the second one moves down when they would overlap.
-        const ImVec2 plot_pos = ImPlot::GetPlotPos(), plot_size = ImPlot::GetPlotSize();
-        const ImRect area(plot_pos.x + 2.0f, plot_pos.y + 2.0f, plot_pos.x + plot_size.x - 2.0f,
-                          plot_pos.y + plot_size.y - 2.0f);
-        std::vector<ImRect> taken;
-        const ImU32 white = IM_COL32(255, 255, 255, 255);
-        if (std::isfinite(hmin_x)) {
-            const ImVec2 at = ImPlot::PlotToPixels(hmin_x, 0.85);
-            place_text(draw, taken, area, ImVec2(at.x + 4.0f, at.y - 0.5f * font), white, "h_min");
-        }
-        const ImVec2 feed_px = ImPlot::PlotToPixels(feed_x, feed_y);
-        const float feed_w = ImGui::CalcTextSize("feed").x;
-        place_text(draw, taken, area, ImVec2(feed_px.x - 0.5f * feed_w, feed_px.y - 2.0f * font), white, "feed");
+        if (std::isfinite(hmin_x))
+            dashed_line(draw, ImPlot::PlotToPixels(hmin_x, 1.0), ImPlot::PlotToPixels(hmin_x, 0.0),
+                        IM_COL32(255, 255, 255, 220), 1.5f, 0.5f * font, 0.35f * font);
         ImPlot::PopPlotClipRect();
+        const ImVec2 plot_pos = ImPlot::GetPlotPos(), plot_size = ImPlot::GetPlotSize();
+        plot_top = plot_pos.y;
+        plot_left = plot_pos.x;
+        plot_right = plot_pos.x + plot_size.x;
+        labels.push_back({ImPlot::PlotToPixels(feed.x, 1.0).x, "feed"});
+        if (std::isfinite(hmin_x)) labels.push_back({ImPlot::PlotToPixels(hmin_x, 1.0).x, "h_min"});
         ImPlot::EndPlot();
     }
+    if (!labels.empty()) draw_top_labels(ImGui::GetWindowDrawList(), labels, strip.y, plot_top, plot_left, plot_right);
+    ImGui::EndGroup();
     ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::Dummy(ImVec2(0.0f, strip_h - ImGui::GetStyle().ItemSpacing.y));
     // The colour-bar title runs along the bar; drop the quantity when it does not fit.
     std::string bar = bar_label;
     const std::size_t bracket = bar.find(" [");
-    if (ImGui::CalcTextSize(bar.c_str()).x > size.y - font && bracket != std::string::npos) bar = bar.substr(bracket + 1);
     // The colour bar keeps a readable height even beside a flat map.
     const float bar_h = std::max(size.y, 9.0f * font);
     if (ImGui::CalcTextSize(bar.c_str()).x > bar_h - font && bracket != std::string::npos) bar = bar.substr(bracket + 1);
@@ -198,23 +238,32 @@ void draw_field_maps_tab(FieldMapUi& state, const TabContext& tab, PlotCapture& 
     }
     const double length = model.bearing_length > 0.0 ? model.bearing_length : 1.0;
     const double aspect = model.bearing_diameter > 0.0 ? length / (kPi * model.bearing_diameter) : 0.3;
-    const double feed_x = gui::display_angle(model.feed.angle_deg, tab.zero, tab.start);
-    const double feed_y = model.feed.type == gui::FeedType::Hole && model.feed.hole_axial_position >= 0.0
-                              ? std::clamp(model.feed.hole_axial_position / length, 0.0, 1.0)
-                              : 0.5;
+    FeedMark feed;
+    feed.groove = model.feed.type == gui::FeedType::Groove;
+    feed.x = gui::display_angle(model.feed.angle_deg, tab.zero, tab.start);
+    if (feed.groove) {
+        feed.half_width_deg = 0.5 * model.feed.groove_width_deg;
+    } else {
+        const double radius = 0.5 * model.feed.hole_diameter;
+        const double bearing_radius = model.bearing_diameter > 0.0 ? 0.5 * model.bearing_diameter : 1.0;
+        feed.y = model.feed.hole_axial_position >= 0.0 ? std::clamp(model.feed.hole_axial_position / length, 0.0, 1.0)
+                                                       : 0.5;
+        feed.half_width_deg = radius / bearing_radius * 180.0 / kPi;
+        feed.half_height = radius / length;
+    }
     const double hmin_x = std::isfinite(tab.grid_results.h_min_theta_deg)
                               ? gui::display_angle(tab.grid_results.h_min_theta_deg, tab.zero, tab.start)
                               : kNaN;
-    draw_field_map(capture, m, bar, tab.x_label, tab.start, std::clamp(aspect, 0.05, 2.0), feed_x, feed_y, hmin_x);
+    draw_field_map(capture, m, bar, tab.x_label, tab.start, std::clamp(aspect, 0.05, 2.0), feed, hmin_x);
 
     const gui::ResultForm form = gui::result_form(cfg);
     note(form == gui::ResultForm::Coupled
-             ? "Purple outline: cavitated region (free-gas volume fraction 0.5). White line: minimum film. "
-               "Width and height to scale (pi D : L)."
-             : "Purple outline: cavitated region (void fraction 0.5). White line: minimum film. "
-               "Width and height to scale (pi D : L).");
+             ? "Purple outline: cavitated region (free-gas volume fraction 0.5). Light outline: feed. "
+               "Dashed line: minimum film. Width and height to scale (pi D : L)."
+             : "Purple outline: cavitated region (void fraction 0.5). Light outline: feed. "
+               "Dashed line: minimum film. Width and height to scale (pi D : L).");
     if (form == gui::ResultForm::Fbns)
-        note("Pressure-plateau model: the cavity is liquid streaks plus a massless void; gas is not tracked.");
+        note("Pressure-plateau model: in the cavity only the liquid (fraction theta) carries shear; the bubble carries none and gas is not tracked.");
 }
 
 void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
@@ -240,13 +289,16 @@ void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
     if (p_sat > 0.0) hi = std::max(hi, p_sat - p_amb), lo = std::min(lo, p_sat - p_amb);
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float side = std::max(220.0f, std::min(avail.x, avail.y - ImGui::GetTextLineHeightWithSpacing() * 4.5f));
+    // Room beside the circle so marker labels at 0 and 180 deg never sit on the angle labels.
+    const float margin = ImGui::CalcTextSize("h_min 180").x;
+    const float side = std::max(220.0f, std::min(avail.x - 2.0f * margin,
+                                                 avail.y - ImGui::GetTextLineHeightWithSpacing() * 4.5f));
     ImGui::BeginGroup();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##polar", ImVec2(side, side));
+    ImGui::InvisibleButton("##polar", ImVec2(side + 2.0f * margin, side));
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImVec2 centre(origin.x + side * 0.5f, origin.y + side * 0.5f);
+    const ImVec2 centre(origin.x + margin + side * 0.5f, origin.y + side * 0.5f);
     const float r_max = side * 0.40f, r_0 = r_max * 0.5f, r_min = r_max * 0.08f;
     double gain = hi > 0.0 ? (r_max - r_0) / hi : 0.0;
     if (lo < 0.0) {
@@ -278,6 +330,39 @@ void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
     if (p_sat > 0.0)
         draw->AddCircle(centre, static_cast<float>(r_0 + gain * (p_sat - p_amb)),
                         ImGui::GetColorU32(theme::kHighlight), 128, 1.5f);
+    // Fill between the ambient circle and the curve: over-pressure and
+    // under-pressure in two colours. A segment that crosses ambient is split
+    // at the crossing so each piece is convex.
+    {
+        const ImU32 over = ImGui::GetColorU32(theme::kOverPressure);
+        const ImU32 under = ImGui::GetColorU32(theme::kUnderPressure);
+        const ImDrawListFlags flags = draw->Flags;
+        draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;  // no seams between adjacent pieces
+        const std::size_t n = values.size();
+        for (std::size_t k = 0; k < n; ++k) {
+            const std::size_t l = (k + 1) % n;
+            if (!std::isfinite(values[k]) || !std::isfinite(values[l])) continue;
+            const double a0 = order.angles[k];
+            double a1 = order.angles[l];
+            if (l == 0) a1 += 360.0;
+            if (a1 - a0 > 30.0) continue;  // a gap in the data, not a segment
+            const double d0 = values[k] - p_amb, d1 = values[l] - p_amb;
+            const auto piece = [&](double b0, double e0, double b1, double e1) {
+                const ImU32 colour = (e0 + e1) >= 0.0 ? over : under;
+                const ImVec2 quad[4] = {at(b0, r_0), at(b0, r_0 + gain * e0), at(b1, r_0 + gain * e1), at(b1, r_0)};
+                draw->AddConvexPolyFilled(quad, 4, colour);
+            };
+            if ((d0 >= 0.0) == (d1 >= 0.0)) {
+                piece(a0, d0, a1, d1);
+            } else {
+                const double t = d0 / (d0 - d1);
+                const double ac = a0 + t * (a1 - a0);
+                piece(a0, d0, ac, 0.0);
+                piece(ac, 0.0, a1, d1);
+            }
+        }
+        draw->Flags = flags;
+    }
     std::vector<ImVec2> points;
     points.reserve(values.size());
     for (std::size_t k = 0; k < values.size(); ++k)
@@ -285,7 +370,7 @@ void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
     if (points.size() > 2)
         draw->AddPolyline(points.data(), static_cast<int>(points.size()), ImGui::GetColorU32(theme::kAccent),
                           ImDrawFlags_Closed, 2.0f);
-    const ImRect area(origin, ImVec2(origin.x + side, origin.y + side));
+    const ImRect area(origin, ImVec2(origin.x + side + 2.0f * margin, origin.y + side));
     const auto marker = [&](double fixed_deg, const char* label) {
         const double display = gui::display_angle(fixed_deg, zero, start);
         const ImVec2 pos = at(display, r_max * 1.05);
@@ -294,20 +379,32 @@ void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
         const ImVec2 size = ImGui::CalcTextSize(label);
         const float c = static_cast<float>(std::cos(display * kPi / 180.0));
         const float s = static_cast<float>(std::sin(display * kPi / 180.0));
-        for (int k = 0; k < 4; ++k) {
-            const ImVec2 anchor = at(display, r_max * 1.12 + k * size.y);
-            ImVec2 corner(anchor.x + (c - 1.0f) * 0.5f * size.x, anchor.y - (s + 1.0f) * 0.5f * size.y);
-            corner.x = std::clamp(corner.x, area.Min.x, area.Max.x - size.x);
-            corner.y = std::clamp(corner.y, area.Min.y, area.Max.y - size.y);
-            const ImRect rect(corner, ImVec2(corner.x + size.x, corner.y + size.y));
-            bool free = true;
-            for (const ImRect& other : taken)
-                if (rect.Overlaps(other)) free = false;
-            if (!free && k < 3) continue;
-            taken.push_back(rect);
-            draw->AddText(corner, text_colour, label);
-            break;
+        // Candidates: outwards along the radius, then beside the first spot
+        // (a tick label such as "90" may sit right on the radius).
+        const float gap = ImGui::GetFontSize() * 0.4f;
+        const float lateral[] = {0.0f, 1.0f, -1.0f};
+        bool placed = false;
+        ImVec2 fallback(0.0f, 0.0f);
+        for (int k = 0; k < 3 && !placed; ++k) {
+            for (float side_shift : lateral) {
+                const ImVec2 anchor = at(display, r_max * 1.12 + k * size.y);
+                ImVec2 corner(anchor.x + (c - 1.0f) * 0.5f * size.x + side_shift * (size.x + gap),
+                              anchor.y - (s + 1.0f) * 0.5f * size.y);
+                corner.x = std::clamp(corner.x, area.Min.x, area.Max.x - size.x);
+                corner.y = std::clamp(corner.y, area.Min.y, area.Max.y - size.y);
+                if (k == 0 && side_shift == 0.0f) fallback = corner;
+                const ImRect rect(corner, ImVec2(corner.x + size.x, corner.y + size.y));
+                bool free = true;
+                for (const ImRect& other : taken)
+                    if (rect.Overlaps(other)) free = false;
+                if (!free) continue;
+                taken.push_back(rect);
+                draw->AddText(corner, text_colour, label);
+                placed = true;
+                break;
+            }
         }
+        if (!placed) draw->AddText(fallback, text_colour, label);
     };
     marker(model.feed.angle_deg, "feed");
     if (std::isfinite(tab.grid_results.h_min_theta_deg)) marker(tab.grid_results.h_min_theta_deg, "h_min");
@@ -338,7 +435,8 @@ void draw_polar_tab(const TabContext& tab, PlotCapture& capture) {
     ImGui::EndGroup();
     remember_plot(capture, "polar_pressure");
     const std::string legend =
-        "Mid-plane pressure (blue): radius grows with the pressure above ambient. Grey circle: ambient pressure " +
+        "Mid-plane pressure (blue line): radius grows with the pressure above ambient. Blue fill: above "
+        "ambient; orange fill: below ambient. Grey circle: ambient pressure " +
         value_text(p_amb, gui::UnitFamily::Pressure, units, kUnitPressure) + ". Purple circle: saturation pressure " +
         (p_sat > 0.0 ? value_text(p_sat, gui::UnitFamily::Pressure, units, kUnitPressure) : std::string("unknown")) +
         ".";
@@ -541,7 +639,7 @@ void draw_comparison_tab(ComparisonSide on, ComparisonSide off, const TabContext
     note("Difference: (gas on - gas off) / gas off.");
     const bool fbns_on = on.record && gui::result_form(on.record->job.config) == gui::ResultForm::Fbns;
     if (fbns_on)
-        note("Pressure-plateau model: the cavity is liquid streaks plus a massless void; gas is not tracked. "
+        note("Pressure-plateau model: in the cavity only the liquid (fraction theta) carries shear; the bubble carries none and gas is not tracked. "
              "Gas on and gas off differ only in the cavity pressure (p_sat or the oil vapour pressure).");
     const auto& pu = unit_of(units, kUnitPressure, gui::UnitFamily::Pressure);
     const std::string p_axis = std::string("Mid-plane pressure [") + pu.label + "]";

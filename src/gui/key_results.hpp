@@ -63,8 +63,8 @@ DesignChecks design_checks(const KeyResults& results, double p_sat, bool gas_mod
 
 /// Field maps offered for a result, by solver form (plan 0.5).
 ///
-/// FBNS: the cavity is liquid streaks at fraction theta plus a massless void at
-/// the cavity pressure. No gas mass is tracked, so FBNS offers pressure, film
+/// FBNS: the cavity is liquid at fraction theta plus a massless bubble (no
+/// shear) at the cavity pressure. No gas mass is tracked, so FBNS offers pressure, film
 /// thickness, void fraction 1 - theta, effective density theta x rho_liquid and
 /// temperature; never alpha_gas, dissolved_gas, rho or gas_mass_transfer.
 /// COUPLED: pressure, film thickness, free-gas volume fraction, dissolved

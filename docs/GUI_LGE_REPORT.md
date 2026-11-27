@@ -8,7 +8,7 @@ Branch `lge-gui` (worktree `C:\Dev\pancake\worktrees\lge-gui`), not pushed. Plan
 |---|---|
 | **Basic** | D, L, c; feed type, angle, size; analysis type; speed; load and direction (on the shaft) or load table; ambient p and T; fluid pair; content or "saturated"; roughness; dissolved gas on/off; thermal on/off; comparison mode; mesh level; CPU cores (default 1) |
 | **Expanded** | Tilt; hole axial position; fixed shaft position; gas model (plateau / gas transport); tolerances with defaults and meaning; time stepping; exact cells; cross-film layers; zone values (feed overpressure and temperature, housing, shaft) |
-| **Auto** (read-only) | Solver form (FBNS / COUPLED, load balance, thermal form), cavity shear (STRIATED for FBNS), properties at the ambient state, end pressures and temperatures, output settings |
+| **Auto** (read-only) | Solver form (FBNS / COUPLED, load balance, thermal form), cavity shear (FBNS: no shear from the bubble, solver key STRIATED), properties at the ambient state, end pressures and temperatures, output settings |
 | **Removed** (keys kept on save) | Elrod and legacy cavitation forms and constants, contact / mixed lubrication, raw support stiffness and damping, PETSc options, gas EOS internals, debug outputs, convection schemes |
 
 Screen map: Workflow tree (lights, estimates, onset chart) | Case setup panel + Live view (geometry, mesh) | Results, Run monitor, Sweep/batch, Solver log; dialogs: fluid library, boundary zones, thermal-transient confirmation, settings.

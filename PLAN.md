@@ -267,6 +267,10 @@ Plan: `docs/GUI_LGE_PLAN.md` (approved 2026-11-26, D1-D8 as recommended).
 - [ ] Open: thermal-steady run-time typical value (test 10 off by 2.4x on one case);
   solver key for a free ideal gas (`gas_molar_mass`); unknown enum values as parse
   errors (X4 `HOMOGENEOUS`); user guide (KPI) from docs/gui_screens.
+- [x] Readability pass (2026-11-27, `gui-readability`): cavity-shear wording (no
+  shear from the bubble), Units popup, feed/h_min marks above the field map, polar
+  over/under-ambient fills, heading font and primary buttons.
+- [ ] Headless capture sometimes saves blank frames (pre-existing); find the cause.
 
 ### Storage layout and run-data hygiene (`storage-layout`, 2026-11-13)
 

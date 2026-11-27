@@ -1,5 +1,32 @@
 # Change Log
 
+## 2026-11-27 - GUI readability: cavity-shear wording, field-map marks, polar fills (`gui-readability`)
+
+- Cavity shear is described as "no shear from the bubble; only the liquid (fraction
+  theta) shears" instead of "liquid streaks / STRIATED" (solution panel, result notes,
+  case report, field tooltips). The model is unchanged: FBNS cases keep the solver key
+  `cavitated_film_model = STRIATED`, which is exactly that shear. Friction numbers do
+  not change.
+- Results Units popup: the rows used a stretch table inside an auto-sized popup, which
+  collapsed to zero width and wrapped the labels one or two letters per line. Fixed
+  widths now.
+- Field map: "feed" and "h_min" labels sit in a strip above the map with a short tick
+  down to their position, never on the map. The feed is drawn as a light outline of
+  the hole (to scale, in degrees x z/L) or of the groove band; h_min is a dashed line.
+- Polar plot: the area between the ambient circle and the pressure curve is filled blue
+  above ambient and orange below. Marker labels try positions beside a tick label
+  before giving up, and the plot keeps room for them at 0 and 180 deg.
+- Visual hierarchy: section titles in the medium-weight heading font (18 px), key
+  result values in the heading font, buttons and unselected tabs one shade darker,
+  a thicker overline on the selected tab, and an accent "primary" button for the main
+  action of a dialog (OK, Save, Run batch, Run thermal transient). Run (F5) stays green.
+- More space and a rule between the key-results summary and the result tabs.
+- The screenshot series adds the polar tab and the open Units popup.
+- Verified: GUI builds without warnings; test_gui_case_model passes; screenshots at
+  1600x1000 and 1280x800 of a gas-on and a gas-off example run show no overlapping
+  text. Known: the headless capture occasionally saves blank frames (also with the
+  previous build, 1 run in 4); rerunning gives normal frames.
+
 ## 2026-11-27 - Static solver build: two executables, no DLLs (`static-solver`)
 
 - New CMake option `PANCAKE_STATIC_SOLVER` (MinGW): `pancake.exe` and the tests link

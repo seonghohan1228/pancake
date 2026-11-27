@@ -392,8 +392,8 @@ bool GuiApp::export_case_report(const fs::path& html) {
             out << "<h2>" << esc(cavity.label) << ", unwrapped</h2>"
                 << svg_map(*grid_, cavity_values, zero, start, aspect, fraction, x_label);
             if (gui::result_form(cfg) == gui::ResultForm::Fbns)
-                out << "<p class=\"muted\">Pressure-plateau model: the cavity is liquid streaks plus a massless "
-                       "void; gas is not tracked.</p>";
+                out << "<p class=\"muted\">Pressure-plateau model: in the cavity only the liquid (fraction theta) "
+                       "carries shear; the bubble carries none and gas is not tracked.</p>";
         }
         const result_data::Profile profile = result_data::make_profile(*grid_, cfg, zero, start, 0.5);
         out << "<h2>Mid-plane pressure</h2>"

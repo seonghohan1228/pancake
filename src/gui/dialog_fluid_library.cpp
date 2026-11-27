@@ -477,7 +477,7 @@ void GuiApp::draw_fluid_library_dialog() {
             }
         }
 
-        if (ImGui::Button("Save", ImVec2(7.0f * font, 0))) {
+        if (ui::primary_button("Save", ImVec2(7.0f * font, 0))) {
             pair.id = state.editing_id;
             std::string error;
             if (!library_.save(pair, state.rows, error)) {
