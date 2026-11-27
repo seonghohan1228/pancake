@@ -8,9 +8,12 @@
   for design. Why: engineers need a rotating-load template to build their own load tables.
 - Shipped example cases refresh the live field maps every 2 outer iterations (was 10).
 - Geometry panel shows c/R as a plain number (0.001) instead of "1 per mille".
-- Gas-model options name what they were used for ("compressor results of the final
-  report", "test-rig runs and the onset chart") instead of internal shorthand
-  ("deck", "X-runs").
+- Gas-model options say what each one tracks: "Pressure plateau (tracks the cavitated
+  region)" and "Gas transport (tracks the released gas)". Why: the two answer different
+  questions (where the film cavitates vs. how much refrigerant is released); the older
+  "fast / detailed, slower" wording read as a shortcut and a full version. Internal run-series
+  shorthand ("deck X-runs", "O-runs") removed from `case_model.cpp` comments and
+  `docs/GUI_GLOSSARY.md`.
 - `example_rotating.txt` writes to `example_rotating_results` (it shared the transient
   example's folder).
 - Screenshot series (user-guide figures) adds each panel with Advanced open and the oil-feed

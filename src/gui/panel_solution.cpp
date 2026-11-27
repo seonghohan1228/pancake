@@ -190,17 +190,18 @@ void GuiApp::draw_solution_panel() {
             else if (!case_.dissolved_gas) plateau_reason = gas_off_reason;
             wrapped_label("Gas model", "How the released refrigerant is modelled.");
             ImGui::PushID("sol.gas_model");
-            if (gas_model_radio("Pressure plateau (fast; compressor results of the final report)",
-                                "FBNS: the cavitated film is held at the local saturation pressure. In the "
-                                "cavity the bubble carries no shear; only the liquid (fraction theta) does. "
-                                "Fast; the form used for the compressor results of the final report.",
+            if (gas_model_radio("Pressure plateau (tracks the cavitated region)",
+                                "FBNS: finds where the film cavitates. The cavitated film is held at the "
+                                "local saturation pressure; the bubble carries no shear, only the liquid "
+                                "(fraction theta) does.",
                                 !transport_shown, plateau_reason)) {
                 case_.gas_model = gui::GasModel::Plateau;
                 changed = true;
             }
-            if (gas_model_radio("Gas transport (detailed, slower)",
-                                "COUPLED: free gas is carried with the film and redissolves. Slower; used for "
-                                "the test-rig runs and the onset chart. Steady only.",
+            if (gas_model_radio("Gas transport (tracks the released gas)",
+                                "COUPLED: also tracks how much refrigerant is released. The free gas is "
+                                "carried with the film and redissolves. A different question from the "
+                                "plateau (how much gas, not only where), so it takes longer. Steady only.",
                                 transport_shown, transport_reason)) {
                 case_.gas_model = gui::GasModel::Transport;
                 changed = true;

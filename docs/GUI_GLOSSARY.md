@@ -35,7 +35,7 @@ counterclockwise, which is the direction of rotation for a positive speed.
 | Vapour cavitation (VC) | The oil itself boils at its vapour pressure | VC | VC (증기 캐비테이션) |
 | Gaseous cavitation (GC) | Dissolved refrigerant comes out of solution where the film pressure falls below p_sat | GC | GC (기체 캐비테이션) |
 | Dissolved-gas release | Model setting. On: GC+VC model, the cavitated film is held at p_sat. Off: VC-only model, the refrigerant stays dissolved | – | GC+VC 모델 / VC 모델 |
-| Gas model: pressure plateau / gas transport | Advanced. Plateau: the cavitated film is held at p_sat (deck compressor runs). Transport: oil, dissolved and free refrigerant are conserved and solved together (deck tester X-runs); used automatically for thermal cases with refrigerant | – | – |
+| Gas model: pressure plateau / gas transport | Advanced. Plateau tracks the cavitated region: the cavitated film is held at p_sat. Transport also tracks how much refrigerant is released: oil, dissolved and free refrigerant are conserved and solved together. Different goals, not a shortcut and a full version. Transport is used automatically for thermal cases with refrigerant | – | – |
 | Cavitated area | Fraction of the film area whose film content is below 1 (filled partly by gas or vapour). The deck metric: 57 % for the compressor example | % | 버블 영역 (유막 면적 대비) |
 | Gas fraction | Volume fraction of gas or vapour in the gap; its 0.5 contour outlines the cavitated region in the maps | α | 기체 부피분율 α |
 | Minimum film thickness | Smallest gap | h_min, µm | 최소유막두께 |
