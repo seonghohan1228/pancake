@@ -47,16 +47,29 @@ msvcrt). Verify with `dumpbin /DEPENDENTS pancake_gui.exe` or
 
 ## Distribution
 
-Copy these two files into one folder:
+Build the full tree (solver + GUI), then collect the release folder:
 
 ```
-pancake_gui.exe
-pancake.exe        (plus the solver's own runtime DLLs - PETSc/MS-MPI/MinGW -
-                    as deployed by the solver build)
+powershell -File tools/make_release.ps1            # -> release/
 ```
 
-The GUI looks for `pancake.exe` next to itself first; a different path can be
-set in *Tools > Settings* inside the app.
+The folder holds everything an engineer needs besides Microsoft MPI:
+
+| Item | Why |
+|---|---|
+| `pancake_gui.exe` | GUI (static; Windows DLLs only) |
+| `pancake.exe` | solver |
+| `libpetsc-dmo.dll`, `libopenblas.dll`, `libmetis.dll`, `libparmetis.dll`, `libgfortran-5.dll`, `libgomp-1.dll`, `libquadmath-0.dll`, `libhwloc-15.dll`, `libltdl-7.dll`, `libstdc++-6.dll`, `libgcc_s_seh-1.dll`, `libwinpthread-1.dll` | solver runtime (MinGW, PETSc, BLAS, METIS), deployed by the build |
+| `fluids/` | oil-refrigerant pairs; the shipped `example_vg68_rx` is synthetic |
+| `examples/` | example cases and the example load table |
+| `README.txt` | what to install and how to start |
+
+Install separately: the Microsoft MPI runtime (`msmpisetup.exe`). It provides
+`msmpi.dll`, which `pancake.exe` needs even on one core, and `mpiexec` for more
+than one core. Not shipped: `data/` and `tests/data/lge/` (LGE test data).
+
+The GUI looks for `pancake.exe` next to itself first; another path can be set
+in *Tools > Settings*, together with the fluid directory.
 
 ## Solver + tests (full tree)
 

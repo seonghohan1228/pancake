@@ -1,0 +1,323 @@
+# pancake case written by the pancake GUI. Run: pancake -c <this file>
+#@gui cores = 1
+#@gui fluid_pair = example_vg68_rx
+#@gui mesh_level = medium
+#@gui saturated = true
+
+# Geometry
+R = 0.02
+c = 2.0000000000000002e-05
+e = 1.6000000000000003e-05
+L = 0.02
+attitude_angle_deg = 290
+load_angle_deg = 0
+tilt_slope_x = 0
+tilt_slope_y = 0
+
+# Grid
+n_theta_global = 360
+n_z_global = 96
+
+# Time
+end_t = 2.0000000000000002e-05
+dt = 2.0000000000000002e-05
+write_interval = 2.0000000000000002e-05
+# solution_mode options: TRANSIENT, STEADY_STATE
+solution_mode = STEADY_STATE
+# Field solves are backward-Euler; only bearing motion has a selectable integrator.
+# motion_time_method options: EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICOLSON, RK2, RK4
+motion_time_method = EULER_IMPLICIT
+
+# Numerics
+# Convection scheme options: UPWIND, LINEAR, VANLEER;
+# theta additionally accepts TYPE_DIFFERENCING (central in full film, upwind in cavitation).
+theta_convection_scheme = UPWIND
+thermal_convection_scheme = UPWIND
+gas_convection_scheme = UPWIND
+linear_rtol = 1e-08
+# Inner Krylov solver: BCGS, BCGSL, GMRES, FGMRES.
+# Preconditioner: ASM (default, rank-robust), BJACOBI, JACOBI, NONE.
+linear_ksp_type = BCGS
+linear_pc_type = ASM
+linear_pc_overlap = 1
+# Escalation rungs (0-2) tried before a failed linear solve aborts the run.
+linear_solver_fallbacks = 2
+# Per-step mass-balance / convergence CSV cadence in steps; <= 0 disables.
+diagnostics_interval = 1
+steady_output_interval = 10
+steady_pressure_inner_only = false
+
+# Physics
+omega = 314.15926535897933
+omega_ramp_time = 0
+mu = 0.015471869720494634
+rho = 847.79999999999995
+p_cav = 500
+oil_vapor_temperature_coeff = 0
+bulk_modulus = 1000000000
+
+# Mixed lubrication: asperity_contact_model NONE|GREENWOOD_TRIPP, flow_factor_model NONE|PATIR_CHENG
+asperity_contact_model = NONE
+flow_factor_model = NONE
+roughness_rq_shaft = 0
+roughness_rq_bush = 0
+asperity_eta_beta_sigma = 0.040000000000000001
+asperity_sigma_over_beta = 0.001
+contact_modulus = 0
+boundary_friction_coefficient = 0.10000000000000001
+
+# Energy Equation
+# temperature_model options: ISOTHERMAL, ENERGY_EQUATION
+temperature_model = ISOTHERMAL
+temperature_initial = 333.14999999999998
+temperature_reference = 333.14999999999998
+journal_wall_temperature = 300
+bearing_wall_temperature = 300
+rho_cp = 1695600
+liquid_specific_heat = 0
+thermal_conductivity = 0.13
+gas_heat_capacity_cv = -1
+dissolved_heat_capacity = -1
+desorption_internal_energy = nan
+gas_thermal_conductivity = 0
+journal_heat_transfer = 0
+bearing_heat_transfer = 0
+# cross_film_thermal_model options: NONE, POLYNOMIAL. POLYNOMIAL turns on the
+# cross-film T(y) profile, the conjugate shaft/bush walls (which replace the
+# two Newton-cooling coefficients above) and the Dowson F0/F1/F2 viscosity
+# integrals in the Reynolds equation. NONE is bit-identical to the model-free solver.
+cross_film_thermal_model = NONE
+cross_film_layers = 16
+cross_film_profile_order = 4
+cross_film_quadrature_points = 6
+cross_film_relaxation = 1
+shaft_ambient_heat_transfer = 0
+shaft_ambient_area_ratio = 1
+thermal_ambient_temperature = 333.14999999999998
+# <= 0 uses thermal_ambient_temperature
+shaft_ambient_temperature = 333.14999999999998
+bush_thermal_conductivity = 50
+bush_outer_radius = 0
+bush_outer_heat_transfer = 0
+# <= 0 uses thermal_ambient_temperature
+bush_outer_temperature = 333.14999999999998
+# bush_thermal_model options: LOCAL (per-cell 1-D radial closure),
+# CONDUCTION_2D (steady (r, theta) conduction in the bush annulus).
+bush_thermal_model = LOCAL
+bush_radial_cells = 16
+bush_axial_cells = 16
+bush_end_heat_transfer = 0
+bush_end_natural_convection = false
+# bush_outer_boundary options: CONVECTION (Robin), FIXED_TEMPERATURE
+bush_outer_boundary = CONVECTION
+# groove_mixing_model options: PINNED, FIXED_LAMBDA, FLOW_WEIGHTED, FLUX_BALANCED
+groove_mixing_model = PINNED
+
+# Fluid Properties
+# fluid_property_model options: CONSTANT, SINGLE_PHASE, TWO_PHASE
+fluid_property_model = SINGLE_PHASE
+# dissolved_gas_species options: AIR, PROPANE, R410A
+dissolved_gas_species = PROPANE
+# solubility_model options: HENRY, TABLE, CURVE_TABLE
+solubility_model = CURVE_TABLE
+# density_model options: CONSTANT, MIXTURE, TABLE, LINEAR_TEMPERATURE
+density_model = CONSTANT
+# Linear density [kg/m^3] = intercept + slope * (T[K] - 273.15).
+density_temperature_intercept = 954.89999999999998
+density_temperature_slope = -0.72840000000000005
+# liquid_viscosity_model options: CONSTANT, EMPIRICAL, POLYNOMIAL, TABLE, COMPOSITION_TABLE, KINEMATIC_TABLE
+liquid_viscosity_model = CONSTANT
+dissolved_gas_initial = 0.083089916295506966
+dissolved_gas_max = 1
+dissolved_gas_henry_coeff = 0
+dissolved_gas_henry_temp_coeff = 0
+dissolved_gas_liquid_density = 0
+gas_mass_transfer_rate = 0
+# gas_absorption_rate: -1 inherits release rate; 0 disables absorption
+gas_absorption_rate = -1
+coupled_phase_equilibrium = false
+coupled_nonlinear_tolerance = 1e-10
+# Optional gas-free FBNS initial guess; final equations and acceptance remain COUPLED.
+coupled_fbns_initialization = false
+dissolved_gas_diffusivity = 0
+solution_density_gas_coeff = 0
+solution_viscosity_gas_coeff = 0
+viscosity_temperature_coeff = 0
+viscosity_pressure_coeff = 0
+# POLYNOMIAL (Ferron 1983): mu(T) = mu * (k0 - k1 Tbar + k2 Tbar^2) with
+# Tbar = T[degC] / property_reference_temperature[degC]. The ratio is in
+# CELSIUS (a Kelvin ratio does not reproduce the paper's numbers); the config
+# key itself stays in Kelvin. Ferron's VG32 set: 3.287, 3.064, 0.777 with
+# mu = 0.0277 Pa.s and property_reference_temperature = 313.15 (40 degC).
+viscosity_poly_k0 = 1
+viscosity_poly_k1 = 0
+viscosity_poly_k2 = 0
+gas_alpha_max = 1
+gas_pressure_floor = 1
+# mixture_viscosity_model options: DUKLER, LINEAR, MCADAMS
+mixture_viscosity_model = MCADAMS
+mu_gas = 0
+property_reference_pressure = 101325
+property_reference_temperature = 300
+# Tables use x:value pairs. Solubility is keyed by pressure; density/viscosity by dissolved mass fraction.
+solubility_table =
+density_table =
+viscosity_table =
+# 2-D (P_MPa, T_C, value) CSV files; when set they take precedence over the inline
+# tables above. Relative paths resolve against this config file's directory.
+solubility_table_file = 
+viscosity_table_file = 
+viscosity_composition_file = 
+# CURVE_TABLE solubility and KINEMATIC_TABLE nu(c,T), using absolute P and refrigerant mass fraction.
+solution_table_file = ../fluids/example_vg68_rx/solution.csv
+solution_table_clamp = true
+kinematic_viscosity_log_interpolation = true
+density_table_file = 
+
+# Bearing Motion
+# motion_model options: STATIC, MOVING_BEARING, STEADY_EQUILIBRIUM
+motion_model = STEADY_EQUILIBRIUM
+steady_force_tolerance = 0.001
+steady_position_step_limit = 0.050000000000000003
+steady_position_fd_step = 0.001
+bearing_initial_from_attitude = true
+bearing_initial_x = 0
+bearing_initial_y = 0
+bearing_initial_z = 0
+bearing_initial_vx = 0
+bearing_initial_vy = 0
+bearing_initial_vz = 0
+bearing_mass = 1
+bearing_stiffness_x = 0
+bearing_stiffness_y = 0
+bearing_stiffness_z = 0
+bearing_damping_x = 0
+bearing_damping_y = 0
+bearing_damping_z = 0
+external_load_x = 6.1230317691118863e-13
+external_load_y = 2000
+external_load_z = 0
+# load_model options: CONSTANT (external_load_x|y|z), ROTATING, TABLE
+load_model = CONSTANT
+load_magnitude = 0
+load_rotation_start_deg = 0
+load_rotation_speed = 0
+load_table_file = 
+# load_table_abscissa options: PHASE_DEG (periodic), TIME_S
+load_table_abscissa = PHASE_DEG
+# load_table_format options: POLAR (magnitude, angle_deg), CARTESIAN (x, y)
+load_table_format = POLAR
+load_frequency = 0
+load_phase_offset_deg = 0
+load_table_angle_offset_deg = 0
+load_table_scale = 1
+# motion_coupling options: EXPLICIT (lagged force), IMPLICIT (iterated)
+motion_coupling = EXPLICIT
+motion_coupling_tolerance = 9.9999999999999995e-07
+motion_coupling_position_tolerance = 9.9999999999999995e-07
+motion_coupling_max_iters = 30
+motion_coupling_fd_step = 1.0000000000000001e-05
+motion_coupling_step_limit = 0.050000000000000003
+# inlet_rotation_speed [rad/s]: all inlets turn about the axis (0 = fixed)
+inlet_rotation_speed = 0
+min_film_thickness = 1.0000000000000001e-09
+stop_on_nonpositive_film = true
+
+# Axial pressure reservoirs (inflow and outflow are both permitted)
+# Options: DIRICHLET, NEUMANN, INLET_OUTLET
+# For JFO, boundary film content is derived from bc_z_*_val,
+# p_cav, and bulk_modulus; legacy bc_z_*_theta inputs are ignored.
+# bc_z_*_thermal: CONSTANT uses the reservoir temperature on inflow only;
+#   ZERO_GRADIENT extrapolates interior temperature even during reverse flow.
+# Temperature 0 and dissolved_gas -1 inherit their global reference/initial values.
+# Free-gas mass fraction is free gas / (liquid solution + free gas), not void fraction.
+bc_z_south_type = DIRICHLET
+bc_z_south_val = 1500000
+bc_z_south_thermal = CONSTANT
+bc_z_south_temperature = 333.14999999999998
+bc_z_south_dissolved_gas = 0.083089916295506966
+bc_z_south_free_gas_mass_fraction = 0
+bc_z_north_type = DIRICHLET
+bc_z_north_val = 1500000
+bc_z_north_thermal = CONSTANT
+bc_z_north_temperature = 333.14999999999998
+bc_z_north_dissolved_gas = 0.083089916295506966
+bc_z_north_free_gas_mass_fraction = 0
+
+# Cavitation
+# Options: FULL_SOMMERFELD, GUMBEL, JFO, FBNS
+cavitation_model = FBNS
+# cavitation_threshold: SCALAR_PCAV (oil p_cav) or LOCAL_PSAT (max of p_cav
+# and the dissolved-species bubble point, so the first-released species governs onset)
+cavitation_threshold = LOCAL_PSAT
+# gas_pressure_coupling: NONE (released gas volumetrically inert) or VOID_COUPLED
+# (released gas displaces liquid and sets a local plateau p_void; needs TWO_PHASE + mu_gas)
+gas_pressure_coupling = NONE
+max_outer_iters = 50
+outer_tol = 9.9999999999999995e-07
+theta_min = 9.9999999999999995e-07
+log_outer_iters = false
+# FBNS only (cavitation_model = FBNS). bulk_modulus is unused there.
+# fbns_pressure_scale = 0 derives p_ref from the operating point.
+fbns_max_iters = 200
+fbns_tol = 1e-10
+fbns_relaxation = 1
+fbns_pressure_scale = 0
+# Film rupture shear/heat: FULL_FILM or STRIATED (JFO/FBNS only).
+cavitated_film_model = STRIATED
+consistent_boundary_flux = false
+void_coupling_relaxation = 0.29999999999999999
+
+# Steady outer coupling (Picard over pressure, properties, energy, gas)
+coupling_max_iters = 200
+coupling_tolerance = 9.9999999999999995e-07
+coupling_relaxation = 1
+# coupling_relaxation_mode: FIXED or ADAPTIVE (min/backoff/growth apply to ADAPTIVE).
+coupling_relaxation_mode = FIXED
+coupling_relaxation_min = 0.10000000000000001
+coupling_relaxation_backoff = 0.5
+coupling_relaxation_growth = 1.1000000000000001
+coupling_keep_best_iterate = true
+log_coupling_history = false
+# steady_gas_model: FROZEN or EQUILIBRIUM (steady dissolved-gas treatment).
+steady_gas_model = FROZEN
+allow_frozen_gas_steady = false
+
+# Inlets
+# inlet_circular = theta(deg) z(m) radius(m) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]
+# inlet_groove   = theta(deg) width(deg) p_supply(Pa) [t_supply(K)] [lambda] [q_supply(m3/s)]
+# lambda and q_supply feed groove_mixing_model (FIXED_LAMBDA / FLOW_WEIGHTED)
+# and are ignored under the default PINNED.
+# Omit the optional t_supply to model an open large-clearance region of the
+# same recirculating oil (pressure-only, thermally transparent). Provide it to
+# model an actual fed inlet that pumps fresh oil in at t_supply.
+inlet_circular = 90 0.01 0.0015 1530000 333.14999999999998
+
+inlet_species = 0 0.083089916295506966 0
+# Output
+# output_fields accepts comma-separated field names.
+# Options: pressure, film_content, h, rho, mu,
+#          rho_liquid_solution, mu_liquid_solution,
+#          temperature, heat_generation, dissolved_gas, alpha_gas,
+#          gas_mass_transfer,
+#          inlet_indicator, velocity (active vector),
+#          pressure_force_x, pressure_force_y, pressure_force_z,
+#          viscous_force_x, viscous_force_y, viscous_force_z,
+#          fluid_force_x, fluid_force_y, fluid_force_z,
+#          external_load_x, external_load_y, external_load_z,
+#          bearing_x, bearing_y, bearing_z, bearing_attitude_angle,
+#          friction_torque,
+#          mass_residual (per-cell continuity residual [kg/s], JFO/FBNS only),
+#          temperature_journal, temperature_bearing (film surface temperatures
+#          [K] at eta = 0 / 1), heat_flux_journal, heat_flux_bearing (wall heat
+#          flux [W/m^2], positive INTO the fluid). The last four require
+#          cross_film_thermal_model = POLYNOMIAL.
+#          Legacy load_x/load_y/load_z requests map to pressure_force_*.
+output_dir = example_steady_results
+steady_initial_state_file = 
+filename_prefix = solution
+# output_verbosity options: SIMPLIFIED (compact per-step line), DETAILED (per-step diagnostics)
+output_verbosity = DETAILED
+output_write_3d = false
+output_write_flat = true
+output_fields = pressure, film_content, h, rho, mu, rho_liquid_solution, mu_liquid_solution, temperature, heat_generation, dissolved_gas, alpha_gas, gas_mass_transfer, inlet_indicator, velocity, pressure_force_x, pressure_force_y, pressure_force_z, viscous_force_x, viscous_force_y, viscous_force_z, fluid_force_x, fluid_force_y, fluid_force_z, external_load_x, external_load_y, external_load_z, bearing_x, bearing_y, bearing_z, bearing_attitude_angle, friction_torque, contact_pressure, contact_force_x, contact_force_y, contact_force_z, contact_friction_torque

@@ -75,6 +75,11 @@ add_pancake_test(test_coupled_cavitation)
 add_pancake_test(test_coupled_boundaries)
 add_pancake_test(test_coupled_energy)
 add_pancake_test(test_r410a)
+add_pancake_test(test_mixed_lubrication)
+foreach(ranks 1 4)
+    add_test(NAME test_mixed_lubrication_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_mixed_lubrication>)
+endforeach()
 add_executable(test_composition_viscosity test_composition_viscosity.cpp)
 target_link_libraries(test_composition_viscosity PRIVATE pancake_core)
 target_compile_definitions(test_composition_viscosity PRIVATE PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -111,12 +116,40 @@ set_tests_properties(test_ksp_guard PROPERTIES
     PASS_REGULAR_EXPRESSION "linear solve 'ksp guard probe' failed")
 
 add_pancake_test(test_steady_equilibrium)
+add_pancake_test(test_coupled_equilibrium)
+add_pancake_test(test_coupled_resolved_energy)
+add_test(NAME test_coupled_resolved_energy_mpi4
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:test_coupled_resolved_energy>)
 foreach(ranks 1 4)
     add_test(NAME test_steady_equilibrium_mpi${ranks}
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_steady_equilibrium>)
+    add_test(NAME test_coupled_equilibrium_mpi${ranks}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks} $<TARGET_FILE:test_coupled_equilibrium>)
 endforeach()
 
 add_test(NAME test_steady_equilibrium_failure
     COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
         -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/steady_equilibrium_failure
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test_steady_equilibrium_failure.cmake)
+add_test(NAME test_coupled_equilibrium_failure
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_equilibrium_failure
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_equilibrium_failure.cmake)
+add_test(NAME test_coupled_fbns_initialization
+    COMMAND ${CMAKE_COMMAND} -DSOLVER=$<TARGET_FILE:pancake>
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/coupled_fbns_initialization
+        -DMPIEXEC=${MPIEXEC_EXECUTABLE} -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_coupled_fbns_initialization.cmake)
+# GUI case model (toolkit-free sources of src/gui), acceptance tests 1, 2, 5-7.
+add_executable(test_gui_case_model test_gui_case_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/case_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/config_text_patch.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/estimates.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/fluid_library.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/key_results.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/case_status.cpp)
+target_include_directories(test_gui_case_model PRIVATE ${CMAKE_SOURCE_DIR}/src/gui)
+target_link_libraries(test_gui_case_model PRIVATE pancake_core)
+target_compile_definitions(test_gui_case_model PRIVATE PANCAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+pancake_deploy_mingw_runtime(test_gui_case_model)
+add_test(NAME test_gui_case_model COMMAND test_gui_case_model)

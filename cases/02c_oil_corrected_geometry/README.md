@@ -44,6 +44,9 @@ case and output directories prevent cached equilibria from the previous
 geometry being used. Configurations, residual logs and raw VTK files for every
 trial stay on the workstation. The compact archive contains final field planes,
 configurations, diagnostics, logs, metrics and the executable provenance.
+*Location update (2026-11-14):* the workstation copies were pulled to
+`D:\Seongho\Sim\pancake\pancake_oil_corrected_20260911` and removed from
+afml-r6; the local worktree runs are in its `worktree_a5d0ea8\` subfolder.
 
 ```sh
 python3 run_scan.py pilot

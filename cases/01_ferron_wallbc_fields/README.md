@@ -91,3 +91,7 @@ profiles are mirrored locally. The coarse 180 x 24 config smoke for all four
 groups is remote-only, at `.../01_ferron_wallbc_fields/smoke_coarse_180x24/`.
 The extraction script that produced `extract.json` is archived at
 `cases/90_diagnostics/remote_harness/extract.py`.
+
+*Location update (2026-11-14):* these files were pulled from afml-r6 and
+removed there. They are now under `D:\Seongho\Sim\pancake\_cases\r6_home_pancake\cases\01_ferron_wallbc_fields`; files that
+were already on D are listed in `R6_POINTERS.tsv` in that folder.

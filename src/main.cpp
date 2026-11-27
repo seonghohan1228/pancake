@@ -26,6 +26,7 @@
 #include "journal_motion.hpp"
 #include "steady_equilibrium.hpp"
 #include "linear_system.hpp"
+#include "mixed_lubrication.hpp"
 #include "mesh.hpp"
 #include "property_table_io.hpp"
 #include "reynolds.hpp"
@@ -114,9 +115,37 @@ void relax_field(Field& field, const Field& prev, double omega, const Mesh& mesh
             field(i, j) = omega * field(i, j) + (1.0 - omega) * prev(i, j);
 }
 
+struct CoupledBalanceScales {
+    double oil = 0.0, species = 0.0, liquid = 0.0;
+};
+
+// Absolute external throughput, so opposing reservoir fluxes cannot cancel the scale.
+CoupledBalanceScales coupled_balance_scales(const Fields& fields, const Mesh& mesh) {
+    double local[3]{};
+    auto add = [&](double oil, double dissolved, double free) {
+        local[0] += std::abs(oil);
+        local[1] += std::abs(dissolved + free);
+        local[2] += std::abs(oil + dissolved);
+    };
+    for (int i=0; i<mesh.n_theta_local; ++i) {
+        for (int j : {0, mesh.n_z_local}) {
+            double phase[3]{};
+            for (int k=0; k<3; ++k) for (const char* component : {"pressure", "moving", "diffusion"})
+                phase[k] += fields["coupled_" + std::string(component) + "_" + std::to_string(k) + "_z"](i,j);
+            add(phase[0],phase[1],phase[2]);
+        }
+        for (int j=0; j<mesh.n_z_local; ++j)
+            add(fields["coupled_source_0"](i,j), fields["coupled_source_1"](i,j), fields["coupled_source_2"](i,j));
+    }
+    double global[3]{};
+    MPI_Allreduce(local,global,3,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+    return {global[0],global[1],global[2]};
+}
+
 void update_film_geometry(Fields& fields, const Mesh& mesh,
                           const SimulationConfig& cfg,
-                          const JournalMotion::BearingState& bearing_state) {
+                          const JournalMotion::BearingState& bearing_state,
+                          double time = 0.0) {
     if (cfg.motion_model != MotionModel::STATIC) {
         FilmThickness::compute_moving_bearing(fields["h"], fields["dh_dt"], mesh, cfg, bearing_state);
     } else {
@@ -124,7 +153,59 @@ void update_film_geometry(Fields& fields, const Mesh& mesh,
         fields["dh_dt"].fill(0.0);
     }
     if (cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM) fields["dh_dt"].fill(0.0);
-    JournalMotion::write_state_fields(fields, bearing_state, cfg);
+    JournalMotion::write_state_fields(fields, bearing_state, cfg, time);
+    // Turning inlets move through the mesh: refresh the indicator the property and
+    // gas-transport updates read.
+    if (cfg.inlet_rotation_speed != 0.0 && fields.has("inlet_indicator"))
+        FilmThickness::compute_inlet_indicator(fields["inlet_indicator"], mesh, cfg);
+}
+
+// One row of motion.csv: the bearing state, the load and the film summary of a
+// completed MOVING_BEARING step. Global reductions; rank 0 writes.
+void append_motion_csv(const fs::path& path, bool header, double t, int step,
+                       const Fields& fields, const Mesh& mesh, const SimulationConfig& cfg,
+                       const JournalMotion::BearingState& state,
+                       const Reynolds::ForceComponents& forces,
+                       int coupling_solves, double coupling_residual, double coupling_correction) {
+    const double d_theta = mesh.get_d_theta();
+    struct { double value; int index; } local_min{std::numeric_limits<double>::infinity(), 0}, global_min{};
+    double local[2] = {-std::numeric_limits<double>::infinity(), 0.0};  // p_max, cavitated cells
+    for (int i = 0; i < mesh.n_theta_local; ++i) {
+        for (int j = 0; j < mesh.n_z_local; ++j) {
+            const double h = fields["h"](i, j);
+            if (h < local_min.value) local_min = {h, mesh.offset_theta + i};
+            local[0] = std::max(local[0], fields["pressure"](i, j));
+            if (fields["theta"](i, j) < 1.0 - 1e-8) local[1] += 1.0;
+        }
+    }
+    MPI_Allreduce(&local_min, &global_min, 1, MPI_DOUBLE_INT, MPI_MINLOC, MPI_COMM_WORLD);
+    double global_max = 0.0, global_cavity = 0.0;
+    MPI_Allreduce(&local[0], &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&local[1], &global_cavity, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    int failed = 0;
+    if (mesh.rank == 0) {
+        std::ofstream out(path, header ? std::ios::trunc : std::ios::app);
+        if (header) {
+            out << "time_s,step,load_phase_deg,load_x_N,load_y_N,bearing_x_m,bearing_y_m,"
+                   "bearing_vx_m_s,bearing_vy_m_s,eccentricity_ratio,attitude_angle_deg,"
+                   "h_min_m,h_min_theta_deg,friction_torque_Nm,p_max_Pa,cavitated_fraction,"
+                   "fluid_force_x_N,fluid_force_y_N,coupling_solves,coupling_residual,coupling_correction\n";
+        }
+        const JournalMotion::Vector3 load = JournalMotion::external_load(cfg, t);
+        out << std::setprecision(12) << t << ',' << step << ',' << JournalMotion::load_phase_deg(cfg, t)
+            << ',' << load.x << ',' << load.y << ',' << state.x << ',' << state.y
+            << ',' << state.vx << ',' << state.vy
+            << ',' << JournalMotion::equivalent_eccentricity(state) / cfg.c
+            << ',' << JournalMotion::equivalent_attitude_angle_deg(state, cfg)
+            << ',' << global_min.value << ',' << (global_min.index + 0.5) * d_theta * 180.0 / M_PI
+            << ',' << forces.friction_torque << ',' << global_max
+            << ',' << global_cavity / (static_cast<double>(mesh.n_theta_global) * mesh.n_z_global)
+            << ',' << forces.fluid_x << ',' << forces.fluid_y
+            << ',' << coupling_solves << ',' << coupling_residual << ',' << coupling_correction << '\n';
+        failed = !out;
+    }
+    MPI_Bcast(&failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (failed) throw std::runtime_error("Cannot write " + path.string());
 }
 }
 
@@ -161,6 +242,7 @@ int main(int argc, char** argv) {
     // context sees them; validate() clears config_errors, so merge afterwards.
     std::vector<std::string> table_errors;
     FluidProperties::load_config_property_tables(cfg, table_errors);
+    JournalMotion::load_config_load_table(cfg, table_errors);
     cfg.validate(config_errors, config_warnings);
     config_errors.insert(config_errors.end(), table_errors.begin(), table_errors.end());
     for (const auto& warning : config_warnings) {
@@ -243,6 +325,13 @@ int main(int argc, char** argv) {
         fields.add("bearing_z", mesh).fill(0.0);
         fields.add("bearing_attitude_angle", mesh).fill(cfg.attitude_angle_deg);
         fields.add("friction_torque", mesh).fill(0.0);
+        if (MixedLubrication::contact_active(cfg)) {
+            fields.add("contact_pressure", mesh).fill(0.0);
+            fields.add("contact_force_x", mesh).fill(0.0);
+            fields.add("contact_force_y", mesh).fill(0.0);
+            fields.add("contact_force_z", mesh).fill(0.0);
+            fields.add("contact_friction_torque", mesh).fill(0.0);
+        }
         fields.add("cavitation_clamp_mass", mesh).fill(0.0);
         fields.add("gas_clamp_mass", mesh).fill(0.0);
         // Per-cell continuity residual [kg/s]. Registered only when selected, so
@@ -270,11 +359,16 @@ int main(int argc, char** argv) {
 
         std::unique_ptr<CoupledCavitation::Solver> coupled_solver;
         if (coupled) {
-            coupled_solver = std::make_unique<CoupledCavitation::Solver>(mesh,comm,cfg.temperature_model==TemperatureModel::ENERGY_EQUATION);
+            coupled_solver = std::make_unique<CoupledCavitation::Solver>(mesh,comm,
+                cfg.temperature_model==TemperatureModel::ENERGY_EQUATION &&
+                cfg.cross_film_thermal_model==CrossFilmModel::NONE);
+            if (cfg.log_outer_iters) Utils::log("Coupled hydraulic system constructed.");
             coupled_solver->initialize(fields,cfg);
+            if (cfg.log_outer_iters) Utils::log("Coupled inventories initialized.");
         }
 
         LinearSystem sys(mesh, linear_solver_options_from_config(cfg));
+        bool coupled_fbns_initialized = false;
         Field p_outer_prev("p_outer_prev", mesh);  // pre-sweep snapshots for the
         Field T_outer_prev("T_outer_prev", mesh);  // outer (Picard) coupling residual
         Field c_outer_prev("c_outer_prev", mesh);
@@ -294,19 +388,35 @@ int main(int argc, char** argv) {
         int step = 0;
         const bool steady_state = cfg.solution_mode == SolutionMode::STEADY_STATE;
         const bool equilibrium = cfg.motion_model == MotionModel::STEADY_EQUILIBRIUM;
+        const bool coupled_outer = coupled && steady_state && (equilibrium || CrossFilm::active(cfg));
         if (equilibrium) bearing_state.vx = bearing_state.vy = bearing_state.vz = 0.0;
         Reynolds::ForceComponents previous_forces;
+        // Implicit motion coupling: each step re-solves the film at trial bearing
+        // positions until the backward-Euler force balance closes. Every trial
+        // starts from the step-start fields (motion_snapshot) with the latest
+        // pressure and film content as the Newton initial guess.
+        const bool implicit_motion = !steady_state && cfg.motion_model == MotionModel::MOVING_BEARING &&
+                                     cfg.motion_coupling == MotionCoupling::IMPLICIT;
+        JournalMotion::ImplicitCoupling implicit_coupling(cfg);
+        Coupling::Snapshot motion_snapshot;
+        const bool write_motion_csv = !steady_state && cfg.motion_model == MotionModel::MOVING_BEARING;
+        bool motion_csv_header = true;
         if (!steady_state) {
             SimulationConfig initial_cfg = cfg;
             initial_cfg.omega = cfg.omega_at_time(0);
             Reynolds::calculate_velocities(fields, mesh, initial_cfg);
             previous_forces = Reynolds::calculate_macroscopic_properties(fields, mesh, initial_cfg);
-            JournalMotion::write_state_fields(fields, bearing_state, cfg);
+            JournalMotion::write_state_fields(fields, bearing_state, cfg, 0.0);
             comm.update_ghosts(fields["velocity_theta"]);
             comm.update_ghosts(fields["velocity_z"]);
             IO::write_timestep(0, 0, mesh, fields, cfg);
             output_time = cfg.write_interval;
         }
+
+        // Inlet angles at t = 0; with inlet_rotation_speed the inlets are placed
+        // at the target time of each step (both cfg and step_cfg carry them).
+        std::vector<double> inlet_theta_start;
+        for (const auto& inlet : cfg.inlets) inlet_theta_start.push_back(inlet.theta);
 
         // Time loop
         while (steady_state ? (step == 0) : (t < cfg.end_t)) {
@@ -317,15 +427,22 @@ int main(int argc, char** argv) {
                 step_cfg.dt = remaining <= cfg.dt + time_roundoff ? remaining : cfg.dt;
                 t = step_cfg.dt == remaining ? cfg.end_t : t + step_cfg.dt;
                 ++step;
-                // Explicit fluid-force predictor: geometry and the field solution
-                // now share the target time. The force stays lagged by one step.
-                JournalMotion::advance(bearing_state,
-                    {previous_forces.fluid_x, previous_forces.fluid_y, previous_forces.fluid_z},
-                    cfg, step_cfg.dt);
+                cfg.place_inlets(inlet_theta_start, t);
+                step_cfg.place_inlets(inlet_theta_start, t);
+                if (implicit_motion) {
+                    motion_snapshot.capture(fields);
+                    bearing_state = implicit_coupling.begin_step(bearing_state, step_cfg.dt, t);
+                } else {
+                    // Explicit fluid-force predictor: geometry and the field solution
+                    // now share the target time. The force stays lagged by one step.
+                    JournalMotion::advance(bearing_state,
+                        {previous_forces.fluid_x, previous_forces.fluid_y, previous_forces.fluid_z},
+                        cfg, step_cfg.dt, t);
+                }
             }
             step_cfg.omega = cfg.omega_at_time(t);
 
-            update_film_geometry(fields, mesh, cfg, bearing_state);
+            update_film_geometry(fields, mesh, cfg, bearing_state, t);
             double h_min = global_min_field(fields["h"], mesh);
             if (cfg.stop_on_nonpositive_film && h_min <= cfg.min_film_thickness) {
                 nonlinear_failed = true;
@@ -342,7 +459,8 @@ int main(int argc, char** argv) {
             CoupledCavitation::Stats coupled_stats;
             Reynolds::ForceComponents forces;
             const double gas_dt = steady_state ? 0.0 : step_cfg.dt;
-            const int max_coupling = steady_state ? std::max(1, cfg.coupling_max_iters) : 1;
+            const int max_coupling = steady_state ? std::max(1, cfg.coupling_max_iters)
+                                                  : (implicit_motion ? cfg.motion_coupling_max_iters : 1);
             const double p_ref = std::max(cfg.property_reference_pressure, 1.0);
             const double T_ref = std::max(cfg.temperature_reference, 1.0);
             int coupling_iters = 0;
@@ -356,7 +474,7 @@ int main(int argc, char** argv) {
             // whatever the limit cycle happened to land on.
             SimulationConfig coupling_cfg = cfg;
             // A mechanical iterate must never roll back by thermal residual alone.
-            if (equilibrium) coupling_cfg.coupling_keep_best_iterate = false;
+            if (equilibrium || coupled_outer) coupling_cfg.coupling_keep_best_iterate = false;
             Coupling::Controller coupling_control(coupling_cfg);
             SteadyEquilibrium::Stats equilibrium_stats;
             std::ofstream equilibrium_history;
@@ -378,10 +496,21 @@ int main(int argc, char** argv) {
             Reynolds::ForceComponents best_forces;
             CrossFilm::WallState best_cross_film_state;
             const bool track_best =
-                steady_state && !equilibrium && cfg.coupling_keep_best_iterate && max_coupling > 1;
+                steady_state && !equilibrium && !coupled && cfg.coupling_keep_best_iterate && max_coupling > 1;
 
             for (int outer = 0; outer < max_coupling; ++outer) {
-                if (coupled) {
+                std::vector<std::pair<std::string, std::vector<double>>> thermal_previous;
+                if (coupled_outer && CrossFilm::active(cfg)) {
+                    for (const auto& [name, field] : fields) {
+                        const bool layer = name.starts_with("cross_film_layer_") &&
+                            name.size() > 17 && name[17] >= '0' && name[17] <= '9';
+                        if (layer || name.starts_with("cross_film_solid_") || name == "temperature" ||
+                            name == "cross_film_t_shaft" || name == "cross_film_t_bush" ||
+                            name == "temperature_housing_outer" || name == "temperature_journal" || name == "temperature_bearing")
+                            thermal_previous.emplace_back(name, field->data);
+                    }
+                }
+                if (coupled && !coupled_outer) {
                     try {
                         coupled_stats = coupled_solver->solve(fields,step_cfg,step_cfg.dt,cfg.coupled_phase_equilibrium);
                     } catch (const std::exception& ex) {
@@ -397,7 +526,7 @@ int main(int argc, char** argv) {
                         break;
                     }
                     forces = Reynolds::calculate_macroscopic_properties(fields,mesh,step_cfg);
-                    JournalMotion::write_state_fields(fields,bearing_state,cfg);
+                    JournalMotion::write_state_fields(fields,bearing_state,cfg,t);
                     coupling_iters = 1;
                     break;
                 }
@@ -408,7 +537,7 @@ int main(int argc, char** argv) {
                     copy_physical(fields["alpha_gas"], alpha_outer_prev, mesh);
                 }
 
-                FluidProperties::update_solution_fields(fields, mesh, cfg);
+                if (!coupled) FluidProperties::update_solution_fields(fields, mesh, cfg);
                 comm.update_ghosts(fields);
 
                 // Cross-film profile, conjugate walls and the Dowson F-integrals.
@@ -418,7 +547,8 @@ int main(int argc, char** argv) {
                 // No-op unless cross_film_thermal_model is enabled.
                 if (CrossFilm::active(cfg)) {
                     try {
-                        cross_film_state = CrossFilm::update(fields, mesh, cfg);
+                        cross_film_state = CrossFilm::update(fields, mesh, cfg,
+                            coupled && steady_state ? coupling_control.relaxation() : 1.0);
                     } catch (const std::exception& ex) {
                         nonlinear_failed = true;
                         Utils::log(ex.what(), Utils::Color::RED, 1);
@@ -431,17 +561,84 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["cross_film_couette_h"]);
                 }
 
+                if (cfg.coupled_fbns_initialization && !coupled_fbns_initialized) {
+                    try {
+                        int invalid_seed = 0;
+                        auto seed_cfg = step_cfg;
+                        seed_cfg.cavitation_model = CavitationModel::FBNS;
+                        seed_cfg.fluid_property_model = FluidPropertyModel::SINGLE_PHASE;
+                        seed_cfg.coupled_phase_equilibrium = false;
+                        seed_cfg.coupled_fbns_initialization = false;
+                        seed_cfg.cross_film_thermal_model = CrossFilmModel::NONE;
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            invalid_seed |= fields["free_gas_mass"](i,j) != 0 || fields["alpha_gas"](i,j) != 0;
+                            const double c_d = fields["dissolved_gas"](i,j);
+                            const double p = fields["pressure"](i,j), t = fields["temperature"](i,j);
+                            try {
+                                fields["rho_liquid_solution"](i,j) = FluidProperties::liquid_solution_density(c_d,p,t,step_cfg);
+                                fields["mu"](i,j) = FluidProperties::liquid_solution_viscosity(c_d,p,t,step_cfg);
+                            } catch (const std::exception&) { invalid_seed = 1; }
+                        }
+                        MPI_Allreduce(MPI_IN_PLACE,&invalid_seed,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+                        if (invalid_seed) throw std::runtime_error("FBNS initialization requires supported liquid properties and no existing free-gas inventory.");
+                        comm.update_ghosts(fields);
+                        const auto seed = FBNS::solve(fields,sys,comm,mesh,seed_cfg);
+                        double minimum_theta = std::numeric_limits<double>::infinity();
+                        double minimum_pressure = minimum_theta;
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            minimum_theta = std::min(minimum_theta,fields["theta"](i,j));
+                            minimum_pressure = std::min(minimum_pressure,fields["pressure"](i,j));
+                        }
+                        MPI_Allreduce(MPI_IN_PLACE,&minimum_theta,1,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+                        MPI_Allreduce(MPI_IN_PLACE,&minimum_pressure,1,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+                        if (!seed.converged || !std::isfinite(minimum_theta) || minimum_theta <= 0 ||
+                            !std::isfinite(minimum_pressure) || minimum_pressure < cfg.p_cav)
+                            throw std::runtime_error("FBNS initialization did not produce a converged admissible initial guess.");
+                        coupled_solver->initialize(fields,cfg);
+                        coupled_fbns_initialized = true;
+                        std::ostringstream message;
+                        message << std::setprecision(17) << "Coupled FBNS initialization: residual=" << seed.residual
+                            << " iterations=" << seed.newton_iters << " theta_min=" << minimum_theta;
+                        Utils::log(message.str(),Utils::Color::BLUE,1);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(),Utils::Color::RED,1);
+                        break;
+                    }
+                }
                 if (equilibrium) {
                     try {
-                        equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state);
+                        equilibrium_stats = SteadyEquilibrium::update(fields, sys, comm, mesh, step_cfg, bearing_state,
+                            coupled_solver.get());
                     } catch (const std::exception& ex) {
                         nonlinear_failed = true;
                         Utils::log(ex.what(), Utils::Color::RED, 1);
                         break;
                     }
-                    elrod_stats.outer_iters = equilibrium_stats.pressure.newton_iters;
-                    elrod_stats.max_theta_change = equilibrium_stats.pressure.max_theta_change;
-                    elrod_stats.converged = equilibrium_stats.pressure.converged;
+                    if (coupled) {
+                        coupled_stats = equilibrium_stats.coupled;
+                        elrod_stats.outer_iters = coupled_stats.iterations;
+                        elrod_stats.converged = coupled_stats.converged;
+                    } else {
+                        elrod_stats.outer_iters = equilibrium_stats.pressure.newton_iters;
+                        elrod_stats.max_theta_change = equilibrium_stats.pressure.max_theta_change;
+                        elrod_stats.converged = equilibrium_stats.pressure.converged;
+                    }
+                } else if (coupled) {
+                    try {
+                        coupled_stats = coupled_solver->solve(fields, step_cfg, step_cfg.dt, cfg.coupled_phase_equilibrium);
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(), Utils::Color::RED, 1);
+                        break;
+                    }
+                    elrod_stats.outer_iters = coupled_stats.iterations;
+                    elrod_stats.converged = coupled_stats.converged;
+                    if (!coupled_stats.converged) {
+                        nonlinear_failed = true;
+                        Utils::log("Coupled steady conservation/volume solve did not converge", Utils::Color::RED, 1);
+                        break;
+                    }
                 } else if (FBNS::active(cfg)) {
                     // The FBNS Newton stats are reported through the same
                     // diagnostics columns: outer_iters is the Newton count and
@@ -467,6 +664,7 @@ int main(int argc, char** argv) {
                 if (!steady_state && cfg.mass_conserving_cavitation() && !elrod_stats.converged)
                     nonlinear_failed = true;
 
+                if (!coupled) {
                 FluidProperties::update_solution_fields(fields, mesh, cfg);
 
                 // Sync the flow + property fields the gas transport and velocity solve read.
@@ -507,16 +705,19 @@ int main(int argc, char** argv) {
                     comm.update_ghosts(fields["rho_cp_liquid_solution"]);
                     comm.update_ghosts(fields["k_liquid_solution"]);
                 }
+                }
 
                 // Calculate velocities and macroscopic properties
-                Reynolds::calculate_velocities(fields, mesh, step_cfg);
+                if (!coupled) Reynolds::calculate_velocities(fields, mesh, step_cfg);
                 forces = Reynolds::calculate_macroscopic_properties(fields, mesh, step_cfg);
-                JournalMotion::write_state_fields(fields, bearing_state, cfg);
+                JournalMotion::write_state_fields(fields, bearing_state, cfg, t);
 
                 comm.update_ghosts(fields["h"]);
                 comm.update_ghosts(fields["temperature"]);
                 try {
-                    Energy::solve(fields, sys, mesh, step_cfg);
+                    if (coupled && cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+                        ResolvedCrossFilm::solve(fields, mesh, step_cfg);
+                    else if (!coupled) Energy::solve(fields, sys, mesh, step_cfg);
                     if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
                         cross_film_state = ResolvedCrossFilm::diagnostics(fields, mesh, step_cfg);
                 } catch (const std::exception& ex) {
@@ -549,6 +750,22 @@ int main(int argc, char** argv) {
                                 coupling_R_E < cfg.coupling_tolerance;
                         } else {
                             energy_balanced = false;
+                        }
+                    }
+                    if (coupled) {
+                        const auto scales = coupled_balance_scales(fields, mesh);
+                        energy_balanced = energy_balanced && coupled_stats.converged &&
+                            std::abs(coupled_stats.oil_balance) / std::max(scales.oil, 1e-30) < std::min(cfg.coupling_tolerance, 1e-8) &&
+                            std::abs(coupled_stats.species_balance) / std::max(scales.species, 1e-30) < std::min(cfg.coupling_tolerance, 1e-8) &&
+                            std::isfinite(coupled_stats.volume_error) &&
+                            coupled_stats.volume_error < cfg.coupling_tolerance;
+                        if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                            energy_balanced = energy_balanced && std::isfinite(cross_film_state.viscosity_residual) &&
+                                cross_film_state.viscosity_residual < cfg.coupling_tolerance;
+                            const auto ledger = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                            coupling_R_E = std::abs(ledger.residual_W) / std::max(ledger.scale_W, 1.0);
+                            energy_balanced = energy_balanced && std::isfinite(coupling_R_E) &&
+                                coupling_R_E < cfg.coupling_tolerance;
                         }
                     }
                     if (equilibrium) {
@@ -585,6 +802,7 @@ int main(int argc, char** argv) {
                           << " R_T=" << coupling_R_T
                           << " R_g=" << coupling_R_g
                           << " R_X=" << cross_film_state.profile_residual
+                          << " R_mu=" << cross_film_state.viscosity_residual
                           << " R_E=" << coupling_R_E
                           << " omega=" << coupling_control.relaxation()
                           << (coupling_control.is_best() ? " *best" : "");
@@ -616,8 +834,7 @@ int main(int argc, char** argv) {
                         comm.update_ghosts(fields["velocity_theta"]);
                         comm.update_ghosts(fields["velocity_z"]);
                         IO::write_timestep(0.0, 0, mesh, fields, snapshot_cfg);
-                        if (FBNS::active(cfg) && cfg.fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
-                            cfg.gas_pressure_coupling == GasPressureCoupling::NONE && cfg.dissolved_gas_initial == 0.0) {
+                        if (cfg.single_phase_fbns_state()) {
                             IO::write_steady_initial_state(fs::path(snapshot_cfg.output_dir) / "steady_state.dat", fields, mesh, cfg);
                         }
                         MPI_Barrier(MPI_COMM_WORLD);
@@ -640,11 +857,62 @@ int main(int argc, char** argv) {
                         break;
                     }
                     if (tolerance_met) break;
-                    relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
-                    relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
+                    if (!coupled) {
+                        relax_field(fields["pressure"], p_outer_prev, coupling_control.relaxation(), mesh);
+                        relax_field(fields["temperature"], T_outer_prev, coupling_control.relaxation(), mesh);
+                    } else if (!thermal_previous.empty() && outer + 1 < max_coupling && coupling_control.relaxation() < 1.0) {
+                        const double omega = coupling_control.relaxation();
+                        for (const auto& [name, previous] : thermal_previous) {
+                            auto& current = fields[name].data;
+                            for (std::size_t k=0; k<current.size(); ++k)
+                                current[k] = omega*current[k] + (1-omega)*previous[k];
+                        }
+                        for (int i=0; i<mesh.n_theta_local; ++i) for (int j=0; j<mesh.n_z_local; ++j) {
+                            double mean = 0;
+                            for (int k=0; k<cfg.cross_film_layers; ++k)
+                                mean += fields["cross_film_layer_" + std::to_string(k)](i,j) / cfg.cross_film_layers;
+                            fields["temperature"](i,j) = mean;
+                        }
+                    }
+                } else if (implicit_motion) {
+                    if (nonlinear_failed) break;
+                    bool motion_converged = false;
+                    const double trial_x = bearing_state.x, trial_y = bearing_state.y;
+                    try {
+                        motion_converged = implicit_coupling.update(bearing_state,
+                            {forces.fluid_x, forces.fluid_y, forces.fluid_z});
+                    } catch (const std::exception& ex) {
+                        nonlinear_failed = true;
+                        Utils::log(ex.what(), Utils::Color::RED, 1);
+                        break;
+                    }
+                    if (cfg.log_outer_iters) {
+                        std::ostringstream m;
+                        m << std::setprecision(12) << "Motion iter " << implicit_coupling.evaluations()
+                          << " R=" << implicit_coupling.residual() << " dx/c=" << implicit_coupling.correction()
+                          << " x=" << trial_x
+                          << " y=" << trial_y << " F=(" << forces.fluid_x << ", " << forces.fluid_y
+                          << ") fbns_newton=" << elrod_stats.outer_iters;
+                        Utils::log(m.str(), Utils::Color::BLUE, 2);
+                    }
+                    if (motion_converged) break;
+                    // Next trial: step-start fields, latest pressure/film content as guess.
+                    const std::vector<double> pressure_guess = fields["pressure"].data;
+                    const std::vector<double> theta_guess = fields["theta"].data;
+                    motion_snapshot.restore(fields);
+                    fields["pressure"].data = pressure_guess;
+                    fields["theta"].data = theta_guess;
+                    update_film_geometry(fields, mesh, cfg, bearing_state, t);
+                    h_min = global_min_field(fields["h"], mesh);
+                    if (cfg.stop_on_nonpositive_film && h_min <= cfg.min_film_thickness) {
+                        nonlinear_failed = true;
+                        Utils::log("Stopping: implicit motion trial reached minimum film thickness " +
+                                   std::to_string(h_min), Utils::Color::RED, 1);
+                        break;
+                    }
                 }
             }
-            if (steady_state && !coupled) {
+            if (steady_state && (!coupled || coupled_outer)) {
                 coupling_control.finish(coupling_iters);
                 if (coupling_control.status().restored_best && coupling_best.valid()) {
                     // Ghost layers are part of the snapshot, so the restored state
@@ -667,12 +935,40 @@ int main(int argc, char** argv) {
             // The non-convergence verdict is not optional output: a run that ends
             // on the cap without meeting coupling_tolerance must say so whether or
             // not log_outer_iters is on.
-            if (steady_state && !coupled && !coupling_control.status().converged) {
+            if (steady_state && (!coupled || coupled_outer) && !coupling_control.status().converged) {
                 nonlinear_failed = true;
                 Utils::log(coupling_control.summary_line(), Utils::Color::RED, 1);
                 Utils::log(coupling_control.rollback_line(), Utils::Color::RED, 1);
             }
             if (cfg.mass_conserving_cavitation() && !elrod_stats.converged) nonlinear_failed = true;
+            if (coupled && steady_state) {
+                const auto scales = coupled_balance_scales(fields, mesh);
+                Energy::Balance ledger;
+                if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
+                    ledger = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                else ledger.residual_W = coupled_stats.energy_balance;
+                const auto& status = coupling_control.status();
+                int summary_failed = 0;
+                if (mesh.rank == 0) {
+                    std::ofstream summary(fs::path(cfg.output_dir) / "coupled_summary.csv");
+                    summary << "converged,cap_exhausted,restored_best,outer_iters,pressure_converged,pressure_residual,volume_error,oil_balance_kg_s,species_balance_kg_s,liquid_balance_kg_s,energy_residual_W,energy_scale_W,force_residual,R_p,R_T,R_g,profile_residual,viscosity_residual,x_m,y_m,oil_balance_scale_kg_s,species_balance_scale_kg_s,oil_balance_rel,species_balance_rel\n"
+                        << std::setprecision(17) << (!nonlinear_failed && (!coupled_outer || status.converged))
+                        << ',' << status.cap_exhausted << ',' << status.restored_best << ',' << coupling_iters
+                        << ',' << coupled_stats.converged << ',' << coupled_stats.residual << ',' << coupled_stats.volume_error
+                        << ',' << coupled_stats.oil_balance << ',' << coupled_stats.species_balance << ',' << coupled_stats.liquid_balance
+                        << ',' << ledger.residual_W << ',' << ledger.scale_W << ',' << equilibrium_stats.force_residual
+                        << ',' << status.R_p << ',' << status.R_T << ',' << status.R_g << ',' << cross_film_state.profile_residual
+                        << ',' << cross_film_state.viscosity_residual
+                        << ',' << bearing_state.x << ',' << bearing_state.y
+                        << ',' << scales.oil << ',' << scales.species
+                        << ',' << std::abs(coupled_stats.oil_balance) / std::max(scales.oil, 1e-30)
+                        << ',' << std::abs(coupled_stats.species_balance) / std::max(scales.species, 1e-30) << '\n';
+                    summary.close();
+                    summary_failed = !summary;
+                }
+                MPI_Bcast(&summary_failed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                if (summary_failed) throw std::runtime_error("Cannot write coupled_summary.csv");
+            }
             // A rejected coupled solve leaves inventories at the last accepted
             // time. Do not label that retained state with the failed target time.
             if (coupled && nonlinear_failed) break;
@@ -710,9 +1006,17 @@ int main(int argc, char** argv) {
                     balance.liquid_residual = coupled_stats.liquid_balance*step_cfg.dt/std::max(coupled_stats.liquid_mass,1e-30);
                     balance.gas_residual = coupled_stats.species_balance*step_cfg.dt/std::max(coupled_stats.gas_mass,1e-30);
                     balance.gas_volume_excess = coupled_stats.volume_error;
-                    if (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION) {
+                    const auto scales = coupled_balance_scales(fields, mesh);
+                    balance.liquid_residual_kg_s = coupled_stats.liquid_balance;
+                    balance.liquid_balance_scale_kg_s = scales.liquid;
+                    balance.liquid_residual_rel = std::abs(coupled_stats.liquid_balance) / std::max(scales.liquid, 1e-30);
+                    if (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION && !coupled_outer) {
                         balance.energy_residual_w=coupled_stats.energy_balance;
                         balance.internal_energy_j=coupled_stats.internal_energy;
+                    }
+                    if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME) {
+                        balance.energy = ResolvedCrossFilm::balance(fields, mesh, step_cfg);
+                        balance.energy_residual_w = balance.energy->residual_W;
                     }
                     double local_cavity = 0, total_cavity = 0;
                     for (int i=0;i<mesh.n_theta_local;++i) for (int j=0;j<mesh.n_z_local;++j)
@@ -733,7 +1037,16 @@ int main(int argc, char** argv) {
                 Diagnostics::append_csv(
                     std::filesystem::path(cfg.output_dir) / "diagnostics.csv",
                     t, step, balance, elrod_stats,
-                    steady_state && !coupled ? &coupling_control.status() : nullptr);
+                    steady_state && (!coupled || coupled_outer) ? &coupling_control.status() : nullptr);
+            }
+
+            if (write_motion_csv && !nonlinear_failed) {
+                append_motion_csv(fs::path(cfg.output_dir) / "motion.csv", motion_csv_header, t, step,
+                                  fields, mesh, cfg, bearing_state, forces,
+                                  implicit_motion ? implicit_coupling.evaluations() : 1,
+                                  implicit_motion ? implicit_coupling.residual() : 0.0,
+                                  implicit_motion ? implicit_coupling.correction() : 0.0);
+                motion_csv_header = false;
             }
 
             // Output: write VTK at the configured save cadence ...
@@ -766,6 +1079,11 @@ int main(int argc, char** argv) {
                     } else if (FBNS::active(cfg)) {
                         line << " | newton=" << elrod_stats.outer_iters;
                     }
+                    if (implicit_motion) {
+                        line << " | motion_solves=" << implicit_coupling.evaluations()
+                             << " R_motion=" << implicit_coupling.residual()
+                             << " dx_motion/c=" << implicit_coupling.correction();
+                    }
                     if (diagnostics_now) {
                         line << " | r_l=" << balance.liquid_residual;
                         if (cfg.fluid_property_model == FluidPropertyModel::TWO_PHASE) {
@@ -781,11 +1099,7 @@ int main(int argc, char** argv) {
 
             if (nonlinear_failed) break;
 
-            if (steady_state && cfg.cavitation_model == CavitationModel::FBNS &&
-                cfg.fluid_property_model == FluidPropertyModel::SINGLE_PHASE &&
-                cfg.gas_pressure_coupling == GasPressureCoupling::NONE &&
-                cfg.cavitation_threshold == CavitationThreshold::SCALAR_PCAV &&
-                cfg.dissolved_gas_initial == 0.0) {
+            if (steady_state && cfg.single_phase_fbns_state()) {
                 try {
                     IO::write_steady_initial_state(fs::path(cfg.output_dir) / "steady_state.dat", fields, mesh, cfg);
                 } catch (const std::exception& ex) {
@@ -806,6 +1120,18 @@ int main(int argc, char** argv) {
             if (coupled) coupled_solver->store_old_time(fields);
             previous_forces = forces;
             if (steady_state) ++step;
+        }
+
+        // Restart state of a completed transient: the same file format as the steady
+        // initial state, read back through steady_initial_state_file. The bearing
+        // position and velocity of the last step are the last row of motion.csv.
+        if (!steady_state && !nonlinear_failed && cfg.single_phase_fbns_state()) {
+            try {
+                IO::write_steady_initial_state(fs::path(cfg.output_dir) / "final_state.dat", fields, mesh, cfg);
+            } catch (const std::exception& ex) {
+                Utils::log(ex.what(), Utils::Color::RED, 1);
+                nonlinear_failed = true;
+            }
         }
 
         Utils::log(nonlinear_failed ? "Simulation stopped with an unconverged or inadmissible state."

@@ -1,6 +1,7 @@
 #include <petscsys.h>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <stdexcept>
 #include "coupled_cavitation.hpp"
 #include "r410a.hpp"
@@ -12,6 +13,36 @@ int main(int argc, char** argv) {
     PetscInitialize(&argc,&argv,nullptr,nullptr);
     int failed=0;
     try {
+        {
+            // LGE gas-off pilots P01/P07 (2026-10-19) were rejected at
+            // p-p_v=-7.0e-3 and -4.0e-3 Pa with p_scale=1.2717e6 Pa and a 1e-8
+            // tolerance; that undershoot is within the accepted Newton residual.
+            const double p_scale=1271696.4872299968, pv=0, tight=1e-10, loose=1e-8;
+            require(CoupledCavitation::admissibility_roundoff(loose)==1e-8 &&
+                    CoupledCavitation::admissibility_roundoff(tight)==1e-9 &&
+                    CoupledCavitation::admissibility_roundoff(1e-6)==1e-8,
+                    "Admissibility round-off follows the clamped coupled tolerance");
+            for (const double undershoot : {7.02144e-3, 4.02334e-3})
+                require(CoupledCavitation::pressure_admissible(pv-undershoot,pv,p_scale,loose),
+                        "Converged cavitated undershoot within tolerance*p_scale is admissible");
+            require(!CoupledCavitation::pressure_admissible(pv-7.02144e-3,pv,p_scale,tight),
+                    "Tight tolerance keeps a tight pressure bound");
+            require(!CoupledCavitation::pressure_admissible(pv-0.1,pv,p_scale,loose),
+                    "Undershoot beyond tolerance*p_scale is rejected");
+            require(CoupledCavitation::pressure_admissible(pv,pv,p_scale,tight),
+                    "p=p_v is admissible");
+            // Gas-on P01 (2026-10-20) was rejected at theta=1+3.83e-8 after admitting
+            // scaled free gas down to -2.44e-9; closure gives theta-1 ~ -alpha_gas + residual.
+            require(CoupledCavitation::film_fraction_admissible(1+3.83e-8,-3.0e-8,loose),
+                    "Theta overshoot from admitted negative free gas is admissible");
+            require(!CoupledCavitation::film_fraction_admissible(1+3.83e-8,0,loose),
+                    "Theta overshoot without negative free gas is rejected");
+            require(CoupledCavitation::film_fraction_admissible(1+5e-9,0,loose) &&
+                    !CoupledCavitation::film_fraction_admissible(1+5e-9,0,1e-12),
+                    "Theta round-off follows the clamped tolerance");
+            require(CoupledCavitation::film_fraction_admissible(.4,.6,tight),
+                    "Cavitated theta is admissible");
+        }
         SimulationConfig cfg;
         cfg.n_theta_global=16; cfg.n_z_global=4; cfg.e=0; cfg.omega=0;
         cfg.rho=850; cfg.mu=.03; cfg.mu_gas=1.8e-5; cfg.p_cav=100;
@@ -110,6 +141,34 @@ int main(int argc, char** argv) {
         cfg.solution_mode=SolutionMode::STEADY_STATE;
         const auto steady_bearing=solver.solve(fields,cfg,.001);
         require(steady_bearing.converged,"Steady conservative vapor bearing");
+        // Dissolved transport cannot create a free phase when its equation has no source or incoming mass.
+        const double original_p_cav=cfg.p_cav;
+        cfg.fluid_property_model=FluidPropertyModel::SINGLE_PHASE;
+        cfg.dissolved_gas_initial=.3; cfg.p_cav=0;
+        fields["dissolved_gas"].fill(.3); fields["free_gas_mass"].fill(0);
+        for (double eccentricity : {.6,.62,.58,.6}) {
+            for (int i=0;i<mesh.n_theta_local;++i) for(int j=0;j<mesh.n_z_local;++j)
+                fields["h"](i,j)=cfg.c*(1+eccentricity*std::cos((mesh.offset_theta+i+.5)*mesh.get_d_theta()));
+            solver.initialize(fields,cfg);
+            const auto gas_off=solver.solve(fields,cfg,.001);
+            require(gas_off.converged,"Gas-off dissolved mixture pressure solve");
+            require(std::abs(gas_off.oil_balance)<1e-10 && std::abs(gas_off.species_balance)<1e-10,
+                    "Gas-off mixture preserves oil and total species");
+            double bounds[3]={0,0,INFINITY};
+            for (int i=0;i<mesh.n_theta_local;++i) for(int j=0;j<mesh.n_z_local;++j) {
+                bounds[0]=std::min(bounds[0],fields["free_gas_mass"](i,j));
+                bounds[1]=std::min(bounds[1],-fields["free_gas_mass"](i,j));
+                bounds[2]=std::min(bounds[2],fields["pressure"](i,j));
+            }
+            MPI_Allreduce(MPI_IN_PLACE,bounds,3,MPI_DOUBLE,MPI_MIN,MPI_COMM_WORLD);
+            if(mesh.rank==0)std::cout<<std::setprecision(17)<<"gas_off_invariant eccentricity="<<eccentricity
+                <<" free_min="<<bounds[0]<<" free_max="<<-bounds[1]<<" p_min="<<bounds[2]
+                <<" volume_error="<<gas_off.volume_error<<" oil_balance="<<gas_off.oil_balance
+                <<" species_balance="<<gas_off.species_balance<<" residual="<<gas_off.residual<<'\n';
+            require(bounds[0]==0 && bounds[1]==0,"Source-free free-gas inventory remains exactly zero");
+            require(bounds[2]>=-1e-6,"Gas-off mixture preserves the strict absolute pressure floor");
+        }
+        cfg.p_cav=original_p_cav;
         cfg.solution_mode=SolutionMode::TRANSIENT;
 
         // Independent equilibrium root from Henry's law, gas EOS and conserved

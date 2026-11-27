@@ -98,6 +98,12 @@ void test_manifest_matches_parser() {
         SimulationConfig cfg;
         if (key == "inlet_species")
             cfg.load_from_text("inlet_groove = 90 10 2e5\ninlet_species = 0 .001 0\n");
+        else if (key == "asperity_contact_model" || key == "flow_factor_model")
+            cfg.load_from_text(key + " = NONE\n");  // enumerations reject unknown values
+        else if (key == "load_model") cfg.load_from_text(key + " = TABLE\n");
+        else if (key == "motion_coupling") cfg.load_from_text(key + " = IMPLICIT\n");
+        else if (key == "load_table_abscissa") cfg.load_from_text(key + " = PHASE_DEG\n");
+        else if (key == "load_table_format") cfg.load_from_text(key + " = POLAR\n");
         else cfg.load_from_text(key + (key == "dissolved_gas_species" ? " = AIR\n" : " = 1\n"));
         check(cfg.parse_errors.empty(),
               "known_config_keys() lists '" + key + "' but the parser rejects it");
@@ -204,6 +210,110 @@ void test_reservoir_states() {
           "a charge bubble point must not silently raise either reservoir pressure");
 }
 
+void test_coupled_nonlinear_tolerance() {
+    SimulationConfig cfg;
+    check(cfg.coupled_nonlinear_tolerance == 1e-10, "Preserve the native default tolerance");
+    cfg.load_from_text("coupled_nonlinear_tolerance = 1e-8\n");
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.coupled_nonlinear_tolerance == 1e-8, "Inner tolerance must survive serialization");
+    cfg.cavitation_model = CavitationModel::COUPLED;
+    for (double invalid : {0., -1., 1., std::numeric_limits<double>::infinity()}) {
+        cfg.coupled_nonlinear_tolerance = invalid;
+        std::vector<std::string> errors, warnings;
+        cfg.validate(errors, warnings);
+        check(mentions(errors, "coupled_nonlinear_tolerance"), "Reject invalid inner tolerance");
+    }
+}
+
+// Every key that holds a value must be written by to_config_text(); a GUI save
+// that drops one silently resets it to the default. Aliases, warn-and-drop keys,
+// deprecated keys and the repeated inlet lines are not value keys.
+void test_writer_covers_every_value_key() {
+    static const std::vector<std::string> not_value_keys = {
+        "oil_gas_solution_model", "viscosity_model", "gas_mixture_viscosity_model",
+        "pressure_time_method", "temperature_time_method", "dissolved_gas_bunsen_coeff",
+        "bc_z_south_theta", "bc_z_north_theta",
+        "inlet_circular", "inlet_groove", "inlet_species"};
+    const std::string text = SimulationConfig{}.to_config_text();
+    for (const std::string& key : SimulationConfig::known_config_keys()) {
+        if (std::find(not_value_keys.begin(), not_value_keys.end(), key) != not_value_keys.end())
+            continue;
+        const bool written = text.rfind(key + " =", 0) == 0 ||
+                             text.find("\n" + key + " =") != std::string::npos;
+        check(written, "to_config_text() does not write '" + key + "'");
+    }
+}
+
+// Non-default values of the keys the writer used to drop survive write and parse.
+void test_steady_coupling_keys_round_trip() {
+    SimulationConfig cfg;
+    cfg.load_from_text(
+        "coupling_max_iters = 4000\n"
+        "coupling_tolerance = 1e-4\n"
+        "coupling_relaxation = 0.7\n"
+        "coupling_relaxation_mode = ADAPTIVE\n"
+        "coupling_relaxation_min = 0.2\n"
+        "coupling_relaxation_backoff = 0.4\n"
+        "coupling_relaxation_growth = 1.3\n"
+        "coupling_keep_best_iterate = false\n"
+        "log_coupling_history = true\n"
+        "steady_gas_model = EQUILIBRIUM\n"
+        "allow_frozen_gas_steady = true\n"
+        "cavitated_film_model = STRIATED\n"
+        "consistent_boundary_flux = true\n"
+        "void_coupling_relaxation = 0.6\n");
+    check(cfg.parse_errors.empty(), "the steady coupling keys must parse");
+    SimulationConfig copy;
+    copy.load_from_text(cfg.to_config_text());
+    check(copy.coupling_max_iters == 4000 && copy.coupling_tolerance == 1e-4 &&
+              copy.coupling_relaxation == 0.7 &&
+              copy.coupling_relaxation_mode == CouplingRelaxationMode::ADAPTIVE &&
+              copy.coupling_relaxation_min == 0.2 && copy.coupling_relaxation_backoff == 0.4 &&
+              copy.coupling_relaxation_growth == 1.3 && !copy.coupling_keep_best_iterate &&
+              copy.log_coupling_history,
+          "steady outer-coupling settings must survive serialization");
+    check(copy.steady_gas_model == SteadyGasModel::EQUILIBRIUM && copy.allow_frozen_gas_steady,
+          "steady gas settings must survive serialization");
+    check(copy.cavitated_film_model == CavitatedFilmModel::STRIATED &&
+              copy.consistent_boundary_flux && copy.void_coupling_relaxation == 0.6,
+          "cavitated-film and boundary-flux settings must survive serialization");
+}
+
+// STEADY_EQUILIBRIUM accepts FBNS with dissolved gas where the steady loop is
+// defined (SINGLE_PHASE plateau, TWO_PHASE equilibrium flash), and still
+// rejects the frozen TWO_PHASE gas and void coupling.
+void test_fbns_equilibrium_with_dissolved_gas() {
+    const auto errors_of = [](const std::string& extra) {
+        SimulationConfig cfg;
+        cfg.load_from_text(
+            "R = 0.0105\nc = 3e-05\nL = 0.02\ne = 2.7e-05\nattitude_angle_deg = 280\n"
+            "omega = 816.8\nmu = 0.005\nrho = 900\np_cav = 500\n"
+            "bc_z_south_val = 2.45e6\nbc_z_north_val = 2.45e6\n"
+            "solution_mode = STEADY_STATE\ncavitation_model = FBNS\n"
+            "motion_model = STEADY_EQUILIBRIUM\nexternal_load_y = 3450\n"
+            "dissolved_gas_species = PROPANE\ndissolved_gas_initial = 0.2\n"
+            "solubility_model = HENRY\ndissolved_gas_henry_coeff = 8e-8\n" + extra);
+        std::vector<std::string> errors, warnings;
+        cfg.validate(errors, warnings);
+        return errors;
+    };
+    const auto rejects_equilibrium = [](const std::vector<std::string>& errors) {
+        return mentions(errors, "STEADY_EQUILIBRIUM requires steady");
+    };
+    check(!rejects_equilibrium(errors_of(
+              "fluid_property_model = SINGLE_PHASE\ncavitation_threshold = LOCAL_PSAT\n")),
+          "SINGLE_PHASE FBNS with a dissolved-gas plateau must allow STEADY_EQUILIBRIUM");
+    check(!rejects_equilibrium(errors_of(
+              "fluid_property_model = TWO_PHASE\nsteady_gas_model = EQUILIBRIUM\n"
+              "cavitation_threshold = LOCAL_PSAT\n")),
+          "TWO_PHASE FBNS with the equilibrium flash must allow STEADY_EQUILIBRIUM");
+    check(rejects_equilibrium(errors_of(
+              "fluid_property_model = TWO_PHASE\nsteady_gas_model = FROZEN\n"
+              "allow_frozen_gas_steady = true\n")),
+          "TWO_PHASE FBNS with frozen gas must still reject STEADY_EQUILIBRIUM");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -218,6 +328,10 @@ int main(int argc, char** argv) {
     test_written_config_round_trips();
     test_shipped_configs_parse();
     test_reservoir_states();
+    test_coupled_nonlinear_tolerance();
+    test_writer_covers_every_value_key();
+    test_steady_coupling_keys_round_trip();
+    test_fbns_equilibrium_with_dissolved_gas();
 
     if (rank == 0) std::cout << "PASS: test_config_keys\n";
     PetscFinalize();

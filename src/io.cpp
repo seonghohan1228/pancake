@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "output_naming.hpp"
 
@@ -63,29 +64,46 @@ bool processor_directory(const std::string& name) {
         std::all_of(name.begin() + 9, name.end(), [](unsigned char c) { return std::isdigit(c); });
 }
 
-// Remove only products with the solver's naming convention. A rerun must not
-// recursively erase reports, input files or unrelated content in output_dir.
+bool solver_product_name(const std::string& name, const std::string& prefix, bool top_level) {
+    if (name == "results.pvd" || (top_level && name == "diagnostics.csv")) return true;
+    const fs::path path(name);
+    const std::string stem = path.stem().string();
+    const std::string ext = path.extension().string();
+    if ((ext != ".vts" && ext != ".pvts") || !stem.starts_with(prefix + "_")) return false;
+    const std::string suffix = stem.substr(prefix.size() + 1);
+    return !suffix.empty() && std::all_of(suffix.begin(), suffix.end(),
+        [](unsigned char c) { return std::isdigit(c) || c == '_'; });
+}
+
+// Remove solver-named files from the solver's own layout only: files directly in
+// root, root/processorN, root/flat and root/flat/processorN. Never descends
+// further, so sibling campaign folders and reports inside output_dir survive.
 void clear_solver_products(const fs::path& root, const std::string& prefix, std::error_code& ec) {
-    fs::recursive_directory_iterator it(root, fs::directory_options::none, ec), end;
-    for (; !ec && it != end; it.increment(ec)) {
-        if (it->is_symlink(ec)) { it.disable_recursion_pending(); continue; }
-        if (it->is_directory(ec)) {
-            const std::string name = it->path().filename().string();
-            if (!processor_directory(name) && !(it.depth() == 0 && name == "flat"))
-                it.disable_recursion_pending();
-            continue;
+    auto clear_files = [&](const fs::path& dir, bool top_level) {
+        std::vector<fs::path> doomed;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_symlink(ec) || !it->is_regular_file(ec)) continue;
+            if (solver_product_name(it->path().filename().string(), prefix, top_level))
+                doomed.push_back(it->path());
         }
-        const std::string name = it->path().filename().string();
-        const std::string stem = it->path().stem().string();
-        const std::string ext = it->path().extension().string();
-        bool generated = name == "results.pvd" || (it.depth() == 0 && name == "diagnostics.csv");
-        if ((ext == ".vts" || ext == ".pvts") && stem.starts_with(prefix + "_")) {
-            const std::string suffix = stem.substr(prefix.size() + 1);
-            generated = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(),
-                [](unsigned char c) { return std::isdigit(c) || c == '_'; });
+        for (const auto& path : doomed) if (!ec) fs::remove(path, ec);
+    };
+    auto processor_dirs = [&](const fs::path& dir) {
+        std::vector<fs::path> found;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_symlink(ec) || !it->is_directory(ec)) continue;
+            if (processor_directory(it->path().filename().string())) found.push_back(it->path());
         }
-        if (generated) fs::remove(it->path(), ec);
+        return found;
+    };
+    clear_files(root, true);
+    std::vector<fs::path> layout_dirs = processor_dirs(root);
+    const fs::path flat = root / "flat";
+    if (!ec && fs::is_directory(flat, ec) && !fs::is_symlink(flat, ec)) {
+        layout_dirs.push_back(flat);
+        for (const auto& dir : processor_dirs(flat)) layout_dirs.push_back(dir);
     }
+    for (const auto& dir : layout_dirs) if (!ec) clear_files(dir, false);
 }
 
 // Selection key (what config output_fields / output_field_enabled use). theta is
@@ -584,7 +602,10 @@ void prepare_output_directory(const SimulationConfig& cfg, MPI_Comm comm) {
         std::error_code ec;
         const fs::path root(cfg.output_dir);
 
-        if (fs::exists(root, ec)) {
+        if (fs::exists(root / archive_root_marker, ec)) {
+            setup_error = "output_dir '" + root.string() + "' is a run archive root (contains " +
+                archive_root_marker + "). Set output_dir to a campaign folder inside it.";
+        } else if (fs::exists(root, ec)) {
             clear_solver_products(root, cfg.filename_prefix, ec);
             if (ec) {
                 setup_error = "Cannot clear output_dir '" + root.string() + "': " +

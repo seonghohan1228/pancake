@@ -1,0 +1,19 @@
+# FW68D + R410A, the property table of the LGE deck runs. TEST DATA ONLY:
+# LGE material data, kept out of the shipped fluids/ folder.
+name = FW68D + R410A (LGE test data)
+oil = FW68D
+refrigerant = R410A
+source = LGE supplied solution chart, digitized (data/R410A_FW68D/README.md)
+note = test data only, not shipped
+gas_model = R410A
+density_intercept_kg_m3 = 954.9
+density_slope_kg_m3_K = -0.7284
+oil_vapour_pressure_Pa = 500
+specific_heat_J_kgK = 2010
+thermal_conductivity_W_mK = 0.13
+table = solution.csv
+# Caloric data of the deck X-runs (lge-thermal-v3-c274-20261114, X4 config)
+dissolved_heat_capacity_J_kgK = 1656.929131763835
+desorption_energy_J_kg = 192486.2474970321
+gas_thermal_conductivity_W_mK = 0.01295831699979958
+gas_viscosity_Pa_s = 1.2652527835974629e-05

@@ -416,7 +416,7 @@ void append_csv(const std::filesystem::path& path, double time, int step,
                "liquid_residual_kg_s,liquid_balance_scale_kg_s,liquid_residual_rel,"
                "energy_balance_residual_W,energy_balance_scale_W,energy_viscous_heat_W,"
                "energy_wall_heat_W,energy_axial_enthalpy_out_W,energy_groove_enthalpy_in_W,"
-               "energy_mass_imbalance_correction_W,energy_feed_mass_kg_s,"
+               "energy_mass_imbalance_correction_W,energy_feed_mass_kg_s,energy_pressure_work_W,"
                "cross_film_profile_t_min_K,cross_film_profile_t_max_K,cross_film_profile_residual\n";
     }
     csv.precision(15);
@@ -451,8 +451,8 @@ void append_csv(const std::filesystem::path& path, double time, int step,
         csv << ',' << energy.residual_W << ',' << energy.scale_W
             << ',' << energy.viscous_heat_W << ',' << energy.wall_heat_W
             << ',' << energy.axial_enthalpy_out_W << ',' << energy.groove_enthalpy_in_W
-            << ',' << energy.mass_imbalance_correction_W << ',' << energy.feed_mass_kg_s;
-    } else csv << ",,,,,,,,";
+            << ',' << energy.mass_imbalance_correction_W << ',' << energy.feed_mass_kg_s << ',' << energy.pressure_work_W;
+    } else csv << ",,,,,,,,,";
     csv << ',';
     if (std::isfinite(balance.cross_film_profile_t_min_K)) csv << balance.cross_film_profile_t_min_K;
     csv << ',';

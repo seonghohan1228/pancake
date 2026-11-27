@@ -1,5 +1,13 @@
 # pancake
 
+The current LGE mixture comparison uses the ten operating windows selected on
+19 October, P01--P10, with matched gas-off/on conditions. The three newly selected
+200, 500 and 1100 rpm measurements require their own runs. The user-selected
+inner pressure/species criterion is `coupled_nonlinear_tolerance = 1e-8`;
+outer thermal, load, property-domain and conservation checks remain separate.
+Earlier 17-case results and unsuccessful attempts are retained. See
+`cases/02f_lge_mixture_gas/README.md` for the conditional physical model.
+
 `pancake` is a 2D finite-volume solver for compressible thin-film lubrication
 in a journal bearing. It solves the Reynolds equation on a cylindrical
 `(theta, z)` mesh with MPI parallelism and writes VTK/PVD results for ParaView.
@@ -56,12 +64,14 @@ explains the defects and their consequences. The
 contains before/after curves, thermal results and the failed gas-cavity
 experimental comparison.
 
-The current implementation passes all 51 CTest checks on native Windows,
-local WSL Linux and the remote Linux workstation, including MPI checks. These establish conservation,
+The current implementation passes all 65 CTest checks on native Windows
+and the remote Linux workstation, including MPI checks. These establish conservation,
 analytic limits and thermodynamic implementation. They do not establish
 experimental accuracy for FW68D. Oil vapor uses the negligible-mass JFO
-limit; separate condensed refrigerant, blend fractionation, cross-film
-temperature and conjugate solid conduction are not resolved by COUPLED.
+limit; separate condensed refrigerant and blend fractionation are not
+resolved. The steady finite-volume thermal path resolves film layers and
+conjugate solids; the transient thermal Newton state retains one mean
+temperature per film cell.
 
 `COMPOSITION_TABLE` viscosity uses actual dissolved mass fraction and
 temperature, with strict table bounds. A traceable
@@ -69,6 +79,16 @@ temperature, with strict table bounds. A traceable
 path; **FVC68B is not FW68D**, and its 23–65°C data do not cover 20–80°C.
 No CoolProp runtime dependency is added to the C++ solver. Python validation
 scripts use NumPy and Matplotlib and record the run machine and MPI count.
+
+The 2026-10-19 conditional LGE follow-on in
+[02f_lge_mixture_gas](cases/02f_lge_mixture_gas/README.md) compares matched
+steady COUPLED runs with refrigerant release disabled/enabled, using the full
+`nu(c,T)` chart, strict bubble-pressure support, and resolved cross-film/solid
+thermal conduction. Its 30 mass% and absolute-chart-basis interpretation,
+pure-oil density law and R410A caloric analogue are conditional assumptions;
+all 34 configurations passed input checks. Matched 48×16 relaxation-0.3 pilots
+passed strict raw-field acceptance. The isolated remote build passed 65 tests
+and the full campaign is running; campaign-level gas effects remain pending.
 
 ## Earlier audit and repaired segregated model
 
@@ -125,8 +145,11 @@ by that convention. Geometry still uses the previous step's fluid force.
 
 Reproduction scripts and synthetic inputs are in
 [the audit verification case](cases/90_diagnostics/physics_audit/README.md).
-Reruns now preserve unrelated files in `output_dir` and replace only files
-matching the solver's output naming conventions.
+Reruns preserve unrelated files in `output_dir` and replace only files
+matching the solver's output naming conventions, and only in the solver's own
+layout (top level, `processorN/`, `flat/`, `flat/processorN/`). Other
+subfolders are never entered. A directory holding `.pancake_archive_root` is
+refused as `output_dir`; the default is `results/_default_run`.
 
 The current Windows development workflow uses **MSYS2 MINGW64**. Visual Studio
 is not required to build or run the native solver or GUI in the current code.
@@ -266,66 +289,52 @@ all checked-in tests pass.
 
 ## GUI Workflow
 
-`pancake_gui.exe` is a Dear ImGui (docking) + ImPlot desktop app on Win32 +
-Direct3D 11 (sources in `src/gui/`; see `BUILD.md` and
-`docs/GUI_ARCHITECTURE.md`). It drives `pancake.exe` as a subprocess; the two
-exes travel together in one folder. Dockable panels (layout is remembered in
-`%LOCALAPPDATA%\PancakeGui\`):
+`pancake_gui.exe` is a design tool for compressor-bearing engineers (Dear ImGui
++ ImPlot on Win32 + Direct3D 11; sources in `src/gui/`, see `BUILD.md`,
+`docs/GUI_ARCHITECTURE.md`, plan `docs/GUI_LGE_PLAN.md`, terms
+`docs/GUI_GLOSSARY.md`). It drives `pancake.exe` as a subprocess.
 
-- **Case Setup** (left): Run/Cancel bar with the MPI process count beside it
-  (more processes = faster solve; needs MS-MPI above 1) and a stated reason
-  while inputs are invalid, parameter filter, `Advanced` toggle, presets, and
-  the grouped parameter form (labels left, tooltip help, live red-highlight
-  validation, inlet editor). Groups are ordered by edit frequency — Operating
-  conditions, Geometry, Lubricant, Cavitation, Time stepping, Mesh open at
-  the top; Boundaries, Thermal, Motion, Fluid properties, Output, Numerics
-  collapsed below. Numeric fields have display-unit selectors (`Pa/kPa/MPa/bar`,
-  `GPa` for bulk modulus, `K/degC`, `deg/rad/mrad`, `rad/s`/`rpm`, `m/mm/um`,
-  `s/ms`, mass fraction/percent, and engineering stiffness/damping units) — values convert in place
-  while the config file stays solver-native SI. Every dropdown option shows a
-  hover description; the convection scheme offers Upwind and Linear (type
-  differencing), with TVD values from existing config files preserved.
-  Validation merges the solver's own `SimulationConfig::validate()`, so Run
-  is enabled exactly when the solver would accept the case. `Enter`/`F5`
-  runs.
-- **Results** (center): field heatmap over the unwrapped bearing surface drawn
-  with the true cell aspect ratio (equal-aspect; window resizes zoom rather
-  than stretch, a `Fit` button in the plot corner restores the full domain),
-  cavitation zone and inlet zone overlays, pan/zoom/hover readout, Viridis
-  or blue-white-red color scale, and optional manual color limits;
-  mid-plane/arbitrary-slice pressure and film-thickness profiles; and a key
-  results summary (min film thickness, peak pressure, attitude angle, friction
-  torque/power, cavitated fraction) with one-click Copy per value.
-- **Monitors**: live physical traces while the solver runs — minimum film
-  thickness [µm], film temperature range [K], fluid force [N], friction
-  torque [N·m], cavitated area [%], and the liquid mass residual (log) —
-  selectable, each in its own stacked subplot with real engineering units
-  and a shared time axis (sources: DETAILED step lines + `diagnostics.csv`).
-- **Solver Log**: the colorized solver output (ANSI colors preserved),
-  clipped/virtualized for long runs, with Copy-all.
-- **Status bar**: solver state (idle / running step N / finished / failed /
-  cancelled), elapsed time, last residual, progress vs `end_t`, and a
-  persistent warning chip when `pancake.exe` is not found.
+**Workflow.** A tree on the left (Geometry, Fluid, Operating conditions,
+Boundary conditions, Mesh, Solution, Results) with a status light per step:
+green complete, yellow input needed, red conflict (the case will not run, with
+the reason in one sentence). Run is enabled only when every step is green; the
+red reasons include the solver's own `SimulationConfig::validate()`. Each panel
+has an Advanced toggle for tolerances, exact mesh sizes, tilt, and the settings
+chosen automatically (shown read-only).
 
-Every plot exports PNG and every table/curve exports CSV. `Results > Open in
-ParaView` hands `results.pvd` to ParaView for full 3D inspection.
+**Model choices.** Dissolved-gas release on or off (GC+VC or VC only), thermal
+analysis on or off, steady or transient. Dissolved gas on runs FBNS with the
+cavity held at the saturation pressure by default; "Gas transport (detailed,
+slower)" switches to COUPLED. Every FBNS case uses the STRIATED cavity shear.
+Thermal transient cases use a simplified thermal model and ask for confirmation
+(with the time per revolution and the two-step route).
 
-**Configuration files.** The GUI reads/writes the same `key = value` config
-the solver consumes (shared `src/config.hpp`). It opens the last-used config
-(or `config.txt` beside the exe) at startup; Run auto-saves the current case
-first. Relative `output_dir` resolves next to the config file. Cavitation
-threshold and released-gas pressure coupling are editable in the Cavitation
-panel. TABLE property models expose CSV file pickers and a live loaded-grid
-status; the selected paths are preserved when the GUI saves the case.
+**Before Run.** Live geometry and mesh views; Sommerfeld number, saturation
+pressure, pressure margin, the onset-chart verdict (gas release expected /
+borderline / not expected, coloured as a design risk) and a run-time estimate
+for the chosen core count.
 
-**Solver discovery.** `pancake.exe` next to the GUI exe is used by default;
-a custom path can be set in *Tools > Settings* (persisted). MPI ranks > 1
-launch through `mpiexec` (Microsoft MPI).
+**Results.** Key results (minimum film thickness, eccentricity, attitude angle,
+friction torque and power loss, peak pressure, cavitated area, Lambda) with
+design checks, field maps on the unwrapped film with a selectable angle zero,
+polar pressure plot, profiles, transient histories with a cursor, gas on/off
+comparison, sweeps with a live table and the onset chart, PNG/CSV export and a
+one-page HTML report. FBNS results show the void fraction 1 - theta; gas fields
+appear only for COUPLED results.
 
-**Standalone binary.** The GUI is a single statically linked exe: fonts
-(Roboto, JetBrains Mono) are embedded byte arrays, the import table contains
-only Windows-shipped DLLs, all runtime writes go to `%LOCALAPPDATA%\PancakeGui\`,
-and it runs from read-only locations. Per-monitor-v2 DPI aware.
+**Fluids.** Oil-refrigerant pairs live in `fluids/` next to the exe (format:
+`fluids/README.md`) and are edited in the fluid library dialog. The shipped
+`example_vg68_rx` pair is synthetic, example only, not for design.
+
+**Terminal.** Every case is a config file: `pancake.exe -c <case.txt>`
+reproduces it (`mpiexec -n N` for N cores); the results window shows and copies
+the exact command, and sweeps write `run_all.ps1` / `run_all.bat`. Configs from
+earlier campaigns open in the GUI; settings it does not show are kept on save
+(the file is patched, not rewritten).
+
+**Standalone binary.** The GUI is a single statically linked exe (embedded
+fonts, Windows DLLs only) that writes only under `%LOCALAPPDATA%\PancakeGui\`.
+`tools/make_release.ps1` builds the release folder.
 
 The Windows application logo is embedded from `src/pancake.ico` in both
 `pancake.exe` and `pancake_gui.exe`. The editable source-style logo is
@@ -424,6 +433,31 @@ in time; only the bearing equation of motion has a selectable integrator
 `RK2`, `RK4`). The old `pressure_time_method` / `temperature_time_method` keys
 never changed the field solves and have been removed; old configs still parse
 with a one-line "ignored" warning.
+
+Time-dependent load (2026-11-19, PHYSICS.md 12.1): `load_model = CONSTANT`
+(default, `external_load_x|y|z`), `ROTATING` (`load_magnitude`,
+`load_rotation_start_deg`, `load_rotation_speed` in rad/s) or `TABLE`
+(`load_table_file` with rows `abscissa, a, b`; `load_table_abscissa = PHASE_DEG`
+is periodic with `load_frequency` [Hz] and `load_phase_offset_deg`, `TIME_S` is
+not; `load_table_format = POLAR` (magnitude N, direction deg) or `CARTESIAN`;
+`load_table_scale`, `load_table_angle_offset_deg`). Rows are interpolated
+linearly in their x and y parts; jumps between rows are kept.
+
+`motion_coupling = IMPLICIT` (PHYSICS.md 12.2) solves the bearing motion by
+backward Euler with the film force at the end of the step, iterating position
+and film solve within the step. It removes the explicit stability limit
+dt < 2 m / C_squeeze. Requires `motion_time_method = EULER_IMPLICIT`; controls
+`motion_coupling_tolerance`, `motion_coupling_position_tolerance`,
+`motion_coupling_max_iters`, `motion_coupling_fd_step`,
+`motion_coupling_step_limit`. Every MOVING_BEARING transient writes
+`results/motion.csv` (one row per step), and single-phase FBNS transients write
+`results/final_state.dat`, which `steady_initial_state_file` reads back to
+restart (PHYSICS.md 12.3).
+
+`inlet_rotation_speed` [rad/s] turns every inlet about the axis in a TRANSIENT
+run (default 0: fixed in the mesh frame; PHYSICS.md 12.4). Inlet cells stay
+pressure reservoirs, so cells entering or leaving an inlet keep the liquid
+balance closed.
 
 Convection face interpolation is selectable per transported variable with
 `theta_convection_scheme`, `thermal_convection_scheme`, and
@@ -666,13 +700,38 @@ reference is easier to inspect. Positive `load_angle_deg` follows increasing
 solver `theta`, so the preview's zero column corresponds to
 `theta = 90 deg + load_angle_deg`.
 
-## Output
+## Mixed lubrication (optional)
 
-Results are written under the configured `output_dir`, normally:
+Rough-surface effects are off by default. Enable asperity contact and/or average
+flow factors in the config:
 
 ```text
-C:\Dev\pancake\build-windows-mingw\results
+asperity_contact_model = GREENWOOD_TRIPP   # NONE | GREENWOOD_TRIPP
+flow_factor_model = PATIR_CHENG            # NONE | PATIR_CHENG (JFO or FBNS only)
+roughness_rq_shaft = 0.4e-6                # m, RMS
+roughness_rq_bush = 0.8e-6                 # m, RMS
+asperity_eta_beta_sigma = 0.04             # typical 0.03-0.05
+asperity_sigma_over_beta = 1e-3            # typical 1e-4 to 1e-2
+contact_modulus = 107e9                    # Pa, 1/E' = sum (1-nu^2)/E
+boundary_friction_coefficient = 0.1
 ```
+
+Contact load is part of `fluid_force_*` (balanced against the load) and contact
+friction is part of `friction_torque`; the separate `contact_force_*`,
+`contact_friction_torque` and `contact_pressure` outputs show the contact share.
+See PHYSICS.md, "Mixed lubrication".
+
+## Output
+
+Results are written under the configured `output_dir`. The default is
+`results/_default_run`; from the repo root `results/` is a junction to the run
+archive `D:\Seongho\Sim\pancake`, so a default run lands in
+`D:\Seongho\Sim\pancake\_default_run`. Campaigns write to
+`results/<campaign>/`. The archive root itself is refused as `output_dir`
+(marker file `.pancake_archive_root`). Code stays in `C:\Dev\pancake`; remote
+runs on afml-r6 are retrieved to the archive with
+`python cases/retrieve_from_r6.py <remote_dir> <campaign> --remove` and are not
+kept on the remote. See `AGENTS.md` (Where code and runs live).
 
 Open `results.pvd` in ParaView for full visualization.
 If a run exits with `Output directory setup failed` on Windows, close ParaView
@@ -824,6 +883,11 @@ controls this correction. The final force and thermal convergence checks must
 all pass at the same position. `STATIC` remains a prescribed-position solve;
 `MOVING_BEARING` retains its physical transient motion model.
 
+FBNS accepts this mode with dissolved gas when the steady loop is defined:
+SINGLE_PHASE (for example `cavitation_threshold = LOCAL_PSAT`) or TWO_PHASE
+with `steady_gas_model = EQUILIBRIUM`. It reproduces the driver-side Newton
+load balances of the LGE compressor and tester cases within 0.02 %.
+
 The FW68D case driver retains the external natural-convection coefficient
 iteration, but no longer fully converges a separate thermal CFD problem for
 each force-Jacobian probe. See [PHYSICS.md](PHYSICS.md) for the equations and
@@ -875,3 +939,18 @@ including failed/interrupted attempts, has been retrieved and hash-verified in
 overlay and methods are in its `analysis` directory; retained research records
 are updated. Physical inputs and acceptance criteria are unchanged.
 See the campaign methods for validity limits, remote execution and acceptance.
+
+The [matched thermal gas comparison](cases/02f_lge_mixture_gas/README.md)
+uses an optional `coupled_fbns_initialization` to obtain a cavitating starting
+pressure/film-content field for the COUPLED solve. It preserves the imposed
+load, geometry, composition, temperature and final convergence requirements.
+The preliminary FBNS field is never accepted as the coupled result.
+The resolved steady path damps the complete layer viscosity profile to settle
+fill/viscosity feedback, then checks it against the unrelaxed constitutive law.
+Saved inverse-viscosity layers support an independent campaign acceptance check.
+The load search rejects unresolved trial positions directly so it can try a
+smaller move; the main pressure state retains conservative pseudo-time recovery.
+The 02f gas worker has no wall-clock deadline by default; `--timeout SECONDS`
+opts into a bounded native solve. The former inherited two-hour limit stopped
+progressing full-grid pilots. Their evidence is retained, and the retry keeps
+all iteration, load, physical and conservation acceptance gates unchanged.

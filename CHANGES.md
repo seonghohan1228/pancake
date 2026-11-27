@@ -1,5 +1,287 @@
 # Change Log
 
+## 2026-11-26 - GUI for LGE bearing engineers (`lge-gui`)
+
+New workflow GUI (plan `docs/GUI_LGE_PLAN.md`, rev. 2 and rev. 3 approved; terms
+`docs/GUI_GLOSSARY.md`; structure `docs/GUI_ARCHITECTURE.md`). Why: LGE engineers
+need to run and judge cases without help after the final presentation.
+
+- Workflow tree with status lights (green / yellow / red with one-sentence reasons,
+  red includes the solver's own validation); seven panels with Basic and Advanced
+  views; live geometry and mesh views; estimates (S, p_sat, margin, onset verdict as
+  a design risk, run time from measured core-times, physical cores counted).
+- Case model mapped both ways to `SimulationConfig`; loaded configs are saved by
+  patching their text, so settings the GUI does not show are kept.
+- Fluid directory `fluids/` with an optional gas block; the shipped pair is
+  synthetic (FBNS only). LGE data only under `tests/data/lge/`.
+- Model rules: dissolved gas on = FBNS pressure plateau (default) or COUPLED gas
+  transport; STRIATED cavity shear for every FBNS case; thermal steady with
+  refrigerant runs COUPLED; thermal transient uses the simplified thermal model
+  and asks for confirmation (two-step route offered).
+- Results by solver form (FBNS shows void fraction 1 - theta, never gas fields),
+  comparison mode, sweeps with scripts, HTML report, `--run` and `--screenshots`.
+- Acceptance (numbers in `docs/GUI_LGE_REPORT.md`): all seven deck configs round-trip;
+  GUI-written configs reproduce the compressor deck runs (steady h_min -0.008 %,
+  57.09 %; transient cycle h_min within 0.07 %); GUI run = terminal run.
+
+## 2026-11-26 - GUI case model, fluid pairs, estimates (`lge-gui`)
+
+- New toolkit-free GUI core in `src/gui/`: `case_model` (engineer inputs, mapping to and
+  from `SimulationConfig`, settings the GUI does not show), `config_text_patch` (saving a
+  loaded config by patching its text, so CRLF, comments and afml-r6 paths survive),
+  `fluid_library` (oil-refrigerant pairs as `pair.txt` + the solver's solution-table CSV),
+  `estimates` (Sommerfeld number, saturation pressure, pressure margin, onset verdict,
+  run time) and `angle_reference` (selectable angle zero).
+- The onset curve Phi(S) = (p_amb - p_min)/P comes from the gas-free runs G1-G8 of
+  `lge-onset-chart-20261116`; G4, G5 and G9 give the same Phi at S = 0.2.
+- Model mapping follows the deck runs: FBNS pressure plateau for dissolved gas,
+  COUPLED for gas transport and for any thermal case with refrigerant in the oil
+  (the solver's FBNS film energy needs pure oil; film energy is steady-only).
+- `tests/test_gui_case_model` (no MPI): all seven deck configs round-trip with every
+  solver key equal and their lines byte-identical; a new compressor case reproduces the
+  deck B0 keys (mu 5.0850 mPa s, content 0.22535); tester S = 0.0159, p_sat = 9.65 bar.
+  LGE test data lives in `tests/data/lge/` (not shipped).
+
+## 2026-11-26 - Steady load balance for FBNS with dissolved gas (`lge-gui`)
+
+- `motion_model = STEADY_EQUILIBRIUM` now accepts FBNS with dissolved gas:
+  SINGLE_PHASE (dissolved gas allowed, e.g. the `LOCAL_PSAT` plateau) and
+  TWO_PHASE with `steady_gas_model = EQUILIBRIUM`. The load step already reused
+  the plain steady pressure solve; the guard from 2026-09-28 only limited scope.
+  Frozen TWO_PHASE gas and VOID_COUPLED remain rejected.
+- Why: the deck's GC+VC steady cases (compressor B0 mean, tester P5g) were
+  load-balanced by Python drivers over STATIC runs, so `pancake -c` alone could
+  not reproduce them. The GUI needs a single-config, terminal-reproducible run.
+- Verified from a different initial position at 720 x 192, 8 ranks: B0 mean
+  h_min 1.6877 um (-0.002 %), cavitated area 57.09 %, torque -0.007 %; P5g
+  h_min 3.2424 um (+0.011 %), 11.83 %, torque +0.016 %. Details in PHYSICS.md.
+- `test_config_keys` pins the accepted and rejected combinations.
+
+## 2026-11-26 - Config writer keeps the steady coupling keys (`lge-gui`)
+
+- `to_config_text()` never wrote `coupling_max_iters`, `coupling_tolerance`,
+  `coupling_relaxation*`, `coupling_keep_best_iterate`, `log_coupling_history`,
+  `steady_gas_model`, `allow_frozen_gas_steady`, `cavitated_film_model`,
+  `consistent_boundary_flux` or `void_coupling_relaxation`. The GUI saves the
+  config before every run, so a loaded case silently fell back to the defaults
+  for these keys (for example `coupling_max_iters = 4000` became 30). The writer
+  now emits them; serialization only, no solver behaviour changes.
+- `known_config_keys()` now lists the six `coupling_relaxation_*`,
+  `coupling_keep_best_iterate` and `log_coupling_history` keys the parser
+  already accepted.
+- `test_config_keys` checks that every value key appears in the written text and
+  that non-default values of the formerly dropped keys survive write and parse.
+
+## 2026-11-15 - Run data consolidated on D; afml-r6 emptied of results
+
+No code change; this records the data migration the scripts above were
+written for, so later readers know where old paths went.
+
+- afml-r6 pull: 56 run folders, 48,497 files streamed to
+  `D:\Seongho\Sim\pancake`, every file checked against a remote sha256 list
+  (0 mismatches, 0 missing). Files already on D were not copied again; each
+  run folder lists them in `R6_POINTERS.tsv`.
+- Before any deletion, a full sha256 index of D and a fresh re-hash of the
+  remote (148,783 files) were compared. Files without a copy on D, on C or in
+  git were copied to `D:\...\_archives\r6_home_20261114` and
+  `_archives\tar_unique_members_20261115` (with every distinct `pancake`
+  executable). The one remote-only commit, `562b313`, is pinned as
+  `refs/archive/r6/picard2-best-iterate`.
+- Removed after that check: the 142 GB `r6_backup_20261028` tars and five
+  `silicone-rig*.tar.gz` on D, and all pancake data on afml-r6 (about 224 GiB).
+  `~/pancake` on the remote is a clean `main` with `build-linux` kept.
+- Merge conflicts were kept as pairs (`.conflict-r6`,
+  `.conflict-pancake-results`); see the vault note
+  `chats/2026-11-14 pancake storage cleanup`.
+
+## 2026-11-14 - Remote holds code only; verified retrieval to D
+
+- `cases/sync_to_r6.sh` now ships only git-tracked case inputs (configs,
+  scripts, reference data) to `afml-r6:~/pancake/cases`. It no longer mirrors
+  `cases/` as an append-only results archive, which is how about 220 GB of
+  run data had built up on the remote (`/` reached 90 %).
+- New `cases/retrieve_from_r6.py`: refuses a run directory that any remote
+  process uses (cwd, open file or command line), hashes it remotely, streams
+  it into `<archive>/_incoming`, verifies every file by sha256, moves it into
+  place with `MANIFEST.sha256` and `provenance.json`, and with `--remove`
+  deletes the remote copy only if the listing is unchanged since the manifest.
+  Tested on afml-r6: refused a directory held by a process, then retrieved and
+  removed a 3-file test directory with all hashes matching.
+- AGENTS.md, CLAUDE.md, README.md, cases/INDEX.md, cases/VALIDATION_PLAN.md,
+  the remote_harness README and the case READMEs that said "remote-only" now
+  state the rule: code in `C:\Dev\pancake`, every run under
+  `D:\Seongho\Sim\pancake`, nothing left on the remote after retrieval.
+  Historical statements keep their text with a dated location note.
+- `.gitignore`: `worktrees/` (kept worktrees live in `C:\Dev\pancake\worktrees`).
+
+## 2026-11-14 - Branch names are `<scope>`
+
+Task branches are now named `<scope>` (for example `storage-layout`) instead
+of `codex/<short-scope>`. AGENTS.md, CLAUDE.md and CONTRIBUTING.md updated.
+Existing `codex/*` branches and the docs that cite them keep their names.
+
+## 2026-11-13 - Keep runs out of the run-archive root
+
+`results/` in the main checkout is a junction to `D:\Seongho\Sim\pancake`,
+the archive of every campaign. A run from the repo root with the old default
+`output_dir = results` wrote its products into that archive root.
+
+- `clear_solver_products` (src/io.cpp) no longer walks a recursive iterator.
+  It lists exactly the solver layout: files directly in output_dir,
+  `processorN/`, `flat/` and `flat/processorN/`. No other subfolder is opened.
+  The old iterator already skipped non-solver folders; the rewrite makes the
+  bound explicit and stops descent below `processorN/` and `flat/`.
+- `prepare_output_directory` refuses an output_dir that contains the marker
+  file `.pancake_archive_root` (`IO::archive_root_marker`), before clearing
+  anything. The marker is placed at the archive root on D.
+- The default `output_dir` (config.hpp and the root config.txt) is now
+  `results/_default_run`. `results/<campaign>` paths are unchanged.
+- test_io: a sibling campaign folder with solver-named files, and folders
+  nested below the layout, survive a rerun; an archive root is refused and
+  left untouched.
+Built with the windows-native-mingw preset; all 59 CTests pass.
+## 2026-11-25 - Add Set T transient driver for the flooded-start fluids (02h)
+
+Branch `lge-compressor-transient`; no solver source change (same binary, sha256 c974c765...).
+
+- `flooded_transient.py`: the 11/19 B2 procedure (moving OS, 130 Hz load table, crank frame,
+  0.25 deg, chained revolutions until h_min repeats within 1 %, then half dt) at a fixed feed
+  fluid from the flooded-start campaign, contact model off. Reason: check whether the two ~550 N
+  load jumps per revolution push the film below the steady values.
+- Contact criterion h_min < 0.5 um (fixed by Seongho; replaces the Lambda = 3 roughness criterion,
+  since the roughness is not known). Runs are not stopped at the criterion because F2 starts
+  below it; each revolution reports the crank-angle intervals and cycle share below 0.5 um.
+- `plot_flooded_transient.py`: h_min and load against crank angle.
+- Result (campaign `lge-compressor-flooded-transient-20261125-55808eb`): F1 (c = 0.50) cycle h_min
+  0.909-0.995 um, never below 0.5 um; F2 (c = 0.60) 0.470-0.525 um, below 0.5 um for 72 % of the
+  cycle (24.5-153 and 207-337 deg). Cycle minimum is within 0.5 % (F1) and 0.1 % (F2) of the
+  steady max-load value: the load jumps add no extra dip. 3 revolutions each; half-dt change
+  < 0.3 % in h_min, < 0.06 % in torque.
+
+## 2026-11-24 - Add flooded-start concentration sweep and VC-only comparison drivers (02h)
+
+Branch `lge-compressor-transient`; no solver source change (binary sha256 c974c765..., built at
+0bfaba3).
+
+- `vc_steady.py` (2026-11-23, campaign `lge-compressor-vc-steady-20261123-00e5d1a`): the three B0
+  loads with VC only (`SCALAR_PCAV`, p_cav 500 Pa) and a reproduction and p_cav check;
+  `plot_vc_vs_gcvc.py` film maps and centre-line pressure. GC raises h_min 6.2-6.7 %, lowers torque
+  10.4-11.1 %, raises hole flow 15-23 %.
+- `flooded_start.py` (campaign `lge-compressor-flooded-start-20261124-c6715cb`): refrigerant-rich
+  feed (c = 0.225/0.5/0.6/0.8/0.95), 130 Hz and 30 Hz, three loads, without contact and with
+  Greenwood-Tripp + Patir-Cheng at composite roughness 0.2/0.4 um; 90 steady states.
+  - Load balance uses the solver's `fluid_force`, which already contains the asperity contact force
+    (reynolds.cpp adds it); adding `contact_force_*` in the driver would count it twice.
+  - Newton runs on (ln h_geo, attitude) with a film floor of 2 nm, so it stays well scaled at
+    films of 10-100 nm (eps up to 0.9995).
+  - Cavitation pressure = shell pressure (`SCALAR_PCAV`, no dissolved gas): saturated liquid; the
+    chart has no p_sat for rich mixtures at 20 C.
+  - Feed overpressure scales with omega^2: +0.3 bar at 130 Hz, +0.016 bar at 30 Hz.
+  - Checks: B0 reproduction, SCALAR vs LOCAL_PSAT, shell pressure, flow factors vs contact, grid,
+    and a 30 deg implicit transient with contact at two time steps.
+- `plot_flooded_start.py`: h_min, contact share and friction power against c.
+
+## 2026-11-19 - Add time-dependent load input and implicit motion coupling (02h)
+
+Branch `lge-compressor-transient`, from `lge-fbns-tester` (0f5c193). Campaign
+`lge-compressor-transient-20261119-02a4b6c`.
+
+- `load_model = CONSTANT | ROTATING | TABLE` for MOVING_BEARING transients (PHYSICS.md 12.1).
+  CONSTANT is the old `external_load_x|y|z` and stays the default. ROTATING: constant size,
+  start angle and one rotation speed. TABLE: periodic phase table (own load frequency) or time
+  table, polar or Cartesian rows, linear interpolation of the Cartesian parts (a direction
+  crossing 360 deg stays continuous; jumps between rows are kept).
+- `motion_coupling = IMPLICIT` (PHYSICS.md 12.2): backward-Euler bearing motion iterated with the
+  film solve inside each step (quasi-Newton: FD Jacobian, Broyden updates, step limit,
+  backtracking; force or position-correction convergence test). Reason: the lagged-force
+  EXPLICIT coupling is stable only for dt < 2 m / C_squeeze, about 1-2 us for the OS bearing,
+  and a tester start-up already failed that way at 20 us. EXPLICIT stays the default.
+- `results/motion.csv` every MOVING_BEARING transient step (load, position, velocity, eps,
+  attitude, h_min and angle, torque, p_max, cavitated fraction, film force, coupling stats).
+  The `external_load_*` fields carry the load of the step.
+- Restart: single-phase FBNS transients write `results/final_state.dat`; `steady_initial_state_file`
+  accepts LOCAL_PSAT single-phase states and TRANSIENT starts; steady LOCAL_PSAT runs write
+  `steady_state.dat`. Needed to start the OS-bearing transient from its steady state and to
+  chain revolutions.
+- Tests: `test_journal_motion` (table interpolation, wrap, jump, 360 deg direction crossing,
+  time table, constant equivalence, rotating direction, implicit step = closed-form backward
+  Euler, analytic step response, stiff-film stability); `test_config_keys` enum values.
+- New case `cases/02h_lge_compressor_transient` (Part A checks, Part B OS-bearing driver).
+- `inlet_rotation_speed` (Part C): all inlets turn at one rate in TRANSIENT runs; inlet cells stay
+  reservoirs, so mass is kept when cells enter or leave an inlet (PHYSICS.md 12.4). `part_c.py`
+  repeats Part B in the frame of the orbiting scroll (pin, hole and load turning) as the check.
+
+## 2026-11-17 - Add FBNS tester gas-effect driver (02g)
+
+Branch `lge-fbns-tester`, from `lge-onset-chart` (4f3d466). Campaign `lge-fbns-tester-20261117`.
+
+- New `cases/02g_lge_fbns_tester/run_fbns.py`: FBNS pairs (VC only vs GC+VC LOCAL_PSAT) at
+  the X4/X5 500 RPM tester conditions, isothermal as on the optical rig. Driver-side load
+  balance (Newton over STATIC solves, 0.1 % / 0.1 deg); the VC run sets the pair viscosity
+  so its h_min equals the accepted COUPLED gas-off h_min.
+- Reason: the deck describes one model for both rigs; FBNS has no native load balance or
+  conduction thermal model with dissolved gas (step 1 report), so only the change caused
+  by gas is taken from FBNS. No solver change.
+- Stand-ins: PROPANE as gas species (R410A is COUPLED-only) and chart clamp on; both are
+  recorded as inert per run when no free gas forms.
+
+## 2026-11-16 - Add onset-chart options to the 02f driver
+
+Branch `lge-onset-chart`, based on 5e26c55 (c = 0.274 campaign).
+For the gaseous-cavitation onset chart (campaign `lge-onset-chart-20261116`).
+(Renamed 2026-11-16 from `codex/cc-lge-onset-chart`: the repository rule since 7dda4df names
+branches `<scope>` with no prefix. Commits unchanged.)
+
+- `run_gas.Campaign` reads an optional setup key `isothermal`
+  (`{"temperature_K": T}`, T must equal the case TC0). With it the config uses
+  `temperature_model = ISOTHERMAL`, `cross_film_thermal_model = NONE`,
+  `bush_thermal_model = LOCAL`, `coupled_fbns_initialization = false` (the
+  native FBNS initialization is FINITE_VOLUME only) and omits the wall, housing
+  and cross-film outputs. `evaluate` runs one load-balanced native solve with
+  inert nominal h (no cooling loop).
+- Isothermal gates: every non-thermal gate is unchanged (native convergence,
+  pressure, volume, R_p, oil/species balance, nonnegative pressure, phase
+  fractions, no free gas in gas-off, independent VTK load balance, torque).
+  The layer viscosity and EOS checks are replaced by
+  `check_isothermal_viscosity`: T equals the set temperature everywhere and
+  mu = rho(T) nu(c, T) within coupling_tolerance. The cross-film envelope and
+  cooling closure do not exist and are not checked. Accepted status
+  `accepted_conditional_native_coupled_isothermal`; `observables` is null.
+- `make_mix_inputs.py`: optional points columns `isothermal` (1 = isothermal
+  at TC0), `note`, empty `f`; other extra columns (P_bar_measured, base_case)
+  are kept in `measured`. P_bar is the model chamber pressure.
+- Neutral check: with the options off, the rebuilt c274 inputs manifest equals
+  the accepted one and the regenerated X4 gas-off final config matches the
+  accepted pass-3 config in all 117 non-path keys. No solver source changed.
+- Reason: plan A needs an isothermal S-only boundary line and plan B needs a
+  chamber-pressure override of the measured X3/X4 conditions.
+
+## 2026-11-14 - Make the 02f refrigerant mass fraction a parameter
+
+Branch `lge-mix-c274`, based on 57b0b32 (the source of the accepted
+lge-thermal-v2-20261029 X runs; the COUPLED 02f driver is not on `main`).
+
+- The dissolved R410A mass fraction was hard-coded as 0.30 in `run_gas.py`
+  (initial field, both axial ends, groove `inlet_species`, prepared reference
+  viscosity, decision text and `check_inputs` assertions). It is now the setup
+  key `refrigerant_mass_fraction` (default `DEFAULT_REFRIGERANT_MASS_FRACTION
+  = 0.30`) and the `--composition` option of `--prepare`.
+- New `composition_viscosity_points` gives nu(T) at any c on the union of the
+  bracketing curve nodes, so the experiment's ln(nu) interpolation reproduces
+  the native unclamped nu(c,T) exactly. A digitized c returns its curve.
+- Commit the campaign input builder as `cases/02f_lge_mixture_gas/
+  make_mix_inputs.py` with `--composition` and `--seeds`, LF output.
+- Reason: the measured R410A fraction is 0.274 (weighing, 24 h at 14.4 bar);
+  nu(0.274) is about 29-31 % above nu(0.30) at 24-27 C, above the 10 % limit
+  for keeping the 0.30 runs.
+- Neutral check: at 0.30 the builder reproduces every archived v2 input file
+  and the regenerated X4 gas-off and X3 gas-on final configs match the archived
+  ones in all 117 non-path keys. No solver source changed.
+- `make_mix_inputs.py --seeds` takes branch-specific seeds; `check_inputs`
+  now ignores the seed keys `e` and `attitude_angle_deg` when it verifies that
+  the gas-on and gas-off configs differ only in the two branch controls, and
+  records the differing seed keys.
+
 ## 2026-09-29 - Remove the pressure-work sensitivity option
 
 Remove the optional liquid pressure-work source, configuration switch,
@@ -4324,3 +4606,367 @@ project log now record the completed results and limitations. The separate
 completed A-F expansion results were also retained in their existing discussion.
 No physical parameters were fitted, no full mesh-independence claim was made,
 and no Git push was performed.
+
+## 2026-10-19: extend resolved thermal coupling to the conditional gas comparison
+
+Implement conservative component energy transport through the resolved film,
+shaft and housing, with native coupled load equilibrium and accepted-state
+rollback. Reuse the accepted phase fluxes, preserve binding energy through
+component internal energies, and reject capped or domain-invalid solutions.
+Document the matched gas-off/gas-on LGE scenario and its conditional 30 mass%,
+absolute-chart basis, pure-oil density proxy, full viscosity/saturation chart
+support, R410A caloric analogue, common relaxation 0.3, and strict numerical
+and thermodynamic failure gates. Matched 48×16 relaxation-0.3 checks passed
+strict raw-field acceptance, and all 65 native tests passed on Windows and
+remote Linux. The isolated full-grid campaign is running; no final gas-effect
+results are claimed yet. The density/property review found no verified exact-grade FW68D
+mixture density or heat-of-solution data; the selected properties remain
+explicit proxies (Zeng et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2021.12.009)*, 2022; Fukuta et al., *[Int. J. Refrig.](https://doi.org/10.1016/j.ijrefrig.2009.09.015)*, 2010).
+
+This entry documents the active 02f follow-on only. It does not revise or
+replace the completed 02e fixed-viscosity scenario results above.
+
+Cache repeated layer-divergence arithmetic without changing summation order.
+Three paired 24×8 replays reduced median wall time from 33.944 to 24.849 s;
+all 36 saved output-file comparisons were byte-identical. Full native suites
+passed again after the change. Production COUPLED solves now use local LU
+within PETSc ASM after default local ILU(0) reached its linear iteration cap.
+Local comparisons and the bounded full-grid check retained the same strict
+nonlinear pressure gate. Preserve both interrupted attempts and their probes.
+Correct inherited FBNS descriptions in future matched input preparation;
+an immutable erratum accompanies the already frozen campaign inputs.
+
+Complete and independently verify the separate 17-case density-only FBNS
+rerun and three focused checks. All 80 native calls return zero and account
+for 20.327491 allocated core-hours. Torque falls by 0.7521–1.9180% relative
+to the retained constant-density-950 campaign; bearing errors remain
+-86.4178% to -47.2486%. Sensor MAE is 0.357658 K and the largest sensor
+change is 0.010101 K. Retrieve the 2,329,412,122-byte archive and verify its
+SHA-256 `471e6c167130043228686d879c43d8be3b72cda91830e0f7e836cf85b0eaacc8`
+and 1,553 evidence-file hashes. Preserve the complete extraction under
+`D:/pancake-results/lge_mixture_density_gas_20261019/density_off` because the
+system drive cannot safely hold both new campaigns and their archives. These results
+do not replace the pending matched COUPLED gas comparison.
+
+Add default-off `coupled_fbns_initialization` for the steady resolved COUPLED
+path. A gas-free FBNS pressure/film-content initial guess is converted into
+conservative inventories at unchanged geometry, composition and temperature;
+the final COUPLED equations and acceptance gates are retained. Reject
+incompatible transient, prescribed-free-gas and variable-vapor-pressure inputs.
+All 66 native Windows tests pass, including four-rank off/on initialization
+checks, and all seven gas-driver tests pass. M02 gas-on passed the full 48×16
+fixed-cooling smoke check after initialization. Gas-off's later load-position
+stall remains under diagnosis; neither the three-outer diagnostic nor a
+stopped run is an accepted comparison result. Preserve the third interrupted
+remote attempt and its complete verified archive before the next rebuild.
+
+Resolve the M02 conditioning problems without changing the physical model.
+Use the algebraically equivalent explicit free-species row while retaining
+the original total-species residual gate. Tighten common SNES absolute
+tolerance to 1e-13 to resolve the existing dimensional pressure floor, and
+reduce the load-position finite-difference step to 0.0001 after measured
+non-descent proposals at 0.001. Damp the layer inverse-viscosity profile
+consistently before integrating pressure mobility, velocity and dissipation.
+Require agreement with the current unrelaxed physical viscosity through a
+new native and independently recomputed raw-field residual; never relax
+conservative inventories. All 66 native and 13 gas-driver tests pass.
+Fresh matched M02 48x16x16 checks pass in 50/52 outer iterations, with
+gas-off/on force errors 0.05625%/0.01936% and viscosity residuals
+1.10018e-7/8.73245e-8. These fixed-cooling local checks justify the isolated
+remote rebuild; full-grid campaign acceptance remains pending.
+
+Bound the work spent on disposable steady load-position trials. The main
+pressure solve retains pseudo-time recovery; finite-difference and line-search
+trials return directly when their steady solve fails, allowing rejection and
+backtracking without a long transient recovery for that trial. All 66 native
+tests pass, including forced failed-trial inventory/history preservation.
+The original-seed M02 coarse off/on torques remain unchanged to floating-point
+precision. Using the verified density-only shaft position as a common numerical
+guess also passes both branches; torque changes are about 0.01%, within the
+normal force tolerance. This changes initialization only. Production-grid
+acceptance and the complete matched campaign remain required.
+
+Remove the inherited two-hour wall-clock deadline from the 02f gas worker's
+default options. The fifth remote attempt stopped M02 gas-off at outer33
+while residuals were still falling; all three gas-on pilots also reached the
+clock limit. Preserve that attempt, including the two gas-off cases that
+continue running. Add explicit `--timeout SECONDS` for bounded checks and
+record the selected limit in each native metric record. All 14 gas-driver
+tests pass, including a regression that prevents the shared 7200-second
+default from leaking into the gas campaign. Solver equations, native binaries,
+iteration caps and acceptance tolerances are unchanged.
+The native Windows build remains unchanged. A fresh M02 gas-on 48x16
+fixed-cooling solve using the unbounded wait passes native and independent
+checks with 0.0579858105781 N m torque, matching the preceding bounded
+verification to floating-point precision. Full-grid results remain pending.
+
+## 2026-10-19: Follow the exact ten-case selection and requested inner tolerance
+
+Prepare the ten original measurement rows without replacing the newly selected
+200, 500 or 1100 rpm windows with neighboring old cases. Input preparation,
+launching and summary counts now follow the frozen selection rather than a
+hard-coded seventeen-case matrix. The ten-case plan contains twenty matched
+production jobs and six checks on P01/P10.
+
+Add a serialized and validated `coupled_nonlinear_tolerance` with a backward-
+compatible native default of 1e-10. Set it to the user-requested 1e-8 in the
+mixture worker, use it in native residual acceptance and the independent
+verifier, and remove the separate forced 1e-13 nonlinear stopping option.
+Conservation, load, outer thermal and admissibility checks are retained.
+The 17-case dispatch was held and four superseded operating-point solves were
+canceled for the scope change, with all evidence retained. The revised full
+remote campaign remains pending local/native verification at this entry.
+
+The selected 1100 rpm coarse check exposed a negative scaled gas inventory of
+2.2e-9 after satisfying the requested 1e-8 inner criterion. Permit gas-inventory
+roundoff up to that criterion, capped at 1e-8, while preserving the old default
+guard and all independent phase-fraction checks. Do not clip or relabel the
+retained failed probe.
+
+Validation: all 66 native Windows tests passed, with the 17 coupled/config
+tests repeated successfully after the gas-inventory adjustment. All fifteen
+gas-driver checks and the ten-case launcher check pass. Fresh 48x16 P01 off/on
+and P07/P10 gas-on probes pass native and independent acceptance with fixed
+exterior cooling. They establish local numerical execution, not full-grid
+campaign acceptance or cooling closure. The remaining old M11 jobs were
+stopped with retained evidence to apply the user's new criterion consistently.
+
+## 2026-10-20: Scale the coupled p >= p_v admissibility bound with the inner tolerance
+
+The selected-campaign gas-off pilots P01 (third thermal update) and P07
+(first thermal update) were rejected with solver exit code 4 although their
+outer coupling residuals were still decreasing monotonically. The rejection
+came from the post-solve admissibility check: the minimum `p - p_v` was
+-7.02e-3 Pa (P01) and -4.02e-3 Pa (P07) against a fixed -1e-6 Pa bound.
+Phase fractions, inventories and EOS domains were otherwise admissible.
+
+Cause: the coupled Newton system measures pressure in units of `p_scale`
+(1.27e6 Pa for these cases). With the user-requested 1e-8 inner tolerance a
+converged cavitated cell can sit up to about 1e-8 * p_scale = 1.3e-2 Pa below
+p_v. The 2026-10-19 change scaled the free-gas inventory guard with the
+tolerance but left the pressure bound absolute. Gas-on cases are likely less
+exposed because released gas holds their cavities above p_v.
+
+- Add `CoupledCavitation::admissibility_roundoff` (the existing clamp
+  max(1e-9, min(coupled_nonlinear_tolerance, 1e-8))) and
+  `CoupledCavitation::pressure_admissible`, which accepts
+  p - p_v >= -admissibility_roundoff * p_scale. The gas-inventory guard now
+  uses the same helper; its value is unchanged.
+- Apply the same scaled bound in the 02f independent raw-field verifier
+  (`pressure_roundoff`), which previously required p >= -1e-6 Pa.
+- Behavior change at the native default tolerance 1e-10: the pressure slack
+  becomes 1e-9 * p_scale (about 1e-3 Pa at 12.7 bar) instead of 1e-6 Pa.
+  No field is clipped; all other gates are unchanged.
+
+Validation: all 66 native Windows tests pass, including new unit checks with
+the P01/P07 values; 16 gas-driver checks, the ten-case launcher check and the
+mixture driver check pass. The failed P01/P07 attempts remain preserved as
+failed evidence. Remote reruns of gas-off P01 and P07 with this build are
+recorded separately.
+
+## 2026-10-20: Optional relaxed outer coupling tolerance for the selected gas campaign
+
+The user relaxed the outer `coupling_tolerance` from 1e-6 to 1e-4 for the
+remaining selected gas-off/gas-on jobs to shorten the campaign.
+
+Evidence from the accepted pilots (gas-off P10, gas-on P07/P10, and completed
+thermal passes of P01): once R_p fell below 1e-4, the integrated fluid force
+was within 0.011% of its final 1e-6 value, about 20x below the 0.2% force
+balance tolerance. Reaching R_p < 1e-4 took 16-29 outer iterations versus
+36-54 for 1e-6. Fluid force is a proxy; torque and TC2 histories are not
+logged per outer iteration, and the viscosity residual can lag R_p.
+
+- Add `run_gas.py --coupling-tolerance`, accepted only in (1e-6, 1e-4] and
+  not with `--tight`. It is recorded as `relaxed_coupling_tolerance` in each
+  case `setup.json`; the shared 02d baseline guard that only permits
+  tightening is unchanged.
+- The 02f Campaign applies the value per case, so the generated config, the
+  native outer stop and every 02f gate keyed on `coupling_tolerance` (outer
+  residuals, volume error, profile and viscosity residuals, energy balance)
+  use it. Oil/species balances stay at min(coupling_tolerance, 1e-8) = 1e-8.
+  Force balance (0.002), inner tolerance (1e-8), cooling closure and all
+  admissibility checks are unchanged.
+- The summarizer accepts the recorded key when re-validating setups.
+- Already accepted pilots (1e-6) and the running gas-on P01 and gas-off
+  P01/P07 reruns keep 1e-6; results remain comparable to well within the
+  quoted force differences.
+
+Validation: 16 gas-driver checks (including rejection of 1e-3, 1e-6 and
+non-numeric values and propagation of 1e-4 into the generated config) and
+the ten-case launcher check pass.
+
+## 2026-10-20: Tie the coupled theta <= 1 bound to admitted free-gas round-off
+
+The selected gas-on P01 pilot (old build, 1e-6 outer tolerance) was rejected in
+its second thermal pass after 17 h with outer R_p = 9.6e-4 still decreasing.
+Minima: p - p_v = 8.95e5 Pa, scaled free gas -2.44e-9 (admitted by the
+1e-8 gas round-off guard), and 1 - theta = -3.83e-8, against a fixed
+theta <= 1 + 1e-8 bound.
+
+Cause: in full film the smoothed volume complementarity
+2(ab - g)/(a + b + sqrt(a^2 + b^2 + 2g)) with b = 1 - theta, a = scaled gas
+density and g = scaled free-gas mass reduces to b = g/a + residual, and
+g/a is exactly the written gas fraction alpha_gas = m_g/(rho_g h). An admitted
+negative free-gas inventory therefore appears as an equal theta overshoot,
+amplified by c/h near the minimum film.
+
+- Add `CoupledCavitation::film_fraction_admissible`: accept
+  theta <= 1 + admissibility_roundoff + max(0, -alpha_gas). Replace the fixed
+  1 + 1e-8 bound. No field is clipped.
+- 02f verifier: `check_film_fractions` applies the same theta bound from the
+  film_content and alpha_gas fields, and bounds alpha_gas below by
+  -min(r (c/h)/a_ideal, sqrt(r c/(2h))): the native free-gas guard expressed
+  as a gas fraction with an ideal-gas a (conservative for Z <= 1), and the
+  closure radical constraint. dissolved_gas keeps [-1e-8, 1 + 1e-8].
+- Accepted pilots gas-off P10 and gas-on P07/P10 still pass the new verifier
+  (their theta - 1 and alpha minima are at machine precision). The rejected
+  gas-on P01 state was not written, so it cannot be replayed directly.
+
+Validation: all 66 native Windows tests pass serially (one MPI-4 test failed
+once under ctest -j4 and passed on four isolated repeats and in the serial
+run); 17 gas-driver checks, the ten-case launcher and mixture driver checks
+pass.
+
+## 2026-10-20: Scale the 02f bubble-pressure gate with the outer coupling tolerance
+
+At coupling_tolerance 1e-4, gas-on P01-P05 and P08 converged natively (outer
+R_p 1.3e-5 to 4.4e-5 after 32-33 iterations) but the independent verifier
+rejected them: in free-gas cells |p - p_bubble(c, T)| reached 1.8-4.2 Pa
+against a fixed 1 Pa gate. The accepted 1e-6 pilots (gas-on P07/P10) differ by
+at most 0.018 Pa. The written temperature and composition lag the last
+hydraulic solve by about the outer tolerance, so the gate must scale with it.
+This should have been caught when the relaxed tolerance was introduced.
+
+- `bubble_tolerance(config) = max(1 Pa, coupling_tolerance * p_scale)`:
+  about 127 Pa at 1e-4 and 1.27 Pa at 1e-6 for the selected cases.
+- With only this gate widened, all six failed first passes pass every other
+  verifier gate (phase fractions, EOS domain, layer viscosity, force identity
+  and load balance). Their outputs are preserved as failed evidence.
+- Other fixed verifier thresholds were audited: they are physical domain
+  bounds with large margins or exact identity checks, not outer-lag sensitive.
+
+Validation: 18 gas-driver checks, ten-case launcher and mixture driver checks.
+
+## 2026-10-23: Mixed lubrication (Greenwood-Tripp contact, Patir-Cheng flow factors)
+
+The selected FW68D-R410A comparison under-predicts drag-corrected bearing torque
+by 47-85%, with the excess over the CFD rising as the computed minimum film
+falls below about 5-6 um. The solver had no asperity contact or roughness
+model. Add both, off by default, following the load-sharing approach of the
+journal-bearing mixed-lubrication literature (see PHYSICS.md).
+
+- `src/mixed_lubrication.hpp`: Greenwood-Tripp asperity pressure with the
+  Arcoumanis F5/2 fit; isotropic Patir-Cheng pressure/shear flow factors and
+  shear-stress factors.
+- Config: `asperity_contact_model` (NONE|GREENWOOD_TRIPP), `flow_factor_model`
+  (NONE|PATIR_CHENG), `roughness_rq_shaft`, `roughness_rq_bush`,
+  `asperity_eta_beta_sigma` (0.04), `asperity_sigma_over_beta` (1e-3),
+  `contact_modulus`, `boundary_friction_coefficient` (0.1). Validation requires
+  roughness and modulus and restricts flow factors to JFO/FBNS; unknown enum
+  values are parse errors.
+- Forces: contact pressure acts on the bearing normal and enters `fluid_force_*`
+  (the reaction balanced against the load); boundary friction enters
+  `friction_torque`. Separate `contact_force_*`, `contact_friction_torque` and
+  per-cell `contact_pressure` outputs are registered only when contact is on.
+- Fluxes: Poiseuille mobility times phi_x; Couette flux gains (U/2) sigma phi_s.
+  Wall shear uses phi_f, Phi_fs and phi_fp.
+- With both models NONE every code path is unchanged.
+
+Validation: new `test_mixed_lubrication` (1 and 4 MPI ranks): fit continuity
+and limits, hand-computed contact pressure, uniform-gap torque
+f_b p_c 2 pi R^2 L, eccentric contact force against independent quadrature,
+flux-factor scaling and validation errors. `test_config_keys` gives the two
+enumerations a valid value. All 69 native Windows tests pass.
+
+## 2026-10-23: Mixed-lubrication sensitivity on density-off cases
+
+Twenty-five steady FBNS runs (commit 75299d8, afml-r6) on five accepted
+density-off cases: M01 200 rpm, M03 300, M05 500, M11 800, M16 1100. Each run
+reuses the accepted final-pass config (720x192, 16 film layers, same restart
+state and fixed exterior cooling) and adds only the mixed-lubrication keys.
+Variants: smooth control; Greenwood-Tripp + Patir-Cheng with composite
+sigma = 0.4, 0.8, 1.2 um (split equally between shaft and bush, so phi_s and
+Phi_fs vanish), eta beta sigma = 0.04, sigma/beta = 1e-3, f_b = 0.1,
+E' = 107 GPa (steel shaft, 304-stainless bush analogue); plus sigma = 0.8 um
+with sigma/beta = 1e-2. All runs converged (native equilibrium within 0.2%).
+The smooth controls reproduce the accepted torques (M01 0.0492 N m).
+
+| Case | rpm | Measured (N m) | Smooth | 0.4 um | 0.8 um | 1.2 um | 0.8 um, s/b 0.01 | h_min smooth (um) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| M01 | 200 | 0.326 | 0.049 | 0.050 | 0.059 | 0.178 | 0.072 | 1.88 |
+| M03 | 300 | 0.323 | 0.061 | 0.061 | 0.063 | 0.088 | 0.063 | 2.54 |
+| M05 | 500 | 0.238 | 0.071 | 0.071 | 0.072 | 0.073 | 0.072 | 4.13 |
+| M11 | 800 | 0.186 | 0.078 | 0.078 | 0.078 | 0.079 | 0.078 | 6.97 |
+| M16 | 1100 | 0.123 | 0.050 | 0.050 | 0.050 | 0.050 | 0.050 | 24.27 |
+
+- Contact acts only below H_min of about 3.5 (200-300 rpm). At M01 with
+  sigma = 1.2 um, asperities carry 4.9% of the load and 0.120 N m (67%) of the
+  torque, and h_min rises from 1.88 to 2.11 um.
+- Within the literature roughness range the model closes at most 47% of the
+  200 rpm gap and about 10% at 300 rpm, and nothing at 500 rpm and above.
+  The Greenwood-Tripp (4 - H)^6.8 dependence gives a sharp step, whereas the
+  measured excess is nearly equal at 200 and 300 rpm and still 0.07-0.12 N m at
+  thick films. Rigid aligned asperity contact therefore does not explain the
+  whole discrepancy; the constant offset points to the drag-reference
+  subtraction, and the low-speed rise to larger effective roughness or a
+  smaller real gap (misalignment, distortion) than the rigid model computes.
+- Limits: contact friction heat is not added to the energy equation, and the
+  exterior cooling was held at the smooth solution; at M01, sigma = 1.2 um the
+  contact power (about 2.5 W) is a large share of the heat input, so the
+  rough-case temperatures are lower bounds.
+
+Results, launcher and summary scripts: `results/lge_mixed_lubrication_20261023`
+(generated, not source).
+
+## 2026-10-23: Recalibrated load and parasitic torque for the 02e mixture baseline
+
+The 2026-10-20 load-cell recalibration (piston loading/unloading envelopes,
+K_mid = 2068 N/V, bounds 1845-2292 N/V) replaces the provisional 2026-09-02
+overlay F = 2752.246 (V - 0.0130312). The 2026-10-21 bearing-removed parasitic
+sweep (up branch) replaces the 2026-09-11 drag reference. Load is a CFD input,
+so the density-off baseline M01-M17 must be rerun; torque only changes the
+comparison.
+
+- `cases/02e_lge_mixture/recalibrate_preflight.py` writes a recalibrated copy
+  of a verified preflight. Loads map affinely, F_new = K (F_old/K_old + V0_old),
+  so means, sample standard deviations, sums and sums of squares transform
+  exactly; force_n_mean_lo/hi carry the K bounds. bearing_residual_nm becomes
+  M_motor - M_p,up from the Oct 21 table (motor torque cross-checked); S and f
+  are rescaled. Old values are kept as *_sep02_overlay / *_sep11 columns and
+  `recalibration.json` records source hashes and per-case load ratios.
+- Mixture loads fall to 0.762-0.863 of the old values (M01 1136 -> 881 N,
+  M16 242 -> 209 N). Bearing-torque targets rise to 0.43-0.70 N m.
+- The recalibrated preflight passes the 02e prepare step and the independent
+  input check for all 17 cases. New `tests/test_recalibrate_preflight.py`.
+
+Caveat carried from the source records: the recalibration remains
+provisional (rod-side pressure assumed 1 bar abs, piston seal friction bounds
+the up/down branches), and the dry, unloaded parasitic sweep misses an extra
+0.17-0.37 N m of rig loss in pure oil and about 0.5 N m in the mixture.
+
+## 2026-10-23: Density-off mixture baseline rerun with recalibrated loads
+
+All 17 M cases rerun through the unchanged 02e campaign (commit c7a52ff, same
+solver binary as 75299d8, afml-r6, `lge-mixture-density-recal-20261023`) with
+loads from the 2026-10-20 recalibration (K_mid). All production cases passed
+native and independent acceptance. The focused check refinement_M02 (force
+tolerance 2e-5, coupling 1e-8) failed in thermal pass 2 because the resolved
+cross-film energy linear solve did not converge; refinement_M16 passed and the
+32-layer check was not reached. The same M02 check passed with the old load.
+
+| Case | rpm | Load (N) old -> new | CFD torque (N m) old -> new | h_min (um) old -> new | Measured torque Sep 11 -> Oct 21 up | Error (%) old -> new |
+|---|---:|---|---|---|---|---|
+| M01 | 200 | 1136 -> 881 | 0.0492 -> 0.0448 | 1.88 -> 2.29 | 0.326 -> 0.531 | -85 -> -92 |
+| M02 | 200 | 2630 -> 2003 | 0.0668 -> 0.0609 | 0.99 -> 1.21 | 0.492 -> 0.697 | -86 -> -91 |
+| M03 | 300 | 1230 -> 952 | 0.0608 -> 0.0547 | 2.54 -> 3.15 | 0.323 -> 0.546 | -81 -> -90 |
+| M05 | 500 | 1144 -> 886 | 0.0709 -> 0.0626 | 4.13 -> 5.24 | 0.238 -> 0.502 | -70 -> -88 |
+| M11 | 800 | 984 -> 767 | 0.0777 -> 0.0678 | 6.97 -> 8.81 | 0.186 -> 0.488 | -58 -> -86 |
+| M16 | 1100 | 242 -> 209 | 0.0500 -> 0.0486 | 24.27 -> 26.02 | 0.123 -> 0.453 | -59 -> -89 |
+
+Across all 17 cases: CFD torque -2.9 to -12.7%, h_min +7 to +27%, CFD TC2
+within 0.08 K of the old run. The torque error moves from -47...-86% to
+-86...-92%, set almost entirely by the new parasitic reference, which the
+Oct 21 record shows misses about 0.5 N m of pressurized seal loss. The thicker
+films also move every case further from mixed lubrication; only M02 (1.21 um)
+stays near the contact range. Results and scripts:
+`results/lge_mixture_density_recal_20261023` (generated, not source).

@@ -21,7 +21,7 @@ double fb(double a, double b) {
     return sum>0 ? 2*a*b/(sum+length) : sum-length;
 }
 struct State {
-    double p, h, t, rho_l, mu_l, rho_g, theta, mobility, energy=0, conductivity=0;
+    double p, h, t, rho_l, mu_l, rho_g, theta, mobility, energy=0, conductivity=0, couette_h=0;
     std::array<double,3> u{}, volume{};
     std::array<double,3> mass;
     double total() const { return mass[0]+mass[1]+mass[2]; }
@@ -29,8 +29,8 @@ struct State {
 };
 }
 struct Face {
-    std::array<double,3> mass{};
-    double volume=0, energy=0, dissipation=0, conduction=0;
+    std::array<double,3> mass{}, pressure{}, moving{}, diffusion{};
+    double volume=0, energy=0, dissipation=0, conduction=0, diffusion_work=0;
     double operator[](int k) const { return mass[k]; }
 };
 struct Solver::Impl {
@@ -147,6 +147,10 @@ struct Solver::Impl {
         s.t=thermal ? trial["temperature"](i,j) : (*fields)["temperature"](i,j);
         for (int k=0;k<3;++k) s.mass[k]=trial[names[k+1]](i,j);
         properties(s);
+        if (cfg->cross_film_thermal_model==CrossFilmModel::FINITE_VOLUME) {
+            s.mobility=s.total()/s.h*(*fields)["cross_film_f2"](i,j);
+            s.couette_h=(*fields)["cross_film_couette_h"](i,j);
+        }
         return s;
     }
     const State& at(int i, int j) const { return states[(i+1)*mesh.n_z_local+j]; }
@@ -162,12 +166,13 @@ struct Solver::Impl {
         s.rho_g=gas_density(s.p-cfg->oil_vapor_pressure(s.t),s.t);
         const double mu_mix=s.theta*s.mu_l+std::max(0.0,1-s.theta)*cfg->mu_gas;
         s.mobility=s.total()*s.h*s.h/(12*mu_mix);
+        s.couette_h=s.h;
         const double liquid_volume = cfg->density_model == DensityModel::LINEAR_TEMPERATURE ? 1/s.rho_l : 1/cfg->rho;
         s.volume={liquid_volume, cfg->density_model==DensityModel::MIXTURE && cfg->dissolved_gas_liquid_density>0 ?
             1/cfg->dissolved_gas_liquid_density : liquid_volume, s.rho_g>0 ? 1/s.rho_g : 0};
-        if (thermal) {
+        if (thermal || cfg->cross_film_thermal_model==CrossFilmModel::FINITE_VOLUME) {
             s.energy=0;
-            s.u=internal_energies(s.t,s.p,s.rho_g);
+            for(int k=0;k<3;++k)s.u[k]=s.mass[k]!=0?partial_internal_energy(k,s.t,s.p,*cfg):0;
             for (int k=0;k<3;++k) s.energy+=s.mass[k]*s.u[k];
             s.conductivity=s.h*(s.theta*cfg->thermal_conductivity+
                 std::max(0.0,1-s.theta)*cfg->gas_thermal_conductivity);
@@ -195,20 +200,8 @@ struct Solver::Impl {
         return s;
     }
     const InletConfig* inlet(int i, int j) const { return mesh.inlet_at(*cfg,i,j); }
-    std::array<double,3> internal_energies(double t, double, double rg) const {
-        const double cp=cfg->rho_cp/cfg->rho, delta=t-cfg->property_reference_temperature;
-        if (cfg->fluid_property_model==FluidPropertyModel::CONSTANT) return {cp*delta,cp*delta,0};
-        double ug=cfg->gas_heat_capacity_cv*delta;
-        if (cfg->dissolved_gas_species==DissolvedGasSpecies::R410A) {
-            thread_local double last_p=-1, last_t=-1, reference_energy=0;
-            if (last_p!=cfg->property_reference_pressure || last_t!=cfg->property_reference_temperature) {
-                const double ref_rho=R410A::gas_density(cfg->property_reference_pressure,cfg->property_reference_temperature);
-                reference_energy=R410A::internal_energy(ref_rho,cfg->property_reference_temperature);
-                last_p=cfg->property_reference_pressure; last_t=cfg->property_reference_temperature;
-            }
-            ug=R410A::internal_energy(std::max(0.0,rg),t)-reference_energy;
-        }
-        return {cp*delta,cfg->dissolved_heat_capacity*delta-cfg->desorption_internal_energy,ug};
+    std::array<double,3> internal_energies(double t, double p, double) const {
+        return CoupledCavitation::internal_energies(t,p,*cfg);
     }
     Face flux(const State& a, const State& b, double distance, double width, double speed) const {
         const double fp=-harmonic(a.mobility,b.mobility)*(b.p-a.p)/distance*width;
@@ -216,18 +209,21 @@ struct Solver::Impl {
         const State& moving=speed>=0 ? a : b;
         Face f;
         const double qp=fp*donor.h/donor.total();
-        const double h_face=.5*(a.h+b.h);
+        const double h_face=.5*(a.couette_h+b.couette_h);
         f.volume=qp+speed*h_face*width;
         f.dissipation=-qp*(b.p-a.p);
         for (int k=0;k<3;++k) {
             const double pressure_mass=fp*donor.mass[k]/donor.total();
             const double moving_mass=speed*h_face*moving.mass[k]/moving.h*width;
+            f.pressure[k]=pressure_mass; f.moving[k]=moving_mass;
             f.mass[k]=pressure_mass+moving_mass;
             f.energy+=pressure_mass*donor.u[k]+moving_mass*moving.u[k];
         }
         const double fd=-cfg->dissolved_gas_diffusivity*harmonic(a.mass[0]+a.mass[1],b.mass[0]+b.mass[1])*
             (b.concentration()-a.concentration())/distance*width;
         f.mass[1]+=fd; f.mass[0]-=fd;
+        f.diffusion={-fd,fd,0};
+        f.diffusion_work=fd*.5*(a.p*(a.volume[1]-a.volume[0])+b.p*(b.volume[1]-b.volume[0]));
         // Fickian diffusion transports partial enthalpy, including displacement work.
         f.energy+=fd*.5*(a.u[1]-a.u[0]+a.p*(a.volume[1]-a.volume[0])+
             b.u[1]-b.u[0]+b.p*(b.volume[1]-b.volume[0]));
@@ -274,7 +270,13 @@ struct Solver::Impl {
             for (int k=0;k<3;++k) balance[k]=
                 (cfg->solution_mode==SolutionMode::TRANSIENT ? s.mass[k]-(*fields)[names[k+1]].old(i,j) : 0)+
                 dt*(east[k]-west[k]+north[k]-south[k])/area;
-            const double ceq=std::min(1-1e-12,FluidProperties::equilibrium_dissolved_gas(s.p-cfg->oil_vapor_pressure(s.t),s.t,*cfg));
+            // The inverse chart needs only the saturation boundary at the actual
+            // composition, even in undersaturated high-pressure liquid cells.
+            const bool bubble_constraint=equilibrium && cfg->solubility_model==SolubilityModel::CURVE_TABLE;
+            const bool exchange=cfg->fluid_property_model==FluidPropertyModel::TWO_PHASE &&
+                (cfg->gas_mass_transfer_rate>0 || cfg->effective_gas_absorption_rate()>0);
+            const double ceq=!bubble_constraint && (equilibrium || exchange) ?
+                std::min(1-1e-12,FluidProperties::equilibrium_dissolved_gas(s.p-cfg->oil_vapor_pressure(s.t),s.t,*cfg)) : 0;
             const double md_eq=std::min(s.mass[1]+s.mass[2],ceq/(1-ceq)*s.mass[0]);
             const double rate=cfg->fluid_property_model!=FluidPropertyModel::TWO_PHASE ? 0 :
                 (s.mass[1]>=md_eq ? cfg->gas_mass_transfer_rate : cfg->effective_gas_absorption_rate());
@@ -289,6 +291,18 @@ struct Solver::Impl {
                 source_d=q*(q>=0 ? (1-quality)*c : s.mass[1]/s.total());
                 source_g=q*(q>=0 ? quality : s.mass[2]/s.total());
             }
+            {
+                const std::array<double,3> source{{source_o,source_d,source_g}};
+                double source_work=0;
+                for (int k=0;k<3;++k) {
+                    (*fields)["coupled_source_"+std::to_string(k)](i,j)=source[k]*area/dt;
+                    double volume=s.volume[k];
+                    if (supply && source_o+source_d+source_g>=0 && supply->feeds_fresh_oil && k<2 && cfg->density_model==DensityModel::LINEAR_TEMPERATURE)
+                        volume=1/FluidProperties::liquid_solution_density(0,s.p,supply->t_supply,*cfg);
+                    source_work+=source[k]*area/dt*s.p*volume;
+                }
+                (*fields)["coupled_source_work"](i,j)=source_work;
+            }
             const double a=s.rho_g/(g_scale/cfg->c), b=1-s.theta, g=s.mass[2]/(g_scale*s.h/cfg->c);
             const double radical=a*a+b*b+2*g;
             if (radical<0) throw std::domain_error("Negative gas-volume complementarity radical");
@@ -298,7 +312,9 @@ struct Solver::Impl {
             const double accepted_reaction=equilibrium ? -(balance[1]-source_d)/dt : reaction;
             reaction_field[cell]=accepted_reaction/s.h;
             const double mu_mix=s.theta*s.mu_l+std::max(0.0,1-s.theta)*cfg->mu_gas;
-            heat[cell]=mu_mix*4*speed*speed/s.h+(.5*(east.dissipation+west.dissipation)+
+            const double couette_heat=cfg->cross_film_thermal_model==CrossFilmModel::FINITE_VOLUME ?
+                4*speed*speed/(*fields)["cross_film_f0"](i,j) : mu_mix*4*speed*speed/s.h;
+            heat[cell]=couette_heat+(.5*(east.dissipation+west.dissipation)+
                 (j==0 ? 1 : .5)*south.dissipation+(j+1==mesh.n_z_local ? 1 : .5)*north.dissipation)/area;
             double energy_balance=0;
             if (thermal) {
@@ -347,12 +363,15 @@ struct Solver::Impl {
             const double total_species=(balance[1]+balance[2]-source_d-source_g)/(m_scale*c_scale);
             if (equilibrium) {
                 result[n++]=total_species;
-                result[n++]=fb((ceq-s.concentration())/c_scale,s.mass[2]/g_scale);
+                const double undersaturation=bubble_constraint ?
+                    (s.p-cfg->oil_vapor_pressure(s.t)-cfg->saturation_pressure(s.concentration(),s.t))/p_scale :
+                    (ceq-s.concentration())/c_scale;
+                result[n++]=fb(undersaturation,s.mass[2]/g_scale);
             } else {
                 result[n++]=(balance[1]+dt*reaction-source_d)/(m_scale*c_scale);
-                result[n++]=total_species;
+                result[n++]=(balance[2]-dt*reaction-source_g)/g_scale;
             }
-            if (thermal) result[n++]=energy_balance/(m_scale*cfg->rho_cp/cfg->rho*10);
+            if (thermal) result[n++]=energy_balance/(m_scale*(cfg->liquid_specific_heat>0 ? cfg->liquid_specific_heat : cfg->rho_cp/cfg->rho)*10);
         }
         PetscScalar* values;
         check(VecGetArray(output,&values));
@@ -361,11 +380,47 @@ struct Solver::Impl {
     }
 };
 
+double partial_internal_energy(int phase,double t,double p,const SimulationConfig& cfg) {
+    const double cp=cfg.liquid_specific_heat>0 ? cfg.liquid_specific_heat : cfg.rho_cp/cfg.rho;
+    const double delta=t-cfg.property_reference_temperature;
+    if(phase==0)return cp*delta;
+    if(cfg.fluid_property_model==FluidPropertyModel::CONSTANT)return phase==1?cp*delta:0;
+    if(phase==1)return cfg.dissolved_heat_capacity*delta-cfg.desorption_internal_energy;
+    if(cfg.dissolved_gas_species!=DissolvedGasSpecies::R410A)return cfg.gas_heat_capacity_cv*delta;
+    const double pg=p-cfg.oil_vapor_pressure(t);
+    const double limit=std::min(R410A::maximum_pressure,R410A::dew_pressure(t));
+    double rg=0;
+    if(pg<=limit)rg=R410A::gas_density(std::max(0.0,pg),t);
+    else {
+        const double rlim=R410A::gas_density(limit,t);
+        rg=rlim+(pg-limit)/R410A::pressure_derivative(rlim,t);
+    }
+    thread_local double last_p=-1,last_t=-1,reference_energy=0;
+    if(last_p!=cfg.property_reference_pressure||last_t!=cfg.property_reference_temperature) {
+        const double reference_rho=R410A::gas_density(cfg.property_reference_pressure,cfg.property_reference_temperature);
+        reference_energy=R410A::internal_energy(reference_rho,cfg.property_reference_temperature);
+        last_p=cfg.property_reference_pressure;last_t=cfg.property_reference_temperature;
+    }
+    return R410A::internal_energy(rg,t)-reference_energy;
+}
+std::array<double,3> internal_energies(double t,double p,const SimulationConfig& cfg) {
+    return {partial_internal_energy(0,t,p,cfg),partial_internal_energy(1,t,p,cfg),partial_internal_energy(2,t,p,cfg)};
+}
+
+double admissibility_roundoff(double tolerance) {
+    return std::max(1e-9,std::min(tolerance,1e-8));
+}
+bool pressure_admissible(double p,double pv,double p_scale,double tolerance) {
+    return p-pv>=-admissibility_roundoff(tolerance)*p_scale;
+}
+bool film_fraction_admissible(double theta,double alpha_gas,double tolerance) {
+    return theta<=1+admissibility_roundoff(tolerance)+std::max(0.0,-alpha_gas);
+}
 Solver::Solver(const Mesh& mesh, Communicator& comm, bool thermal) : impl(std::make_unique<Impl>(mesh,comm,thermal)) {}
 Solver::~Solver() = default;
 void Solver::initialize(Fields& fields, const SimulationConfig& cfg) {
     const auto& m=impl->mesh;
-    if (impl->thermal != (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION))
+    if (impl->thermal != (cfg.temperature_model==TemperatureModel::ENERGY_EQUATION && cfg.cross_film_thermal_model!=CrossFilmModel::FINITE_VOLUME))
         throw std::invalid_argument("Coupled solver thermal mode differs from configuration");
     impl->cfg=&cfg; impl->fields=&fields;
     for (auto name : {"internal_energy","energy_residual","heat_generation","gas_mass_transfer"})
@@ -374,6 +429,17 @@ void Solver::initialize(Fields& fields, const SimulationConfig& cfg) {
         if (!fields.has(name)) fields.add(name,m,2,GridLocation::FACE_THETA);
     for (auto name : {"mixture_mass_flux_z","mixture_volume_flux_z"})
         if (!fields.has(name)) fields.add(name,m,2,GridLocation::FACE_Z);
+    {
+        if (cfg.cross_film_thermal_model==CrossFilmModel::FINITE_VOLUME && cfg.solution_mode!=SolutionMode::STEADY_STATE) throw std::invalid_argument("Resolved coupled energy requires steady state");
+        for (const char* axis : {"theta","z"}) {
+            const auto location=std::string(axis)=="theta" ? GridLocation::FACE_THETA : GridLocation::FACE_Z;
+            for (int k=0;k<3;++k) for (const char* part : {"pressure","moving","diffusion"})
+                if(!fields.has("coupled_"+std::string(part)+"_"+std::to_string(k)+"_"+axis)) fields.add("coupled_"+std::string(part)+"_"+std::to_string(k)+"_"+axis,m,2,location);
+            if(!fields.has("coupled_diffusion_work_"+std::string(axis)))fields.add("coupled_diffusion_work_"+std::string(axis),m,2,location);
+        }
+        for (int k=0;k<3;++k) if(!fields.has("coupled_source_"+std::to_string(k)))fields.add("coupled_source_"+std::to_string(k),m);
+        if(!fields.has("coupled_source_work"))fields.add("coupled_source_work",m);
+    }
     for (auto name : {"oil_mass","dissolved_mass"}) if (!fields.has(name)) fields.add(name,m);
     for (int i=0;i<m.n_theta_local;++i) for (int j=0;j<m.n_z_local;++j) {
         const double c=fields["dissolved_gas"](i,j);
@@ -386,9 +452,10 @@ void Solver::initialize(Fields& fields, const SimulationConfig& cfg) {
         if (fields.has("rho")) fields["rho"](i,j)=(ml+fields["free_gas_mass"](i,j))/fields["h"](i,j);
         if (fields.has("mu")) fields["mu"](i,j)=fields["theta"](i,j)*mu+std::max(0.0,1-fields["theta"](i,j))*cfg.mu_gas;
     }
-    if (impl->thermal) {
+    if (impl->thermal || cfg.cross_film_thermal_model==CrossFilmModel::FINITE_VOLUME) {
         for (int i=0;i<m.n_theta_local;++i) for (int j=0;j<m.n_z_local;++j) {
             for (int k=0;k<impl->dof;++k) impl->trial[names[k]](i,j)=fields[names[k]](i,j);
+            impl->trial["temperature"](i,j)=fields["temperature"](i,j);
             fields["internal_energy"](i,j)=impl->state(i,j).energy;
         }
     }
@@ -399,9 +466,10 @@ void Solver::store_old_time(Fields& fields) {
     for (int k=1;k<4;++k) fields[names[k]].store_old_time();
     for (auto name : {"h","temperature","internal_energy"}) fields[name].store_old_time();
 }
-Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium) {
+Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium,
+                    bool allow_steady_continuation) {
     if (!(dt>0)) throw std::invalid_argument("Coupled cavitation requires positive time step");
-    if (cfg.solution_mode==SolutionMode::STEADY_STATE && !impl->steady_initializing) {
+    if (allow_steady_continuation && cfg.solution_mode==SolutionMode::STEADY_STATE && !impl->steady_initializing) {
         struct Reset { bool& flag; ~Reset() { flag=false; } } reset{impl->steady_initializing};
         impl->steady_initializing=true;
         Stats result=solve(fields,cfg,dt,equilibrium);
@@ -452,7 +520,7 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     check(VecRestoreArray(s.x,&values));
     // Early steady attempts only test whether continuation reached Newton's
     // basin. Long, slowly improving attempts delay the next useful warm step.
-    PetscReal atol=1e-10, rtol=0, stol=1e-14;
+    PetscReal atol=cfg.coupled_nonlinear_tolerance, rtol=0, stol=1e-14;
     PetscInt max_iterations=cfg.solution_mode==SolutionMode::STEADY_STATE ? 30 : 100, max_functions=10000;
     // Read only the stopping controls here; repeating SNESSetFromOptions would
     // reinstall monitors and reset solver/preconditioner options each timestep.
@@ -474,9 +542,17 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     s.unpack(s.x); s.evaluate(s.residual);
     PetscReal norm; PetscInt iterations; SNESConvergedReason reason;
     check(VecNorm(s.residual,NORM_INFINITY,&norm));
+    if (!equilibrium) {
+        // Retain the original total-species gate after the equivalent free-species row transformation.
+        double local_total_species=0,global_total_species=0;
+        for (const double residual : s.species_residual)
+            local_total_species=std::max(local_total_species,std::abs(residual*dt/(s.mesh.cell_volume()*s.m_scale*s.c_scale)));
+        MPI_Allreduce(&local_total_species,&global_total_species,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
+        norm=std::max(norm,global_total_species);
+    }
     check(SNESGetIterationNumber(s.snes,&iterations));
     check(SNESGetConvergedReason(s.snes,&reason));
-    Stats result; result.converged=reason>0 && norm<1e-10; result.iterations=iterations; result.residual=norm;
+    Stats result; result.converged=reason>0 && norm<cfg.coupled_nonlinear_tolerance; result.iterations=iterations; result.residual=norm;
     if (!result.converged) return result;
     std::array<double,9> local{{s.stats.oil_balance,s.stats.species_balance,s.stats.liquid_balance,
         s.stats.liquid_mass,s.stats.gas_mass,s.stats.liquid_boundary_flux,s.stats.gas_boundary_flux,
@@ -490,6 +566,7 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
     MPI_Allreduce(energy_local,energy_global,2,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
     result.energy_balance=energy_global[0]; result.internal_energy=energy_global[1];
     int invalid=0;
+    const double gas_roundoff = admissibility_roundoff(cfg.coupled_nonlinear_tolerance);
     std::array<double,5> local_bounds{{1e300,1e300,1e300,1e300,1e300}}, global_bounds{};
     double local_volume_error=0;
     for (int i=0;i<s.mesh.n_theta_local;++i) for (int j=0;j<s.mesh.n_z_local;++j) {
@@ -500,7 +577,8 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
         local_bounds[2]=std::min(local_bounds[2],cell.mass[1]/(s.m_scale*s.c_scale));
         local_bounds[3]=std::min(local_bounds[3],cell.mass[2]/s.g_scale);
         local_bounds[4]=std::min(local_bounds[4],1-cell.theta);
-        if (cell.p<pv-1e-6 || cell.mass[0]<0 || cell.mass[1]<-1e-12*s.m_scale || cell.mass[2]<-1e-9*s.g_scale || cell.theta>1+1e-8) invalid=1;
+        if (!pressure_admissible(cell.p,pv,s.p_scale,cfg.coupled_nonlinear_tolerance) || cell.mass[0]<0 || cell.mass[1]<-1e-12*s.m_scale || cell.mass[2]<-gas_roundoff*s.g_scale ||
+            !film_fraction_admissible(cell.theta,cell.rho_g>0 ? cell.mass[2]/(cell.rho_g*cell.h) : 0,cfg.coupled_nonlinear_tolerance)) invalid=1;
         if (cfg.dissolved_gas_species==DissolvedGasSpecies::R410A && cell.mass[2]>1e-10*s.g_scale) {
             try { R410A::gas_density(cell.p-pv,cell.t); } catch (const std::domain_error&) { invalid=1; }
         }
@@ -545,11 +623,20 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
         if (fields.has("mass_residual")) fields["mass_residual"](i,j)=s.liquid_residual[i*s.mesh.n_z_local+j];
     }
     const double dx=s.mesh.R*s.mesh.get_d_theta(), dz=s.mesh.get_d_z();
+    auto export_flux=[&](const Face& face,const char* axis,int i,int j) {
+        for (int k=0;k<3;++k) {
+            fields["coupled_pressure_"+std::to_string(k)+"_"+axis](i,j)=face.pressure[k];
+            fields["coupled_moving_"+std::to_string(k)+"_"+axis](i,j)=face.moving[k];
+            fields["coupled_diffusion_"+std::to_string(k)+"_"+axis](i,j)=face.diffusion[k];
+        }
+        fields["coupled_diffusion_work_"+std::string(axis)](i,j)=face.diffusion_work;
+    };
     for (int i=0;i<s.mesh.n_theta_local;++i) {
         for (int j=0;j<s.mesh.n_z_local;++j) {
             const auto& a=s.at(i-1,j);
             const auto& b=s.at(i,j);
             const auto f=s.flux(a,b,dx,dz,cfg.omega*cfg.R/2);
+            export_flux(f,"theta",i,j);
             fields["mixture_mass_flux_theta"](i,j)=f[0]+f[1]+f[2];
             fields["mixture_volume_flux_theta"](i,j)=f.volume;
             if (fields.has("velocity_theta")) fields["velocity_theta"](i,j)=f.volume/(dz*.5*(a.h+b.h));
@@ -565,6 +652,7 @@ Stats Solver::solve(Fields& fields, const SimulationConfig& cfg, double dt, bool
                 const auto& a=s.at(i,j-1);
                 f=s.flux(a,cell,dz,dx,0); h_face=.5*(a.h+cell.h);
             }
+            export_flux(f,"z",i,j);
             fields["mixture_mass_flux_z"](i,j)=f[0]+f[1]+f[2];
             fields["mixture_volume_flux_z"](i,j)=f.volume;
             if (fields.has("velocity_z")) fields["velocity_z"](i,j)=f.volume/(dx*h_face);

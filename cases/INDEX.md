@@ -66,8 +66,17 @@ Windows worktree, r6 means `afml-r6:~/pancake/cases/`.
 | 90 | `90_diagnostics/remote_harness/` | reference copies of the loose `afml-r6:~/` driver and analysis scripts | reference only | none | both (text only) |
 
 Shared, not a case: `ref_data/` (digitised Ferron Figs. 4, 5, 6 - CSV + source
-PNG, format defined in `REFERENCE_DATA.md`), `sync_to_r6.sh` (manifest mirror to
-afml-r6), `sync_*.log` (its transcripts).
+PNG, format defined in `REFERENCE_DATA.md`), `sync_to_r6.sh` (ships tracked case
+inputs to afml-r6), `retrieve_from_r6.py` (pulls a finished run to D, verifies,
+removes it remotely), `sync_*.log` (transcripts of the old mirror).
+
+**Location update (2026-11-14).** Run output no longer stays in `cases/` or on
+afml-r6. Every `results*/`, `runs/` and run log moved to
+`D:\Seongho\Sim\pancake\_cases\<case>\<same path>` (an `OUTPUTS.md` in each case
+folder lists them). Remote copies under `afml-r6:~/pancake/cases` were pulled
+to `D:\Seongho\Sim\pancake\_cases\r6_home_pancake\cases\...` and removed from the
+remote; files already on D are listed in `R6_POINTERS.tsv` there instead of
+being stored twice. Where the table says "r6", read that location.
 
 ## What was folded in, and from where (2026-08-05)
 
@@ -141,11 +150,12 @@ and logs are local; no remote mirror was performed for this task.
    subdirectory with the `config.txt` that produced it.
 3. `.gitignore` in this directory keeps `results*/` and `run*.log` untracked. The
    configs, scripts, JSON metrics, CSVs, figures and prose are tracked. Bulk VTK
-   is never committed; it is mirrored to afml-r6 instead.
-4. Mirror with `bash cases/sync_to_r6.sh` after each batch. It is
-   manifest-based, append-only and idempotent, ships only what differs by
-   (path, size), and reports remote-only files at the end - which is how remote
-   run output gets noticed.
+   is never committed; it lives under `D:\Seongho\Sim\pancake`.
+4. Ship inputs with `bash cases/sync_to_r6.sh` before a remote batch; it sends
+   only tracked files that differ by (path, size). After the batch, retrieve
+   each finished run with `python cases/retrieve_from_r6.py <dir> <campaign>
+   --remove`. (Until 2026-11-14 the sync was an append-only mirror that left
+   all results on the remote; it was replaced because the remote filled up.)
 5. Analysis and plot scripts must run standalone: `python <script>` from inside
    the case directory, no solver run needed. All 20 of them were verified to do
    so on 2026-08-05.

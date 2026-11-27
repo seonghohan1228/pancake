@@ -174,9 +174,9 @@ void register_fields(Fields& fields, const Mesh& mesh, const SimulationConfig& c
     }
 }
 
-WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg) {
+WallState update(Fields& fields, const Mesh& mesh, const SimulationConfig& cfg, double relaxation) {
     if (cfg.cross_film_thermal_model == CrossFilmModel::FINITE_VOLUME)
-        return ResolvedCrossFilm::update(fields, mesh, cfg);
+        return ResolvedCrossFilm::update(fields, mesh, cfg, relaxation);
     WallState state;
     if (!active(cfg)) return state;
 

@@ -8,6 +8,9 @@ build-gui-check/
 # Results
 results/
 
+# Kept git worktrees of this repo (C:\Dev\pancake\worktrees\<name>)
+worktrees/
+
 # Legacy
 legacy/
 

@@ -135,7 +135,7 @@ def self_check():
         raise AssertionError("Opposite-sign torque accepted")
 
 
-def verify_case(root, directory, row, execution, worker, tight=False, layers=16):
+def verify_case(root, directory, row, execution, worker, tight=False, layers=16, density_model="CONSTANT"):
     """Re-read native outputs and require independent provenance, physics and cooling closure."""
     key = row["selected_id"]
     job_key = f"refinement_layers32_{key}" if layers == 32 else f"refinement_{key}" if tight else key
@@ -168,6 +168,11 @@ def verify_case(root, directory, row, execution, worker, tight=False, layers=16)
     assert rankfile and rankfile.is_file() and sha256(rankfile) == result["rankfile_sha256"]
     inputs = root / "inputs"
     expected_setup = load_json(inputs / f"{key}_setup.json")
+    assert expected_setup["scenario_decisions"].get("density", {}).get("model", "CONSTANT") == density_model
+    linear = density_model == "LINEAR_TEMPERATURE"
+    materials = expected_setup["material_settings"]
+    if linear:
+        assert "oil_density_kg_m3" not in materials and "oil_thermal_expansion_1_K" not in materials
     if tight:
         expected_setup["solver_tolerances"] = dict(steady_force_tolerance=2e-5, coupling_tolerance=1e-8, fbns_tol=1e-12)
         expected_setup["cooling_relative_tolerance"] = 1e-5
@@ -191,23 +196,27 @@ def verify_case(root, directory, row, execution, worker, tight=False, layers=16)
                       (run / "run.log").read_text(errors="replace"))
     assert fbns and max(map(float, fbns[-1])) < expected_setup.get("solver_tolerances", {}).get("fbns_tol", 1e-6)
     pressure, tc0 = float(row["pressure_bar_abs_mean"])*100000, float(row["tc0_c_mean"])+273.15
+    rho = worker.driver.density(tc0-273.15, materials)
     numeric = {"R": .0215, "L": .04, "c": 42.5e-6, "bush_outer_radius": .0425,
                "n_theta_global": 720, "n_z_global": 192, "cross_film_layers": layers,
-               "bush_radial_cells": 16, "bush_axial_cells": 16, "rho": 950,
+               "bush_radial_cells": 16, "bush_axial_cells": 16, "rho": rho,
                "external_load_x": 0, "external_load_y": float(row["force_n_mean"]),
                "bc_z_south_val": pressure, "bc_z_north_val": pressure,
                "liquid_specific_heat": expected_setup["material_settings"]["oil_cp_J_kg_K"],
                "thermal_conductivity": expected_setup["material_settings"]["oil_conductivity_W_m_K"],
-               "density_temperature_intercept": 950,
-               "density_temperature_slope": -950*expected_setup["material_settings"]["oil_thermal_expansion_1_K"],
+               "density_temperature_intercept": 954.9 if linear else 950,
+               "density_temperature_slope": -.7284 if linear else -950*materials["oil_thermal_expansion_1_K"],
                "p_cav": expected_setup["material_settings"]["cavitation_pressure_Pa"],
                "dissolved_gas_initial": 0, "dissolved_gas_henry_coeff": 0, "viscosity_pressure_coeff": 0}
+    if linear:
+        numeric.update(rho_cp=rho*materials["oil_cp_J_kg_K"],
+                       mu=rho*worker.driver.viscosity(tc0-273.15, campaign.points))
     for name in ("bc_z_south_temperature", "bc_z_north_temperature", "shaft_ambient_temperature",
                  "bush_outer_temperature", "thermal_ambient_temperature"):
         numeric[name] = tc0
     for name, value in numeric.items():
         assert math.isclose(float(config[name]), value, rel_tol=1e-13, abs_tol=1e-14), name
-    for name, value in {"density_model": "CONSTANT", "fluid_property_model": "SINGLE_PHASE",
+    for name, value in {"density_model": density_model, "fluid_property_model": "SINGLE_PHASE",
                         "liquid_viscosity_model": "KINEMATIC_TABLE", "solution_table_clamp": "false",
                         "kinematic_viscosity_log_interpolation": "true", "motion_model": "STEADY_EQUILIBRIUM",
                         "groove_mixing_model": "FLUX_BALANCED"}.items():
@@ -228,7 +237,7 @@ def verify_case(root, directory, row, execution, worker, tight=False, layers=16)
     values = residuals(row, checked["torque_Nm"], float(config["omega"]))
     values.update(pressure_boundary_pa_abs=float(config["bc_z_south_val"]), density_kg_m3=float(config["rho"]),
                   cp_J_kg_K=float(config["liquid_specific_heat"]), conductivity_W_m_K=float(config["thermal_conductivity"]),
-                  beta_1_K=float(expected_setup["material_settings"]["oil_thermal_expansion_1_K"]),
+                  beta_1_K=.7284/rho if linear else float(materials["oil_thermal_expansion_1_K"]),
                   p_cav_Pa_abs=float(config["p_cav"]), film_layers=int(config["cross_film_layers"]))
     for index in range(1, 4):
         temperature = observables["TC_C"][index-1]
@@ -246,7 +255,7 @@ def verify_case(root, directory, row, execution, worker, tight=False, layers=16)
                     "artifact_sha256": hashes, "execution_job": job}
 
 
-def plot_comparison(output, preflight, rows, style_directory):
+def plot_comparison(output, preflight, rows, style_directory, density_reference=False):
     """Plot saved experimental coordinates and independently accepted CFD without fits."""
     import matplotlib
     matplotlib.use("Agg")
@@ -268,23 +277,25 @@ def plot_comparison(output, preflight, rows, style_directory):
             line, = axes.plot(x, y, marker, ls="none", color=color, ms=4.7 if data is pure else 6.5, label=label)
             np.testing.assert_array_equal(line.get_xdata(), x)
             np.testing.assert_array_equal(line.get_ydata(), y)
-    x, y = np.array([[float(row[key]) for row in rows] for key in ("S", "f")])
+    x_column = "S_density_reference_TC2" if density_reference else "S"
+    x, y = np.array([[float(row[key]) for row in rows] for key in (x_column, "f")])
     xlow, xhigh, ylow, yhigh = [np.array([float(row[key]) for row in rows]) for key in
                               ("S_1min_min", "S_1min_max", "f_1min_min", "f_1min_max")]
-    axes.errorbar(x, y, xerr=[x-np.minimum(x, xlow), np.maximum(x, xhigh)-x],
+    axes.errorbar(x, y, xerr=None if density_reference else [x-np.minimum(x, xlow), np.maximum(x, xhigh)-x],
                   yerr=[y-np.minimum(y, ylow), np.maximum(y, yhigh)-y], fmt="^", ls="none",
                   color="#D55E00", ecolor="#D55E00", ms=6, elinewidth=.8, capsize=2,
                   label="Mixture experiment, chart 30%")
     accepted = [row for row in rows if row["status"] == "accepted_conditional_surrogate"]
     if accepted:
-        line, = axes.plot([float(row["S"]) for row in accepted], [row["f_cfd"] for row in accepted],
+        line, = axes.plot([float(row[x_column]) for row in accepted], [row["f_cfd"] for row in accepted],
                           "s", ls="none", color="#6A3D9A", ms=6, label="Mixture CFD, fixed chart 30%")
-        np.testing.assert_array_equal(line.get_xdata(), [float(row["S"]) for row in accepted])
-    axes.set(xscale="log", yscale="log", xlabel="$S$", ylabel="$f$")
+        np.testing.assert_array_equal(line.get_xdata(), [float(row[x_column]) for row in accepted])
+    label = r"$S$ (mixture: $\rho(TC2)$; pure oil/history: saved)" if density_reference else "$S$"
+    axes.set(xscale="log", yscale="log", xlabel=label, ylabel="$f$")
     clean_log_ticks(axes)
     smart_legend(axes, loc="best", fontsize=11)
     assert not axes.get_title() and all(line.get_linestyle() == "None" for line in axes.lines)
-    save_figure(figure, str(output / "mixture_stribeck_comparison"))
+    save_figure(figure, str(output / ("mixture_stribeck_density_reference" if density_reference else "mixture_stribeck_comparison")))
     plt.close(figure)
 
 
@@ -295,6 +306,7 @@ def main():
     parser.add_argument("--plot-style-dir", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--self-check", action="store_true")
+    parser.add_argument("--density-model", choices=("CONSTANT", "LINEAR_TEMPERATURE"), default="CONSTANT")
     args = parser.parse_args()
     self_check()
     if args.self_check:
@@ -324,6 +336,11 @@ def main():
             assert (preflight / output_name).read_bytes() == archive.read(member)
     sys.path.insert(0, str(root / "source/cases/02e_lge_mixture"))
     import run_mixture as worker
+    linear = args.density_model == "LINEAR_TEMPERATURE"
+    decisions = load_json(root / "inputs/decisions.json")
+    assert decisions.get("density", {}).get("model", "CONSTANT") == args.density_model
+    experiment = load_json(root / "inputs/experiment.json")
+    assert [case["case_id"] for case in experiment["cases"]] == IDS
     rows, verified, rejected = [], {}, []
     for row in matrix:
         key, directory = row["selected_id"], root / "production" / row["selected_id"]
@@ -333,10 +350,21 @@ def main():
                   else "missing_accepted_artifact" if job.get("state") == "complete"
                   else "running_unfinished" if job.get("state") == "running" else "missing_unrun")
         result = empty_result(row, original[0], status, load_json(failure).get("error", "") if failure.exists() else "")
+        if linear:
+            case = experiment["cases"][IDS.index(key)]
+            assert case["measured"] == row and case["sommerfeld_number"] == float(row["S"])
+            reference_rho = worker.driver.density(float(row["tc2_c_mean"]))
+            reference_s = float(row["S"])*reference_rho/950.
+            nu = worker.driver.viscosity(float(row["tc2_c_mean"]), experiment["viscosity"]["points"])
+            original_s = 950*nu*float(row["rpm"])/60*.04*.043/float(row["force_n_mean"])*(.0215/42.5e-6)**2
+            assert math.isclose(original_s, float(row["S"]), rel_tol=1e-13)
+            assert math.isclose(case["S_density_reference_TC2"], reference_s, rel_tol=1e-13)
+            result.update(density_model=args.density_model, density_reference_temperature_c=float(row["tc0_c_mean"]),
+                          rho_density_reference_TC2_kg_m3=reference_rho, S_density_reference_TC2=reference_s)
         result.update(execution_state=job.get("state"), execution_returncode=job.get("returncode"))
         if (directory / "accepted.json").exists():
             try:
-                values, evidence = verify_case(root, directory, row, execution, worker)
+                values, evidence = verify_case(root, directory, row, execution, worker, density_model=args.density_model)
                 result.update(values, status="accepted_conditional_surrogate")
                 verified[key] = evidence
             except Exception as error:
@@ -348,7 +376,7 @@ def main():
             result["refinement_status"] = "failed_or_missing_preserved"
             if (refinement / "accepted.json").exists():
                 try:
-                    refined, evidence = verify_case(root, refinement, row, execution, worker, tight=True)
+                    refined, evidence = verify_case(root, refinement, row, execution, worker, tight=True, density_model=args.density_model)
                     verified[f"refinement_{key}"] = evidence
                     result["refinement_status"] = "accepted_tight_tolerance_check"
                     if result["status"] == "accepted_conditional_surrogate":
@@ -365,7 +393,7 @@ def main():
             result["layers32_status"] = "failed_or_missing_preserved"
             if (layers32 / "accepted.json").exists():
                 try:
-                    fine, evidence = verify_case(root, layers32, row, execution, worker, tight=True, layers=32)
+                    fine, evidence = verify_case(root, layers32, row, execution, worker, tight=True, layers=32, density_model=args.density_model)
                     verified[f"refinement_layers32_{key}"] = evidence
                     result["layers32_status"] = "accepted_tight_32_layer_check"
                     if refined is not None:
@@ -385,6 +413,8 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     plot_comparison(output, preflight, rows, args.plot_style_dir)
+    if linear:
+        plot_comparison(output, preflight, rows, args.plot_style_dir, density_reference=True)
     accepted = [row for row in rows if row["status"] == "accepted_conditional_surrogate"]
     methods = [f"Accepted conditional CFD: {len(accepted)}/17. All 17 authoritative experimental rows and their original columns are retained; missing, failed and verification-rejected cases have blank CFD values. Control columns describe independently verified accepted normal runs. Provisional preflight proposal columns are omitted from this comparison CSV and remain in the preserved preflight evidence.",
                "Scenario assumptions are frozen in inputs/decisions.json, including when no CFD cases pass verification. The fixed 30% chart curve assumes density rho = 950 kg/m³. Concentration basis and in-run composition remain unverified. No dissolved/free refrigerant or release is calculated. Nominal geometry has no thermal expansion.",
@@ -396,6 +426,14 @@ def main():
                "Plot bars show only the saved one-minute temporal envelopes. They are not confidence intervals or composition, calibration or numerical uncertainty. Focused comparisons use normal versus tight tolerances at 16 film layers, then tight tolerances at 16 versus 32 film layers. Available differences are reported separately and do not replace normal CFD points or establish mesh independence. Housing resolution remains 16 radial by 16 axial cells.",
                "Agreement alone does not validate the mixture model or prove steady composition/friction.",
                "| Case | Status | Bearing error (%) | TC1 error (K) | TC2 error (K) | TC3 error (K) |", "|---|---|---:|---:|---:|---:|"]
+    if linear:
+        methods[1] = methods[1].replace("density rho = 950 kg/m³", "the pure-oil density law rho(T_C) = 954.9 - 0.7284 T_C kg/m³")
+        methods[3] = methods[3].replace("buoyancy beta = (0.7284/950) K⁻¹", "local buoyancy beta = 0.7284/rho(T_C) K⁻¹")
+        methods[4] += (" The additional S_density_reference_TC2 uses the same rho(TC2)*nu(TC2) reference for each "
+            "mixture experiment/CFD pair. The additional density-reference plot labels this choice and preserves "
+            "all 103 pure-oil and six historical CFD coordinates. Its x envelopes are omitted because the "
+            "saved constant-density temporal S envelope cannot be converted exactly from mean TC2. "
+            "density_kg_m3 and beta_1_K report feed-temperature reference values; the solver and cooling use local values.")
     methods.extend(f"| {row['selected_id']} | {row['status']} | {'' if row['bearing_error_percent'] is None else format(row['bearing_error_percent'], '.5g')} | " +
                    " | ".join("" if row[f"tc{index}_error_k"] is None else format(row[f"tc{index}_error_k"], '+.5g')
                               for index in range(1, 4)) + " |" for row in rows)

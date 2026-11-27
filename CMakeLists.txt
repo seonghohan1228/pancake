@@ -300,11 +300,35 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
     add_executable(pancake_gui WIN32
         src/gui/main_gui.cpp
         src/gui/gui_app.cpp
-        src/gui/panels_setup.cpp
-        src/gui/panels_results.cpp
+        src/gui/run_control.cpp
+        # Toolkit-free core (unit-tested in tests/test_gui_case_model.cpp)
+        src/gui/case_model.cpp
+        src/gui/case_status.cpp
+        src/gui/config_text_patch.cpp
+        src/gui/estimates.cpp
+        src/gui/fluid_library.cpp
+        src/gui/key_results.cpp
+        src/gui/units.cpp
+        # Screens
+        src/gui/ui_widgets.cpp
+        src/gui/workflow_tree.cpp
+        src/gui/panel_geometry.cpp
+        src/gui/panel_fluid.cpp
+        src/gui/panel_operating.cpp
+        src/gui/panel_boundaries.cpp
+        src/gui/panel_mesh.cpp
+        src/gui/panel_solution.cpp
+        src/gui/view_geometry.cpp
+        src/gui/view_mesh.cpp
+        src/gui/dialog_fluid_library.cpp
+        src/gui/onset_plot.cpp
+        src/gui/results_window.cpp
+        src/gui/results_tabs.cpp
+        src/gui/run_monitor.cpp
+        src/gui/batch.cpp
+        src/gui/case_report.cpp
         src/gui/solver_runner.cpp
         src/gui/results.cpp
-        src/gui/schema.cpp
         src/gui/exports.cpp
         src/gui/settings.cpp
         src/gui/theme.cpp
@@ -325,6 +349,14 @@ if(WIN32 AND PANCAKE_BUILD_GUI)
     set_source_files_properties(src/gui/pancake_gui.rc PROPERTIES
         INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/src
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/pancake.ico;${CMAKE_CURRENT_SOURCE_DIR}/src/gui/pancake_gui.manifest")
+    # The fluid directory (example pair) and example inputs ship next to the GUI.
+    add_custom_command(TARGET pancake_gui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/fluids" "$<TARGET_FILE_DIR:pancake_gui>/fluids"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:pancake_gui>/examples"
+        COMMENT "Copying fluids/ and examples/ next to pancake_gui"
+        VERBATIM)
     target_link_libraries(pancake_gui PRIVATE pancake_imgui
         d3d11 dxgi d3dcompiler dwmapi user32 gdi32 shell32 ole32 comdlg32)
 

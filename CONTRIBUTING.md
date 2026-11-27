@@ -7,7 +7,8 @@ Windows builds from the same CMake source tree.
 
 Use one task, one branch, one verified merge, then delete the branch.
 
-1. Begin with a clean, current `main` and create `codex/<short-scope>`.
+1. Begin with a clean, current `main` and create a branch named `<scope>`,
+   for example `storage-layout`, with no `codex/` or other prefix.
 2. Keep the branch limited to one coherent change. Never commit local agent
    settings, build directories, generated results, or unrelated edits.
 3. Preserve unrelated work already in the checkout; do not silently absorb or

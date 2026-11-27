@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <array>
 #include "communicator.hpp"
 #include "config.hpp"
 #include "field.hpp"
@@ -10,6 +11,23 @@
 /// remaining volume at partial pressure p-p_v(T); no prescribed gas plateau.
 /// Optional film-averaged temperature follows conservative internal energy.
 namespace CoupledCavitation {
+/// Partial internal energies [J/kg], relative to the configured caloric datum.
+/// The dissolved offset is an explicit binding-energy analogue, not latent heat data.
+double partial_internal_energy(int phase, double temperature, double pressure, const SimulationConfig&);
+std::array<double,3> internal_energies(double temperature, double pressure, const SimulationConfig&);
+/// Scaled round-off slack for admissibility checks on a state that the coupled
+/// Newton solve accepted at coupled_nonlinear_tolerance, clamped to [1e-9, 1e-8].
+double admissibility_roundoff(double coupled_nonlinear_tolerance);
+/// True when p-p_v >= -admissibility_roundoff*pressure_scale [Pa]. The coupled
+/// residual measures pressure in units of pressure_scale, so a converged
+/// cavitated cell may sit that far below p_v without being physically invalid.
+bool pressure_admissible(double pressure, double vapor_pressure, double pressure_scale,
+                         double coupled_nonlinear_tolerance);
+/// True when theta <= 1 + admissibility_roundoff + max(0, -alpha_gas). In full film
+/// the volume closure gives 1-theta ~ alpha_gas - residual, so the admitted
+/// negative free-gas round-off appears as an equal small theta overshoot.
+/// alpha_gas = free-gas mass/(rho_g h), as written to the alpha_gas field.
+bool film_fraction_admissible(double theta, double alpha_gas, double coupled_nonlinear_tolerance);
 struct Stats {
     bool converged = false;
     int iterations = 0;
@@ -36,7 +54,10 @@ public:
     void initialize(Fields& fields, const SimulationConfig& cfg);
     /// Backward Euler conservation and volume closure, solved simultaneously.
     /// equilibrium=true imposes local phase equilibrium instead of finite rates.
-    Stats solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium = false);
+    /// Disable steady continuation for disposable position trials; rejected
+    /// trials then return without entering the conservative pseudo-time march.
+    Stats solve(Fields& fields, const SimulationConfig& cfg, double dt, bool equilibrium = false,
+                bool allow_steady_continuation = true);
     /// Commit accepted inventories as the next step's fixed old state.
     static void store_old_time(Fields& fields);
 private:

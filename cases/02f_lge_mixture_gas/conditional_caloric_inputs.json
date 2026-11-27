@@ -1,0 +1,26 @@
+{
+  "model": "conditional_pure_R410A_liquid_caloric_analogue_zero_excess_mixing_energy",
+  "dissolved_heat_capacity": 1656.929131763835,
+  "desorption_internal_energy": 192486.2474970321,
+  "gas_thermal_conductivity": 0.01295831699979958,
+  "gas_viscosity": 1.2652527835974629e-05,
+  "property_reference_temperature": 293.15,
+  "property_reference_pressure": 100000.0,
+  "liquid_specific_heat": 2010.0,
+  "thermal_conductivity": 0.13,
+  "CoolProp_version": "7.2.0",
+  "CoolProp_gitrevision": "98b3523d5daa98454618d381d2ae53f7471d216b",
+  "values": {
+    "u_g_ref_J_kg": 422667.20917943725,
+    "u_refrigerant_liquid_ref_J_kg": 230180.96168240515,
+    "liquid_bubble_pressure_Pa": 1447450.8564843596,
+    "gas_dew_pressure_Pa": 1442927.358700825,
+    "rho_refrigerant_liquid_ref_kg_m3": 1083.2630353080074
+  },
+  "basis": "Dissolved refrigerant caloric analogue is pure saturated liquid R410A at20C with constant cp; free gas uses native real-gas EOS. No measured FW68D heat of mixing; zero excess mixing energy assumed. Density remains pure-oil proxy: conditional caloric/volumetric approximation, not fitted thermodynamic solution. Oilcp2010 andk0.13 retain prior analogue. Gas transport constants at1bar20C. Unverified chart bases interpreted as conditional massfraction and absolute pressure with user authorization.",
+  "sources": [
+    "https://coolprop.org/fluid_properties/fluids/R410A.html",
+    "https://coolprop.org/coolprop/HighLevelAPI.html",
+    "https://doi.org/10.1023/A:1025048800563"
+  ]
+}
