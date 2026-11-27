@@ -171,7 +171,7 @@ std::vector<FieldView> result_fields(const SimulationConfig& cfg, const ResultGr
                                 "Part of the gap not filled by liquid. In this model the void is "
                                 "massless; gas and vapour are not distinguished."});
         add_if("film_content", {"effective_density", "Effective density theta x rho_liquid", "kg/m3",
-                                "Liquid streaks at fraction theta; the void carries no mass."});
+                                "Liquid at fraction theta; the bubble carries no mass and no shear."});
     }
     add_if("T", {"T", "Temperature", "K", "Film temperature."});
     return views;

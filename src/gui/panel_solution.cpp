@@ -119,7 +119,7 @@ bool gas_model_radio(const char* label, const char* help, bool active, const std
 }
 
 const char* cavity_shear_text(CavitatedFilmModel model) {
-    return model == CavitatedFilmModel::STRIATED ? "Liquid streaks carry the shear (STRIATED)"
+    return model == CavitatedFilmModel::STRIATED ? "No shear from the bubble; only the liquid shears"
                                                  : "Whole gap shears (FULL_FILM)";
 }
 
@@ -191,9 +191,9 @@ void GuiApp::draw_solution_panel() {
             wrapped_label("Gas model", "How the released refrigerant is modelled.");
             ImGui::PushID("sol.gas_model");
             if (gas_model_radio("Pressure plateau (fast; deck compressor form)",
-                                "FBNS: the cavitated film is held at the local saturation pressure; the cavity "
-                                "is liquid streaks plus a massless void. Fast; the form of the deck's "
-                                "compressor results.",
+                                "FBNS: the cavitated film is held at the local saturation pressure. In the "
+                                "cavity the bubble carries no shear; only the liquid (fraction theta) does. "
+                                "Fast; the form of the deck's compressor results.",
                                 !transport_shown, plateau_reason)) {
                 case_.gas_model = gui::GasModel::Plateau;
                 changed = true;
@@ -211,10 +211,10 @@ void GuiApp::draw_solution_panel() {
             const bool fbns = gui::result_form(config_) == gui::ResultForm::Fbns;
             std::string shear = cavity_shear_text(config_.cavitated_film_model);
             if (fbns && config_.cavitated_film_model == CavitatedFilmModel::FULL_FILM && loaded_case_)
-                shear += " (kept from the file; new cases use STRIATED)";
+                shear += " (kept from the file; new cases give the bubble no shear)";
             wrapped_label("Cavity shear",
                            "Which part of the cavitated film carries the viscous shear. Fixed by the model: "
-                           "liquid streaks for the pressure plateau, the whole gap for gas transport.");
+                           "no shear from the bubble for the pressure plateau, the whole gap for gas transport.");
             wrapped_note(shear.c_str());
         }
         ui::end_form();

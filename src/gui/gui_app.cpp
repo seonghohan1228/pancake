@@ -635,7 +635,7 @@ void GuiApp::draw_modals() {
                                  sizeof(fluid_dir_buffer_));
         ImGui::TextDisabled("Now: %s", winutil::path_to_utf8(fluid_root()).c_str());
         ImGui::Separator();
-        if (ImGui::Button("OK", ImVec2(120, 0))) {
+        if (ui::primary_button("OK", ImVec2(120, 0))) {
             settings.solver_path = solver_path_buffer_;
             settings.fluid_dir = fluid_dir_buffer_;
             settings.save(paths.settings_file);
@@ -690,6 +690,7 @@ constexpr ScreenStep kScreens[] = {
     {"mesh", 4, 1, false, false},          {"solution", 5, 0, false, false},
     {"results", 6, 0, false, false},       {"fluid_library", 1, 0, true, false},
     {"batch", 0, 0, false, true},          {"run_monitor", 5, 0, false, false},
+    {"results_polar", 6, 0, false, false}, {"results_units", 6, 0, false, false},
 };
 constexpr int kFramesPerScreen = 12;
 }  // namespace
@@ -705,6 +706,8 @@ void GuiApp::advance_screenshot_series() {
     const int count = static_cast<int>(sizeof(kScreens) / sizeof(kScreens[0]));
     if (screenshot_step_ >= count) {
         screenshot_step_ = -1;
+        screenshot_results_tab_ = -1;
+        screenshot_units_popup_ = false;
         show_fluid_library_ = false;
         show_batch_ = false;
         set_status("Screenshots saved to " + winutil::path_to_utf8(screenshot_dir_));
@@ -720,6 +723,9 @@ void GuiApp::advance_screenshot_series() {
         if (screen.node == static_cast<int>(gui::Node::Results)) ImGui::SetWindowFocus("Results");
         if (screen.batch) ImGui::SetWindowFocus("Sweep / batch");
         if (std::string(screen.name) == "run_monitor") ImGui::SetWindowFocus("Run monitor");
+        const std::string name = screen.name;
+        screenshot_results_tab_ = name == "results_polar" ? 1 : (name == "results" ? 0 : -1);
+        screenshot_units_popup_ = name == "results_units";
     }
     if (++frame == kFramesPerScreen) {
         char name[64];

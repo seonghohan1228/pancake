@@ -30,8 +30,12 @@ void status_dot(gui::Light light);
 void item_tooltip(const char* text);
 /// Small "(?)" marker with a tooltip.
 void help_marker(const char* text);
-/// Bold section title with a separator.
+/// Section title in the heading font with a separator line.
 void section(const char* title);
+/// Button for the main action of a panel or dialog (accent fill, white text).
+bool primary_button(const char* label, const ImVec2& size = ImVec2(0, 0));
+/// Text in the heading font (key values that the eye should find first).
+void strong_text(const char* text);
 /// Right-aligned "Advanced" checkbox on the current line; returns true when toggled.
 bool advanced_toggle(const char* id, bool& open);
 

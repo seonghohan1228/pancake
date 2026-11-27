@@ -228,6 +228,8 @@ private:
 
     // Screenshots of every screen for the user guide (gui_app.cpp).
     int screenshot_step_ = -1;
+    int screenshot_results_tab_ = -1;     // results tab a screenshot step selects (-1: leave)
+    bool screenshot_units_popup_ = false;  // screenshot step with the Units popup open
     std::filesystem::path screenshot_dir_;
     bool exit_after_screenshots_ = false;    // --screenshots: quit when done
     void start_screenshot_series();

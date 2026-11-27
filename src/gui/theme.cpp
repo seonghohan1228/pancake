@@ -6,6 +6,12 @@
 
 namespace theme {
 
+namespace {
+ImFont* g_heading = nullptr;
+}
+
+ImFont* heading_font() { return g_heading ? g_heading : ImGui::GetFont(); }
+
 void apply_style(float dpi_scale) {
     ImGuiStyle style;  // fresh defaults so repeated rescaling never compounds
     ImGui::StyleColorsLight(&style);
@@ -27,6 +33,10 @@ void apply_style(float dpi_scale) {
     style.PopupBorderSize = 1.0f;
     style.FrameBorderSize = 1.0f;  // inputs need an outline on light backgrounds
     style.DockingSeparatorSize = 2.0f;
+    style.TabBarBorderSize = 1.0f;
+    style.TabBarOverlineSize = 3.0f;      // the selected tab reads at a glance
+    style.SeparatorTextBorderSize = 2.0f;
+    style.SeparatorTextPadding = ImVec2(0, 4);
 
     ImVec4* colors = style.Colors;
     const ImVec4 bg0{0.953f, 0.961f, 0.973f, 1.0f};   // window background
@@ -56,9 +66,9 @@ void apply_style(float dpi_scale) {
     colors[ImGuiCol_CheckMark] = kAccent;
     colors[ImGuiCol_SliderGrab] = kAccentDim;
     colors[ImGuiCol_SliderGrabActive] = kAccent;
-    colors[ImGuiCol_Button] = bg1;
-    colors[ImGuiCol_ButtonHovered] = bg2;
-    colors[ImGuiCol_ButtonActive] = bg3;
+    colors[ImGuiCol_Button] = bg2;
+    colors[ImGuiCol_ButtonHovered] = bg3;
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.72f, 0.75f, 0.80f, 1.0f);
     colors[ImGuiCol_Header] = bg1;
     colors[ImGuiCol_HeaderHovered] = bg2;
     colors[ImGuiCol_HeaderActive] = bg3;
@@ -68,12 +78,13 @@ void apply_style(float dpi_scale) {
     colors[ImGuiCol_ResizeGrip] = bg2;
     colors[ImGuiCol_ResizeGripHovered] = bg3;
     colors[ImGuiCol_ResizeGripActive] = kAccent;
-    colors[ImGuiCol_Tab] = bg1;
-    colors[ImGuiCol_TabHovered] = bg2;
-    colors[ImGuiCol_TabSelected] = bg0;
+    colors[ImGuiCol_Tab] = bg2;
+    colors[ImGuiCol_TabHovered] = bg3;
+    colors[ImGuiCol_TabSelected] = field;
     colors[ImGuiCol_TabSelectedOverline] = kAccent;
-    colors[ImGuiCol_TabDimmed] = bg1;
+    colors[ImGuiCol_TabDimmed] = bg2;
     colors[ImGuiCol_TabDimmedSelected] = bg0;
+    colors[ImGuiCol_TabDimmedSelectedOverline] = kAccentDim;
     colors[ImGuiCol_DockingPreview] = ImVec4(kAccent.x, kAccent.y, kAccent.z, 0.4f);
     colors[ImGuiCol_DockingEmptyBg] = bg0;
     colors[ImGuiCol_PlotLines] = kAccent;
@@ -105,7 +116,8 @@ Fonts build_fonts(float dpi_scale) {
         static_cast<int>(g_font_roboto_regular_size), 16.0f * dpi_scale, &config);
     fonts.heading = io.Fonts->AddFontFromMemoryTTF(
         const_cast<unsigned char*>(g_font_roboto_medium),
-        static_cast<int>(g_font_roboto_medium_size), 17.0f * dpi_scale, &config);
+        static_cast<int>(g_font_roboto_medium_size), 18.0f * dpi_scale, &config);
+    g_heading = fonts.heading;
     fonts.mono = io.Fonts->AddFontFromMemoryTTF(
         const_cast<unsigned char*>(g_font_jetbrains_mono),
         static_cast<int>(g_font_jetbrains_mono_size), 14.5f * dpi_scale, &config);

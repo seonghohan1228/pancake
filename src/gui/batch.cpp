@@ -350,7 +350,7 @@ void GuiApp::draw_batch_window() {
     ui::item_tooltip("Write one config file per case and run_all.ps1 / run_all.bat that run them with the exact "
                      "solver command, so the batch can also run from a terminal.");
     ImGui::SameLine();
-    if (ImGui::Button("Run batch") && write_all(false)) {
+    if (ui::primary_button("Run batch") && write_all(false)) {
         s.batch_id = "batch " + local_time();
         for (const BatchCase& c : s.cases) {
             RunJob job;

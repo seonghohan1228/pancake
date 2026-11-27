@@ -94,13 +94,20 @@ float button_width(const char* label) {
     return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
-void unit_choice_row(const char* label, const char* id, gui::UnitFamily family, ui::UnitChoices& choices) {
+/// One "label  [unit v]" row of the Units popup. The popup sizes itself to its
+/// content, so the row uses fixed widths: a table with stretch columns would
+/// collapse to nothing and wrap the labels letter by letter.
+void unit_choice_row(const char* label, const char* id, gui::UnitFamily family, ui::UnitChoices& choices,
+                     float label_width) {
     const auto& options = gui::unit_options(family);
     result_data::unit_of(choices, id, family);
     int& choice = choices[id];
-    ui::form_label(label, nullptr);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label);
+    ImGui::SameLine(label_width + ImGui::GetStyle().ItemSpacing.x * 2.0f);
     ImGui::PushID(id);
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("kgf/cm2 ").x + ImGui::GetFrameHeight() +
+                            ImGui::GetStyle().FramePadding.x * 2.0f);
     if (ImGui::BeginCombo("##unit", options[static_cast<std::size_t>(choice)].label)) {
         for (int i = 0; i < static_cast<int>(options.size()); ++i)
             if (ImGui::Selectable(options[static_cast<std::size_t>(i)].label, i == choice)) choice = i;
@@ -183,18 +190,20 @@ void GuiApp::draw_results_window() {
     ui::item_tooltip("Zero of every angle axis and of the polar plot. The maximum and minimum film zeros "
                      "follow the field shown.");
     same_line_if_fits(button_width("Units"));
-    if (ImGui::Button("Units")) ImGui::OpenPopup("result_units");
+    if (ImGui::Button("Units") || (screenshot_units_popup_ && !ImGui::IsPopupOpen("result_units")))
+        ImGui::OpenPopup("result_units");
     ui::item_tooltip("Display units of the results.");
     if (ImGui::BeginPopup("result_units")) {
         ui::window_shadow();
-        if (ui::begin_form("units_form")) {
-            unit_choice_row("Pressure", result_data::kUnitPressure, gui::UnitFamily::Pressure, unit_map);
-            unit_choice_row("Film thickness", result_data::kUnitFilm, gui::UnitFamily::SmallLength, unit_map);
-            unit_choice_row("Friction torque", result_data::kUnitTorque, gui::UnitFamily::Torque, unit_map);
-            unit_choice_row("Friction power loss", result_data::kUnitPower, gui::UnitFamily::Power, unit_map);
-            unit_choice_row("Temperature", result_data::kUnitTemperature, gui::UnitFamily::Temperature, unit_map);
-            ui::end_form();
-        }
+        const float label_width = ImGui::CalcTextSize("Friction power loss").x;
+        unit_choice_row("Pressure", result_data::kUnitPressure, gui::UnitFamily::Pressure, unit_map, label_width);
+        unit_choice_row("Film thickness", result_data::kUnitFilm, gui::UnitFamily::SmallLength, unit_map,
+                        label_width);
+        unit_choice_row("Friction torque", result_data::kUnitTorque, gui::UnitFamily::Torque, unit_map, label_width);
+        unit_choice_row("Friction power loss", result_data::kUnitPower, gui::UnitFamily::Power, unit_map,
+                        label_width);
+        unit_choice_row("Temperature", result_data::kUnitTemperature, gui::UnitFamily::Temperature, unit_map,
+                        label_width);
         ImGui::EndPopup();
     }
 
@@ -266,9 +275,11 @@ void GuiApp::draw_results_window() {
                 ImGui::PopTextWrapPos();
                 ui::item_tooltip(help);
                 ImGui::TableNextColumn();
+                ImGui::PushFont(theme::heading_font());
                 ImGui::PushTextWrapPos(0.0f);
                 ImGui::TextUnformatted(value.c_str());
                 ImGui::PopTextWrapPos();
+                ImGui::PopFont();
             };
             cell("Minimum film thickness h_min", "Smallest gap in the film.",
                  value_text(shown.h_min, gui::UnitFamily::SmallLength, unit_map, result_data::kUnitFilm, "%.3g"));
@@ -398,6 +409,10 @@ void GuiApp::draw_results_window() {
     }
 
     // --- Tabs ------------------------------------------------------------------------
+    // Clear break between the summary above and the detailed views below.
+    ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.6f));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.4f));
     const bool transient = model.analysis == gui::AnalysisType::Transient ||
                            cfg.solution_mode == SolutionMode::TRANSIENT;
     int on = -1, off = -1;
@@ -419,11 +434,15 @@ void GuiApp::draw_results_window() {
     tab.units = &unit_map;
     tab.loading = loader_.busy();
     if (ImGui::BeginTabBar("results_tabs")) {
-        if (ImGui::BeginTabItem("Field maps")) {
+        // A screenshot step may pick the tab; otherwise the user's choice stays.
+        const auto pick = [&](int index) {
+            return screenshot_results_tab_ == index ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+        };
+        if (ImGui::BeginTabItem("Field maps", nullptr, pick(0))) {
             result_data::draw_field_maps_tab(s.field_map, tab, s.capture);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Polar")) {
+        if (ImGui::BeginTabItem("Polar", nullptr, pick(1))) {
             result_data::draw_polar_tab(tab, s.capture);
             ImGui::EndTabItem();
         }

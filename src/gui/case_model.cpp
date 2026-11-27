@@ -139,8 +139,8 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
         cfg.cavitation_threshold = m.dissolved_gas ? CavitationThreshold::LOCAL_PSAT
                                                    : CavitationThreshold::SCALAR_PCAV;
         cfg.steady_gas_model = SteadyGasModel::FROZEN;
-        // Fixed for every FBNS case (plan R3): the cavity is liquid streaks at
-        // fraction theta plus a massless void, so only the streaks carry shear.
+        // Fixed for every FBNS case (plan R3): no shear from the bubble; only
+        // the liquid at fraction theta shears (solver key STRIATED).
         cfg.cavitated_film_model = CavitatedFilmModel::STRIATED;
     }
     cfg.gas_pressure_coupling = GasPressureCoupling::NONE;

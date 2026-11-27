@@ -94,7 +94,7 @@ desorption_energy_J_kg = ...          # thermal + gas release
 
 ### 0.5 Showing FBNS results honestly
 
-- **FBNS:** the cavity is liquid streaks at fraction Θ plus a massless void at the cavity pressure. No gas mass is tracked, and GC and VC differ only in the cavity pressure.
+- **FBNS:** the cavity is liquid at fraction Θ plus a massless bubble that carries no shear, at the cavity pressure. No gas mass is tracked, and GC and VC differ only in the cavity pressure.
   - Field maps offer "Void fraction 1 − Θ" (outline at 0.5). If density is shown, it is "Effective density Θ · ρ_liquid".
   - `alpha_gas`, `dissolved_gas` and `rho` are hidden for FBNS. If a user opens a file view of them, they are labelled "not computed in this model".
   - The results card says "Cavitated area (void fraction > 0)".
@@ -103,7 +103,7 @@ desorption_energy_J_kg = ...          # thermal + gas release
 
 ### 0.6 Fixed choices shown read-only in Advanced
 
-- **Cavity shear:** "Liquid streaks carry the shear (STRIATED)" for every FBNS case (R3). COUPLED keeps its own full-film treatment (the solver accepts STRIATED only with JFO/FBNS).
+- **Cavity shear:** "No shear from the bubble; only the liquid shears" (solver key STRIATED) for every FBNS case (R3). COUPLED keeps its own full-film treatment (the solver accepts STRIATED only with JFO/FBNS).
 - **Solver form, gas model, thermal form:** read-only lines (section 4).
 
 ### 0.7 Layout rule: no overlapping text
@@ -392,8 +392,8 @@ Key results  (step final, converged: yes)            Angle zero [h_max v]  Units
  shear share of film force: 3 %          (yellow/red mark if a table range was left
                                           or the run did not converge)
 [Field map: p | h | gas fraction | T]  x = angle (zero: h_max), y = z/L, 1:1
-   alpha = 0.5 contour, feed marker, h_min line
-[Polar: p at mid-plane, ambient and p_sat circles]   [Profiles p, h vs angle]
+   alpha = 0.5 contour, feed outline, dashed h_min line, labels above the map
+[Polar: p at mid-plane, ambient and p_sat circles, over/under-ambient fills]   [Profiles p, h vs angle]
 [Export: PNG | CSV | Case report]
 ```
 

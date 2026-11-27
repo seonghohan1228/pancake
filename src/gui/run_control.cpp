@@ -285,7 +285,7 @@ void GuiApp::draw_thermal_transient_dialog() {
     }
     ImGui::PopTextWrapPos();
     ImGui::Separator();
-    if (ImGui::Button("Run thermal transient")) {
+    if (ui::primary_button("Run thermal transient")) {
         thermal_transient_confirmed_ = true;
         ImGui::CloseCurrentPopup();
         start_run();

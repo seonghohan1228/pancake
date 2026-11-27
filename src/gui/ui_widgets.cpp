@@ -58,8 +58,26 @@ void help_marker(const char* text) {
 }
 
 void section(const char* title) {
-    ImGui::Spacing();
+    ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.35f));
+    ImGui::PushFont(theme::heading_font());
     ImGui::SeparatorText(title);
+    ImGui::PopFont();
+}
+
+bool primary_button(const char* label, const ImVec2& size) {
+    ImGui::PushStyleColor(ImGuiCol_Button, theme::kAccent);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.50f, 0.88f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.11f, 0.34f, 0.68f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+    const bool pressed = ImGui::Button(label, size);
+    ImGui::PopStyleColor(4);
+    return pressed;
+}
+
+void strong_text(const char* text) {
+    ImGui::PushFont(theme::heading_font());
+    ImGui::TextUnformatted(text);
+    ImGui::PopFont();
 }
 
 bool advanced_toggle(const char* id, bool& open) {
