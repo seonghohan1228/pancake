@@ -126,7 +126,9 @@ void write_fluid_state(const CaseModel& m, const FluidPair* pair, SimulationConf
         cfg.fluid_property_model = m.dissolved_gas ? FluidPropertyModel::TWO_PHASE
                                                    : FluidPropertyModel::SINGLE_PHASE;
         cfg.coupled_phase_equilibrium = m.dissolved_gas;
-        cfg.coupled_fbns_initialization = m.analysis == AnalysisType::Steady;
+        // FBNS starting guess for the steady COUPLED solve; the solver accepts it
+        // only with the finite-volume film energy (see coupled_fbns_seed_allowed).
+        cfg.coupled_fbns_initialization = m.analysis == AnalysisType::Steady && m.thermal;
         cfg.cavitation_threshold = CavitationThreshold::SCALAR_PCAV;
         cfg.mixture_viscosity_model = MixtureViscosityModel::DUKLER;
         cfg.cavitated_film_model = CavitatedFilmModel::FULL_FILM;  // STRIATED is JFO/FBNS only
@@ -407,6 +409,23 @@ SimulationConfig new_case_template() {
     return cfg;
 }
 
+namespace {
+
+/// The solver's rule for coupled_fbns_initialization (SimulationConfig::validate):
+/// steady COUPLED, finite-volume film energy, constant oil vapour pressure and no
+/// prescribed free gas at the ends or feeds.
+bool coupled_fbns_seed_allowed(const SimulationConfig& cfg) {
+    if (cfg.solution_mode != SolutionMode::STEADY_STATE || cfg.cavitation_model != CavitationModel::COUPLED ||
+        cfg.cross_film_thermal_model != CrossFilmModel::FINITE_VOLUME || cfg.oil_vapor_temperature_coeff != 0)
+        return false;
+    if (cfg.bc_z_south_free_gas_mass_fraction != 0 || cfg.bc_z_north_free_gas_mass_fraction != 0) return false;
+    for (const auto& inlet : cfg.inlets)
+        if (inlet.free_gas_mass_fraction != 0) return false;
+    return true;
+}
+
+}  // namespace
+
 SimulationConfig to_config(const CaseModel& m, const FluidPair* pair,
                            const SimulationConfig& base,
                            const std::optional<CaseModel>& original) {
@@ -432,6 +451,9 @@ SimulationConfig to_config(const CaseModel& m, const FluidPair* pair,
         write_time(m, base, new_case, cfg);
     if (changed([](const CaseModel& x) { return convergence_inputs(x); }))
         write_convergence(m, cfg);
+    // The seed is only a starting guess: drop it wherever the solver would reject
+    // it (e.g. gas transport with thermal off), rather than failing the run.
+    if (cfg.coupled_fbns_initialization && !coupled_fbns_seed_allowed(cfg)) cfg.coupled_fbns_initialization = false;
     return cfg;
 }
 

@@ -326,6 +326,34 @@ void test_new_case_defaults_and_mapping() {
         check(e2.empty(), std::string("steady thermal case validates (gas ") + (gas ? "on" : "off") +
                               "): " + (e2.empty() ? std::string() : e2.front()));
     }
+    // Gas transport, steady, isothermal and thermal: both validate. The FBNS
+    // starting guess (coupled_fbns_initialization) is accepted by the solver
+    // only with the finite-volume film energy, so it is on for thermal only.
+    for (bool thermal : {false, true}) {
+        CaseModel steady = compressor_case();
+        steady.gas_model = GasModel::Transport;
+        steady.thermal = thermal;
+        const SimulationConfig coupled_cfg = to_config(steady, &pair, new_case_template());
+        std::vector<std::string> e4, w4;
+        coupled_cfg.validate(e4, w4);
+        check(coupled_cfg.cavitation_model == CavitationModel::COUPLED &&
+                  coupled_cfg.coupled_fbns_initialization == thermal,
+              std::string("gas transport sets the FBNS seed only with film energy (thermal ") +
+                  (thermal ? "on)" : "off)"));
+        check(e4.empty(), std::string("steady gas-transport case validates (thermal ") +
+                              (thermal ? "on" : "off") + "): " + (e4.empty() ? std::string() : e4.front()));
+        // Switching thermal off on a loaded thermal case drops the seed too.
+        if (thermal) {
+            CaseModel off = steady;
+            off.thermal = false;
+            const SimulationConfig edited = to_config(off, &pair, coupled_cfg, steady);
+            std::vector<std::string> e5, w5;
+            edited.validate(e5, w5);
+            check(!edited.coupled_fbns_initialization && e5.empty(),
+                  "thermal switched off on a gas-transport case validates: " +
+                      (e5.empty() ? std::string() : e5.front()));
+        }
+    }
     // Transient isothermal plateau case (compressor rev03 form) validates.
     CaseModel transient = compressor_case();
     transient.analysis = AnalysisType::Transient;
@@ -575,7 +603,14 @@ int write_acceptance(const fs::path& dir) {
     thermal.housing.outer_diameter = 0.060;
     thermal.mesh_level = MeshLevel::Medium;
     thermal.cores = 8;
+    // Gas transport, steady, isothermal: runs COUPLED without the FBNS seed.
+    CaseModel iso_transport = gcvc;
+    iso_transport.gas_model = GasModel::Transport;
+    iso_transport.thermal = false;
+    iso_transport.mesh_level = MeshLevel::Medium;
+    iso_transport.cores = 8;
     const std::pair<const char*, CaseModel> cases[] = {
+        {"compressor_transport_isothermal.txt", iso_transport},
         {"compressor_gcvc_steady.txt", gcvc}, {"compressor_vc_steady.txt", vc},
         {"compressor_transient.txt", transient}, {"tester_500rpm_2610N.txt", tester},
         {"example_thermal_steady_pure_oil.txt", thermal}};

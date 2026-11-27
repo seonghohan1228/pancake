@@ -20,6 +20,14 @@
   result values in the heading font, buttons and unselected tabs one shade darker,
   a thicker overline on the selected tab, and an accent "primary" button for the main
   action of a dialog (OK, Save, Run batch, Run thermal transient). Run (F5) stays green.
+- Fix: a steady case with Gas transport and thermal off failed at start with
+  "coupled_fbns_initialization requires steady COUPLED FINITE_VOLUME with constant oil
+  vapor pressure". The GUI turned on the FBNS starting guess for every steady COUPLED
+  case, but the solver accepts it only with the finite-volume film energy. The guess
+  is now on for steady thermal gas-transport cases only, and `to_config` drops it in
+  any configuration the solver would reject (it is a starting guess, not physics).
+  Regression test in test_gui_case_model; `--write-acceptance` also writes
+  `compressor_transport_isothermal.txt`.
 - More space and a rule between the key-results summary and the result tabs.
 - The screenshot series adds the polar tab and the open Units popup.
 - Verified: GUI builds without warnings; test_gui_case_model passes; screenshots at
