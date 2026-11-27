@@ -16,7 +16,9 @@
   map is a full snapshot on disk (about 20 MB at the medium mesh), hence not 1.
 - The note about settings without a GUI control now names them, reads as information
   ("Kept as written in the file (no GUI control): <keys>. Saving keeps it."), uses a
-  neutral colour and appears once per opened case instead of after every save.
+  neutral colour and appears once per opened case instead of after every save. File
+  paths (fluid table, load table) no longer count: they are GUI inputs that a saved
+  case stores relative to itself, so every shipped example used to trigger the note.
 - Scripted sessions (`--run`, `--screenshots`) read but never write the user's
   settings and window layout. A test run had set `last_config` to a scratch case, so
   the user's GUI opened that case at start-up.

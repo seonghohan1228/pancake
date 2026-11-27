@@ -624,8 +624,11 @@ CaseRead from_config(const SimulationConfig& cfg, const GuiMeta& meta, const Flu
     const SimulationConfig fresh = to_config(m, pair, new_case_template());
     const auto mine = config_key_values(cfg.to_config_text());
     const auto theirs = config_key_values(fresh.to_config_text());
-    static const char* const kIgnored[] = {"output_dir", "filename_prefix", "e",
-                                           "attitude_angle_deg"};
+    // File paths are GUI inputs (fluid pair, load table) that a saved case stores
+    // relative to itself, so their text differs from a fresh case without meaning.
+    static const char* const kIgnored[] = {"output_dir",          "filename_prefix", "e",
+                                           "attitude_angle_deg",  "solution_table_file",
+                                           "load_table_file"};
     for (const auto& [key, value] : mine) {
         if (std::find(std::begin(kIgnored), std::end(kIgnored), key) != std::end(kIgnored)) continue;
         const auto it = theirs.find(key);
