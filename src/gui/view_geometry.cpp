@@ -255,8 +255,11 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
                                 text,
                             ink});
         captions.push_back({position_note, muted});
-        std::string arrows = "Arrows: blue = rotation " +
-                             ui::format_value(std::abs(case_.speed), gui::UnitFamily::Speed, units(), "op.speed", "%.0f");
+        constexpr double kTwoPi = 6.283185307179586;
+        char speed_text[64];
+        std::snprintf(speed_text, sizeof(speed_text), "%.0f rpm (%.4g Hz)",
+                      std::abs(case_.speed) * 60.0 / kTwoPi, std::abs(case_.speed) / kTwoPi);
+        std::string arrows = std::string("Arrows: blue = rotation ") + speed_text;
         const bool fixed = case_.analysis == gui::AnalysisType::Steady && case_.position == gui::ShaftPosition::Fixed;
         if (load_known && !fixed)
             arrows += load_from_table ? std::string(", black = load on the shaft (mean of the load table)")
@@ -402,7 +405,9 @@ void GuiApp::draw_geometry_view(ImVec2 size) {
         }
         placed.emplace_back(ImVec2(corner.x - 2.0f, corner.y - 1.0f),
                             ImVec2(corner.x + size.x + 2.0f, corner.y + size.y + 1.0f));
-        dl->AddLine(polar(centre, r_bore - 0.5f * c_px, mark.deg), anchor, mark.color, 1.5f);
+        // The mark stops at the ring so it never runs through a stacked label.
+        dl->AddLine(polar(centre, r_bore - 0.5f * c_px, mark.deg), polar(centre, r_outer + 6.0f, mark.deg),
+                    mark.color, 1.5f);
         dl->AddText(corner, mark.color, mark.text);
     }
     if (highlighted_zone_ == 4 && !case_.thermal)

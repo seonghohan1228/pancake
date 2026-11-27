@@ -1,5 +1,19 @@
 # Change Log
 
+## 2026-11-27 - GUI polish: stable empty plots, popup shadows, speed in Hz (`gui-polish`)
+
+- Empty plots no longer jump. ImPlot fitted the axes to the "waiting for data" text,
+  whose size is fixed in pixels, so every fit changed the limits again. Empty plots
+  now hold fixed axes without tick labels, and the placeholder text never takes part
+  in a fit (run monitor, transient histories, profiles, comparison, batch curve, load
+  table, fluid saturation curve).
+- Popups and floating dialogs get a soft drop shadow (Dear ImGui has none), popup
+  borders, and a darker dim behind modal dialogs.
+- Speed shows its value in rpm, Hz and rad/s under the input; the live view caption
+  reads "3000 rpm (50 Hz)".
+- Geometry-view marks stop at the ring so they never cross a stacked label.
+- The screenshot series includes the run monitor.
+
 ## 2026-11-26 - GUI for LGE bearing engineers (`lge-gui`)
 
 New workflow GUI (plan `docs/GUI_LGE_PLAN.md`, rev. 2 and rev. 3 approved; terms

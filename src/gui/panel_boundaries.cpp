@@ -90,6 +90,7 @@ void GuiApp::draw_boundaries_panel() {
     }
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 30.0f, 0.0f));
     if (ImGui::BeginPopup("Zone values")) {
+        ui::window_shadow();
         const int zone = popup_zone;
         if (zone >= 0 && zone < kZoneCount) {
             ImGui::TextUnformatted(kZoneNames[zone]);

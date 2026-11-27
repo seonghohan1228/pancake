@@ -186,6 +186,7 @@ void GuiApp::draw_results_window() {
     if (ImGui::Button("Units")) ImGui::OpenPopup("result_units");
     ui::item_tooltip("Display units of the results.");
     if (ImGui::BeginPopup("result_units")) {
+        ui::window_shadow();
         if (ui::begin_form("units_form")) {
             unit_choice_row("Pressure", result_data::kUnitPressure, gui::UnitFamily::Pressure, unit_map);
             unit_choice_row("Film thickness", result_data::kUnitFilm, gui::UnitFamily::SmallLength, unit_map);

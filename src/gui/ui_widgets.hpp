@@ -14,6 +14,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ui {
 
@@ -54,6 +55,22 @@ void form_value(const char* label, const char* help, const std::string& text);
 /// Value formatted in the user's display unit, e.g. "24.5 bar".
 std::string format_value(double si, gui::UnitFamily family, UnitChoices& choices, const char* id,
                          const char* format = "%.4g");
+
+/// True when at least one (x, y) pair is finite.
+bool has_points(const std::vector<double>& x, const std::vector<double>& y);
+/// Axis flags that auto-fit only when the plot has data (no tick labels when empty). ImPlot's fit on an
+/// empty plot changes the limits every frame, so empty plots must not fit.
+int fit_if(bool has_data);
+/// For an empty plot, right after its axes are set up: fixed limits and a
+/// centred "No data yet". Ends the setup phase.
+void empty_plot(const char* text = "No data yet");
+/// Soft drop shadow around the current popup or floating window, so it stands
+/// out from the windows behind it. Call right after a successful Begin*/
+/// BeginPopup*. Dear ImGui has no window shadows; this draws fading rings just
+/// outside the window on its own draw list (nothing for docked windows).
+void window_shadow();
+/// Speed in all three units, e.g. "3000 rpm = 50 Hz = 314.2 rad/s".
+std::string speed_all_units(double rad_s);
 
 /// Combo over a small enum set. Options: {value, label, tooltip}.
 template <typename Enum>

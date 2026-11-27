@@ -583,6 +583,7 @@ void GuiApp::draw_modals() {
         show_settings_ = false;
     }
     if (ImGui::BeginPopupModal("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ui::window_shadow();
         ImGui::TextUnformatted("Solver program (pancake.exe)");
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 30);
         ImGui::InputTextWithHint("##solver", "pancake.exe next to this program", solver_path_buffer_,
@@ -624,6 +625,7 @@ void GuiApp::draw_modals() {
         show_about_ = false;
     }
     if (ImGui::BeginPopupModal("About pancake", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ui::window_shadow();
         ImGui::TextUnformatted("pancake GUI 3.0 - journal bearings with refrigerant-oil mixtures");
         ImGui::TextDisabled("Every case is a config file: pancake.exe -c <case.txt> reproduces it.");
         ImGui::TextDisabled("Dear ImGui + ImPlot, Win32 + Direct3D 11. Fonts: Roboto, JetBrains Mono.");
@@ -659,7 +661,7 @@ constexpr ScreenStep kScreens[] = {
     {"operating", 2, 0, false, false},     {"boundaries", 3, 0, false, false},
     {"mesh", 4, 1, false, false},          {"solution", 5, 0, false, false},
     {"results", 6, 0, false, false},       {"fluid_library", 1, 0, true, false},
-    {"batch", 0, 0, false, true},
+    {"batch", 0, 0, false, true},          {"run_monitor", 5, 0, false, false},
 };
 constexpr int kFramesPerScreen = 12;
 }  // namespace
@@ -689,6 +691,7 @@ void GuiApp::advance_screenshot_series() {
         show_batch_ = screen.batch;
         if (screen.node == static_cast<int>(gui::Node::Results)) ImGui::SetWindowFocus("Results");
         if (screen.batch) ImGui::SetWindowFocus("Sweep / batch");
+        if (std::string(screen.name) == "run_monitor") ImGui::SetWindowFocus("Run monitor");
     }
     if (++frame == kFramesPerScreen) {
         char name[64];

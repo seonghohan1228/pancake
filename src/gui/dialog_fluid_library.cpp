@@ -184,6 +184,7 @@ void GuiApp::draw_fluid_library_dialog() {
         ImGui::End();
         return;
     }
+    ui::window_shadow();
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Fluid directory: %s", winutil::path_to_utf8(root).c_str());
@@ -576,8 +577,10 @@ void GuiApp::draw_fluid_library_dialog() {
             std::snprintf(title, sizeof(title), "Saturation pressure at %.1f degC###p_sat_plot",
                           t_amb - 273.15);
             if (ImPlot::BeginPlot(title, plot_size, ImPlotFlags_NoBoxSelect)) {
+                const bool data = ui::has_points(state.curve_content, state.curve_pressure);
                 ImPlot::SetupAxes("Refrigerant content [wt%]", "Saturation pressure [bar, abs]",
-                                  ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+                                  ui::fit_if(data), ui::fit_if(data));
+                if (!data) ui::empty_plot("No saturation curve at this temperature");
                 ImPlot::SetupLegend(ImPlotLocation_NorthWest, ImPlotLegendFlags_None);
                 ImPlot::SetNextLineStyle(theme::kAccent, 2.0f);
                 ImPlot::PlotLine("p_sat (case ambient temperature)", state.curve_content.data(),

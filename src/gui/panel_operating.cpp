@@ -74,8 +74,10 @@ void GuiApp::draw_operating_panel() {
         reload_load_table();
         changed = true;
     }
-    changed |= ui::form_number("Speed", "Shaft rotational speed. Typical compressor: 3000 to 9000 rpm.",
+    changed |= ui::form_number("Speed", "Shaft rotational speed. Typical compressor: 3000 to 9000 rpm "
+                               "(50 to 150 Hz). The unit selector offers rpm, Hz and rad/s.",
                                "op.speed", case_.speed, gui::UnitFamily::Speed, units());
+    ui::form_value("", "The same speed in every unit.", ui::speed_all_units(case_.speed));
     changed |= ui::form_number("Ambient pressure",
                                "Pressure around the bearing (chamber or shell), absolute. Typical: 5 to 30 bar.",
                                "op.ambient_pressure", case_.ambient_pressure, gui::UnitFamily::Pressure,
@@ -185,8 +187,9 @@ void GuiApp::draw_operating_panel() {
         if (ImPlot::BeginPlot("##load_plot", ImVec2(-1, ImGui::GetFontSize() * 11.0f))) {
             ImPlot::SetupAxes(case_.load_table.abscissa == gui::LoadAbscissa::CrankAngle ? "Crank angle [deg]"
                                                                                        : "Time [s]",
-                              "Load [N]", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
-            ImPlot::PlotLine("load magnitude", x.data(), y.data(), static_cast<int>(x.size()));
+                              "Load [N]", ui::fit_if(ui::has_points(x, y)), ui::fit_if(ui::has_points(x, y)));
+            if (!ui::has_points(x, y)) ui::empty_plot();
+            else ImPlot::PlotLine("load magnitude", x.data(), y.data(), static_cast<int>(x.size()));
             ImPlot::EndPlot();
         }
     } else if (case_.load_table.file.empty()) {
